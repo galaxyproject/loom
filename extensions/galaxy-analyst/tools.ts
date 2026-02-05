@@ -17,8 +17,15 @@ import {
   getCurrentPlan,
   setPlanStatus,
   formatPlanSummary,
+  loadNotebook,
+  createNotebook,
+  findNotebooks,
+  getNotebookPath,
+  getDefaultPath,
+  syncToNotebook,
 } from "./state";
 import type { StepStatus, StepResult, DecisionType, CheckpointStatus, DatasetReference } from "./types";
+import * as path from "path";
 
 export function registerPlanTools(pi: ExtensionAPI): void {
 
@@ -58,6 +65,17 @@ all steps, decisions, and results throughout the analysis.`,
         constraints: params.constraints || [],
       });
 
+      // Auto-create notebook for the plan
+      let notebookPath: string | null = null;
+      try {
+        const cwd = process.cwd();
+        const defaultPath = getDefaultPath(plan.title, cwd);
+        await createNotebook(defaultPath, plan);
+        notebookPath = defaultPath;
+      } catch {
+        // Notebook creation is optional, continue without it
+      }
+
       return {
         content: [{
           type: "text",
@@ -66,15 +84,22 @@ all steps, decisions, and results throughout the analysis.`,
             message: `Analysis plan "${plan.title}" created`,
             planId: plan.id,
             status: plan.status,
+            notebook: notebookPath,
           }, null, 2),
         }],
-        details: { planId: plan.id },
+        details: { planId: plan.id, notebookPath },
       };
     },
-    renderResult: (result) => [
-      `✅ Analysis plan created`,
-      `   ID: ${result.details?.planId || 'unknown'}`,
-    ],
+    renderResult: (result) => {
+      const lines = [
+        `✅ Analysis plan created`,
+        `   ID: ${result.details?.planId || 'unknown'}`,
+      ];
+      if (result.details?.notebookPath) {
+        lines.push(`   📓 Notebook: ${result.details.notebookPath}`);
+      }
+      return lines;
+    },
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -137,6 +162,9 @@ a discrete analytical operation (tool execution, workflow invocation, or manual 
         });
 
         const plan = getCurrentPlan();
+
+        // Sync to notebook
+        await syncToNotebook('step_added', { step });
 
         return {
           content: [{
@@ -217,6 +245,27 @@ in_progress when starting, completed when done, or failed if issues occur.`,
         // Add outputs if provided
         if (params.outputs && params.outputs.length > 0) {
           addStepOutputs(params.stepId, params.outputs as DatasetReference[]);
+        }
+
+        // Sync to notebook
+        await syncToNotebook('step_updated', {
+          stepId: params.stepId,
+          status: params.status,
+          jobId: params.jobId,
+          invocationId: params.invocationId,
+          outputs: params.outputs,
+        });
+
+        // Add Galaxy references for outputs
+        const plan = getCurrentPlan();
+        if (params.outputs && plan?.galaxy.serverUrl) {
+          for (const output of params.outputs) {
+            await syncToNotebook('galaxy_ref', {
+              resource: output.name,
+              id: output.datasetId,
+              url: `${plan.galaxy.serverUrl}/datasets/${output.datasetId}`,
+            });
+          }
         }
 
         return {
@@ -365,6 +414,16 @@ This maintains a complete audit trail of the analysis process.`,
           researcherApproved: params.researcherApproved ?? true,
         });
 
+        // Sync to notebook
+        await syncToNotebook('decision', {
+          timestamp: entry.timestamp,
+          stepId: entry.stepId,
+          type: entry.type,
+          description: entry.description,
+          rationale: entry.rationale,
+          researcherApproved: entry.researcherApproved,
+        });
+
         return {
           content: [{
             type: "text",
@@ -428,6 +487,17 @@ in the analysis to validate results before proceeding.`,
           observations: params.observations || [],
         });
 
+        // Sync to notebook
+        await syncToNotebook('checkpoint', {
+          id: checkpoint.id,
+          stepId: checkpoint.stepId,
+          name: checkpoint.name,
+          status: checkpoint.status,
+          criteria: checkpoint.criteria,
+          observations: checkpoint.observations,
+          reviewedAt: checkpoint.reviewedAt,
+        });
+
         return {
           content: [{
             type: "text",
@@ -470,6 +540,18 @@ Use this after the plan has been reviewed and approved by the researcher.`,
       try {
         setPlanStatus('active');
         const plan = getCurrentPlan();
+
+        // Sync status change to notebook
+        await syncToNotebook('frontmatter', { status: 'active' });
+
+        // Log the activation event
+        await syncToNotebook('decision', {
+          timestamp: new Date().toISOString(),
+          type: 'plan_modification',
+          description: 'Plan activated - ready for execution',
+          rationale: 'Plan reviewed and approved by researcher',
+          researcherApproved: true,
+        });
 
         return {
           content: [{
@@ -516,6 +598,206 @@ Shows title, status, steps overview, current step, and recent decisions.`,
         content: [{ type: "text", text: summary }],
         details: { planId: plan.id },
       };
+    },
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Tool: Create analysis notebook
+  // ─────────────────────────────────────────────────────────────────────────────
+  pi.registerTool({
+    name: "analysis_notebook_create",
+    label: "Create Analysis Notebook",
+    description: `Create a persistent notebook file for the current analysis plan.
+The notebook is a markdown file that persists the plan, steps, decisions, and results
+to disk. This enables resuming analysis across sessions and sharing with collaborators.
+Must have an active plan to create a notebook.`,
+    parameters: Type.Object({
+      path: Type.Optional(Type.String({
+        description: "Custom path for the notebook. If not provided, defaults to ./{slug}-notebook.md in current directory"
+      })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const plan = getCurrentPlan();
+
+      if (!plan) {
+        return {
+          content: [{ type: "text", text: "Error: No active plan. Create a plan first with analysis_plan_create." }],
+          details: { error: true },
+        };
+      }
+
+      // Check if notebook already exists
+      const existingPath = getNotebookPath();
+      if (existingPath) {
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              success: false,
+              message: `Notebook already exists at ${existingPath}`,
+              path: existingPath,
+            }, null, 2),
+          }],
+          details: { path: existingPath, alreadyExists: true },
+        };
+      }
+
+      try {
+        const cwd = process.cwd();
+        const notebookPath = params.path || getDefaultPath(plan.title, cwd);
+        const absolutePath = path.isAbsolute(notebookPath)
+          ? notebookPath
+          : path.join(cwd, notebookPath);
+
+        await createNotebook(absolutePath, plan);
+
+        // Log the notebook creation event
+        await syncToNotebook('decision', {
+          timestamp: new Date().toISOString(),
+          type: 'observation',
+          description: 'Analysis notebook created',
+          rationale: 'Persistent storage for analysis state',
+          researcherApproved: true,
+        });
+
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              success: true,
+              message: `Notebook created: ${absolutePath}`,
+              path: absolutePath,
+              planId: plan.id,
+            }, null, 2),
+          }],
+          details: { path: absolutePath },
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error creating notebook: ${(error as Error).message}` }],
+          details: { error: true },
+        };
+      }
+    },
+    renderResult: (result) => {
+      if (result.details?.path) {
+        return [`📓 Notebook: ${result.details.path}`];
+      }
+      return ["❌ Notebook creation failed"];
+    },
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Tool: Open existing notebook
+  // ─────────────────────────────────────────────────────────────────────────────
+  pi.registerTool({
+    name: "analysis_notebook_open",
+    label: "Open Analysis Notebook",
+    description: `Open an existing analysis notebook file and restore its state.
+This loads the plan, steps, decisions, and checkpoints from the notebook file,
+allowing you to resume a previous analysis session.`,
+    parameters: Type.Object({
+      path: Type.String({
+        description: "Path to the notebook file to open"
+      }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      try {
+        const cwd = process.cwd();
+        const notebookPath = path.isAbsolute(params.path)
+          ? params.path
+          : path.join(cwd, params.path);
+
+        const plan = await loadNotebook(notebookPath);
+
+        if (!plan) {
+          return {
+            content: [{ type: "text", text: `Error: Could not parse notebook at ${notebookPath}` }],
+            details: { error: true },
+          };
+        }
+
+        const completed = plan.steps.filter(s => s.status === 'completed').length;
+        const inProgress = plan.steps.find(s => s.status === 'in_progress');
+
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              success: true,
+              message: `Notebook loaded: ${plan.title}`,
+              path: notebookPath,
+              planId: plan.id,
+              status: plan.status,
+              progress: `${completed}/${plan.steps.length} steps completed`,
+              currentStep: inProgress?.name || null,
+            }, null, 2),
+          }],
+          details: { path: notebookPath, planId: plan.id },
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error opening notebook: ${(error as Error).message}` }],
+          details: { error: true },
+        };
+      }
+    },
+    renderResult: (result) => {
+      if (result.details?.planId) {
+        return [`📓 Loaded notebook: ${result.details.path}`];
+      }
+      return ["❌ Failed to open notebook"];
+    },
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Tool: List notebooks in directory
+  // ─────────────────────────────────────────────────────────────────────────────
+  pi.registerTool({
+    name: "analysis_notebook_list",
+    label: "List Analysis Notebooks",
+    description: `List all analysis notebook files in a directory.
+Returns title, status, progress, and last updated time for each notebook found.`,
+    parameters: Type.Object({
+      directory: Type.Optional(Type.String({
+        description: "Directory to search for notebooks. Defaults to current working directory."
+      })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      try {
+        const directory = params.directory || process.cwd();
+        const notebooks = await findNotebooks(directory);
+
+        if (notebooks.length === 0) {
+          return {
+            content: [{ type: "text", text: `No analysis notebooks found in ${directory}` }],
+            details: { count: 0 },
+          };
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              count: notebooks.length,
+              directory,
+              notebooks: notebooks.map(n => ({
+                path: n.path,
+                title: n.title,
+                status: n.status,
+                progress: `${n.completedSteps}/${n.stepCount} steps`,
+                lastUpdated: n.lastUpdated,
+              })),
+            }, null, 2),
+          }],
+          details: { count: notebooks.length },
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error listing notebooks: ${(error as Error).message}` }],
+          details: { error: true },
+        };
+      }
     },
   });
 }

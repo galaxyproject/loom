@@ -54,9 +54,24 @@ success "npm $(npm -v) found"
 if command -v uv &> /dev/null; then
     success "uv found (for galaxy-mcp)"
     PYTHON_TOOL="uv"
+    # Check if Python 3.12 is available (required for pydantic-core compatibility)
+    if uv python list 2>/dev/null | grep -q "3.12"; then
+        success "Python 3.12 available via uv"
+    else
+        info "Installing Python 3.12 via uv (required for galaxy-mcp)..."
+        uv python install 3.12 2>/dev/null || warn "Could not install Python 3.12, galaxy-mcp may fail"
+    fi
 elif command -v python3 &> /dev/null; then
     success "python3 found (for galaxy-mcp)"
     PYTHON_TOOL="python3"
+    # Check Python version
+    PY_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+    if [[ "$PY_VERSION" == "3.14" ]] || [[ "$PY_VERSION" > "3.13" ]]; then
+        warn "Python $PY_VERSION detected - galaxy-mcp requires Python 3.12 or 3.13"
+        warn "Consider installing uv (curl -LsSf https://astral.sh/uv/install.sh | sh)"
+    else
+        success "Python $PY_VERSION compatible"
+    fi
 else
     warn "Neither uv nor python3 found. galaxy-mcp may need manual setup."
     PYTHON_TOOL=""
@@ -77,11 +92,17 @@ if [ ! -d "$PI_DIR" ]; then
     mkdir -p "$PI_DIR"
 fi
 
-info "Installing pi-mcp-adapter..."
-pi install npm:pi-mcp-adapter 2>/dev/null || {
+info "Installing pi-mcp-adapter (required for Galaxy MCP integration)..."
+if pi install npm:pi-mcp-adapter 2>/dev/null; then
+    success "pi-mcp-adapter installed"
+else
     warn "pi-mcp-adapter install via pi failed, trying npm..."
-    npm install -g pi-mcp-adapter 2>/dev/null || warn "Could not install pi-mcp-adapter globally"
-}
+    if npm install -g pi-mcp-adapter 2>/dev/null; then
+        success "pi-mcp-adapter installed globally"
+    else
+        error "Could not install pi-mcp-adapter. This is required for Galaxy integration."
+    fi
+fi
 
 # Clone/update pi-galaxy-analyst
 INSTALL_DIR="$HOME/.pi-galaxy-analyst"
@@ -138,7 +159,7 @@ if [ -n "$GALAXY_MCP_DIR" ] && [ ! -f "$MCP_CONFIG" ]; then
   "mcpServers": {
     "galaxy": {
       "command": "uv",
-      "args": ["run", "--directory", "$GALAXY_MCP_PY_DIR", "galaxy-mcp"],
+      "args": ["run", "--python", "3.12", "--directory", "$GALAXY_MCP_PY_DIR", "galaxy-mcp"],
       "lifecycle": "lazy",
       "directTools": [
         "connect", "get_histories", "create_history",

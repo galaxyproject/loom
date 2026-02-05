@@ -120,4 +120,36 @@ export interface AnalystState {
   recentPlanIds: string[];
   galaxyConnected: boolean;
   currentHistoryId: string | null;
+
+  // Notebook state
+  notebookPath: string | null;
+  notebookLoaded: boolean;
+}
+
+/**
+ * Notebook-specific types for file persistence
+ */
+export interface NotebookMetadata {
+  planId: string;
+  title: string;
+  status: PlanStatus;
+  created: string;
+  updated: string;
+  filePath: string;
+}
+
+export interface NotebookEvent {
+  type: 'plan_created' | 'step_added' | 'step_updated' | 'decision_logged' | 'checkpoint_created';
+  timestamp: string;
+  description: string;
+  details?: Record<string, unknown>;
+}
+
+export interface NotebookSummary {
+  path: string;
+  title: string;
+  status: PlanStatus;
+  stepCount: number;
+  completedSteps: number;
+  lastUpdated: string;
 }

@@ -1,8 +1,8 @@
 ---
 name: analysis-plan
 description: Core plan-based analysis protocol for Galaxy bioinformatics workflows. Use when starting any new analysis, when the user wants to analyze data in Galaxy, or when setting up a structured research workflow. This skill guides creation of analysis plans with steps, QC checkpoints, and documentation.
-version: 1.0.0
-tags: [galaxy, analysis, planning, bioinformatics]
+version: 1.1.0
+tags: [galaxy, analysis, planning, bioinformatics, notebook]
 ---
 
 # Plan-Based Analysis Protocol
@@ -13,6 +13,7 @@ You are a Galaxy co-scientist helping researchers conduct rigorous, reproducible
 
 Use this skill when:
 - Starting a new bioinformatics analysis
+- Resuming a previous analysis session (notebook will auto-load)
 - User mentions analyzing data, running workflows, or doing Galaxy analysis
 - Need to structure a multi-step analysis workflow
 - Want to ensure reproducibility and documentation
@@ -21,7 +22,7 @@ Use this skill when:
 
 | Tool | Purpose |
 |------|---------|
-| `analysis_plan_create` | Start a new plan with research context |
+| `analysis_plan_create` | Start a new plan with research context (auto-creates notebook) |
 | `analysis_plan_add_step` | Add an analysis step |
 | `analysis_plan_update_step` | Update step status (pending → in_progress → completed) |
 | `analysis_plan_get` | Get full plan or step details |
@@ -29,6 +30,41 @@ Use this skill when:
 | `analysis_checkpoint` | Create/update QC checkpoints |
 | `analysis_plan_activate` | Change plan from draft to active |
 | `analysis_plan_summary` | Get compact plan overview |
+| `analysis_notebook_open` | Open existing notebook to resume analysis |
+| `analysis_notebook_list` | List available notebooks in directory |
+
+---
+
+## Session Start: Check for Existing Analysis
+
+Before starting a new analysis, check if there's an existing notebook to resume:
+
+### Auto-Resume Behavior
+
+When the session starts, the extension automatically:
+1. Checks the current directory for `*-notebook.md` files
+2. If a single notebook is found, loads it automatically
+3. If multiple notebooks are found, lists them for the user to choose
+
+### Manual Resume
+
+If auto-load didn't happen or you need to switch notebooks:
+
+```
+# List available notebooks
+analysis_notebook_list(directory: ".")
+
+# Open a specific notebook
+analysis_notebook_open(path: "./my-analysis-notebook.md")
+```
+
+When resuming, the plan state is restored including:
+- All steps and their statuses
+- Decision log
+- QC checkpoints
+- Galaxy references
+
+Tell the researcher what step they were on and offer to continue.
 
 ---
 
@@ -71,6 +107,12 @@ analysis_plan_create(
   constraints: ["Any", "constraints"]
 )
 ```
+
+**This automatically creates a notebook file** (e.g., `./descriptive-title-notebook.md`) that persists the plan to disk. The notebook:
+- Is human-readable markdown
+- Can be shared with collaborators
+- Enables resuming analysis across sessions
+- Serves as a complete audit trail
 
 Then add steps with `analysis_plan_add_step`. Each step should be:
 
@@ -291,6 +333,41 @@ At analysis completion:
 ```
 analysis_plan_get(includeDecisions: true, includeCheckpoints: true)
 ```
+
+### Notebook as Final Report
+
+The notebook file serves as a permanent record of the analysis:
+
+```markdown
+# RNA-seq DE - Pasilla Depletion
+
+## Research Context
+**Research Question**: What genes are differentially expressed...
+**Data Description**: 4 treated, 3 control, paired-end Illumina
+
+## Analysis Plan
+### Step 1: Quality Control
+[YAML block with status, inputs, outputs, job ID]
+
+### Step 2: Read Mapping
+...
+
+## Execution Log
+### 2024-01-15 10:45 - Decision: tool_selection
+[Complete audit trail of all decisions]
+
+## Galaxy References
+| Resource | ID | URL |
+|----------|-----|-----|
+| History | abc123 | [View](...) |
+| FastQC Report | def456 | [View](...) |
+```
+
+This notebook can be:
+- Opened in any text editor or GitHub
+- Used as basis for methods section
+- Shared with collaborators for review
+- Used to reproduce the analysis
 
 ---
 

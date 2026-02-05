@@ -3,6 +3,9 @@
  *
  * State is kept in memory during the session and persisted
  * via pi.appendEntry() for recovery after compaction.
+ *
+ * With notebook integration, state can also be persisted to/loaded from
+ * markdown notebook files for cross-session persistence.
  */
 
 import type {
@@ -16,7 +19,22 @@ import type {
   StepStatus,
   StepResult,
   DatasetReference,
+  NotebookSummary,
 } from "./types";
+import {
+  generateNotebook,
+  writeNotebook,
+  readNotebook,
+  updateFrontmatter,
+  updateStepBlock,
+  appendEvent,
+  addStepSection,
+  appendGalaxyReference,
+  listNotebooks,
+  getDefaultNotebookPath,
+  fileExists,
+} from "./notebook-writer";
+import { parseNotebook, notebookToPlan } from "./notebook-parser";
 
 // Generate simple UUIDs (avoiding external dependency for now)
 function generateId(): string {
@@ -33,6 +51,8 @@ let state: AnalystState = {
   recentPlanIds: [],
   galaxyConnected: false,
   currentHistoryId: null,
+  notebookPath: null,
+  notebookLoaded: false,
 };
 
 export function getState(): AnalystState {
@@ -45,6 +65,8 @@ export function resetState(): void {
     recentPlanIds: [],
     galaxyConnected: false,
     currentHistoryId: null,
+    notebookPath: null,
+    notebookLoaded: false,
   };
 }
 
@@ -312,6 +334,11 @@ export function formatPlanSummary(plan: AnalysisPlan): string {
     lines.push(`History: ${plan.galaxy.historyName || plan.galaxy.historyId}`);
   }
 
+  // Notebook path
+  if (state.notebookPath) {
+    lines.push(`Notebook: ${state.notebookPath}`);
+  }
+
   // Steps overview
   lines.push('');
   lines.push('**Steps:**');
@@ -348,4 +375,219 @@ export function formatPlanSummary(plan: AnalysisPlan): string {
   }
 
   return lines.join('\n');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Notebook Integration Functions
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Get the current notebook path
+ */
+export function getNotebookPath(): string | null {
+  return state.notebookPath;
+}
+
+/**
+ * Set the notebook path
+ */
+export function setNotebookPath(path: string | null): void {
+  state.notebookPath = path;
+  state.notebookLoaded = path !== null;
+}
+
+/**
+ * Check if notebook is loaded
+ */
+export function isNotebookLoaded(): boolean {
+  return state.notebookLoaded;
+}
+
+/**
+ * Load a notebook from file and restore state
+ */
+export async function loadNotebook(filePath: string): Promise<AnalysisPlan | null> {
+  try {
+    const content = await readNotebook(filePath);
+    const parsed = parseNotebook(content);
+
+    if (!parsed) {
+      return null;
+    }
+
+    const plan = notebookToPlan(parsed);
+    state.currentPlan = plan;
+    state.notebookPath = filePath;
+    state.notebookLoaded = true;
+
+    // Sync Galaxy state
+    if (plan.galaxy.historyId) {
+      state.currentHistoryId = plan.galaxy.historyId;
+    }
+
+    return plan;
+  } catch (error) {
+    console.error("Failed to load notebook:", error);
+    return null;
+  }
+}
+
+/**
+ * Create a new notebook file from current plan
+ */
+export async function createNotebook(
+  filePath: string,
+  plan?: AnalysisPlan
+): Promise<string> {
+  const targetPlan = plan || state.currentPlan;
+  if (!targetPlan) {
+    throw new Error("No plan to save");
+  }
+
+  const content = generateNotebook(targetPlan);
+  await writeNotebook(filePath, content);
+
+  state.notebookPath = filePath;
+  state.notebookLoaded = true;
+
+  return filePath;
+}
+
+/**
+ * Save current plan to notebook file
+ */
+export async function saveNotebook(): Promise<void> {
+  if (!state.notebookPath || !state.currentPlan) {
+    return;
+  }
+
+  const content = generateNotebook(state.currentPlan);
+  await writeNotebook(state.notebookPath, content);
+}
+
+/**
+ * Sync a specific change to the notebook file
+ * This is more efficient than regenerating the entire notebook
+ */
+export async function syncToNotebook(
+  changeType: 'frontmatter' | 'step_added' | 'step_updated' | 'decision' | 'checkpoint' | 'galaxy_ref',
+  data: Record<string, unknown>
+): Promise<void> {
+  if (!state.notebookPath) {
+    return;
+  }
+
+  try {
+    let content = await readNotebook(state.notebookPath);
+
+    switch (changeType) {
+      case 'frontmatter':
+        for (const [field, value] of Object.entries(data)) {
+          content = updateFrontmatter(content, field, String(value));
+        }
+        break;
+
+      case 'step_added':
+        if (data.step) {
+          content = addStepSection(content, data.step as AnalysisStep);
+        }
+        break;
+
+      case 'step_updated':
+        if (data.stepId) {
+          content = updateStepBlock(content, String(data.stepId), {
+            status: data.status as string | undefined,
+            jobId: data.jobId as string | undefined,
+            invocationId: data.invocationId as string | undefined,
+            outputs: data.outputs as DatasetReference[] | undefined,
+          });
+        }
+        break;
+
+      case 'decision':
+        content = appendEvent(content, {
+          type: 'decision',
+          timestamp: String(data.timestamp || new Date().toISOString()),
+          data: {
+            step_id: data.stepId,
+            type: data.type,
+            description: data.description,
+            rationale: data.rationale,
+            researcher_approved: data.researcherApproved,
+          },
+        });
+        break;
+
+      case 'checkpoint':
+        content = appendEvent(content, {
+          type: 'checkpoint',
+          timestamp: String(data.reviewedAt || new Date().toISOString()),
+          data: {
+            id: data.id,
+            step_id: data.stepId,
+            name: data.name,
+            status: data.status,
+            criteria: data.criteria,
+            observations: data.observations,
+          },
+        });
+        break;
+
+      case 'galaxy_ref':
+        content = appendGalaxyReference(content, {
+          resource: String(data.resource),
+          id: String(data.id),
+          url: String(data.url),
+        });
+        break;
+    }
+
+    await writeNotebook(state.notebookPath, content);
+  } catch (error) {
+    console.error("Failed to sync to notebook:", error);
+  }
+}
+
+/**
+ * Find notebooks in a directory
+ */
+export async function findNotebooks(directory: string): Promise<NotebookSummary[]> {
+  const paths = await listNotebooks(directory);
+  const summaries: NotebookSummary[] = [];
+
+  for (const filePath of paths) {
+    try {
+      const content = await readNotebook(filePath);
+      const parsed = parseNotebook(content);
+
+      if (parsed) {
+        summaries.push({
+          path: filePath,
+          title: parsed.frontmatter.title,
+          status: parsed.frontmatter.status,
+          stepCount: parsed.steps.length,
+          completedSteps: parsed.steps.filter(s => s.status === 'completed').length,
+          lastUpdated: parsed.frontmatter.updated,
+        });
+      }
+    } catch {
+      // Skip files that can't be parsed
+    }
+  }
+
+  return summaries;
+}
+
+/**
+ * Generate default notebook path for a plan
+ */
+export function getDefaultPath(title: string, directory: string): string {
+  return getDefaultNotebookPath(title, directory);
+}
+
+/**
+ * Check if a notebook file exists
+ */
+export async function notebookExists(filePath: string): Promise<boolean> {
+  return await fileExists(filePath);
 }

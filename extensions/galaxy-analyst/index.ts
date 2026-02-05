@@ -8,7 +8,16 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { registerPlanTools } from "./tools";
 import { setupContextInjection } from "./context";
-import { getState, getCurrentPlan, restorePlan, resetState } from "./state";
+import {
+  getState,
+  getCurrentPlan,
+  restorePlan,
+  resetState,
+  findNotebooks,
+  loadNotebook,
+  getNotebookPath,
+  saveNotebook,
+} from "./state";
 import type { AnalysisPlan } from "./types";
 
 export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
@@ -20,7 +29,35 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
     // Reset state on new session
     resetState();
 
-    // Restore state from session entries if available
+    // First, check for notebooks in the current working directory
+    const cwd = process.cwd();
+    try {
+      const notebooks = await findNotebooks(cwd);
+
+      if (notebooks.length === 1) {
+        // Auto-load single notebook
+        const plan = await loadNotebook(notebooks[0].path);
+        if (plan) {
+          const completed = plan.steps.filter(s => s.status === 'completed').length;
+          ctx.ui.notify(
+            `Loaded notebook: ${plan.title} (${completed}/${plan.steps.length} steps)`,
+            "info"
+          );
+          ctx.ui.notify("Galaxy Analyst extension loaded", "info");
+          return;
+        }
+      } else if (notebooks.length > 1) {
+        // Multiple notebooks found - notify user
+        ctx.ui.notify(
+          `Found ${notebooks.length} notebooks. Use analysis_notebook_open to select one.`,
+          "info"
+        );
+      }
+    } catch {
+      // Notebook loading failed, fall back to session entries
+    }
+
+    // Fall back to restoring from session entries
     try {
       const entries = ctx.sessionManager?.getEntries?.() || [];
       const planEntries = entries.filter(
@@ -243,7 +280,72 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
         lines.push("   Start by describing your analysis");
       }
 
+      // Notebook status
+      lines.push("");
+      const notebookPath = getNotebookPath();
+      if (notebookPath) {
+        lines.push(`📓 Notebook: ${notebookPath}`);
+      } else {
+        lines.push("📓 No notebook (in-memory only)");
+        lines.push("   Use analysis_notebook_create to persist");
+      }
+
       ctx.ui.setWidget("status-view", lines);
+    },
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Register /notebook command for quick notebook access
+  // ─────────────────────────────────────────────────────────────────────────────
+  pi.registerCommand("notebook", {
+    description: "View current notebook info or list available notebooks",
+    handler: async (_args, ctx) => {
+      const notebookPath = getNotebookPath();
+      const plan = getCurrentPlan();
+
+      const lines: string[] = [];
+      lines.push("📓 Analysis Notebook");
+      lines.push("");
+
+      if (notebookPath && plan) {
+        lines.push(`Path: ${notebookPath}`);
+        lines.push(`Title: ${plan.title}`);
+        lines.push(`Status: ${plan.status}`);
+
+        const completed = plan.steps.filter(s => s.status === 'completed').length;
+        lines.push(`Progress: ${completed}/${plan.steps.length} steps`);
+
+        lines.push("");
+        lines.push("Sections:");
+        lines.push("  - Research Context");
+        lines.push("  - Analysis Plan (steps with YAML blocks)");
+        lines.push("  - Execution Log (append-only audit trail)");
+        lines.push("  - Galaxy References (dataset links)");
+      } else {
+        lines.push("No notebook loaded.");
+        lines.push("");
+
+        // List available notebooks
+        const cwd = process.cwd();
+        const notebooks = await findNotebooks(cwd);
+
+        if (notebooks.length > 0) {
+          lines.push(`Found ${notebooks.length} notebook(s) in ${cwd}:`);
+          lines.push("");
+          for (const nb of notebooks) {
+            lines.push(`  📄 ${nb.title}`);
+            lines.push(`     ${nb.path}`);
+            lines.push(`     ${nb.completedSteps}/${nb.stepCount} steps, ${nb.status}`);
+            lines.push("");
+          }
+          lines.push("Use analysis_notebook_open to load one.");
+        } else {
+          lines.push("No notebooks found in current directory.");
+          lines.push("Create a plan, then use analysis_notebook_create.");
+        }
+      }
+
+      ctx.ui.setWidget("notebook-view", lines);
     },
   });
 

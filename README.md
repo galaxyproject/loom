@@ -73,7 +73,7 @@ Create `~/.pi/agent/mcp.json`:
   "mcpServers": {
     "galaxy": {
       "command": "uv",
-      "args": ["run", "--directory", "~/.galaxy-mcp", "galaxy-mcp"],
+      "args": ["run", "--python", "3.12", "--directory", "~/.galaxy-mcp/mcp-server-galaxy-py", "galaxy-mcp"],
       "lifecycle": "lazy",
       "directTools": [
         "connect", "get_histories", "create_history",
@@ -88,6 +88,8 @@ Create `~/.pi/agent/mcp.json`:
 }
 ```
 
+Note: Python 3.12 is specified because newer Python versions (3.14+) have compatibility issues with pydantic-core.
+
 ### Set Galaxy Credentials
 
 Either via environment:
@@ -97,6 +99,40 @@ export GALAXY_API_KEY="your-api-key"
 ```
 
 Or use `/connect` command after starting — it will prompt you interactively.
+
+### Using Local LLMs (Optional)
+
+To use a local LLM provider like [LiteLLM](https://litellm.ai/) instead of commercial APIs:
+
+1. Create `~/.pi/agent/models.json`:
+```json
+{
+  "providers": {
+    "litellm": {
+      "baseUrl": "http://localhost:4000/v1",
+      "api": "openai-completions",
+      "apiKey": "your-litellm-key",
+      "models": [
+        {
+          "id": "your-model-name",
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        }
+      ]
+    }
+  }
+}
+```
+
+2. Create `~/.pi/agent/settings.json`:
+```json
+{
+  "defaultProvider": "litellm",
+  "defaultModel": "your-model-name"
+}
+```
+
+The `api` field should be `openai-completions` for most OpenAI-compatible APIs.
 
 ## Usage
 
