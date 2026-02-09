@@ -1,9 +1,9 @@
 {
   "name": "gxypi",
   "version": "0.1.0",
-  "description": "Pi.dev package for Galaxy bioinformatics analysis with plan-based workflows",
+  "type": "module",
+  "description": "AI co-scientist for Galaxy bioinformatics, built on Pi.dev",
   "keywords": [
-    "pi-package",
     "galaxy",
     "bioinformatics",
     "analysis",
@@ -15,6 +15,9 @@
     "type": "git",
     "url": "https://github.com/galaxyproject/gxypi"
   },
+  "bin": {
+    "gxypi": "./bin/gxypi.js"
+  },
   "pi": {
     "extensions": [
       "./extensions/galaxy-analyst"
@@ -24,16 +27,13 @@
     ]
   },
   "dependencies": {
+    "@mariozechner/pi-coding-agent": "^0.52.8",
     "@sinclair/typebox": "^0.32.0",
+    "pi-mcp-adapter": "^2.1.2",
     "uuid": "^9.0.0"
-  },
-  "peerDependencies": {
-    "@mariozechner/pi-ai": ">=0.50.0",
-    "@mariozechner/pi-coding-agent": ">=0.50.0"
   },
   "devDependencies": {
     "@mariozechner/pi-ai": "^0.52.8",
-    "@mariozechner/pi-coding-agent": "^0.52.8",
     "@types/uuid": "^9.0.0",
     "typescript": "^5.0.0",
     "vitest": "^4.0.18"

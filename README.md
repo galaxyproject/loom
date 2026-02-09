@@ -7,21 +7,25 @@ gxypi turns Pi into a structured analysis partner — it creates plans, runs Gal
 ## Install
 
 ```bash
-# Install Pi
-npm install -g @mariozechner/pi-coding-agent
-
-# Install gxypi
-pi install npm:gxypi
+npm install -g gxypi
 ```
 
-You'll also need the [Galaxy MCP server](https://github.com/galaxyproject/galaxy-mcp) to connect to Galaxy. See [Galaxy MCP Setup](#galaxy-mcp-setup) below.
+Or run without installing:
+
+```bash
+npx gxypi
+```
+
+You'll also need [uv](https://docs.astral.sh/uv/) for the Galaxy MCP server (installed automatically via `uvx`). If you don't have it:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
 
 ## Usage
 
-Start Pi with gxypi installed, then just describe what you want to analyze:
-
 ```
-$ pi
+$ gxypi
 
 You: I have RNA-seq data from a drug treatment experiment — 6 samples,
      3 treated and 3 control HeLa cells. I want to find differentially
@@ -60,7 +64,7 @@ Pi:  Running FastQC via Galaxy...
 The next day, come back to the same directory and everything picks up where you left off:
 
 ```
-$ pi
+$ gxypi
 
 Pi:  Loaded notebook: RNA-seq Drug Treatment (1/5 steps completed)
 
@@ -68,6 +72,17 @@ Pi:  Loaded notebook: RNA-seq Drug Treatment (1/5 steps completed)
      Next step: Read Trimming with Cutadapt.
 
      Ready to continue?
+```
+
+### Galaxy Credentials
+
+Use `/connect` after starting gxypi — it prompts for your server URL and API key, and saves them for future sessions.
+
+Or set environment variables:
+
+```bash
+export GALAXY_URL="https://usegalaxy.org"
+export GALAXY_API_KEY="your-api-key"
 ```
 
 ### Commands
@@ -96,51 +111,6 @@ gxypi guides analyses through five phases:
 
 Everything is saved to a **notebook file** — a readable markdown document with YAML blocks for structured data. You can open it in any editor, share it with collaborators, or use it to reproduce the analysis later.
 
-## Galaxy MCP Setup
-
-gxypi talks to Galaxy through the [Galaxy MCP server](https://github.com/galaxyproject/galaxy-mcp). To set it up:
-
-```bash
-# Clone the Galaxy MCP server
-git clone https://github.com/galaxyproject/galaxy-mcp.git ~/.galaxy-mcp
-
-# Install pi-mcp-adapter
-pi install npm:pi-mcp-adapter
-```
-
-Create `~/.pi/agent/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "galaxy": {
-      "command": "uv",
-      "args": ["run", "--python", "3.12", "--directory", "~/.galaxy-mcp/mcp-server-galaxy-py", "galaxy-mcp"],
-      "lifecycle": "lazy",
-      "directTools": [
-        "connect", "get_histories", "create_history",
-        "get_history_contents", "get_dataset_details",
-        "upload_file", "search_tools_by_name",
-        "get_tool_details", "run_tool", "get_job_details",
-        "recommend_iwc_workflows", "invoke_workflow",
-        "get_invocations"
-      ]
-    }
-  }
-}
-```
-
-Set your Galaxy credentials:
-
-```bash
-export GALAXY_URL="https://usegalaxy.org"
-export GALAXY_API_KEY="your-api-key"
-```
-
-Or just use `/connect` after starting Pi — it'll prompt you.
-
-> **Note:** Python 3.12 is recommended. Python 3.14+ has compatibility issues with pydantic-core.
-
 ## Using Local LLMs
 
 Pi supports any OpenAI-compatible API. To use a local provider like [LiteLLM](https://litellm.ai/), create `~/.pi/agent/models.json`:
@@ -164,17 +134,7 @@ Pi supports any OpenAI-compatible API. To use a local provider like [LiteLLM](ht
 }
 ```
 
-Then start Pi with `--provider litellm --model your-model-name`, or set defaults in `~/.pi/agent/settings.json`.
-
-## One-Line Install
-
-For a fully automated setup (Pi + MCP + gxypi + launcher script):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/galaxyproject/gxypi/main/install.sh | bash
-```
-
-This creates a `gxypi` launcher at `~/.local/bin/gxypi` that handles Galaxy credentials on first run.
+Then start with `gxypi --provider litellm --model your-model-name`, or set defaults in `~/.pi/agent/settings.json`.
 
 ## Tool Reference
 

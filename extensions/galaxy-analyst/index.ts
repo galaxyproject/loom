@@ -8,6 +8,9 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { registerPlanTools } from "./tools";
 import { setupContextInjection } from "./context";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 import {
   getState,
   getCurrentPlan,
@@ -225,6 +228,25 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
       // Set for this session
       process.env.GALAXY_URL = galaxyUrl;
       process.env.GALAXY_API_KEY = apiKey;
+
+      // Persist credentials to MCP config so Galaxy MCP picks them up on restart
+      try {
+        const agentDir = process.env.PI_CODING_AGENT_DIR
+          || path.join(os.homedir(), '.pi', 'agent');
+        const mcpConfigPath = path.join(agentDir, 'mcp.json');
+        if (fs.existsSync(mcpConfigPath)) {
+          const config = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf-8'));
+          if (config.mcpServers?.galaxy) {
+            config.mcpServers.galaxy.env = {
+              GALAXY_URL: galaxyUrl,
+              GALAXY_API_KEY: apiKey,
+            };
+            fs.writeFileSync(mcpConfigPath, JSON.stringify(config, null, 2));
+          }
+        }
+      } catch {
+        // Non-fatal — credentials are still in process.env for this session
+      }
 
       ctx.ui.notify(`Connecting to ${galaxyUrl}...`, "info");
 
