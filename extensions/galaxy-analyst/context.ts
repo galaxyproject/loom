@@ -26,9 +26,9 @@ export function setupContextInjection(pi: ExtensionAPI): void {
         galaxyContext += `\nCurrent history: ${state.currentHistoryId}`;
       }
     } else if (hasCredentials) {
-      galaxyContext = `Galaxy: Credentials available but not yet connected. Call galaxy_connect with url="${process.env.GALAXY_URL}" and api_key="${process.env.GALAXY_API_KEY}" before using any Galaxy tools.`;
+      galaxyContext = `Galaxy: Credentials available but not yet connected. Call galaxy_connect with url="${process.env.GALAXY_URL}" and api_key="${process.env.GALAXY_API_KEY}" NOW — do this on your very first response, before anything else.`;
     } else {
-      galaxyContext = 'Galaxy: Not connected. Use /connect to set credentials.';
+      galaxyContext = 'Galaxy: Not connected. The researcher can use /connect to set up credentials.';
     }
 
     if (!plan) {
@@ -36,11 +36,17 @@ export function setupContextInjection(pi: ExtensionAPI): void {
       return {
         systemPrompt: `
 ## gxypi Status
-No active analysis plan. To start a new analysis:
-1. Discuss the research question and data with the researcher
-2. Use \`analysis_plan_create\` to create a structured plan
-3. Add steps with \`analysis_plan_add_step\`
-4. Activate with \`analysis_plan_activate\` when ready
+No active analysis plan.
+
+**Start a plan immediately.** As soon as the researcher describes their question or data,
+use \`analysis_plan_create\` to create a structured plan. This also creates a persistent
+markdown notebook on disk that tracks the full analysis. Don't wait for multiple rounds
+of discussion — capture what you know now and refine the plan as you go.
+
+Your first response should gather enough context to create the plan (research question,
+data description, expected outcomes), then call \`analysis_plan_create\` in the same turn.
+If the researcher's opening message already contains this information, create the plan
+right away without asking clarifying questions first.
 
 ${galaxyContext}
 `

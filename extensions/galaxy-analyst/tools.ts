@@ -1824,8 +1824,137 @@ Returns suggested figures with Galaxy tools that can generate them.`,
   });
 
   // ═══════════════════════════════════════════════════════════════════════════════
-  // GTN TUTORIAL FETCH
+  // GTN TUTORIAL DISCOVERY & FETCH
   // ═══════════════════════════════════════════════════════════════════════════════
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Tool: Search/browse GTN topics and tutorials
+  // ─────────────────────────────────────────────────────────────────────────────
+  pi.registerTool({
+    name: "gtn_search",
+    label: "Search GTN Tutorials",
+    description: `Browse GTN topics and discover tutorials. Call with no arguments to list all
+topics. Provide a topic ID to list its tutorials. Use query to filter tutorials by keyword
+in their title or objectives. Use this to find tutorial URLs before fetching with gtn_fetch.`,
+    parameters: Type.Object({
+      topic: Type.Optional(Type.String({
+        description: "Topic ID to list tutorials for (e.g., 'transcriptomics', 'introduction')"
+      })),
+      query: Type.Optional(Type.String({
+        description: "Keyword to filter tutorials by title or objectives (case-insensitive)"
+      })),
+    }),
+    async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
+      const GTN_API = "https://training.galaxyproject.org/training-material/api";
+
+      try {
+        if (!params.topic) {
+          // List all topics
+          const resp = await fetch(`${GTN_API}/topics.json`, { signal });
+          if (!resp.ok) {
+            return {
+              content: [{ type: "text", text: `Error: GTN API returned HTTP ${resp.status}` }],
+              details: { error: true },
+            };
+          }
+
+          const data = await resp.json() as Record<string, { name: string; title: string; summary: string }>;
+          const topics = Object.values(data).map((t) => ({
+            name: t.name,
+            title: t.title,
+            summary: t.summary,
+          }));
+
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify({
+                count: topics.length,
+                topics,
+                hint: "Use gtn_search with a topic name to list its tutorials.",
+              }, null, 2),
+            }],
+            details: { count: topics.length },
+          };
+        }
+
+        // List tutorials in a topic
+        const resp = await fetch(`${GTN_API}/topics/${params.topic}.json`, { signal });
+        if (!resp.ok) {
+          return {
+            content: [{
+              type: "text",
+              text: `Error: Topic "${params.topic}" not found (HTTP ${resp.status}). Use gtn_search with no arguments to list available topics.`,
+            }],
+            details: { error: true },
+          };
+        }
+
+        const topicData = await resp.json() as {
+          name: string;
+          title: string;
+          materials: Array<{
+            title: string;
+            url: string;
+            id: string;
+            level: string;
+            time_estimation: string;
+            objectives: string[];
+            key_points: string[];
+            tools: string[];
+            workflows: unknown[];
+          }>;
+        };
+
+        let tutorials = (topicData.materials || []).map((m) => ({
+          title: m.title,
+          url: `https://training.galaxyproject.org${m.url}`,
+          id: m.id,
+          level: m.level,
+          time_estimation: m.time_estimation,
+          objectives: m.objectives || [],
+        }));
+
+        if (params.query) {
+          const q = params.query.toLowerCase();
+          tutorials = tutorials.filter((t) =>
+            t.title.toLowerCase().includes(q) ||
+            t.objectives.some((o) => o.toLowerCase().includes(q))
+          );
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              topic: topicData.title,
+              count: tutorials.length,
+              ...(params.query ? { query: params.query } : {}),
+              tutorials,
+              hint: "Use gtn_fetch with a tutorial URL to read its full content.",
+            }, null, 2),
+          }],
+          details: { topic: params.topic, count: tutorials.length },
+        };
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        return {
+          content: [{ type: "text", text: `Error searching GTN: ${msg}` }],
+          details: { error: true },
+        };
+      }
+    },
+    renderResult: (result) => {
+      const d = result.details as { count?: number; topic?: string; error?: boolean } | undefined;
+      if (d?.error) {
+        return new Text("❌ GTN search failed");
+      }
+      if (d?.topic) {
+        return new Text(`📚 Found ${d.count || 0} tutorials in "${d.topic}"`);
+      }
+      return new Text(`📚 Found ${d?.count || 0} GTN topics`);
+    },
+  });
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Tool: Fetch GTN tutorial content
@@ -1834,7 +1963,8 @@ Returns suggested figures with Galaxy tools that can generate them.`,
     name: "gtn_fetch",
     label: "Fetch GTN Tutorial",
     description: `Fetch a Galaxy Training Network (GTN) tutorial page and return its content as
-readable text. Only URLs on training.galaxyproject.org are allowed. Use this to read tutorial
+readable text. Only URLs on training.galaxyproject.org are allowed. Use gtn_search first to
+discover valid tutorial URLs — do not guess or construct URLs. Use this to read tutorial
 instructions, tool names, parameters, and workflow steps so you can follow along and reproduce
 analyses in Galaxy.`,
     parameters: Type.Object({

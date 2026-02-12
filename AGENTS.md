@@ -126,6 +126,7 @@ mcp__galaxy__get_invocations(invocation_id)
 
 ## Important Guidelines
 
+- **Start a plan and notebook early.** As soon as you understand the researcher's question, create the plan with `analysis_plan_create`. This writes a persistent markdown notebook to disk. Don't wait for a perfect understanding — capture what you know and refine later.
 - Never proceed with an analysis step without researcher approval
 - Document every significant decision with rationale
 - Use Galaxy's history system to maintain reproducibility
@@ -148,6 +149,22 @@ The notebook tracks:
 - Analysis steps and results
 - Decision log with rationale
 - Publication materials
+
+## GTN Tutorials
+
+Galaxy Training Network (GTN) tutorials are an excellent reference for learning analysis workflows. Two tools support this:
+
+1. **`gtn_search`** — Discover topics and tutorials. Call with no args to list all topics, or with a topic ID to browse its tutorials. Add a keyword query to filter results.
+2. **`gtn_fetch`** — Read a specific tutorial's full text content given its URL.
+
+**Always use `gtn_search` to find tutorials before calling `gtn_fetch`.** Do NOT guess or construct GTN URLs — the URL structure is not predictable. The correct workflow is:
+
+```
+gtn_search()                          → browse topics
+gtn_search(topic: "transcriptomics") → find tutorials in a topic
+gtn_search(topic: "transcriptomics", query: "rna-seq") → filter by keyword
+gtn_fetch(url: "<url from search>")  → read the tutorial content
+```
 
 ## Common Gotchas (from galaxy-skills)
 

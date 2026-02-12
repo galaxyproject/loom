@@ -52,8 +52,6 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
             `Loaded notebook: ${plan.title} (${completed}/${plan.steps.length} steps)`,
             "info"
           );
-          ctx.ui.notify("gxypi loaded", "info");
-          return;
         }
       } else if (notebooks.length > 1) {
         // Multiple notebooks found - notify user
@@ -84,7 +82,17 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
       // Session manager may not be available in all contexts
     }
 
-    ctx.ui.notify("gxypi loaded", "info");
+    // Kick off an initial LLM turn: greet and auto-connect if credentials are present
+    const hasCredentials = process.env.GALAXY_URL && process.env.GALAXY_API_KEY;
+    if (hasCredentials) {
+      pi.sendUserMessage(
+        "Session started. Connect to Galaxy and introduce yourself briefly."
+      );
+    } else {
+      pi.sendUserMessage(
+        "Session started. Introduce yourself briefly and let me know I can use /connect to set up a Galaxy server."
+      );
+    }
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
