@@ -30,6 +30,8 @@ import type {
   FigureSpec,
   MethodsSection,
   ToolVersionInfo,
+  BiologicalFinding,
+  InterpretationFindings,
 } from "./types";
 import {
   generateNotebook,
@@ -476,6 +478,58 @@ export function updateDataFile(fileId: string, updates: Partial<DataFile>): Data
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Phase 4: Interpretation Functions
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Add a biological finding
+ */
+export function addFinding(finding: Omit<BiologicalFinding, 'id' | 'addedAt'>): BiologicalFinding {
+  if (!state.currentPlan) {
+    throw new Error("No active plan");
+  }
+
+  if (!state.currentPlan.interpretation) {
+    state.currentPlan.interpretation = { findings: [] };
+  }
+
+  const fullFinding: BiologicalFinding = {
+    ...finding,
+    id: `finding-${state.currentPlan.interpretation.findings.length + 1}`,
+    addedAt: new Date().toISOString(),
+  };
+
+  state.currentPlan.interpretation.findings.push(fullFinding);
+  state.currentPlan.updated = new Date().toISOString();
+
+  return fullFinding;
+}
+
+/**
+ * Set overall interpretation summary
+ */
+export function setInterpretationSummary(summary: string): void {
+  if (!state.currentPlan) {
+    throw new Error("No active plan");
+  }
+
+  if (!state.currentPlan.interpretation) {
+    state.currentPlan.interpretation = { findings: [] };
+  }
+
+  state.currentPlan.interpretation.summary = summary;
+  state.currentPlan.interpretation.summarizedAt = new Date().toISOString();
+  state.currentPlan.updated = new Date().toISOString();
+}
+
+/**
+ * Get current findings
+ */
+export function getFindings(): BiologicalFinding[] {
+  return state.currentPlan?.interpretation?.findings || [];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Phase 5: Publication Functions
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -676,6 +730,18 @@ export function formatPlanSummary(plan: AnalysisPlan): string {
     lines.push(currentStep.description);
   }
 
+  // Interpretation findings (Phase 4)
+  if (plan.interpretation) {
+    const findings = plan.interpretation.findings;
+    if (findings.length > 0) {
+      lines.push('');
+      lines.push(`**Interpretation:** ${findings.length} finding(s)`);
+      if (plan.interpretation.summary) {
+        lines.push(`Summary: ${plan.interpretation.summary.slice(0, 80)}...`);
+      }
+    }
+  }
+
   // Publication status (Phase 5)
   if (plan.publication) {
     const pub = plan.publication;
@@ -807,7 +873,9 @@ export async function syncToNotebook(
     | 'phase_change'
     | 'literature_ref'
     | 'data_provenance'
-    | 'publication_update',
+    | 'publication_update'
+    | 'interpretation_finding'
+    | 'interpretation_summary',
   data: Record<string, unknown>
 ): Promise<void> {
   if (!state.notebookPath) {
@@ -926,6 +994,32 @@ export async function syncToNotebook(
             description: `Publication ${data.updateType}: ${data.description || ''}`,
             status: data.status,
             figure_id: data.figureId,
+          },
+        });
+        break;
+
+      case 'interpretation_finding': {
+        const finding = data.finding as BiologicalFinding;
+        content = appendEvent(content, {
+          type: 'event',
+          timestamp: finding.addedAt,
+          data: {
+            description: `Finding: ${finding.title}`,
+            category: finding.category,
+            confidence: finding.confidence,
+            evidence: finding.evidence,
+          },
+        });
+        break;
+      }
+
+      case 'interpretation_summary':
+        content = appendEvent(content, {
+          type: 'event',
+          timestamp: new Date().toISOString(),
+          data: {
+            description: `Interpretation summary set`,
+            summary: data.summary,
           },
         });
         break;

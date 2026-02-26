@@ -22,6 +22,9 @@ import type {
   LiteratureReference,
   DataProvenance,
   PublicationMaterials,
+  InterpretationFindings,
+  BiologicalFinding,
+  FindingCategory,
 } from "./types";
 
 /**
@@ -38,6 +41,7 @@ export interface ParsedNotebook {
   steps: ParsedStep[];
   events: ParsedEvent[];
   galaxyReferences: GalaxyReference[];
+  interpretation?: InterpretationFindings;
 }
 
 export interface NotebookFrontmatter {
@@ -404,6 +408,50 @@ export function parseGalaxyReferences(content: string): GalaxyReference[] {
 }
 
 /**
+ * Parse the Interpretation section
+ */
+export function parseInterpretation(content: string): InterpretationFindings | undefined {
+  const section = getSection(content, "Interpretation");
+  if (!section) return undefined;
+
+  const findings: BiologicalFinding[] = [];
+
+  // Parse summary
+  const summaryMatch = section.match(/\*\*Summary\*\*:\s*([^\n]+)/);
+  const summary = summaryMatch ? summaryMatch[1].trim() : undefined;
+
+  // Parse findings: #### finding-N: Title
+  const findingRegex = /####\s+(finding-\d+):\s*([^\n]+)\n\n`([^`]+)`\s+`([^`]+)`\n\n([\s\S]*?)(?=####\s+finding-|\n---\n|$)/g;
+  let match;
+  while ((match = findingRegex.exec(section)) !== null) {
+    const [, id, title, category, confidence, body] = match;
+
+    const evidenceMatch = body.match(/\*\*Evidence\*\*:\s*([^\n]+)/);
+    const stepsMatch = body.match(/\*\*Related steps\*\*:\s*([^\n]+)/);
+    const addedMatch = body.match(/\*Added:\s*([^*]+)\*/);
+
+    // Description is everything before **Evidence**
+    const descEnd = body.indexOf('**Evidence**');
+    const description = descEnd > 0 ? body.slice(0, descEnd).trim() : body.trim();
+
+    findings.push({
+      id,
+      title: title.trim(),
+      description,
+      evidence: evidenceMatch ? evidenceMatch[1].trim() : '',
+      category: category as FindingCategory,
+      relatedSteps: stepsMatch ? stepsMatch[1].split(',').map(s => s.trim()) : [],
+      confidence: confidence as 'high' | 'medium' | 'low' | 'uncertain',
+      addedAt: addedMatch ? addedMatch[1].trim() : new Date().toISOString(),
+    });
+  }
+
+  if (findings.length === 0 && !summary) return undefined;
+
+  return { findings, summary };
+}
+
+/**
  * Parse an entire notebook into structured data
  */
 export function parseNotebook(content: string): ParsedNotebook | null {
@@ -416,6 +464,7 @@ export function parseNotebook(content: string): ParsedNotebook | null {
     steps: parseStepBlocks(content),
     events: parseEventBlocks(content),
     galaxyReferences: parseGalaxyReferences(content),
+    interpretation: parseInterpretation(content),
   };
 }
 
@@ -487,7 +536,7 @@ export function notebookToPlan(notebook: ParsedNotebook): AnalysisPlan {
     }
   }
 
-  return {
+  const plan: AnalysisPlan = {
     id: frontmatter.plan_id,
     title: frontmatter.title,
     created: frontmatter.created,
@@ -509,4 +558,10 @@ export function notebookToPlan(notebook: ParsedNotebook): AnalysisPlan {
     decisions,
     checkpoints,
   };
+
+  if (notebook.interpretation) {
+    plan.interpretation = notebook.interpretation;
+  }
+
+  return plan;
 }

@@ -12,6 +12,8 @@ import {
   setDataProvenance,
   addSample,
   addDataFile,
+  addFinding,
+  setInterpretationSummary,
   initPublication,
   addFigure,
 } from "../extensions/galaxy-analyst/state";
@@ -328,6 +330,82 @@ describe("notebook with lifecycle phases", () => {
     expect(markdown).toContain("GSE12345");
     expect(markdown).toContain("Control_1");
     expect(markdown).toContain("control_1_R1.fastq.gz");
+  });
+
+  it("includes interpretation findings in notebook", () => {
+    const plan = createPlan({
+      title: "Interpretation Test",
+      researchQuestion: "Q",
+      dataDescription: "D",
+      expectedOutcomes: [],
+      constraints: [],
+    });
+
+    addFinding({
+      title: "TP53 pathway upregulated",
+      description: "Significant upregulation of TP53 target genes",
+      evidence: "12 of 15 TP53 targets show log2FC > 1, padj < 0.05",
+      category: "pathway",
+      relatedSteps: ["3", "4"],
+      confidence: "high",
+    });
+
+    addFinding({
+      title: "No structural variants detected",
+      description: "No large-scale structural variants in treated samples",
+      evidence: "SV calling pipeline returned zero hits",
+      category: "negative",
+      relatedSteps: ["5"],
+      confidence: "high",
+    });
+
+    setInterpretationSummary("Drug X activates the TP53 tumor suppressor pathway");
+
+    const markdown = generateNotebook(plan);
+    expect(markdown).toContain("## Interpretation");
+    expect(markdown).toContain("TP53 pathway upregulated");
+    expect(markdown).toContain("`pathway`");
+    expect(markdown).toContain("`high`");
+    expect(markdown).toContain("Drug X activates the TP53 tumor suppressor pathway");
+    expect(markdown).toContain("No structural variants detected");
+    expect(markdown).toContain("`negative`");
+  });
+
+  it("round-trips interpretation findings through notebook", () => {
+    const plan = createPlan({
+      title: "Round-trip Interp",
+      researchQuestion: "Q",
+      dataDescription: "D",
+      expectedOutcomes: [],
+      constraints: [],
+    });
+
+    addFinding({
+      title: "Gene X upregulated",
+      description: "Gene X shows 4-fold upregulation",
+      evidence: "DESeq2 results, padj = 0.0001",
+      category: "differential_expression",
+      relatedSteps: ["2"],
+      confidence: "high",
+    });
+
+    setInterpretationSummary("Gene X is a key responder");
+
+    const markdown = generateNotebook(plan);
+    const parsed = parseNotebook(markdown);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.interpretation).toBeTruthy();
+    expect(parsed!.interpretation!.findings).toHaveLength(1);
+    expect(parsed!.interpretation!.findings[0].title).toBe("Gene X upregulated");
+    expect(parsed!.interpretation!.findings[0].category).toBe("differential_expression");
+    expect(parsed!.interpretation!.findings[0].confidence).toBe("high");
+    expect(parsed!.interpretation!.summary).toBe("Gene X is a key responder");
+
+    const restored = notebookToPlan(parsed!);
+    expect(restored.interpretation).toBeTruthy();
+    expect(restored.interpretation!.findings).toHaveLength(1);
+    expect(restored.interpretation!.findings[0].title).toBe("Gene X upregulated");
+    expect(restored.interpretation!.summary).toBe("Gene X is a key responder");
   });
 
   it("includes publication materials in notebook", () => {

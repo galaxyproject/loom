@@ -18,6 +18,9 @@ import {
   addSample,
   addDataFile,
   updateDataFile,
+  addFinding,
+  setInterpretationSummary,
+  getFindings,
   initPublication,
   generateMethods,
   addFigure,
@@ -310,6 +313,72 @@ describe("state management", () => {
       addSample({ id: "s1", name: "Sample1", metadata: {}, files: [] });
       expect(getCurrentPlan()!.dataProvenance).toBeTruthy();
       expect(getCurrentPlan()!.dataProvenance!.source).toBe("local");
+    });
+  });
+
+  describe("interpretation (phase 4)", () => {
+    beforeEach(() => {
+      createPlan({ title: "Test", researchQuestion: "Q", dataDescription: "D", expectedOutcomes: [], constraints: [] });
+    });
+
+    it("adds a finding", () => {
+      const finding = addFinding({
+        title: "TP53 upregulated",
+        description: "TP53 shows significant upregulation in treated samples",
+        evidence: "Log2FC = 2.3, padj < 0.001",
+        category: "differential_expression",
+        relatedSteps: ["1", "3"],
+        confidence: "high",
+      });
+
+      expect(finding.id).toBe("finding-1");
+      expect(finding.title).toBe("TP53 upregulated");
+      expect(finding.addedAt).toBeTruthy();
+      expect(getFindings()).toHaveLength(1);
+    });
+
+    it("assigns sequential finding IDs", () => {
+      addFinding({ title: "F1", description: "D", evidence: "E", category: "other", relatedSteps: [], confidence: "medium" });
+      addFinding({ title: "F2", description: "D", evidence: "E", category: "pathway", relatedSteps: [], confidence: "low" });
+      addFinding({ title: "F3", description: "D", evidence: "E", category: "negative", relatedSteps: [], confidence: "uncertain" });
+
+      const findings = getFindings();
+      expect(findings.map(f => f.id)).toEqual(["finding-1", "finding-2", "finding-3"]);
+    });
+
+    it("auto-initializes interpretation when adding first finding", () => {
+      expect(getCurrentPlan()!.interpretation).toBeUndefined();
+      addFinding({ title: "F1", description: "D", evidence: "E", category: "other", relatedSteps: [], confidence: "medium" });
+      expect(getCurrentPlan()!.interpretation).toBeTruthy();
+      expect(getCurrentPlan()!.interpretation!.findings).toHaveLength(1);
+    });
+
+    it("sets interpretation summary", () => {
+      addFinding({ title: "F1", description: "D", evidence: "E", category: "other", relatedSteps: [], confidence: "medium" });
+      setInterpretationSummary("Drug X causes widespread transcriptional changes");
+
+      const interp = getCurrentPlan()!.interpretation!;
+      expect(interp.summary).toBe("Drug X causes widespread transcriptional changes");
+      expect(interp.summarizedAt).toBeTruthy();
+    });
+
+    it("auto-initializes interpretation when setting summary", () => {
+      expect(getCurrentPlan()!.interpretation).toBeUndefined();
+      setInterpretationSummary("Summary text");
+      expect(getCurrentPlan()!.interpretation!.summary).toBe("Summary text");
+      expect(getCurrentPlan()!.interpretation!.findings).toHaveLength(0);
+    });
+
+    it("getFindings returns empty array with no plan", () => {
+      resetState();
+      expect(getFindings()).toHaveLength(0);
+    });
+
+    it("throws without active plan", () => {
+      resetState();
+      expect(() => addFinding({
+        title: "F", description: "D", evidence: "E", category: "other", relatedSteps: [], confidence: "low",
+      })).toThrow("No active plan");
     });
   });
 

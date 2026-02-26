@@ -18,6 +18,8 @@ import type {
   ResearchQuestion,
   DataProvenance,
   PublicationMaterials,
+  InterpretationFindings,
+  BiologicalFinding,
 } from "./types";
 
 /**
@@ -226,6 +228,42 @@ export function generateNotebook(plan: AnalysisPlan): string {
 
   lines.push("---");
   lines.push("");
+
+  // Interpretation (Phase 4)
+  if (plan.interpretation && (plan.interpretation.findings.length > 0 || plan.interpretation.summary)) {
+    lines.push("## Interpretation");
+    lines.push("");
+
+    if (plan.interpretation.summary) {
+      lines.push(`**Summary**: ${plan.interpretation.summary}`);
+      lines.push("");
+    }
+
+    if (plan.interpretation.findings.length > 0) {
+      lines.push("### Findings");
+      lines.push("");
+
+      for (const finding of plan.interpretation.findings) {
+        const badge = `\`${finding.category}\``;
+        const conf = `\`${finding.confidence}\``;
+        lines.push(`#### ${finding.id}: ${finding.title}`);
+        lines.push("");
+        lines.push(`${badge} ${conf}`);
+        lines.push("");
+        lines.push(finding.description);
+        lines.push("");
+        lines.push(`**Evidence**: ${finding.evidence}`);
+        if (finding.relatedSteps.length > 0) {
+          lines.push(`**Related steps**: ${finding.relatedSteps.join(', ')}`);
+        }
+        lines.push(`*Added: ${finding.addedAt}*`);
+        lines.push("");
+      }
+    }
+
+    lines.push("---");
+    lines.push("");
+  }
 
   // Execution Log section
   lines.push("## Execution Log");

@@ -179,6 +179,36 @@ export interface DataSharingInfo {
 }
 
 /**
+ * Interpretation findings (Phase 4)
+ */
+export interface InterpretationFindings {
+  findings: BiologicalFinding[];
+  summary?: string;
+  summarizedAt?: string;
+}
+
+export interface BiologicalFinding {
+  id: string;
+  title: string;
+  description: string;
+  evidence: string;
+  category: FindingCategory;
+  relatedSteps: string[];
+  confidence: 'high' | 'medium' | 'low' | 'uncertain';
+  addedAt: string;
+}
+
+export type FindingCategory =
+  | 'differential_expression'
+  | 'pathway'
+  | 'variant'
+  | 'structural'
+  | 'functional'
+  | 'unexpected'
+  | 'negative'
+  | 'other';
+
+/**
  * Main analysis plan with 5-phase lifecycle support
  */
 export interface AnalysisPlan {
@@ -216,6 +246,9 @@ export interface AnalysisPlan {
   steps: AnalysisStep[];
   decisions: DecisionEntry[];
   checkpoints: QCCheckpoint[];
+
+  // Interpretation findings (Phase 4)
+  interpretation?: InterpretationFindings;
 
   // Publication materials (Phase 5)
   publication?: PublicationMaterials;

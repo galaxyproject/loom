@@ -67,6 +67,7 @@ ${planSummary}
 - Log decisions with \`analysis_step_log\`
 - Update step status with \`analysis_plan_update_step\`
 - Create QC checkpoints with \`analysis_checkpoint\`
+- Record biological findings with \`interpretation_add_finding\`
 - Use \`analysis_plan_get\` for full plan details
 
 ${galaxyContext}

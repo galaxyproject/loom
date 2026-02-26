@@ -35,6 +35,10 @@ import {
   addSample,
   addDataFile,
   updateDataFile,
+  // Phase 4: Interpretation
+  addFinding,
+  setInterpretationSummary,
+  getFindings,
   // Phase 5: Publication
   initPublication,
   generateMethods,
@@ -51,6 +55,7 @@ import type {
   DataSource,
   DataFileType,
   FigureType,
+  FindingCategory,
 } from "./types";
 import * as path from "path";
 import { ensureGitRepo } from "./git";
@@ -1448,6 +1453,141 @@ can be used for nf-core pipelines or Galaxy workflows that need structured input
         }],
         details: { hasProvenance: true },
       };
+    },
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // PHASE 4: INTERPRETATION TOOLS
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Tool: Add a biological finding
+  // ─────────────────────────────────────────────────────────────────────────────
+  pi.registerTool({
+    name: "interpretation_add_finding",
+    label: "Add Biological Finding",
+    description: `Log a biological finding from the analysis. Use this during the interpretation
+phase to record discoveries, observations, and conclusions drawn from the analysis results.
+Each finding captures what was found, the supporting evidence, and confidence level.`,
+    parameters: Type.Object({
+      title: Type.String({
+        description: "Brief title for the finding (e.g., 'TP53 pathway upregulated in treated samples')"
+      }),
+      description: Type.String({
+        description: "Detailed description of the finding"
+      }),
+      evidence: Type.String({
+        description: "What data or results support this finding"
+      }),
+      category: Type.Union([
+        Type.Literal("differential_expression"),
+        Type.Literal("pathway"),
+        Type.Literal("variant"),
+        Type.Literal("structural"),
+        Type.Literal("functional"),
+        Type.Literal("unexpected"),
+        Type.Literal("negative"),
+        Type.Literal("other"),
+      ], { description: "Category of finding" }),
+      relatedSteps: Type.Array(Type.String(), {
+        description: "Step IDs that produced the evidence for this finding",
+        default: []
+      }),
+      confidence: Type.Union([
+        Type.Literal("high"),
+        Type.Literal("medium"),
+        Type.Literal("low"),
+        Type.Literal("uncertain"),
+      ], { description: "Confidence level in this finding" }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      try {
+        const finding = addFinding({
+          title: params.title,
+          description: params.description,
+          evidence: params.evidence,
+          category: params.category as FindingCategory,
+          relatedSteps: params.relatedSteps || [],
+          confidence: params.confidence as 'high' | 'medium' | 'low' | 'uncertain',
+        });
+
+        // Sync to notebook
+        await syncToNotebook('interpretation_finding', {
+          finding,
+        });
+
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              success: true,
+              message: `Finding "${finding.title}" recorded`,
+              findingId: finding.id,
+              totalFindings: getFindings().length,
+            }, null, 2),
+          }],
+          details: { findingId: finding.id },
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error: ${(error as Error).message}` }],
+          details: { error: true },
+        };
+      }
+    },
+    renderResult: (result) => {
+      const d = result.details as { findingId?: string } | undefined;
+      return new Text(`🔬 Finding recorded: ${d?.findingId || 'unknown'}`);
+    },
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Tool: Summarize interpretation
+  // ─────────────────────────────────────────────────────────────────────────────
+  pi.registerTool({
+    name: "interpretation_summarize",
+    label: "Summarize Interpretation",
+    description: `Set an overall interpretation summary for the analysis. This captures the
+high-level conclusions from all findings. Returns the full list of findings for review.`,
+    parameters: Type.Object({
+      summary: Type.String({
+        description: "Overall interpretation summary covering key conclusions from the analysis"
+      }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      try {
+        setInterpretationSummary(params.summary);
+        const findings = getFindings();
+
+        // Sync to notebook
+        await syncToNotebook('interpretation_summary', {
+          summary: params.summary,
+        });
+
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              success: true,
+              message: "Interpretation summary set",
+              summary: params.summary,
+              findings: findings.map(f => ({
+                id: f.id,
+                title: f.title,
+                category: f.category,
+                confidence: f.confidence,
+              })),
+              totalFindings: findings.length,
+            }, null, 2),
+          }],
+          details: { findingCount: findings.length },
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error: ${(error as Error).message}` }],
+          details: { error: true },
+        };
+      }
     },
   });
 
