@@ -6,7 +6,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { getCurrentPlan, getState, formatPlanSummary } from "./state";
+import { getCurrentPlan, getState, formatPlanSummary, getWorkflowSteps } from "./state";
 
 export function setupContextInjection(pi: ExtensionAPI): void {
 
@@ -56,6 +56,20 @@ ${galaxyContext}
     // Active plan - inject summary
     const planSummary = formatPlanSummary(plan);
 
+    // Workflow guidance if plan has workflow steps
+    const workflowSteps = plan.steps.filter(s => s.execution.type === 'workflow');
+    const activeInvocations = getWorkflowSteps();
+    let workflowContext = '';
+    if (workflowSteps.length > 0 || activeInvocations.length > 0) {
+      workflowContext = '\n## Workflow Integration\n';
+      workflowContext += '- Use `workflow_to_plan` to add Galaxy workflows as plan steps\n';
+      workflowContext += '- Use `workflow_invocation_link` after invoking a workflow via Galaxy MCP\n';
+      workflowContext += '- Use `workflow_invocation_check` to poll invocation status\n';
+      if (activeInvocations.length > 0) {
+        workflowContext += `\n**${activeInvocations.length} active workflow invocation(s)** — check status with \`workflow_invocation_check\`\n`;
+      }
+    }
+
     return {
       systemPrompt: `
 ## Current Analysis Plan
@@ -69,7 +83,7 @@ ${planSummary}
 - Create QC checkpoints with \`analysis_checkpoint\`
 - Record biological findings with \`interpretation_add_finding\`
 - Use \`analysis_plan_get\` for full plan details
-
+${workflowContext}
 ${galaxyContext}
 `
     };

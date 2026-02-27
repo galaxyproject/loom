@@ -81,6 +81,13 @@ Use this skill when:
 | `publication_add_figure` | Track figure specifications |
 | `publication_recommend_figures` | Get figure suggestions |
 
+### Workflow Integration
+| Tool | Purpose |
+|------|---------|
+| `workflow_to_plan` | Fetch workflow structure from Galaxy and add as plan step |
+| `workflow_invocation_link` | Link a Galaxy invocation to a workflow step |
+| `workflow_invocation_check` | Poll invocation status and auto-complete/fail steps |
+
 ---
 
 ## Session Start: Check for Existing Analysis
@@ -431,6 +438,69 @@ analysis_plan_update_step(
   ]
 )
 ```
+
+---
+
+## Workflow-First Analysis
+
+When a standard IWC or Galaxy workflow covers the analysis, prefer workflows over individual tool steps. This gives the researcher a reproducible, shareable workflow invocation.
+
+### When to Use Workflows
+
+- Standard analysis pipelines (RNA-seq, variant calling, ChIP-seq)
+- IWC-recommended workflows matching the research question
+- Researcher explicitly requests a workflow-based approach
+- Analysis follows a well-established protocol
+
+Use individual tool steps when the analysis requires custom parameter tuning at each stage, novel tool combinations, or iterative exploration.
+
+### Workflow Execution Flow
+
+1. **Discover**: Find workflows via Galaxy MCP tools
+
+```
+mcp__galaxy__search_workflows("RNA-seq")
+mcp__galaxy__recommend_iwc_workflows("paired-end RNA-seq differential expression")
+```
+
+2. **Add to plan**: Fetch structure and create a plan step
+
+```
+workflow_to_plan(
+  workflowId: "wf-abc123",
+  trsId: "iwc-rnaseq-pe",
+  description: "Run IWC RNA-seq PE workflow on all samples"
+)
+```
+
+This queries the Galaxy API for the workflow's tools, inputs, and outputs, then creates a workflow-type step with all metadata populated.
+
+3. **Get approval and invoke**: After researcher approves the plan, invoke via Galaxy MCP
+
+```
+mcp__galaxy__invoke_workflow(
+  workflow_id: "wf-abc123",
+  inputs: { "0": { "src": "hda", "id": "dataset_id" } },
+  history_id: "..."
+)
+```
+
+4. **Link invocation**: Immediately bind the invocation to the plan step
+
+```
+workflow_invocation_link(
+  stepId: "1",
+  invocationId: "inv-xyz789"
+)
+```
+
+5. **Check status**: Poll until complete
+
+```
+workflow_invocation_check(stepId: "1")
+```
+
+This queries the Galaxy API for job states. Steps are auto-completed when all jobs succeed, or auto-failed when any job errors. Omit `stepId` to check all active workflow steps at once.
 
 ---
 
