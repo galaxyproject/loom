@@ -44,6 +44,10 @@ import {
   generateMethods,
   addFigure,
   updateFigure,
+  // Workflow integration
+  addWorkflowStep,
+  linkInvocation,
+  getWorkflowSteps,
 } from "./state";
 import type {
   StepStatus,
@@ -59,6 +63,13 @@ import type {
 } from "./types";
 import * as path from "path";
 import { ensureGitRepo } from "./git";
+import {
+  getGalaxyConfig,
+  galaxyGet,
+  extractWorkflowStructure,
+  type GalaxyWorkflowResponse,
+  type GalaxyInvocationResponse,
+} from "./galaxy-api";
 
 export function registerPlanTools(pi: ExtensionAPI): void {
 
@@ -1965,6 +1976,338 @@ Returns suggested figures with Galaxy tools that can generate them.`,
         }],
         details: { hasPublication: true },
       };
+    },
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // WORKFLOW INTEGRATION
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Tool: Import workflow structure into the plan
+  // ─────────────────────────────────────────────────────────────────────────────
+  pi.registerTool({
+    name: "workflow_to_plan",
+    label: "Add Workflow to Plan",
+    description: `Fetch a Galaxy workflow's structure and add it as a plan step. This queries the
+Galaxy API for the workflow's tools, inputs, and outputs, then creates a workflow-type step
+in the current analysis plan. Use this after discovering a workflow via Galaxy MCP tools
+(search_workflows, recommend_iwc_workflows) to integrate it into your plan before invoking it.`,
+    parameters: Type.Object({
+      workflowId: Type.String({
+        description: "Galaxy workflow ID to fetch structure for"
+      }),
+      trsId: Type.Optional(Type.String({
+        description: "IWC TRS ID if this workflow was imported from IWC"
+      })),
+      name: Type.Optional(Type.String({
+        description: "Override the workflow name in the plan step"
+      })),
+      description: Type.Optional(Type.String({
+        description: "Override the step description"
+      })),
+      dependsOn: Type.Optional(Type.Array(Type.String(), {
+        description: "Step IDs this workflow step depends on"
+      })),
+    }),
+    async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
+      const plan = getCurrentPlan();
+      if (!plan) {
+        return {
+          content: [{ type: "text", text: JSON.stringify({ success: false, error: "No active plan. Create one with analysis_plan_create first." }) }],
+          details: { error: true } as Record<string, unknown>,
+        };
+      }
+
+      if (!getGalaxyConfig()) {
+        return {
+          content: [{ type: "text", text: JSON.stringify({ success: false, error: "Galaxy credentials not configured (GALAXY_URL, GALAXY_API_KEY)." }) }],
+          details: { error: true } as Record<string, unknown>,
+        };
+      }
+
+      try {
+        const wfResponse = await galaxyGet<GalaxyWorkflowResponse>(
+          `/workflows/${params.workflowId}`,
+          signal,
+        );
+
+        const structure = extractWorkflowStructure(wfResponse);
+
+        const step = addWorkflowStep({
+          name: params.name,
+          description: params.description,
+          workflowId: params.workflowId,
+          trsId: params.trsId,
+          workflowStructure: structure,
+          dependsOn: params.dependsOn,
+        });
+
+        await syncToNotebook('step_added', { step });
+
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              success: true,
+              stepId: step.id,
+              workflowName: structure.name,
+              version: structure.version,
+              stepCount: structure.stepCount,
+              tools: structure.toolNames,
+              inputs: structure.inputLabels,
+              outputs: structure.outputLabels,
+              message: `Workflow "${structure.name}" added as step ${step.id} with ${structure.toolNames.length} tools, ${structure.inputLabels.length} inputs, ${structure.outputLabels.length} labeled outputs.`,
+            }, null, 2),
+          }],
+          details: { stepId: step.id, workflowName: structure.name } as Record<string, unknown>,
+        };
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        return {
+          content: [{ type: "text", text: JSON.stringify({ success: false, error: msg }) }],
+          details: { error: true } as Record<string, unknown>,
+        };
+      }
+    },
+    renderResult: (result) => {
+      const d = result.details as { stepId?: string; workflowName?: string; error?: boolean } | undefined;
+      if (d?.error) return new Text("❌ Failed to add workflow to plan");
+      return new Text(`🔗 Workflow "${d?.workflowName}" → step ${d?.stepId}`);
+    },
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Tool: Link a Galaxy invocation to a workflow step
+  // ─────────────────────────────────────────────────────────────────────────────
+  pi.registerTool({
+    name: "workflow_invocation_link",
+    label: "Link Workflow Invocation",
+    description: `Link a Galaxy workflow invocation to a plan step. Call this right after invoking
+a workflow via Galaxy MCP (galaxy_invoke_workflow). It marks the step as in_progress and
+records the invocation ID for status tracking.`,
+    parameters: Type.Object({
+      stepId: Type.String({
+        description: "Plan step ID to link the invocation to"
+      }),
+      invocationId: Type.String({
+        description: "Galaxy invocation ID returned from galaxy_invoke_workflow"
+      }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const plan = getCurrentPlan();
+      if (!plan) {
+        return {
+          content: [{ type: "text", text: JSON.stringify({ success: false, error: "No active plan." }) }],
+          details: { error: true } as Record<string, unknown>,
+        };
+      }
+
+      try {
+        const step = linkInvocation(params.stepId, params.invocationId);
+
+        await syncToNotebook('step_updated', {
+          stepId: params.stepId,
+          status: 'in_progress',
+          invocationId: params.invocationId,
+        });
+
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              success: true,
+              stepId: step.id,
+              stepName: step.name,
+              invocationId: params.invocationId,
+              status: step.status,
+              message: `Invocation ${params.invocationId} linked to step ${step.id} ("${step.name}"). Step is now in_progress.`,
+            }, null, 2),
+          }],
+          details: { stepId: step.id, invocationId: params.invocationId } as Record<string, unknown>,
+        };
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        return {
+          content: [{ type: "text", text: JSON.stringify({ success: false, error: msg }) }],
+          details: { error: true } as Record<string, unknown>,
+        };
+      }
+    },
+    renderResult: (result) => {
+      const d = result.details as { stepId?: string; invocationId?: string; error?: boolean } | undefined;
+      if (d?.error) return new Text("❌ Failed to link invocation");
+      return new Text(`🔗 Invocation ${d?.invocationId} → step ${d?.stepId}`);
+    },
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Tool: Check workflow invocation status
+  // ─────────────────────────────────────────────────────────────────────────────
+  pi.registerTool({
+    name: "workflow_invocation_check",
+    label: "Check Workflow Invocation",
+    description: `Check the status of workflow invocations linked to plan steps. Queries the Galaxy
+API for each invocation's job states and summarizes progress. Automatically completes steps
+when all jobs succeed, or fails steps when jobs error. Call with no arguments to check all
+in-progress workflow steps, or specify a stepId to check one.`,
+    parameters: Type.Object({
+      stepId: Type.Optional(Type.String({
+        description: "Check a specific step (omit to check all in-progress workflow steps)"
+      })),
+    }),
+    async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
+      const plan = getCurrentPlan();
+      if (!plan) {
+        return {
+          content: [{ type: "text", text: JSON.stringify({ success: false, error: "No active plan." }) }],
+          details: { error: true } as Record<string, unknown>,
+        };
+      }
+
+      if (!getGalaxyConfig()) {
+        return {
+          content: [{ type: "text", text: JSON.stringify({ success: false, error: "Galaxy credentials not configured." }) }],
+          details: { error: true } as Record<string, unknown>,
+        };
+      }
+
+      let stepsToCheck = getWorkflowSteps();
+
+      if (params.stepId) {
+        const specific = stepsToCheck.find(s => s.id === params.stepId);
+        if (!specific) {
+          const anyStep = plan.steps.find(s => s.id === params.stepId);
+          if (!anyStep) {
+            return {
+              content: [{ type: "text", text: JSON.stringify({ success: false, error: `Step ${params.stepId} not found.` }) }],
+              details: { error: true } as Record<string, unknown>,
+            };
+          }
+          if (anyStep.execution.type !== 'workflow') {
+            return {
+              content: [{ type: "text", text: JSON.stringify({ success: false, error: `Step ${params.stepId} is not a workflow step.` }) }],
+              details: { error: true } as Record<string, unknown>,
+            };
+          }
+          if (!anyStep.result?.invocationId) {
+            return {
+              content: [{ type: "text", text: JSON.stringify({ success: false, error: `Step ${params.stepId} has no linked invocation. Use workflow_invocation_link first.` }) }],
+              details: { error: true } as Record<string, unknown>,
+            };
+          }
+          stepsToCheck = [anyStep];
+        } else {
+          stepsToCheck = [specific];
+        }
+      }
+
+      if (stepsToCheck.length === 0) {
+        return {
+          content: [{ type: "text", text: JSON.stringify({ success: true, results: [], message: "No in-progress workflow steps with linked invocations." }) }],
+          details: { checked: 0 } as Record<string, unknown>,
+        };
+      }
+
+      const results: Array<{
+        stepId: string;
+        stepName: string;
+        invocationId: string;
+        invocationState: string;
+        jobSummary: { ok: number; running: number; queued: number; error: number; other: number };
+        autoAction?: string;
+      }> = [];
+
+      for (const step of stepsToCheck) {
+        const invocationId = step.result!.invocationId!;
+        try {
+          const inv = await galaxyGet<GalaxyInvocationResponse>(
+            `/invocations/${invocationId}`,
+            signal,
+          );
+
+          // Tally job states across all invocation steps
+          const summary = { ok: 0, running: 0, queued: 0, error: 0, other: 0 };
+          for (const invStep of inv.steps) {
+            for (const job of invStep.jobs) {
+              if (job.state === 'ok') summary.ok++;
+              else if (job.state === 'running') summary.running++;
+              else if (job.state === 'queued' || job.state === 'new' || job.state === 'waiting') summary.queued++;
+              else if (job.state === 'error' || job.state === 'deleted') summary.error++;
+              else summary.other++;
+            }
+          }
+
+          let autoAction: string | undefined;
+
+          // Auto-complete if all jobs are ok and invocation is scheduled/ready
+          if (summary.error === 0 && summary.running === 0 && summary.queued === 0 && summary.ok > 0) {
+            updateStepStatus(step.id, 'completed', {
+              completedAt: new Date().toISOString(),
+              invocationId,
+              summary: `Workflow completed: ${summary.ok} jobs succeeded`,
+              qcPassed: null,
+            });
+            await syncToNotebook('step_updated', {
+              stepId: step.id,
+              status: 'completed',
+              invocationId,
+            });
+            autoAction = 'completed';
+          }
+          // Auto-fail if any jobs errored
+          else if (summary.error > 0) {
+            updateStepStatus(step.id, 'failed', {
+              completedAt: new Date().toISOString(),
+              invocationId,
+              summary: `Workflow failed: ${summary.error} job(s) errored, ${summary.ok} succeeded`,
+              qcPassed: false,
+            });
+            await syncToNotebook('step_updated', {
+              stepId: step.id,
+              status: 'failed',
+              invocationId,
+            });
+            autoAction = 'failed';
+          }
+
+          results.push({
+            stepId: step.id,
+            stepName: step.name,
+            invocationId,
+            invocationState: inv.state,
+            jobSummary: summary,
+            autoAction,
+          });
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          results.push({
+            stepId: step.id,
+            stepName: step.name,
+            invocationId,
+            invocationState: 'error_checking',
+            jobSummary: { ok: 0, running: 0, queued: 0, error: 0, other: 0 },
+            autoAction: `check_error: ${msg}`,
+          });
+        }
+      }
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            success: true,
+            checked: results.length,
+            results,
+          }, null, 2),
+        }],
+        details: { checked: results.length } as Record<string, unknown>,
+      };
+    },
+    renderResult: (result) => {
+      const d = result.details as { checked?: number; error?: boolean } | undefined;
+      if (d?.error) return new Text("❌ Invocation check failed");
+      return new Text(`🔍 Checked ${d?.checked || 0} workflow invocation(s)`);
     },
   });
 

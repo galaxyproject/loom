@@ -112,6 +112,11 @@ const EXPECTED_TOOLS = [
   "publication_recommend_figures",
   "publication_get_status",
 
+  // Workflow Integration
+  "workflow_to_plan",
+  "workflow_invocation_link",
+  "workflow_invocation_check",
+
   // GTN Tutorial Discovery
   "gtn_search",
   "gtn_fetch",
