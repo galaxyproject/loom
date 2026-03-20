@@ -5,6 +5,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     name: "gxypi",
     executableName: "gxypi",
+    icon: "resources/icon",
   },
   makers: [
     {
