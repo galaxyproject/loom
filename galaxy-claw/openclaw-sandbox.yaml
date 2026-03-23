@@ -1,0 +1,30 @@
+# GalaxyClaw OpenShell sandbox policy for NemoClaw
+#
+# galaxy-mcp needs HTTPS access to Galaxy servers. Add any Galaxy servers
+# you use to the network allow list below.
+
+network:
+  allow:
+    # Public Galaxy servers
+    - "usegalaxy.org:443"
+    - "usegalaxy.eu:443"
+    - "usegalaxy.org.au:443"
+    # Add institutional Galaxy servers here:
+    # - "galaxy.myuniversity.edu:443"
+  deny: "*"
+
+filesystem:
+  allow:
+    - "/workspace/**"
+    - "/tmp/openclaw/**"
+  deny:
+    - "/etc/**"
+    - "$HOME/.ssh/**"
+    - "$HOME/.env"
+
+process:
+  allow:
+    - "node"
+    - "python3"
+    - "uvx"
+  privilege_escalation: deny

@@ -1,10 +1,10 @@
 ---
 name: galaxy-connect
-description: "Connect to a Galaxy bioinformatics server via galaxy-mcp -- authenticate, verify access, and configure the MCP server"
-version: 0.2.0
+description: "Connect to a Galaxy bioinformatics server via galaxy-mcp -- authenticate and configure for NemoClaw"
+version: 0.3.0
 author: Galaxy Project
 license: MIT
-tags: [galaxy, authentication, bioinformatics, mcp]
+tags: [galaxy, authentication, bioinformatics, mcp, nemoclaw]
 metadata:
   openclaw:
     requires:
@@ -13,6 +13,7 @@ metadata:
       env:
         - GALAXY_URL
         - GALAXY_API_KEY
+    primaryEnv: GALAXY_API_KEY
     emoji: "🔗"
     trigger_keywords:
       - connect to galaxy
@@ -24,21 +25,15 @@ metadata:
 
 # Galaxy Connect
 
-Connect and authenticate with any Galaxy bioinformatics server using **galaxy-mcp**, the official Galaxy MCP server.
+Connect and authenticate with any Galaxy bioinformatics server using **galaxy-mcp**.
 
 ## Prerequisites
 
-Install galaxy-mcp (one command):
-```bash
-uvx galaxy-mcp
-# or: pip install galaxy-mcp
-```
+1. **galaxy-mcp installed**: `pip install galaxy-mcp` or `uvx galaxy-mcp`
+2. **Galaxy account with API key**: Galaxy > User > Preferences > Manage API Key
+3. **NemoClaw network policy**: Galaxy server must be in the OpenShell allow list (see `openclaw-sandbox.yaml` in the galaxy-claw root)
 
-## How to Connect
-
-The user needs:
-1. **Galaxy server URL** -- e.g. `https://usegalaxy.org`
-2. **API key** -- from Galaxy > User > Preferences > Manage API Key
+## Configuration
 
 Set environment variables:
 ```bash
@@ -46,11 +41,7 @@ export GALAXY_URL=https://usegalaxy.org
 export GALAXY_API_KEY=your-api-key-here
 ```
 
-The galaxy-mcp server handles all Galaxy API communication. Once configured, the agent can use Galaxy MCP tools directly to search tools, run analyses, manage histories, and execute workflows.
-
-## OpenClaw/NemoClaw Configuration
-
-Add galaxy-mcp to your MCP server config. In `~/.openclaw/openclaw.json`:
+The galaxy-mcp MCP server must be registered in your agent config:
 ```json
 {
   "mcpServers": {
@@ -68,7 +59,11 @@ Add galaxy-mcp to your MCP server config. In `~/.openclaw/openclaw.json`:
 
 ## Verify Connection
 
-After configuring, ask the agent to call the galaxy-mcp `get_server_info` tool to verify the connection. This returns the Galaxy version, brand, and user information.
+Call the galaxy-mcp `get_server_info` tool. This returns the Galaxy version, brand, and authenticated user info. If this fails:
+
+- **"Invalid API key"** -- regenerate at Galaxy > User > Preferences > Manage API Key
+- **Connection timeout** -- check the OpenShell network policy allows your Galaxy server's hostname on port 443
+- **"galaxy-mcp not found"** -- install with `pip install galaxy-mcp`
 
 ## Common Servers
 
@@ -76,18 +71,12 @@ After configuring, ask the agent to call the galaxy-mcp `get_server_info` tool t
 |--------|-----|-------|
 | **usegalaxy.org** | `https://usegalaxy.org` | Main US server, largest tool collection |
 | **usegalaxy.eu** | `https://usegalaxy.eu` | European server, strong training support |
-| **usegalaxy.org.au** | `https://usegalaxy.org.au` | Australian server, supports OAuth login |
-
-## Troubleshooting
-
-- **"Invalid API key"** -- regenerate at Galaxy > User > Preferences > Manage API Key
-- **Connection timeout** -- check the URL and network; institutional Galaxies may require VPN
-- **"galaxy-mcp not found"** -- install with `pip install galaxy-mcp` or `uvx galaxy-mcp`
+| **usegalaxy.org.au** | `https://usegalaxy.org.au` | Australian server, supports OAuth |
 
 ## After Connecting
 
-Once connected, the agent has access to Galaxy's full API via MCP tools:
-- Search and run tools (see `galaxy-tools` skill)
-- Manage histories and datasets (see `galaxy-history` skill)
-- Run workflows (see `galaxy-workflow` skill)
-- Follow guided pipelines (see `galaxy-rnaseq`, `galaxy-variant`, `galaxy-metagenomics`)
+The agent has access to Galaxy's full API via MCP tools. Use the other galaxy-claw skills for specific tasks:
+- `galaxy-tools` -- search and run tools
+- `galaxy-history` -- manage histories and datasets
+- `galaxy-workflow` -- run workflows
+- `galaxy-rnaseq`, `galaxy-variant`, `galaxy-metagenomics` -- guided pipelines
