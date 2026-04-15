@@ -95,6 +95,13 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
     // Populate sidebar tabs immediately
     await refreshSidebar(ctx);
 
+    // Skip the initial LLM greeting on --continue restarts (model switch,
+    // preferences save, mode toggle): chat history is already restored and
+    // the user already saw the previous greeting; a new one would be redundant.
+    if (process.argv.includes("--continue")) {
+      return;
+    }
+
     // Kick off an initial LLM turn with a proper greeting
     const plan = getCurrentPlan();
     const hasCredentials = process.env.GALAXY_URL && process.env.GALAXY_API_KEY;

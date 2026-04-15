@@ -284,16 +284,17 @@ in_progress when starting, completed when done, or failed if issues occur.`,
           qcPassed: params.qcPassed ?? null,
         } : undefined;
 
+        // Attach outputs FIRST so they're included in the snapshot
+        // that updateStepStatus's notifyPlanChange will emit.
+        if (params.outputs && params.outputs.length > 0) {
+          addStepOutputs(params.stepId, params.outputs as DatasetReference[]);
+        }
+
         const step = updateStepStatus(
           params.stepId,
           params.status as StepStatus,
           result
         );
-
-        // Add outputs if provided
-        if (params.outputs && params.outputs.length > 0) {
-          addStepOutputs(params.stepId, params.outputs as DatasetReference[]);
-        }
 
         // Sync to notebook
         await syncToNotebook('step_updated', {

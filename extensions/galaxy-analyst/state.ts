@@ -295,6 +295,7 @@ export function linkInvocation(stepId: string, invocationId: string): AnalysisSt
     qcPassed: null,
   };
   state.currentPlan.updated = new Date().toISOString();
+  notifyPlanChange();
 
   return step;
 }
@@ -328,6 +329,7 @@ export function setBRCOrganism(organism: BRCContext['organism']): void {
   }
   state.currentPlan.brcContext.organism = organism;
   state.currentPlan.updated = new Date().toISOString();
+  notifyPlanChange();
 }
 
 /**
@@ -342,6 +344,7 @@ export function setBRCAssembly(assembly: BRCContext['assembly']): void {
   }
   state.currentPlan.brcContext.assembly = assembly;
   state.currentPlan.updated = new Date().toISOString();
+  notifyPlanChange();
 }
 
 /**
@@ -358,6 +361,7 @@ export function setBRCWorkflow(params: { category: string; iwcId: string; name: 
   state.currentPlan.brcContext.workflowIwcId = params.iwcId;
   state.currentPlan.brcContext.workflowName = params.name;
   state.currentPlan.updated = new Date().toISOString();
+  notifyPlanChange();
 }
 
 /**
@@ -409,6 +413,7 @@ export function addStepOutputs(stepId: string, outputs: DatasetReference[]): voi
 
   step.actualOutputs.push(...outputs);
   state.currentPlan.updated = new Date().toISOString();
+  notifyPlanChange();
 }
 
 /**
@@ -436,6 +441,7 @@ export function logDecision(params: {
 
   state.currentPlan.decisions.push(entry);
   state.currentPlan.updated = new Date().toISOString();
+  notifyPlanChange();
 
   return entry;
 }
@@ -481,6 +487,7 @@ export function setCheckpoint(params: {
   }
 
   state.currentPlan.updated = new Date().toISOString();
+  notifyPlanChange();
   return checkpoint;
 }
 
@@ -531,6 +538,7 @@ export function setResearchQuestion(question: Partial<ResearchQuestion>): Resear
   };
 
   state.currentPlan.updated = now;
+  notifyPlanChange();
   return state.currentPlan.researchQuestion;
 }
 
@@ -556,6 +564,7 @@ export function addLiteratureRef(ref: Omit<LiteratureReference, 'addedAt'>): Lit
 
   state.currentPlan.researchQuestion.literatureRefs.push(literatureRef);
   state.currentPlan.updated = new Date().toISOString();
+  notifyPlanChange();
 
   return literatureRef;
 }
@@ -585,6 +594,7 @@ export function setDataProvenance(provenance: Partial<DataProvenance>): DataProv
   };
 
   state.currentPlan.updated = new Date().toISOString();
+  notifyPlanChange();
   return state.currentPlan.dataProvenance;
 }
 
@@ -606,6 +616,7 @@ export function addSample(sample: SampleInfo): void {
 
   state.currentPlan.dataProvenance.samples.push(sample);
   state.currentPlan.updated = new Date().toISOString();
+  notifyPlanChange();
 }
 
 /**
@@ -626,6 +637,7 @@ export function addDataFile(file: DataFile): void {
 
   state.currentPlan.dataProvenance.originalFiles.push(file);
   state.currentPlan.updated = new Date().toISOString();
+  notifyPlanChange();
 }
 
 /**
@@ -643,6 +655,7 @@ export function updateDataFile(fileId: string, updates: Partial<DataFile>): Data
 
   Object.assign(file, updates);
   state.currentPlan.updated = new Date().toISOString();
+  notifyPlanChange();
   return file;
 }
 
@@ -670,6 +683,7 @@ export function addFinding(finding: Omit<BiologicalFinding, 'id' | 'addedAt'>): 
 
   state.currentPlan.interpretation.findings.push(fullFinding);
   state.currentPlan.updated = new Date().toISOString();
+  notifyPlanChange();
 
   return fullFinding;
 }
@@ -689,6 +703,7 @@ export function setInterpretationSummary(summary: string): void {
   state.currentPlan.interpretation.summary = summary;
   state.currentPlan.interpretation.summarizedAt = new Date().toISOString();
   state.currentPlan.updated = new Date().toISOString();
+  notifyPlanChange();
 }
 
 /**
@@ -718,6 +733,7 @@ export function initPublication(targetJournal?: string): PublicationMaterials {
   };
 
   state.currentPlan.updated = new Date().toISOString();
+  notifyPlanChange();
   return state.currentPlan.publication;
 }
 
@@ -767,6 +783,7 @@ export function generateMethods(): MethodsSection {
   }
   state.currentPlan.publication!.methodsDraft = methods;
   state.currentPlan.updated = now;
+  notifyPlanChange();
 
   return methods;
 }
@@ -790,6 +807,7 @@ export function addFigure(figure: Omit<FigureSpec, 'id'>): FigureSpec {
 
   state.currentPlan.publication!.figures.push(figureSpec);
   state.currentPlan.updated = new Date().toISOString();
+  notifyPlanChange();
 
   return figureSpec;
 }
@@ -809,6 +827,7 @@ export function updateFigure(figureId: string, updates: Partial<FigureSpec>): Fi
 
   Object.assign(figure, updates);
   state.currentPlan.updated = new Date().toISOString();
+  notifyPlanChange();
   return figure;
 }
 
@@ -827,6 +846,10 @@ export function setGalaxyConnection(connected: boolean, historyId?: string, serv
 
   if (serverUrl && state.currentPlan) {
     state.currentPlan.galaxy.serverUrl = serverUrl;
+  }
+
+  if (state.currentPlan) {
+    notifyPlanChange();
   }
 }
 
