@@ -7,6 +7,40 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getCurrentPlan, getState, formatPlanSummary, getWorkflowSteps, getBRCContext } from "./state";
+import { loadConfig } from "./config";
+
+/** Build the execution-mode block injected into every system prompt. */
+function buildExecutionModeContext(): string {
+  const cfg = loadConfig();
+  const mode = cfg.executionMode || "remote";
+  const galaxyUrl = process.env.GALAXY_URL || cfg.galaxy?.profiles?.[cfg.galaxy.active || ""]?.url;
+
+  if (mode === "local") {
+    return `
+## Execution mode: Local (no Galaxy tools)
+
+Galaxy tools are NOT available in this session. This is a planning and review
+mode -- the agent can refine the plan, edit the notebook, and reason about
+biology, but cannot execute anything until the user switches to Remote mode.
+
+If the user asks you to run something, explain that Local mode is on and they
+can switch to Remote in the masthead toggle.
+`;
+  }
+
+  return `
+## Execution mode: Remote (Galaxy: ${galaxyUrl || "configured"})
+
+**Default execution is Galaxy user-defined tools.** Search Galaxy for existing
+tools first; prefer \`galaxy_run_tool\` / \`galaxy_invoke_workflow\` for any
+real computation. Reproducibility and provenance live in Galaxy -- the agent's
+job is to pick the right Galaxy tool, not to re-implement it locally.
+
+If the user explicitly asks for a custom step with no Galaxy equivalent, the
+right answer is usually to wrap it as a Galaxy tool, not to run it on the
+client. A "run it locally" path is not the default.
+`;
+}
 
 export function setupContextInjection(pi: ExtensionAPI): void {
 
@@ -64,6 +98,7 @@ If the researcher's opening message already contains this information, create th
 right away without asking clarifying questions first.
 ${brcSection}
 ${galaxyContext}
+${buildExecutionModeContext()}
 `
       };
     }
@@ -106,15 +141,34 @@ ${galaxyContext}
 
 ${planSummary}
 
-## Analysis Protocol Reminders
+## Analysis Protocol
 - Get researcher approval before each step
 - Log decisions with \`analysis_step_log\`
 - Update step status with \`analysis_plan_update_step\`
 - Create QC checkpoints with \`analysis_checkpoint\`
 - Record biological findings with \`interpretation_add_finding\`
 - Use \`analysis_plan_get\` for full plan details
+- Use \`report_result\` for tables, plots, files, and markdown summaries
+- Use \`analyze_plan_parameters\` when the user requests parameter review
+
+## Execution Rules
+- Default tool execution is Galaxy user-defined tools. Search Galaxy for existing tools first.
+- DO NOT narrate plan execution in chat. The shell renders progress from structured events.
+- Use tools — NOT chat prose — to communicate during execution:
+  - \`analysis_plan_update_step\` → step progress (visible in the DAG)
+  - \`report_result\` → output tables, plots, files (visible in Results tab)
+- Chat is for questions, conclusions, and user-visible reasoning only.
+- After calling \`analysis_plan_create\`, do NOT write a plan summary in chat — the Plan tab already shows it.
+
+## Response Style
+- Be extremely concise. No filler, no chatter, no pleasantries.
+- Lead with the answer or action. Skip preamble and transitions.
+- One sentence when one sentence suffices. Never repeat what the user said.
+- Do NOT use exclamation marks, "Great!", "Excellent!", "Sure!", or similar.
+- Minimize emoji usage. Plain text is preferred.
 ${workflowContext}${brcSection}
 ${galaxyContext}
+${buildExecutionModeContext()}
 `
     };
   });

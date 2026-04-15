@@ -20,6 +20,13 @@ export interface GxypiConfig {
     active: string | null;
     profiles: Record<string, { url: string; apiKey: string }>;
   };
+  /**
+   * Execution mode the shell/CLI is in.
+   * - "remote": Galaxy tools are exposed to the agent (default, Galaxy-native first).
+   * - "local": Galaxy MCP is not registered; this is a planning/review-only mode
+   *   until a local execution primitive is wired up.
+   */
+  executionMode?: "local" | "remote";
 }
 
 export function getConfigDir(): string {

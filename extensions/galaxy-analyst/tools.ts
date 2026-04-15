@@ -2666,4 +2666,115 @@ analyses in Galaxy.`,
       return new Text(`📖 Fetched GTN tutorial (${d?.length || 0} chars)`);
     },
   });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Shell-facing tools (emit structured widgets for Electron / shell consumers)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  pi.registerTool({
+    name: "report_result",
+    label: "Report Result",
+    description:
+      "Display a typed result block in the Results tab. Use for analysis outputs: " +
+      "tables, markdown summaries, images, or file links.",
+    parameters: Type.Object({
+      type: Type.Union([
+        Type.Literal("markdown"),
+        Type.Literal("table"),
+        Type.Literal("image"),
+        Type.Literal("file"),
+      ], { description: "Result block type" }),
+      stepName: Type.Optional(Type.String({ description: "Name of the step that produced this result" })),
+      content: Type.Optional(Type.String({ description: "Markdown content (for type=markdown)" })),
+      headers: Type.Optional(Type.Array(Type.String(), { description: "Column headers (for type=table)" })),
+      rows: Type.Optional(Type.Array(Type.Array(Type.String()), { description: "Table rows (for type=table)" })),
+      path: Type.Optional(Type.String({ description: "Absolute file path (for type=image or type=file)" })),
+      caption: Type.Optional(Type.String({ description: "Caption for image or file link" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const block = {
+        stepName: params.stepName,
+        type: params.type,
+        content: params.content,
+        headers: params.headers,
+        rows: params.rows,
+        path: params.path,
+        caption: params.caption,
+      };
+      ctx.ui.setWidget("results", [JSON.stringify(block)]);
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify({ success: true, message: "Result displayed." }) }],
+        details: { type: params.type },
+      };
+    },
+    renderResult: (result) => {
+      const d = result.details as { type?: string } | undefined;
+      return new Text(`📊 Result displayed (${d?.type || "unknown"})`);
+    },
+  });
+
+  pi.registerTool({
+    name: "analyze_plan_parameters",
+    label: "Analyze Plan Parameters",
+    description:
+      "Show a parameter configuration form to the user. Classify parameters as " +
+      "CRITICAL (biology-meaningful: organism, reference, thresholds) or AUTOMATIC " +
+      "(implementation: threads, paths, flags). Group by biological concept, not by tool.",
+    parameters: Type.Object({
+      title: Type.String({ description: "Form title, e.g. 'Parameters for RNA-seq analysis'" }),
+      description: Type.String({ description: "1-2 sentence biologist-friendly summary" }),
+      groups: Type.Array(Type.Object({
+        title: Type.String({ description: "Group heading, e.g. 'Organism & Reference'" }),
+        description: Type.String({ description: "Plain-language explanation of this group" }),
+        params: Type.Array(Type.Object({
+          name: Type.String({ description: "Parameter name (machine-readable)" }),
+          type: Type.Union([
+            Type.Literal("text"),
+            Type.Literal("integer"),
+            Type.Literal("float"),
+            Type.Literal("boolean"),
+            Type.Literal("select"),
+            Type.Literal("file"),
+          ]),
+          label: Type.String({ description: "Display label" }),
+          help: Type.String({ description: "Biologist-centric help text" }),
+          value: Type.Union([Type.String(), Type.Number(), Type.Boolean()], { description: "Default value" }),
+          min: Type.Optional(Type.Number()),
+          max: Type.Optional(Type.Number()),
+          step: Type.Optional(Type.Number()),
+          options: Type.Optional(Type.Array(Type.Object({
+            label: Type.String(),
+            value: Type.String(),
+          }))),
+          fileFilter: Type.Optional(Type.String({ description: "File extension filter" })),
+          usedBy: Type.Optional(Type.Array(Type.String(), { description: "Tools using this parameter" })),
+        })),
+      })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const spec = {
+        planId: getCurrentPlan()?.id || "",
+        title: params.title,
+        description: params.description,
+        groups: params.groups,
+      };
+      ctx.ui.setWidget("parameters", [JSON.stringify(spec)]);
+      const paramNames = params.groups.flatMap(g => g.params.map(p => p.name));
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({
+            success: true,
+            message: `Parameter form displayed with ${params.groups.length} groups.`,
+            parameters: paramNames,
+          }),
+        }],
+        details: { groupCount: params.groups.length, paramCount: paramNames.length },
+      };
+    },
+    renderResult: (result) => {
+      const d = result.details as { groupCount?: number; paramCount?: number } | undefined;
+      return new Text(`⚙️ Parameter form (${d?.paramCount || 0} params in ${d?.groupCount || 0} groups)`);
+    },
+  });
 }
