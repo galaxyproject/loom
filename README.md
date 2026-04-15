@@ -1,14 +1,24 @@
-# gxypi
+# Loom
 
-An AI co-scientist for [Galaxy](https://galaxyproject.org) bioinformatics, built on [Pi.dev](https://pi.dev).
+An AI research harness for [Galaxy](https://galaxyproject.org) bioinformatics, built on [Pi.dev](https://pi.dev).
 
-gxypi turns Pi into a structured analysis partner — it creates plans, runs Galaxy tools, documents every decision, and saves everything to a persistent notebook you can share, resume, and reproduce.
+Loom weaves the threads of a research project -- question, data, analysis, interpretation, publication -- into a durable, resumable notebook. It creates plans, runs Galaxy tools, documents every decision, and keeps the whole record reproducible.
 
-The primary product experience is terminal-first. The Electron app in [`app/`](app/) is an optional desktop shell around the same gxypi RPC runtime -- Galaxy-branded, with window state persistence, a working directory picker, and thinking/text streaming in the chat panel. It's a convenience wrapper, not the only supported way to use gxypi.
+## Architecture: Loom + its consumers
+
+**Loom** is the *brain* -- the agent runtime in [`extensions/galaxy-analyst/`](extensions/galaxy-analyst/) plus the RPC contract it exposes. The brain owns plan state, the five-phase lifecycle, notebook persistence, Galaxy integration, and provenance.
+
+Consumers sit on top of Loom and are named independently:
+
+- **`gxypi`** -- the terminal CLI consumer. First-class and the primary validation path. Installed from npm, configured in `~/.gxypi/config.json`.
+- **Orbit** (in [`app/`](app/)) -- the Electron desktop shell. Galaxy-branded; chat panel with streaming, a sidebar tab bar auto-populated with plan/decisions/notebook/status, window state persistence, and a working-directory picker. Orbit is optional -- the `gxypi` CLI is the supported primary path.
+- **Future shells** -- a Galaxy-embedded web UI, a hosted server mode, and anything else can talk to the same brain over RPC.
+
+The repo is still named `pi-galaxy-analyst`; a rename is a follow-up. Loom is the product identity.
 
 ## Current Status
 
-gxypi is implemented and locally tested, but live Galaxy validation is still in progress.
+Loom is implemented and locally tested, but live Galaxy validation is still in progress.
 
 - TypeScript typecheck passes against `@mariozechner/pi-coding-agent` `0.55.0`
 - Local automated suite: `113` tests passing
@@ -20,6 +30,8 @@ gxypi is implemented and locally tested, but live Galaxy validation is still in 
 If you are validating the runtime manually, use a `pi` CLI version that matches the SDK line used by this repo where possible.
 
 ## Install
+
+Install the CLI (`gxypi`):
 
 ```bash
 npm install -g gxypi
@@ -39,9 +51,9 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ## Usage
 
-### CLI-First
+### CLI (`gxypi`)
 
-The main supported ways to run gxypi without Electron are:
+The terminal CLI is the primary validation path for Loom:
 
 ```bash
 gxypi
@@ -115,7 +127,7 @@ Pi:  Loaded notebook: RNA-seq Drug Treatment (1/5 steps completed)
 
 ### Configuration
 
-gxypi uses a single config file at `~/.gxypi/config.json` for both Galaxy credentials and LLM provider settings:
+The `gxypi` CLI uses a single config file at `~/.gxypi/config.json` for both Galaxy credentials and LLM provider settings:
 
 ```json
 {
@@ -136,7 +148,7 @@ gxypi uses a single config file at `~/.gxypi/config.json` for both Galaxy creden
 }
 ```
 
-Both sections are optional. If `llm` is missing, gxypi falls back to environment variables or OAuth login. If `galaxy` is missing, use `/connect` to add a server interactively — credentials are saved to the config file automatically.
+Both sections are optional. If `llm` is missing, the CLI falls back to environment variables or OAuth login. If `galaxy` is missing, use `/connect` to add a server interactively — credentials are saved to the config file automatically.
 
 You can also set environment variables directly:
 
@@ -146,7 +158,7 @@ export GALAXY_URL="https://usegalaxy.org"
 export GALAXY_API_KEY="your-api-key"
 ```
 
-If you have an existing setup with `~/.pi/agent/galaxy-profiles.json` or `~/.pi/agent/models.json`, gxypi migrates them into `~/.gxypi/config.json` on first run.
+If you have an existing setup with `~/.pi/agent/galaxy-profiles.json` or `~/.pi/agent/models.json`, the CLI migrates them into `~/.gxypi/config.json` on first run.
 
 ### Commands
 
@@ -161,7 +173,7 @@ If you have an existing setup with `~/.pi/agent/galaxy-profiles.json` or `~/.pi/
 
 ## How It Works
 
-gxypi guides analyses through five phases:
+Loom guides analyses through five phases:
 
 **1. Problem Definition** — Refine your research question using the PICO framework, add literature references.
 
@@ -177,7 +189,7 @@ Everything is saved to a **notebook file** — a readable markdown document with
 
 ### Git-tracked notebooks
 
-When gxypi creates a notebook, it initializes a git repository in the working directory (if one doesn't already exist) and commits every meaningful change as it happens. Step completions, QC checkpoints, decisions, phase transitions — each gets its own commit with a descriptive message like `Add step: Read Mapping` or `QC: Post-alignment QC (passed)`.
+When Loom creates a notebook, it initializes a git repository in the working directory (if one doesn't already exist) and commits every meaningful change as it happens. Step completions, QC checkpoints, decisions, phase transitions — each gets its own commit with a descriptive message like `Add step: Read Mapping` or `QC: Post-alignment QC (passed)`.
 
 This gives you a few things for free:
 
@@ -231,7 +243,7 @@ For a full terminal-only runbook, see [docs/terminal-validation.md](/Users/danno
 
 ## Tool Reference
 
-gxypi currently registers `34` extension tools across the analysis lifecycle:
+Loom currently registers `34` extension tools across the analysis lifecycle:
 
 | Category | Tools |
 |----------|-------|
