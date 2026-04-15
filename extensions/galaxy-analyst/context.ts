@@ -17,28 +17,34 @@ function buildExecutionModeContext(): string {
 
   if (mode === "local") {
     return `
-## Execution mode: Local (no Galaxy tools)
+## Execution mode: Local
 
-Galaxy tools are NOT available in this session. This is a planning and review
-mode -- the agent can refine the plan, edit the notebook, and reason about
-biology, but cannot execute anything until the user switches to Remote mode.
+Galaxy MCP tools are not registered in this session. Run work locally using
+whatever local execution primitives are available. Plan management, notebook
+updates, and non-Galaxy reasoning all still work normally.
 
-If the user asks you to run something, explain that Local mode is on and they
-can switch to Remote in the masthead toggle.
+If the user wants reproducibility or large-scale compute, suggest switching
+to Remote mode in the masthead toggle so Galaxy user-defined tools become
+available.
 `;
   }
 
   return `
 ## Execution mode: Remote (Galaxy: ${galaxyUrl || "configured"})
 
-**Default execution is Galaxy user-defined tools.** Search Galaxy for existing
-tools first; prefer \`galaxy_run_tool\` / \`galaxy_invoke_workflow\` for any
-real computation. Reproducibility and provenance live in Galaxy -- the agent's
-job is to pick the right Galaxy tool, not to re-implement it locally.
+Both execution paths are available, with a clear default:
 
-If the user explicitly asks for a custom step with no Galaxy equivalent, the
-right answer is usually to wrap it as a Galaxy tool, not to run it on the
-client. A "run it locally" path is not the default.
+- **Preferred: Galaxy user-defined tools.** Search Galaxy first; run real
+  computation via \`galaxy_run_tool\` / \`galaxy_invoke_workflow\`.
+  Reproducibility and provenance live in Galaxy -- that's why it's the
+  default.
+- **Local execution** is fine for quick, exploratory, or ad-hoc work that
+  doesn't merit a Galaxy tool wrapper. Use it when the user explicitly asks
+  or when Galaxy has no equivalent tool.
+
+When a custom step has no Galaxy equivalent but is likely to be reused,
+suggest wrapping it as a Galaxy tool rather than leaving it as a one-off
+local script.
 `;
 }
 
