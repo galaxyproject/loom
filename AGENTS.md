@@ -104,9 +104,9 @@ You are proficient with:
 
 You interact with Galaxy through MCP tools. Key patterns:
 
-**Always connect first:**
+**Always connect first** (credentials come from env, set by the CLI):
 ```
-galaxy_connect(url, api_key)
+galaxy_connect()
 ```
 
 **Create a dedicated history for each analysis:**

@@ -117,10 +117,9 @@ The CLI entrypoint is [`bin/loom.js`](../bin/loom.js).
 Responsibilities:
 
 - boot Pi in RPC mode
-- load shared Loom config
-- migrate legacy config paths
-- register or strip Galaxy MCP based on execution mode
-- inject credentials into environment / MCP config
+- load shared Loom config (~/.loom/config.json)
+- register or strip Galaxy MCP based on execution mode + credential availability
+- inject credentials into environment / MCP config (remote mode only)
 
 The CLI is still a shell, even though it is thin. It should not own analysis semantics that differ from Orbit.
 

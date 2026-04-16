@@ -266,7 +266,7 @@ export GALAXY_URL="https://usegalaxy.org"
 export GALAXY_API_KEY="your-api-key"
 ```
 
-If you have an existing setup with `~/.gxypi/config.json` (from earlier CLI versions) or with `~/.pi/agent/galaxy-profiles.json` / `~/.pi/agent/models.json`, the CLI migrates them into `~/.loom/config.json` on first run. The old files stay in place; nothing is deleted.
+Galaxy credentials can also be provided via environment variables (`GALAXY_URL`, `GALAXY_API_KEY`) for CI or testing, but `~/.loom/config.json` is the primary source.
 
 ### Local LLMs
 

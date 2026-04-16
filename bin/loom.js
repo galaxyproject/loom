@@ -116,41 +116,39 @@ if (loomConfig.llm?.apiKey) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Load Galaxy credentials from ~/.loom/config.json (the single source of truth)
+// Galaxy credential + MCP registration
 //
-// Legacy files (galaxy-profiles.json, mcp.json env blocks) are handled by
-// the one-shot migration above. At runtime we only read from loom config.
-// ─────────────────────────────────────────────────────────────────────────────
-
-let galaxyUrl = process.env.GALAXY_URL || null;
-let galaxyApiKey = process.env.GALAXY_API_KEY || null;
-
-if (!isInformationalCommand && !galaxyUrl && loomConfig.galaxy?.active && loomConfig.galaxy.profiles) {
-  const active = loomConfig.galaxy.profiles[loomConfig.galaxy.active];
-  if (active) {
-    galaxyUrl = active.url;
-    galaxyApiKey = active.apiKey;
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Configure Galaxy MCP based on executionMode + credential availability
-//
-// Remote (default) WITH credentials: register Galaxy MCP so the LLM can call
-// Galaxy tools directly. Publish credentials to env so the extension can
-// read them for the greeting/context.
-// Remote WITHOUT credentials: skip Galaxy MCP -- the greeting will tell the
-// user about /connect. No MCP server = no "tool not found" noise.
-// Local: strip Galaxy MCP entirely, don't publish credentials to env.
+// Credentials come from ~/.loom/config.json (written by /connect). In remote
+// mode they're published to env so the extension sees them; in local mode
+// env is scrubbed so the extension doesn't advertise Galaxy tools.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const executionMode = loomConfig.executionMode || "remote";
 
-// Only publish Galaxy credentials to env in remote mode -- in local mode the
-// extension shouldn't see them and shouldn't tell the LLM to connect.
-if (executionMode === "remote" && galaxyUrl && galaxyApiKey) {
-  process.env.GALAXY_URL = galaxyUrl;
-  process.env.GALAXY_API_KEY = galaxyApiKey;
+let galaxyUrl = null;
+let galaxyApiKey = null;
+
+if (executionMode === "remote") {
+  // Config is authoritative; env vars are a fallback for CI / testing
+  if (loomConfig.galaxy?.active && loomConfig.galaxy.profiles) {
+    const active = loomConfig.galaxy.profiles[loomConfig.galaxy.active];
+    if (active) {
+      galaxyUrl = active.url;
+      galaxyApiKey = active.apiKey;
+    }
+  }
+  if (!galaxyUrl) galaxyUrl = process.env.GALAXY_URL || null;
+  if (!galaxyApiKey) galaxyApiKey = process.env.GALAXY_API_KEY || null;
+
+  // Publish to env so the extension can read them
+  if (galaxyUrl && galaxyApiKey) {
+    process.env.GALAXY_URL = galaxyUrl;
+    process.env.GALAXY_API_KEY = galaxyApiKey;
+  }
+} else {
+  // Local mode: scrub Galaxy env so the extension doesn't see stale values
+  delete process.env.GALAXY_URL;
+  delete process.env.GALAXY_API_KEY;
 }
 const mcpConfigPath = join(agentDir, "mcp.json");
 
