@@ -27,7 +27,7 @@
     ]
   },
   "dependencies": {
-    "@mariozechner/pi-coding-agent": "^0.55.0",
+    "@mariozechner/pi-coding-agent": "^0.67.3",
     "@sinclair/typebox": "^0.32.0",
     "pi-mcp-adapter": "^2.4.0",
     "uuid": "^9.0.0"
@@ -39,7 +39,7 @@
     "validate:provenance": "vitest run tests/extension-integration.test.ts -t \"provenance notebook sync\""
   },
   "devDependencies": {
-    "@mariozechner/pi-ai": "^0.55.0",
+    "@mariozechner/pi-ai": "^0.67.3",
     "@types/uuid": "^9.0.0",
     "typescript": "^5.0.0",
     "vitest": "^4.1.4"
