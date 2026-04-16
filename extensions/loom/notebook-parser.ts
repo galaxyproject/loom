@@ -27,6 +27,7 @@ import type {
   BiologicalFinding,
   FindingCategory,
   WorkflowStructure,
+  ReportedResult,
 } from "./types";
 
 /**
@@ -48,6 +49,7 @@ export interface ParsedNotebook {
   dataProvenance?: DataProvenance;
   researchQuestionDetails?: ResearchQuestion;
   publication?: PublicationMaterials;
+  reportedResults?: ReportedResult[];
 }
 
 export interface NotebookFrontmatter {
@@ -620,6 +622,22 @@ export function parseBRCContext(content: string): BRCContext | undefined {
 }
 
 /**
+ * Parse the authoritative results_json block (written anywhere after the
+ * steps section). Bypasses the handwritten YAML parser's limits via JSON.
+ */
+export function parseReportedResults(content: string): ReportedResult[] | undefined {
+  const match = content.match(/results_json:\s*'([\s\S]*?)'\s*\n/);
+  if (!match) return undefined;
+
+  try {
+    const json = match[1].replace(/''/g, "'");
+    return JSON.parse(json) as ReportedResult[];
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Parse an entire notebook into structured data
  */
 export function parseNotebook(content: string): ParsedNotebook | null {
@@ -637,6 +655,7 @@ export function parseNotebook(content: string): ParsedNotebook | null {
     dataProvenance: parseDataProvenance(content),
     researchQuestionDetails: parseResearchQuestionDetails(content),
     publication: parsePublicationMaterials(content),
+    reportedResults: parseReportedResults(content),
   };
 }
 
@@ -777,6 +796,10 @@ export function notebookToPlan(notebook: ParsedNotebook): AnalysisPlan {
 
   if (notebook.publication) {
     plan.publication = notebook.publication;
+  }
+
+  if (notebook.reportedResults && notebook.reportedResults.length > 0) {
+    plan.results = notebook.reportedResults;
   }
 
   return plan;

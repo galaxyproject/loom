@@ -34,6 +34,7 @@ import type {
   BiologicalFinding,
   InterpretationFindings,
   WorkflowStructure,
+  ReportedResult,
 } from "./types";
 import {
   generateNotebook,
@@ -941,6 +942,49 @@ export function updateFigure(figureId: string, updates: Partial<FigureSpec>): Fi
 }
 
 /**
+ * Record a typed result block on the current plan. Returns the stored
+ * ReportedResult with a generated id and timestamp. The caller is responsible
+ * for mirroring the block to the Results widget and syncing to the notebook.
+ */
+export function addReportedResult(params: {
+  stepId?: string;
+  stepName?: string;
+  type: ReportedResult['type'];
+  content?: string;
+  headers?: string[];
+  rows?: string[][];
+  path?: string;
+  caption?: string;
+}): ReportedResult {
+  if (!state.currentPlan) {
+    throw new Error("No active plan");
+  }
+
+  if (!state.currentPlan.results) {
+    state.currentPlan.results = [];
+  }
+
+  const result: ReportedResult = {
+    id: `result-${state.currentPlan.results.length + 1}`,
+    reportedAt: new Date().toISOString(),
+    stepId: params.stepId,
+    stepName: params.stepName,
+    type: params.type,
+    content: params.content,
+    headers: params.headers,
+    rows: params.rows,
+    path: params.path,
+    caption: params.caption,
+  };
+
+  state.currentPlan.results.push(result);
+  state.currentPlan.updated = result.reportedAt;
+  notifyPlanChange();
+
+  return result;
+}
+
+/**
  * Update Galaxy connection state
  */
 export function setGalaxyConnection(connected: boolean, historyId?: string, serverUrl?: string): void {
@@ -1177,7 +1221,8 @@ export async function syncToNotebook(
     | 'publication_update'
     | 'interpretation_finding'
     | 'interpretation_summary'
-    | 'brc_context_updated',
+    | 'brc_context_updated'
+    | 'result_reported',
   data: Record<string, unknown>
 ): Promise<void> {
   if (!state.notebookPath) {
@@ -1330,6 +1375,15 @@ export async function syncToNotebook(
         break;
 
       case 'brc_context_updated':
+        if (state.currentPlan) {
+          content = generateNotebook(state.currentPlan);
+        }
+        break;
+
+      case 'result_reported':
+        // The result is already on state.currentPlan.results; regenerate the
+        // notebook so the new Results section appears under the right step
+        // (or in the plan-level Results bucket).
         if (state.currentPlan) {
           content = generateNotebook(state.currentPlan);
         }

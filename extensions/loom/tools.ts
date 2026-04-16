@@ -55,6 +55,8 @@ import {
   getBRCContext,
   // Tool version resolution
   resolveToolVersions,
+  // Reported results
+  addReportedResult,
 } from "./state";
 import type {
   StepStatus,
@@ -2757,6 +2759,7 @@ analyses in Galaxy.`,
         Type.Literal("image"),
         Type.Literal("file"),
       ], { description: "Result block type" }),
+      stepId: Type.Optional(Type.String({ description: "Step id this result belongs to (preferred over stepName)" })),
       stepName: Type.Optional(Type.String({ description: "Name of the step that produced this result" })),
       content: Type.Optional(Type.String({ description: "Markdown content (for type=markdown)" })),
       headers: Type.Optional(Type.Array(Type.String(), { description: "Column headers (for type=table)" })),
@@ -2775,6 +2778,23 @@ analyses in Galaxy.`,
         caption: params.caption,
       };
       ctx.ui.setWidget(LoomWidgetKey.Results, encodeJsonWidget(block));
+
+      // Persist to plan + notebook so the notebook becomes the durable record
+      // of reported results (methods generation and later restores depend on this).
+      if (getCurrentPlan()) {
+        const stored = addReportedResult({
+          stepId: params.stepId,
+          stepName: params.stepName,
+          type: params.type,
+          content: params.content,
+          headers: params.headers,
+          rows: params.rows,
+          path: params.path,
+          caption: params.caption,
+        });
+        await syncToNotebook('result_reported', { result: stored });
+      }
+
       return {
         content: [{ type: "text" as const, text: JSON.stringify({ success: true, message: "Result displayed." }) }],
         details: { type: params.type },

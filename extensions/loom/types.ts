@@ -291,6 +291,9 @@ export interface AnalysisPlan {
 
   // Publication materials (Phase 5)
   publication?: PublicationMaterials;
+
+  // Typed result blocks reported via report_result, ordered by reportedAt
+  results?: ReportedResult[];
 }
 
 export type PlanStatus = 'draft' | 'active' | 'completed' | 'abandoned';
@@ -410,10 +413,34 @@ export interface NotebookMetadata {
 }
 
 export interface NotebookEvent {
-  type: 'plan_created' | 'step_added' | 'step_updated' | 'decision_logged' | 'checkpoint_created';
+  type:
+    | 'plan_created'
+    | 'step_added'
+    | 'step_updated'
+    | 'decision_logged'
+    | 'checkpoint_created'
+    | 'result_reported';
   timestamp: string;
   description: string;
   details?: Record<string, unknown>;
+}
+
+/**
+ * A typed result block reported by the agent (table, markdown, image, file).
+ * Persisted in the plan and rendered into the notebook so methods generation
+ * and later restores can reference the observed outputs.
+ */
+export interface ReportedResult {
+  id: string;
+  reportedAt: string;
+  stepId?: string;
+  stepName?: string;
+  type: 'markdown' | 'table' | 'image' | 'file';
+  content?: string;
+  headers?: string[];
+  rows?: string[][];
+  path?: string;
+  caption?: string;
 }
 
 export interface NotebookSummary {
