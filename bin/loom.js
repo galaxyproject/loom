@@ -5,12 +5,7 @@ import { resolve, dirname, join } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { homedir } from "os";
-import {
-  getConfigDir,
-  getConfigPath,
-  loadConfig as loadLoomConfig,
-  saveConfig as saveLoomConfig,
-} from "../shared/loom-config.js";
+import { loadConfig as loadLoomConfig } from "../shared/loom-config.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -92,84 +87,8 @@ async function handleInformationalCommand() {
 // each shell's own dir.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const loomConfigDir = getConfigDir();
-const loomConfigPath = getConfigPath();
-
-// Legacy path kept for one-shot migration.
-const legacyGxypiConfigPath = join(homedir(), ".gxypi", "config.json");
-
-// One-shot migration: copy ~/.gxypi/config.json to ~/.loom/config.json.
-// Runs before any other legacy migration so the canonical path is populated
-// before we look at ~/.pi/agent/ legacy files.
-function migrateFromGxypi() {
-  if (existsSync(loomConfigPath)) return;
-  if (!existsSync(legacyGxypiConfigPath)) return;
-  try {
-    const legacy = JSON.parse(readFileSync(legacyGxypiConfigPath, "utf-8"));
-    mkdirSync(loomConfigDir, { recursive: true });
-    writeFileSync(loomConfigPath, JSON.stringify(legacy, null, 2) + "\n");
-  } catch {
-    // Corrupt legacy file; ignore and let the ~/.pi migration try its thing.
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Legacy migration: pull galaxy-profiles.json and models.json into config.json
-// ─────────────────────────────────────────────────────────────────────────────
-
 const agentDir = process.env.PI_CODING_AGENT_DIR
   || join(homedir(), ".pi", "agent");
-
-function migrateLegacyFiles() {
-  if (existsSync(loomConfigPath)) return;
-
-  let config = {};
-  let migrated = false;
-
-  // Migrate galaxy-profiles.json → config.galaxy
-  const legacyProfilesPath = join(agentDir, "galaxy-profiles.json");
-  if (existsSync(legacyProfilesPath)) {
-    try {
-      const data = JSON.parse(readFileSync(legacyProfilesPath, "utf-8"));
-      if (data.profiles && Object.keys(data.profiles).length > 0) {
-        config.galaxy = {
-          active: data.active ?? null,
-          profiles: data.profiles,
-        };
-        migrated = true;
-      }
-    } catch {}
-  }
-
-  // Migrate models.json → config.llm
-  const legacyModelsPath = join(agentDir, "models.json");
-  if (existsSync(legacyModelsPath)) {
-    try {
-      const models = JSON.parse(readFileSync(legacyModelsPath, "utf-8"));
-      const providers = models.providers || {};
-      const [providerName, providerConfig] = Object.entries(providers)[0] || [];
-      if (providerName && providerConfig?.apiKey) {
-        config.llm = {
-          provider: providerName,
-          apiKey: providerConfig.apiKey,
-        };
-        if (providerConfig.models?.length) {
-          config.llm.model = providerConfig.models[0].id;
-        }
-        migrated = true;
-      }
-    } catch {}
-  }
-
-  if (migrated) {
-    saveLoomConfig(config);
-  }
-}
-
-if (!isInformationalCommand) {
-  migrateFromGxypi();
-  migrateLegacyFiles();
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Apply consolidated config
