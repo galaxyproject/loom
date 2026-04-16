@@ -4,15 +4,9 @@ An AI research harness for [Galaxy](https://galaxyproject.org) bioinformatics, b
 
 Loom weaves the threads of a research project -- question, data, analysis, interpretation, publication -- into a durable, resumable notebook. It creates plans, runs Galaxy tools, documents every decision, and keeps the whole record reproducible.
 
-This repo hosts both the brain and a reference shell:
+**Loom** is the agent brain -- the Pi.dev runtime in [`extensions/loom/`](extensions/loom/), the RPC contract, plan state, notebook persistence, Galaxy integration, the five-phase lifecycle, and provenance. Run it directly from the terminal with `loom` (`npm install -g loom`) or through **Orbit** (in [`app/`](app/)), the Electron desktop shell with a chat + dual-pane artifact layout and a Galaxy-themed step graph.
 
-- **Loom** is the *brain* -- the Pi.dev agent runtime in [`extensions/loom/`](extensions/loom/) plus the RPC contract it exposes. Plan state, notebook persistence, Galaxy integration, the five-phase lifecycle, provenance.
-- **`loom`** is the terminal CLI consumer. First-class and the primary validation path. Installed from npm; reads brain-level config from `~/.loom/config.json`.
-- **Orbit** (in [`app/`](app/)) is the Electron desktop shell -- chat + dual-pane artifact layout with a Galaxy-themed step graph. Orbit is optional; the `loom` CLI is a supported standalone path.
-
-Future shells -- a Galaxy-embedded web UI, a hosted server mode, anything else -- can talk to the same brain over RPC.
-
-The repo is still named `pi-galaxy-analyst`; a rename is a follow-up. Loom is the product identity.
+Future shells -- a Galaxy-embedded web UI, a hosted server mode, anything else -- talk to the same brain over RPC.
 
 ## How it works
 
