@@ -50,6 +50,18 @@ export interface GalaxyInvocationResponse {
   steps: GalaxyInvocationStep[];
 }
 
+/**
+ * Subset of GET /api/jobs/{jobId} we actually read.
+ * tool_version lives at the top level per Galaxy's Job.to_dict().
+ */
+export interface GalaxyJobDetailsResponse {
+  id: string;
+  state: string;
+  tool_id: string;
+  tool_version: string;
+  params?: Record<string, unknown>;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
 // ─────────────────────────────────────────────────────────────────────────────
@@ -104,6 +116,17 @@ function shortToolName(toolId: string): string {
     return parts[parts.length - 2];
   }
   return toolId;
+}
+
+/**
+ * Fetch job details from Galaxy. Returns the full response; callers typically
+ * only need `tool_version`.
+ */
+export async function galaxyGetJobDetails(
+  jobId: string,
+  signal?: AbortSignal,
+): Promise<GalaxyJobDetailsResponse> {
+  return galaxyGet<GalaxyJobDetailsResponse>(`/jobs/${encodeURIComponent(jobId)}`, signal);
 }
 
 export function extractWorkflowStructure(wf: GalaxyWorkflowResponse): WorkflowStructure {

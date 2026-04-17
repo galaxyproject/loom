@@ -131,6 +131,9 @@ const EXPECTED_TOOLS = [
   "gtn_search",
   "gtn_fetch",
 
+  // Tool Version Resolution
+  "analysis_resolve_versions",
+
   // Shell-facing tools (structured widget emitters)
   "report_result",
   "analyze_plan_parameters",

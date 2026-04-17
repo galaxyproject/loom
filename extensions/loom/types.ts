@@ -305,6 +305,7 @@ export interface AnalysisStep {
   execution: {
     type: ExecutionType;
     toolId?: string;
+    toolVersion?: string;   // resolved from Galaxy job details after completion
     workflowId?: string;
     trsId?: string;         // IWC TRS ID if from IWC
     parameters?: Record<string, unknown>;

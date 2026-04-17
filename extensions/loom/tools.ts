@@ -53,6 +53,8 @@ import {
   setBRCAssembly,
   setBRCWorkflow,
   getBRCContext,
+  // Tool version resolution
+  resolveToolVersions,
 } from "./state";
 import type {
   StepStatus,
@@ -71,6 +73,7 @@ import { ensureGitRepo } from "./git";
 import {
   getGalaxyConfig,
   galaxyGet,
+  galaxyGetJobDetails,
   extractWorkflowStructure,
   type GalaxyWorkflowResponse,
   type GalaxyInvocationResponse,
@@ -301,6 +304,21 @@ in_progress when starting, completed when done, or failed if issues occur.`,
           params.status as StepStatus,
           result
         );
+
+        // Opportunistically resolve tool version for tool steps that just
+        // completed with a jobId. Best-effort; failures are non-fatal.
+        if (
+          params.status === 'completed' &&
+          params.jobId &&
+          step?.execution.type === 'tool' &&
+          step.execution.toolId
+        ) {
+          try {
+            await resolveToolVersions(galaxyGetJobDetails, { stepId: params.stepId });
+          } catch (err) {
+            console.warn('Tool version resolution failed (non-fatal):', err);
+          }
+        }
 
         // Sync to notebook
         await syncToNotebook('step_updated', {
@@ -2671,6 +2689,54 @@ analyses in Galaxy.`,
         return new Text("❌ GTN fetch failed");
       }
       return new Text(`📖 Fetched GTN tutorial (${d?.length || 0} chars)`);
+    },
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Tool version resolution
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  pi.registerTool({
+    name: "analysis_resolve_versions",
+    label: "Resolve tool versions",
+    description:
+      "Fetch tool versions from Galaxy for completed tool steps that have a jobId but " +
+      "no resolved version yet. Versions come from the actual job records, not agent " +
+      "memory, and land on AnalysisStep.execution.toolVersion -- which feeds the " +
+      "publication methods section.",
+    parameters: Type.Object({
+      stepId: Type.Optional(Type.String({
+        description: "Resolve a single step's version. Omit to resolve all eligible steps.",
+      })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      if (!getCurrentPlan()) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ success: false, error: "No active plan" }) }],
+          details: { updated: 0, error: "no_active_plan" },
+        };
+      }
+
+      try {
+        const updated = await resolveToolVersions(galaxyGetJobDetails, { stepId: params.stepId });
+        if (updated > 0) {
+          await syncToNotebook('frontmatter', { updated: new Date().toISOString() });
+        }
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ success: true, updated }) }],
+          details: { updated },
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ success: false, error: msg }) }],
+          details: { updated: 0, error: msg },
+        };
+      }
+    },
+    renderResult: (result) => {
+      const d = result.details as { updated?: number } | undefined;
+      return new Text(`🔖 Resolved versions for ${d?.updated ?? 0} step(s)`);
     },
   });
 

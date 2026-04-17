@@ -796,6 +796,55 @@ export function initPublication(targetJournal?: string): PublicationMaterials {
 }
 
 /**
+ * Fetcher signature for resolving tool versions from Galaxy. Pulled out of
+ * resolveToolVersions so tests can inject a mock without touching fetch().
+ */
+export type JobDetailsFetcher = (jobId: string) => Promise<{ tool_version?: string }>;
+
+/**
+ * Resolve tool versions for every completed step on the current plan that has
+ * a jobId but no toolVersion yet. Returns the number of steps whose version
+ * was updated. Failures to fetch are swallowed per-step so one bad jobId
+ * doesn't block the rest.
+ */
+export async function resolveToolVersions(
+  fetchJobDetails: JobDetailsFetcher,
+  opts: { stepId?: string } = {},
+): Promise<number> {
+  if (!state.currentPlan) {
+    throw new Error("No active plan");
+  }
+
+  let updated = 0;
+  const candidates = state.currentPlan.steps.filter((s) => {
+    if (opts.stepId && s.id !== opts.stepId) return false;
+    if (!s.result?.jobId) return false;
+    if (!s.execution.toolId) return false;
+    if (s.execution.toolVersion) return false;
+    return true;
+  });
+
+  for (const step of candidates) {
+    try {
+      const details = await fetchJobDetails(step.result!.jobId!);
+      if (details.tool_version) {
+        step.execution.toolVersion = details.tool_version;
+        updated += 1;
+      }
+    } catch (err) {
+      console.warn(`resolveToolVersions: failed for step ${step.id}:`, err);
+    }
+  }
+
+  if (updated > 0) {
+    state.currentPlan.updated = new Date().toISOString();
+    notifyPlanChange();
+  }
+
+  return updated;
+}
+
+/**
  * Generate methods section from plan execution
  */
 export function generateMethods(): MethodsSection {
@@ -805,13 +854,15 @@ export function generateMethods(): MethodsSection {
 
   const now = new Date().toISOString();
 
-  // Extract tool versions from completed steps
+  // Extract tool versions from completed steps. Unresolved versions appear
+  // as 'unresolved' so the methods section makes the gap visible rather than
+  // silently claiming a placeholder string is a real version.
   const toolVersions: ToolVersionInfo[] = state.currentPlan.steps
     .filter(s => s.status === 'completed' && s.execution.toolId)
     .map(s => ({
       toolId: s.execution.toolId!,
       toolName: s.name,
-      version: 'version_to_be_fetched', // Will be updated by tool call
+      version: s.execution.toolVersion || 'unresolved',
       stepId: s.id,
       parameters: s.execution.parameters,
     }));
