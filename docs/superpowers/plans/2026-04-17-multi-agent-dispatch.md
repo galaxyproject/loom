@@ -4,13 +4,15 @@
 
 **Goal:** Implement the brain-level `team_dispatch` tool that lets the main Loom agent run a scoped Finder ↔ Validator critic loop in-process and return a structured result.
 
-**Architecture:** All changes are inside `extensions/loom/` (plus one rendering hook in `app/src/renderer/chat/`). A new subdirectory `extensions/loom/teams/` contains types, tool-scoping, critic-response parsing, the dispatcher engine, and the tool registration. The dispatcher spawns sibling Pi.dev `Agent` instances per role, drives the critic loop, and streams per-turn updates through the existing `onUpdate` tool-card channel.
+**Architecture:** All changes are inside `extensions/loom/` (plus one rendering hook in `app/src/renderer/chat/`). A new subdirectory `extensions/loom/teams/` contains types, critic-response parsing, the dispatcher engine, and the tool registration. Each role turn is a **single `streamSimple` LLM call** from `pi-ai` — no nested Agents, no tools per role (pivoted after Pi's extension API turned out to not expose execute-capable tools; see spec §12). Per-turn updates stream through the existing `onUpdate` tool-card channel.
 
 **Tech Stack:** TypeScript, `@mariozechner/pi-agent-core` (Pi.dev Agent / agentLoop), `@mariozechner/pi-coding-agent` (ExtensionAPI / ToolDefinition), `@sinclair/typebox` for tool parameters, `vitest` for tests.
 
 **Branch:** `feat/multi-agent-teams` (this plan is committed on it).
 
 **Spec reference:** `docs/superpowers/specs/2026-04-17-multi-agent-dispatch-design.md`
+
+> **Pivot note (applied 2026-04-18):** Tasks 2 and 3 (readonly-registry + tool-filter) were implemented and subsequently **reverted** after Task 7 hit a Pi.dev extension-API wall (no access to execute-capable tools from inside an extension tool handler). MVP now runs each role as a single `streamSimple` LLM call — no nested Agents, no tools per role. See spec §12 for the path back to tool-enabled roles. The sections below reflect the post-pivot plan: Tasks 2 and 3 are deleted, Task 7 is rewritten.
 
 ---
 
@@ -19,23 +21,20 @@
 **New files:**
 
 - `extensions/loom/teams/types.ts` — `TeamSpec`, `RoleSpec`, `TeamResult`, `TeamTurn`, `DispatchDeps`, `RoleTurnResult`.
-- `extensions/loom/teams/readonly-registry.ts` — curated set of Loom tool names that are read-only, plus Pi built-ins classification.
-- `extensions/loom/teams/tool-filter.ts` — `filterToolsForRole(role, registry, readonlyNames)`.
 - `extensions/loom/teams/validate.ts` — `validateTeamSpec(spec)`.
 - `extensions/loom/teams/critic-parser.ts` — `parseCriticResponse(text)`.
 - `extensions/loom/teams/dispatcher.ts` — `runTeamDispatch(spec, deps, signal, onUpdate)`.
-- `extensions/loom/teams/tool.ts` — registers the `team_dispatch` Pi tool.
-- `tests/team-readonly-registry.test.ts` — verifies every curated name exists in the real tool registry.
-- `tests/team-tool-filter.test.ts`
+- `extensions/loom/teams/tool.ts` — registers the `team_dispatch` Pi tool; binds `runRoleTurn` to a `streamSimple` LLM call.
 - `tests/team-validate.test.ts`
 - `tests/team-critic-parser.test.ts`
-- `tests/team-dispatcher.test.ts` — uses a fake runner that doesn't touch Pi.
+- `tests/team-dispatcher.test.ts` — uses a fake runner that doesn't touch pi-ai.
 
 **Modified files:**
 
 - `extensions/loom/index.ts` — import and invoke `registerTeamTools(pi)` alongside existing registrations.
 - `extensions/loom/context.ts` — append system-prompt guidance describing when and how to call `team_dispatch`.
 - `app/src/renderer/chat/chat-panel.ts` — special-case `details.kind === "team_dispatch"` to render collapsible per-turn list.
+- `tests/extension-integration.test.ts` — add `"team_dispatch"` to the expected-tools list.
 
 ---
 
@@ -123,7 +122,7 @@ git commit -m "teams: add public types for team dispatch"
 
 ---
 
-### Task 2: Curated read-only registry
+### ~~Task 2: Curated read-only registry~~ [DELETED — see pivot note]
 
 **Files:**
 - Create: `extensions/loom/teams/readonly-registry.ts`
@@ -230,7 +229,7 @@ git commit -m "teams: curated readonly-tool registry"
 
 ---
 
-### Task 3: Tool-scoping filter
+### ~~Task 3: Tool-scoping filter~~ [DELETED — see pivot note]
 
 **Files:**
 - Create: `extensions/loom/teams/tool-filter.ts`
@@ -1025,20 +1024,26 @@ git commit -m "teams: dispatcher critic loop with stub-injected runner"
 
 ---
 
-### Task 7: Pi runner binding and `team_dispatch` tool
+### Task 7: `streamSimple` binding and `team_dispatch` tool
 
 **Files:**
 - Create: `extensions/loom/teams/tool.ts`
 - Modify: `extensions/loom/index.ts` (add one import + one call)
+- Modify: `tests/extension-integration.test.ts` (add `"team_dispatch"` to `EXPECTED_TOOLS`)
 
-This task binds `runRoleTurn` to Pi.dev's real Agent runtime and exposes `team_dispatch` as a registered tool. Because the Pi Agent API shape is runtime-verified, the implementer must consult the current type definitions at:
+This task binds `runRoleTurn` to a raw LLM call via `pi-ai`'s `streamSimple`, and exposes `team_dispatch` as a registered tool. No nested `Agent`, no tool registry, no `AgentLoopConfig`. Each role turn is a single provider call.
 
-- `node_modules/@mariozechner/pi-agent-core/dist/agent.d.ts` (Agent constructor, state, subscribe)
-- `node_modules/@mariozechner/pi-agent-core/dist/agent-loop.d.ts` (`runAgentLoop` signature)
-- `node_modules/@mariozechner/pi-agent-core/dist/types.d.ts` (AgentContext, AgentMessage)
-- `node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts:299` (ExtensionContext, AgentToolUpdateCallback)
+API surfaces to consult (read the `.d.ts` files before writing code):
 
-The abstraction boundary is `runRoleTurn` — its signature is fixed by `DispatchDeps` in `types.ts`. Only this function touches Pi internals; the rest of the feature is already tested.
+- `node_modules/@mariozechner/pi-ai/dist/...` — `streamSimple(options)`: returns an async iterator of events or final text; resolves model + API key internally when passed a `Model<Api>`.
+- `node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts` — `ExtensionContext`, `ExtensionAPI`, `AgentToolUpdateCallback`, `ToolDefinition`.
+- `ctx.modelRegistry` — `find(provider, modelId)` and `getAll()` for resolving a model from `role.model` / `spec.model`.
+- `ctx.model` — the current session model; used as default when `role.model` / `spec.model` are omitted.
+- `getApiKeyAndHeaders(model)` — resolves API key + headers from a `Model<Api>`.
+
+**Model-string convention for MVP:** if `role.model` / `spec.model` is a bare string, interpret it as `"provider:modelId"` (e.g. `"anthropic:claude-sonnet-4-20250514"`). If no colon, treat as a Claude model ID under provider `"anthropic"`. If unset entirely, fall back to `ctx.model`.
+
+The abstraction boundary is `runRoleTurn` — its signature is fixed by `DispatchDeps` in `types.ts`. Only this function touches `pi-ai` internals; the rest of the feature is already tested.
 
 - [ ] **Step 1: Write the tool registration scaffold**
 
@@ -1258,7 +1263,7 @@ Expected: both pass.
 
 ```bash
 git add extensions/loom/teams/tool.ts extensions/loom/index.ts
-git commit -m "teams: register team_dispatch tool bound to Pi Agent"
+git commit -m "teams: register team_dispatch tool bound to streamSimple"
 ```
 
 ---
@@ -1398,51 +1403,18 @@ git commit -m "orbit: collapsible team_dispatch card in chat panel"
 
 ---
 
-### Task 10: Readonly-registry live-verification test and manual smoke
+### Task 10: Manual smoke test
 
-**Files:**
-- Modify: `tests/team-readonly-registry.test.ts` — add a live-registry assertion.
+**Files:** none.
 
-- [ ] **Step 1: Add the live-registry test**
+(The live-registry verification step originally planned here is obsolete after the pivot — no read-only registry exists. This task is now a manual Orbit smoke only.)
 
-Append to `tests/team-readonly-registry.test.ts`:
-
-```typescript
-import galaxyAnalystExtension from "../extensions/loom";
-
-describe("readonly-registry live coverage", () => {
-  it("every curated Loom name is registered by the extension", () => {
-    const seenNames = new Set<string>();
-    const fakePi: any = {
-      on: () => {},
-      registerTool: (def: any) => seenNames.add(def.name),
-      registerCommand: () => {},
-      listResources: () => [],
-      // Pi surface methods that might be called during init:
-      addResource: () => {},
-    };
-    galaxyAnalystExtension(fakePi);
-
-    for (const name of READONLY_LOOM_TOOLS) {
-      expect(seenNames, `${name} in registry`).toContain(name);
-    }
-  });
-});
-```
-
-If the test fails, the curated list has drifted. Either remove the missing entry from `READONLY_LOOM_TOOLS` or add the missing tool upstream. Do NOT add fakes to make the test pass.
-
-- [ ] **Step 2: Run the test**
-
-Run: `npx vitest run tests/team-readonly-registry.test.ts`
-Expected: PASS. If it fails, the curated list names a tool that doesn't exist — fix `READONLY_LOOM_TOOLS` in `extensions/loom/teams/readonly-registry.ts`, not the test.
-
-- [ ] **Step 3: Full test suite**
+- [ ] **Step 1: Full test suite**
 
 Run: `npm test`
 Expected: all pass.
 
-- [ ] **Step 4: Manual smoke test (Orbit)**
+- [ ] **Step 2: Manual smoke test (Orbit)**
 
 Restart Orbit:
 
@@ -1462,12 +1434,7 @@ In the Orbit window:
 
 If step 2's response does not use `team_dispatch`, check the system-prompt guidance in `extensions/loom/context.ts` and verify the model sees it.
 
-- [ ] **Step 5: Commit**
-
-```bash
-git add tests/team-readonly-registry.test.ts
-git commit -m "teams: live-registry verification for curated readonly list"
-```
+(No commit needed — smoke-only.)
 
 ---
 

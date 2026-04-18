@@ -23,8 +23,8 @@ This is not a general "agent framework" — it's a narrowly scoped extension tha
 | Q3 | Generality | **Generic mechanism** — roles, prompts, tools inferred from NL request; literature review is one use case |
 | Q4 | Notebook integration | **Main agent writes** — team returns structured result; main agent persists via existing tools |
 | Q5 | Pre-dispatch approval | **Conditional** — main agent auto-dispatches when the NL request is specific; asks user when vague |
-| Q6 | Tools available to team | **Filtered subset of Loom's existing tools** (plus Pi built-ins where granted); no new MCP infrastructure |
-| Q7 | Team authority | **Mixed / opt-in** — advisory by default; main agent can explicitly grant mutation tools per role |
+| Q6 | Tools available to team | **None in MVP** (pivoted from "filtered subset"); see §12 — Pi.dev's extension API does not expose execute-capable tools to extensions, so roles are pure-reasoning. Main agent pre-gathers inputs into `TeamSpec.description` before dispatch. |
+| Q7 | Team authority | **Advisory only** (pivoted from "mixed/opt-in"); roles have no tools, therefore no mutations possible. Single-writer preserved by construction. |
 | Q8 | Termination | **Validator approval OR `max_rounds`** (default 5); best-so-far returned if cap hit |
 | Q9 | Transcript persistence | **Ephemeral** — in-memory during dispatch, returned in the tool result, not persisted to disk |
 
@@ -63,8 +63,6 @@ interface TeamSpec {
 interface RoleSpec {
   name: string;             // e.g., "Finder", "Validator"; shown in UI
   system_prompt: string;    // role-specific instructions
-  tools_read: string[];     // Loom tool names this role may read-invoke
-  tools_write?: string[];   // explicit mutation grants (Q7); default []
   model?: string;           // per-role override; falls back to TeamSpec.model
 }
 ```
@@ -89,20 +87,17 @@ interface TeamTurn {
   round: number;
   role: string;             // RoleSpec.name
   content: string;
-  tool_calls?: { name: string; args: unknown; result: unknown }[];
   approved?: boolean;       // only on critic turns
 }
 ```
 
-### 4.3 Validation (fail-fast before any Agent spawns)
+### 4.3 Validation (fail-fast before any LLM call)
 
 - `roles.length === 2` (MVP). `> 2` is rejected.
 - `role.name` non-empty and unique across roles.
-- Every name in `tools_read` exists in the registry and is `readonly: true`.
-- Every name in `tools_write` exists in the registry (no readonly constraint).
 - `max_rounds` in `[1, 20]`.
 
-Validation failures return a tool-call error naming the offending field. No Agent is instantiated.
+Validation failures return a tool-call error naming the offending field. No LLM call is made.
 
 ## 5. Critic-loop runtime
 
@@ -128,16 +123,17 @@ while round <= max_rounds:
 return {converged: false, rounds: max_rounds, final_output: current_proposal, ...}
 ```
 
-### 5.1 `runAgent(role, user_message)`
+### 5.1 `runAgent(role, user_message)` — direct LLM call
 
-Instantiates a fresh Pi.dev `Agent` with:
+Makes one raw LLM call via `pi-ai`'s `streamSimple` (not an `Agent` — no tool loop):
 
-- System prompt: role.system_prompt prepended with a universal preamble. The preamble states the team context ("You are one role in a two-agent team collaborating on: ...") and, for the critic role, requires the response to end with a JSON line of shape `{"approved": bool, "critique": string}`.
-- Tool list: output of `filterToolsForRole(role, registry)`.
+- System prompt: `role.system_prompt` prepended with a universal preamble. The preamble states the team context ("You are one role in a two-agent team collaborating on: ...") and, for the critic role, requires the response to end with a JSON line of shape `{"approved": bool, "critique": string}`.
+- Model resolution: `role.model ?? spec.model ?? ctx.model`; resolved via `ctx.modelRegistry`.
+- API key / headers: `getApiKeyAndHeaders(model)` from the resolved model.
 - `AbortSignal`: chained from the dispatch tool's signal so a user-triggered abort cascades.
 - One user message containing `user_message`.
 
-Returns the Agent's final assistant message text plus any tool calls it made during the turn. These are captured into the `TeamTurn` record.
+Returns the LLM's assistant text and usage. No tool calls — roles cannot invoke tools.
 
 ### 5.2 `parse_critic_response(text)`
 
@@ -145,38 +141,13 @@ Scans `text` for the last well-formed JSON object matching `{approved: bool, cri
 
 ### 5.3 Concurrency model
 
-The critic loop is strictly sequential (critic depends on proposer's output; next proposer depends on critic's critique). No parallelism required; running in a single process is sufficient. Tool calls within a turn are handled by Pi.dev as usual.
+The critic loop is strictly sequential (critic depends on proposer's output; next proposer depends on critic's critique). Each turn is a single `streamSimple` call; no tools, no inner agent loop.
 
-## 6. Tool scoping
+## 6. Tool scoping — removed in MVP (see §12)
 
-### 6.1 Registry annotation
+Roles make zero tool calls. The team operates on a fixed input encoded in `TeamSpec.description`; any tool work that needs to happen (web search, notebook reads, data gathering) is performed by the main agent *before* the dispatch call and included in the description as context.
 
-Every Loom tool definition gains a `readonly: boolean` metadata field. A tool is `readonly: true` iff it does not mutate plan / notebook / findings / checkpoints / decisions. External side effects (Galaxy API calls, git reads, HTTP fetches) do not count against read-only.
-
-Pi.dev built-ins are classified:
-
-| Built-in | Classification |
-|---|---|
-| `read_file`, `grep`, `list_files` | read-only |
-| `edit_file`, `write_file`, `bash` | write |
-
-Classification is enforced by the TypeScript type system: the tool registration helper requires the `readonly` field. New tools cannot be registered without declaring it.
-
-### 6.2 `filterToolsForRole(role, registry)`
-
-```
-filtered = []
-for name in role.tools_read:
-  if name not in registry: reject("unknown tool")
-  if not registry[name].readonly: reject("tool is not read-only")
-  filtered.push(registry[name])
-for name in role.tools_write ?? []:
-  if name not in registry: reject("unknown tool")
-  filtered.push(registry[name])
-return deduplicate(filtered)
-```
-
-Tools missing from both lists are not available to the role. This includes Pi.dev built-ins — the main agent must opt into each tool explicitly. This makes dispatch specs fully auditable.
+This is a deliberate MVP simplification driven by Pi.dev's current extension surface (see §12 — Future work).
 
 ## 7. UI integration
 
@@ -250,7 +221,6 @@ Test placement follows repo convention: unit + stub-integration in `tests/`, run
 - Parallel reducers (Q1c). Different coordination pattern; would need a different dispatcher mode.
 - Transcript persistence to disk (Q9b). The `TeamResult` already carries the transcript; a later feature could hook a persister.
 - Per-role model optimization (e.g., cheaper model for Finder, stronger for Validator). `RoleSpec.model` is already in the schema.
-- MCP server lifecycle per team (Q6c). Tools come from the existing registry; no per-team MCP startup in MVP.
 - Subprocess isolation (approach C). Future option if cross-process state contention or true parallelism matters.
 
 ## 11. Implementation plan artifacts
@@ -258,3 +228,24 @@ Test placement follows repo convention: unit + stub-integration in `tests/`, run
 This spec hands off to `superpowers:writing-plans`, which will produce a step-by-step implementation plan mapping each section here to concrete file edits and tests.
 
 The implementation branch is `feat/multi-agent-teams` (on which this spec is committed).
+
+## 12. Future work — re-enable tools once Pi.dev exposes the registry
+
+During implementation it became clear that Pi.dev's extension API does not expose execute-capable tools to extension tool handlers. `pi.getAllTools()` returns `ToolInfo` (name/description/params only — no `execute`); Pi built-ins (`bash`, `read_file`, `grep`, `list_files`, `glob`) are registered outside the extension API and cannot be mirrored from inside one.
+
+Without that accessor, a nested `Agent` spawned from a tool handler has no usable tool set, so the MVP pivots to pure-reasoning roles (pivot documented in §2 Q6/Q7).
+
+Re-enabling tools is straightforward once one of the following exists:
+
+1. `ExtensionContext.getRegisteredTool(name)` / `.getAllRegisteredTools()` returning `AgentTool<any>` (executable), or
+2. A published helper like `createAgentForSubTask(ctx, { tools, systemPrompt, model? }): Agent` that handles the wiring internally, or
+3. A documented model-spec format for `spec.model` so the dispatcher can resolve provider/model without guessing.
+
+The parts of the design that need to come back with tools are:
+- `RoleSpec.tools_read` / `.tools_write` fields (kept out of MVP).
+- A `readonly` metadata field on every Loom tool (or a curated side-list like the one we briefly had).
+- A `filterToolsForRole` helper that enforces the read-only constraint at dispatch time.
+- `TeamTurn.tool_calls` to record tool invocations in the transcript.
+- A Pi-Agent-based `runRoleTurn` (replaces the MVP's `streamSimple` call).
+
+The dispatcher, validator, critic-parser, and UI integration all stay as-is.
