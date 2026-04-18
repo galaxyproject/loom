@@ -75,10 +75,14 @@ export function registerTeamTools(pi: ExtensionAPI): void {
             { signal: runSignal },
           );
           const content = extractText(msg);
+          // Count cache tokens too so the budget ceiling is honest on
+          // providers that charge for cache reads/writes (Anthropic).
+          const cacheRead = msg.usage.cacheRead ?? 0;
+          const cacheWrite = msg.usage.cacheWrite ?? 0;
           return {
             content,
             usage: {
-              input_tokens: msg.usage.input,
+              input_tokens: msg.usage.input + cacheRead + cacheWrite,
               output_tokens: msg.usage.output,
             },
           };
@@ -145,7 +149,13 @@ function resolveModel(ctx: ExtensionContext, modelSpec: string | undefined): Mod
     const provider = colon >= 0 ? modelSpec.slice(0, colon) : "anthropic";
     const modelId = colon >= 0 ? modelSpec.slice(colon + 1) : modelSpec;
     const found = ctx.modelRegistry.find(provider, modelId);
-    if (found) return found;
+    if (!found) {
+      throw new Error(
+        `Unknown model "${modelSpec}" (provider="${provider}", modelId="${modelId}"). ` +
+        `Check ctx.modelRegistry, or omit the model field to use the session default.`,
+      );
+    }
+    return found;
   }
   return ctx.model;
 }
