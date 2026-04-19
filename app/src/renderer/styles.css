@@ -42,6 +42,7 @@
 
   --border: rgba(255, 255, 255, 0.08);
   --border-strong: rgba(255, 255, 255, 0.15);
+  --bg-stripe: rgba(255, 255, 255, 0.02);
   --radius: 6px;
   --font: "JetBrains Mono", Monaco, Menlo, Consolas, "Courier New", monospace;
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -399,6 +400,95 @@ body:not(.artifact-collapsed) #artifact-toggle {
 .message.assistant pre code {
   background: transparent;
   padding: 0;
+}
+
+.message.assistant:not(.system-info) h1,
+.message.assistant:not(.system-info) h2,
+.message.assistant:not(.system-info) h3,
+.message.assistant:not(.system-info) h4 {
+  margin: 14px 0 6px;
+  color: var(--text-bright);
+  font-weight: 600;
+  line-height: 1.3;
+}
+.message.assistant:not(.system-info) h1 { font-size: 18px; }
+.message.assistant:not(.system-info) h2 { font-size: 16px; }
+.message.assistant:not(.system-info) h3 { font-size: 14px; }
+.message.assistant:not(.system-info) h4 { font-size: 13px; color: var(--text); }
+
+.message.assistant:not(.system-info) ul,
+.message.assistant:not(.system-info) ol {
+  margin: 6px 0 10px;
+  padding-left: 22px;
+}
+
+.message.assistant:not(.system-info) li {
+  margin: 3px 0;
+  padding-left: 2px;
+}
+
+.message.assistant:not(.system-info) li > p {
+  margin: 0;
+}
+
+.message.assistant:not(.system-info) strong {
+  color: var(--text-bright);
+}
+
+.message.assistant:not(.system-info) blockquote {
+  margin: 8px 0;
+  padding: 4px 12px;
+  border-left: 3px solid var(--border);
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.message.assistant:not(.system-info) hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 14px 0;
+}
+
+.message.assistant:not(.system-info) table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-family: var(--font);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  display: block;
+  overflow-x: auto;
+}
+
+.message.assistant:not(.system-info) table th,
+.message.assistant:not(.system-info) table td {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.message.assistant:not(.system-info) table th {
+  background: var(--bg-deep);
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.message.assistant:not(.system-info) table tbody tr:nth-child(even) td {
+  background: var(--bg-stripe);
+}
+
+.message.assistant:not(.system-info) table tbody tr:hover td {
+  background: var(--bg-hover);
+}
+
+.message.assistant:not(.system-info) table code {
+  font-size: 11.5px;
+  padding: 0 3px;
 }
 
 .message.system-info {
