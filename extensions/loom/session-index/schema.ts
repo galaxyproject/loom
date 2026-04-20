@@ -2,7 +2,7 @@
  * by dropping the existing DB and rebuilding from scratch -- the source of
  * truth is the Pi JSONLs, so this is cheap and safe.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const SCHEMA_SQL = `
 CREATE TABLE sessions (
@@ -43,7 +43,6 @@ CREATE INDEX tool_calls_name ON tool_calls(tool_name);
 
 CREATE VIRTUAL TABLE entries_fts USING fts5(
   text_content,
-  tool_calls_text,
   content='entries',
   content_rowid='rowid',
   tokenize='porter unicode61'
@@ -51,18 +50,18 @@ CREATE VIRTUAL TABLE entries_fts USING fts5(
 
 -- Keep FTS in sync with entries
 CREATE TRIGGER entries_ai AFTER INSERT ON entries BEGIN
-  INSERT INTO entries_fts(rowid, text_content, tool_calls_text)
-  VALUES (new.rowid, coalesce(new.text_content, ''), '');
+  INSERT INTO entries_fts(rowid, text_content)
+  VALUES (new.rowid, coalesce(new.text_content, ''));
 END;
 CREATE TRIGGER entries_ad AFTER DELETE ON entries BEGIN
-  INSERT INTO entries_fts(entries_fts, rowid, text_content, tool_calls_text)
-  VALUES ('delete', old.rowid, coalesce(old.text_content, ''), '');
+  INSERT INTO entries_fts(entries_fts, rowid, text_content)
+  VALUES ('delete', old.rowid, coalesce(old.text_content, ''));
 END;
 CREATE TRIGGER entries_au AFTER UPDATE ON entries BEGIN
-  INSERT INTO entries_fts(entries_fts, rowid, text_content, tool_calls_text)
-  VALUES ('delete', old.rowid, coalesce(old.text_content, ''), '');
-  INSERT INTO entries_fts(rowid, text_content, tool_calls_text)
-  VALUES (new.rowid, coalesce(new.text_content, ''), '');
+  INSERT INTO entries_fts(entries_fts, rowid, text_content)
+  VALUES ('delete', old.rowid, coalesce(old.text_content, ''));
+  INSERT INTO entries_fts(rowid, text_content)
+  VALUES (new.rowid, coalesce(new.text_content, ''));
 END;
 
 CREATE TABLE meta (
