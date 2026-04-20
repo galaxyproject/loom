@@ -11,34 +11,10 @@
 </head>
 <body>
   <div id="app">
+    <div id="app-main">
     <!-- Left pane: Chat -->
     <div id="chat-pane" class="pane">
-      <div id="chat-header">
-        <img src="./assets/galaxy-logo.svg" alt="Galaxy" class="masthead-logo" />
-        <span class="logo">orbit</span>
-        <span id="agent-status" class="status-badge">connecting...</span>
-        <button id="model-indicator" title="Click to change model" class="hidden">
-          <span id="model-indicator-name">—</span>
-        </button>
-        <div id="exec-mode-toggle" class="seg-control" title="Execution mode">
-          <button data-mode="local" class="active">Local</button>
-          <button data-mode="remote">Remote</button>
-        </div>
-        <div id="usage-bar" title="Session token usage">
-          <span id="usage-tokens">0 tok</span>
-          <span id="usage-cost"></span>
-        </div>
-        <div id="cwd-bar">
-          <span id="cwd-path" title="Analysis directory">~</span>
-          <button id="cwd-change" title="Change directory">change</button>
-        </div>
-        <button id="artifact-toggle" title="Toggle artifact pane (Ctrl+\)">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="18" height="18" rx="2"/>
-            <line x1="15" y1="3" x2="15" y2="21"/>
-          </svg>
-        </button>
-      </div>
+      <div class="pane-title" id="chat-title">Chat</div>
       <div id="messages"></div>
 
       <!-- Process monitor — collapsible strip showing live stats for local subprocesses -->
@@ -102,49 +78,44 @@
     <!-- Draggable divider -->
     <div id="divider"></div>
 
-    <!-- Right pane: Artifacts -->
+    <!-- Right pane: Notebook -->
     <div id="artifact-pane" class="pane">
-      <div id="artifact-tabs">
-        <button class="tab active" data-tab="plan">Plan</button>
-        <button class="tab" data-tab="steps">Steps</button>
-        <button class="tab" data-tab="results">Notebook</button>
-      </div>
+      <div class="pane-title">Notebook</div>
       <div id="artifact-content">
-        <div id="tab-plan" class="tab-panel active">
-          <div class="empty-state">No analysis plan yet. To create a plan begin your conversation with 'Create a plan for analysis of ...'. For examples, use '/help'.</div>
-          <div id="plan-toolbar" class="plan-toolbar hidden">
-            <div class="plan-mode-toggle">
-              <button class="mode-btn active" data-mode="rendered">Rendered</button>
-              <button class="mode-btn" data-mode="raw">Raw</button>
-            </div>
-          </div>
-          <div id="plan-rendered" class="plan-rendered hidden"></div>
-          <textarea id="plan-raw" class="plan-editor hidden" spellcheck="false"></textarea>
-          <div id="plan-actions" class="plan-actions hidden">
-            <div class="plan-hint">
-              Use slash commands: <code>/review</code>, <code>/test</code>, <code>/execute</code>
-            </div>
-          </div>
-
-          <!-- Parameter configuration form (replaces plan view when active) -->
-          <div id="plan-params-view" class="plan-params-view hidden">
-            <div class="plan-params-back-row">
-              <button id="params-back-btn" class="plan-params-back" title="Discard changes">&larr; Back to plan</button>
-              <button id="params-save-btn" class="plan-btn primary" title="Save parameters and return to plan">Save parameters</button>
-            </div>
-            <div id="plan-params-form" class="param-form"></div>
-          </div>
-        </div>
-        <div id="tab-steps" class="tab-panel">
-          <div class="empty-state">Pipeline steps will appear here once a plan is created.</div>
-        </div>
-        <div id="tab-results" class="tab-panel">
+        <div id="notebook-view">
           <div class="empty-state">
             <p>The notebook is the running log of your analysis — plan, steps, decisions, and Galaxy references — persisted to a markdown file in your working directory and committed to git on every change.</p>
             <p>It'll appear here once you start a plan. Type <code>/notebook</code> anytime to refresh.</p>
           </div>
         </div>
       </div>
+    </div>
+    </div>
+
+    <!-- Footer bar — status, model, cwd, toggles -->
+    <div id="app-footer">
+      <span id="agent-status" class="status-badge">connecting...</span>
+      <button id="model-indicator" title="Click to change model" class="hidden">
+        <span id="model-indicator-name">—</span>
+      </button>
+      <div id="exec-mode-toggle" class="seg-control" title="Execution mode">
+        <button data-mode="local" class="active">Local</button>
+        <button data-mode="remote">Remote</button>
+      </div>
+      <div id="usage-bar" title="Session token usage">
+        <span id="usage-tokens">0 tok</span>
+        <span id="usage-cost"></span>
+      </div>
+      <div id="cwd-bar">
+        <span id="cwd-path" title="Analysis directory">~</span>
+        <button id="cwd-change" title="Change directory">change</button>
+      </div>
+      <button id="artifact-toggle" title="Toggle notebook pane (Ctrl+\)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <line x1="15" y1="3" x2="15" y2="21"/>
+        </svg>
+      </button>
     </div>
   </div>
 
@@ -185,6 +156,10 @@
           <div class="prefs-row">
             <label for="prefs-api-key">API Key</label>
             <input id="prefs-api-key" type="password" placeholder="sk-..." />
+          </div>
+          <div class="prefs-row prefs-hint">
+            <span></span>
+            <span id="prefs-api-key-status" class="api-key-status"></span>
           </div>
         </section>
 
@@ -262,6 +237,10 @@
           <div class="prefs-row">
             <label for="welcome-api-key">API Key</label>
             <input id="welcome-api-key" type="password" placeholder="sk-..." />
+          </div>
+          <div class="prefs-row prefs-hint">
+            <span></span>
+            <span id="welcome-api-key-status" class="api-key-status"></span>
           </div>
         </section>
 

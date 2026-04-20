@@ -59,6 +59,10 @@ export class ChatPanel {
     return this.currentMessage !== null;
   }
 
+  hasContent(): boolean {
+    return this.container.children.length > 0;
+  }
+
   startAssistantMessage(): void {
     this.currentText = "";
     const el = document.createElement("div");

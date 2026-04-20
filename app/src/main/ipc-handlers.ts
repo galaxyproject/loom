@@ -99,6 +99,13 @@ export function registerIpcHandlers(agent: AgentManager): void {
     return loadConfig();
   });
 
+  ipcMain.handle(
+    "apiKey:validate",
+    async (_e, provider: string, key: string): Promise<{ valid: boolean; error?: string }> => {
+      return validateApiKey(provider, key);
+    },
+  );
+
   ipcMain.handle("config:save", async (_e, config: LoomConfig) => {
     try {
       saveConfig(config);
@@ -132,4 +139,70 @@ export function registerIpcHandlers(agent: AgentManager): void {
     if (err) return { opened: false, error: err };
     return { opened: true };
   });
+}
+
+/**
+ * Live API key validation. Makes a minimal request against the provider's
+ * auth-gated endpoint and maps the response to a pass/fail result.
+ *
+ * We trade speed for correctness: format checks alone can't distinguish a
+ * revoked key from a valid one, so for providers whose format collisions
+ * matter (anthropic, openai) we actually hit the network. 5s timeout.
+ */
+async function validateApiKey(
+  provider: string,
+  key: string,
+): Promise<{ valid: boolean; error?: string }> {
+  const trimmed = key.trim();
+  if (!trimmed) return { valid: false, error: "Key is empty" };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    if (provider === "anthropic") {
+      if (!trimmed.startsWith("sk-ant-")) {
+        return { valid: false, error: "Anthropic keys start with sk-ant-" };
+      }
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": trimmed,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5",
+          max_tokens: 1,
+          messages: [{ role: "user", content: "hi" }],
+        }),
+        signal: controller.signal,
+      });
+      if (res.status === 401) return { valid: false, error: "Invalid API key (401)" };
+      if (res.ok || res.status === 400) return { valid: true };
+      return { valid: false, error: `Unexpected response: HTTP ${res.status}` };
+    }
+    if (provider === "openai") {
+      if (!trimmed.startsWith("sk-")) {
+        return { valid: false, error: "OpenAI keys start with sk-" };
+      }
+      const res = await fetch("https://api.openai.com/v1/models", {
+        headers: { authorization: `Bearer ${trimmed}` },
+        signal: controller.signal,
+      });
+      if (res.status === 401) return { valid: false, error: "Invalid API key (401)" };
+      if (res.ok) return { valid: true };
+      return { valid: false, error: `Unexpected response: HTTP ${res.status}` };
+    }
+    // For providers we don't live-check, just sanity-check length so at least
+    // paste-of-garbage (e.g. terminal output) gets caught.
+    if (trimmed.length < 16 || trimmed.length > 400 || /\s/.test(trimmed)) {
+      return { valid: false, error: "Key looks malformed" };
+    }
+    return { valid: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("abort")) return { valid: false, error: "Validation timed out" };
+    return { valid: false, error: `Network error: ${msg}` };
+  } finally {
+    clearTimeout(timer);
+  }
 }

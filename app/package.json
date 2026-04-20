@@ -1,9 +1,11 @@
 {
   "name": "orbit",
+  "productName": "Orbit",
   "version": "0.1.0",
   "description": "Electron desktop shell for the Loom agent runtime (Galaxy bioinformatics)",
   "main": ".vite/build/main.js",
   "scripts": {
+    "prestart": "./scripts/rename-electron-dev.sh",
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make"

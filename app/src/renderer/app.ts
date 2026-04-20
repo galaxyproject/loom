@@ -1,14 +1,9 @@
 import { ChatPanel } from "./chat/chat-panel.js";
 import { ShellPanel } from "./chat/shell-panel.js";
 import { ArtifactPanel } from "./artifacts/artifact-panel.js";
-import { StepGraph } from "./artifacts/step-graph-react.js";
 import {
   LoomWidgetKey,
-  decodeJsonWidget,
   decodeMarkdownWidget,
-  type ResultBlock,
-  type ParameterFormPayload,
-  type ShellStep,
 } from "../../../shared/loom-shell-contract.js";
 
 declare global {
@@ -34,7 +29,6 @@ const modelIndicatorNameEl = document.getElementById("model-indicator-name")!;
 
 const chat = new ChatPanel(messagesEl);
 const artifacts = new ArtifactPanel();
-const stepGraph = new StepGraph(document.getElementById("tab-steps")!);
 const shell = new ShellPanel(document.getElementById("agent-shell-body")!);
 
 let streaming = false;
@@ -242,12 +236,51 @@ const welcomeOverlay = document.getElementById("welcome-overlay")!;
 const welcomeProvider = document.getElementById("welcome-provider") as HTMLSelectElement;
 const welcomeModel = document.getElementById("welcome-model") as HTMLSelectElement;
 const welcomeApiKey = document.getElementById("welcome-api-key") as HTMLInputElement;
+const welcomeApiKeyStatus = document.getElementById("welcome-api-key-status")!;
 const welcomeGalaxyUrl = document.getElementById("welcome-galaxy-url") as HTMLInputElement;
 const welcomeGalaxyKey = document.getElementById("welcome-galaxy-key") as HTMLInputElement;
 const welcomeCwd = document.getElementById("welcome-cwd") as HTMLInputElement;
 const welcomeBrowseCwd = document.getElementById("welcome-browse-cwd")!;
 const welcomeSave = document.getElementById("welcome-save")!;
 const welcomeError = document.getElementById("welcome-error")!;
+
+// Wire a provider-dropdown / API-key-input / status-label triple to do
+// debounced live validation (see main/ipc-handlers.ts validateApiKey).
+// Same helper used from both the Welcome screen and Preferences.
+function wireApiKeyValidation(
+  providerEl: HTMLSelectElement,
+  keyEl: HTMLInputElement,
+  statusEl: HTMLElement,
+): void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let seq = 0;
+  const setStatus = (cls: "" | "checking" | "valid" | "invalid", text: string) => {
+    statusEl.className = `api-key-status${cls ? " " + cls : ""}`;
+    statusEl.textContent = text;
+  };
+  const validateNow = async () => {
+    const provider = providerEl.value;
+    const key = keyEl.value.trim();
+    if (!key) { setStatus("", ""); return; }
+    const mySeq = ++seq;
+    setStatus("checking", "Checking…");
+    try {
+      const res = await window.orbit.validateApiKey(provider, key);
+      if (mySeq !== seq) return;  // a newer request superseded this one
+      if (res.valid) setStatus("valid", "\u2713 Valid");
+      else setStatus("invalid", `\u2717 ${res.error || "Invalid"}`);
+    } catch (err) {
+      if (mySeq !== seq) return;
+      setStatus("invalid", `\u2717 ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+  const schedule = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(validateNow, 600);
+  };
+  keyEl.addEventListener("input", schedule);
+  providerEl.addEventListener("change", schedule);
+}
 
 function populateWelcomeModels(provider: string): void {
   welcomeModel.innerHTML = "";
@@ -260,6 +293,7 @@ function populateWelcomeModels(provider: string): void {
   }
 }
 welcomeProvider.addEventListener("change", () => populateWelcomeModels(welcomeProvider.value));
+wireApiKeyValidation(welcomeProvider, welcomeApiKey, welcomeApiKeyStatus);
 
 welcomeBrowseCwd.addEventListener("click", async () => {
   const dir = await window.orbit.selectDirectory();
@@ -378,13 +412,11 @@ function resetUiForFreshContext(): void {
   turnUsage.cacheWrite = 0;
   renderUsage();
   streaming = false;
-  hasShownPlanOnce = false;
   sendBtn.classList.remove("hidden");
   abortBtn.classList.add("hidden");
   statusBadge.textContent = "Ready";
   statusBadge.className = "status-badge";
   setArtifactCollapsed(false);
-  switchTab("results");
 }
 
 function applyCwdChange(dir: string): void {
@@ -402,6 +434,31 @@ cwdChangeBtn.addEventListener("click", async () => {
 // File > Open Analysis Directory menu triggers this
 window.orbit.onCwdChanged((dir) => {
   applyCwdChange(dir);
+});
+
+// Main sends this after spawning the agent with --continue. The model's context
+// is restored, but the chat panel is empty because it's renderer-only state.
+// Replay prior turns only if the chat is currently blank — otherwise the user
+// is mid-flow (e.g. prefs-save restart) and replay would clobber live UI.
+window.orbit.onSessionHistory((history) => {
+  if (history.length === 0) return;
+  if (chat.hasContent()) return;
+  chat.addInfoMessage("<i>— Resumed previous session —</i>");
+  for (const seg of history) {
+    if (seg.role === "user") {
+      chat.addUserMessage(seg.text);
+      continue;
+    }
+    chat.startAssistantMessage();
+    if (seg.text) chat.appendDelta(seg.text);
+    if (seg.tools) {
+      for (const t of seg.tools) {
+        chat.addToolCard(t.id, t.name);
+        chat.updateToolCard(t.id, t.isError ? "error" : "done", t.resultText);
+      }
+    }
+    chat.finishAssistantMessage();
+  }
 });
 
 refreshCwd();
@@ -521,21 +578,6 @@ function handleSlashCommand(text: string): boolean {
     return true;
   }
 
-  if (cmd === "review") {
-    runReviewParams();
-    return true;
-  }
-
-  if (cmd === "test") {
-    runTestExecution();
-    return true;
-  }
-
-  if (cmd === "execute" || cmd === "run") {
-    runRealExecution();
-    return true;
-  }
-
   if (cmd === "help") {
     chat.addUserMessage(text);
     chat.addInfoMessage(
@@ -543,9 +585,6 @@ function handleSlashCommand(text: string): boolean {
       `<ul>` +
       `<li><code>/model &lt;name&gt;</code> — switch LLM model</li>` +
       `<li><code>/new</code> — start a fresh session</li>` +
-      `<li><code>/review</code> — review plan parameters before execution</li>` +
-      `<li><code>/test</code> — run the plan on minimal/test data</li>` +
-      `<li><code>/execute</code> (alias <code>/run</code>) — execute the plan on real data</li>` +
       `<li><code>/plan</code> — show current plan summary</li>` +
       `<li><code>/status</code> — show Galaxy connection status</li>` +
       `<li><code>/notebook</code> — show notebook info</li>` +
@@ -562,7 +601,7 @@ function handleSlashCommand(text: string): boolean {
 
 /** Ask for confirmation, then wipe both panes + restart agent. */
 async function confirmAndResetSession(): Promise<void> {
-  const ok = confirm("Start a fresh session? This will erase your current chat, plan, steps, and results.");
+  const ok = confirm("Start a fresh session? This will erase the current chat and notebook view.");
   if (!ok) return;
   await resetSession();
 }
@@ -661,6 +700,9 @@ async function switchModelByAlias(originalText: string, alias: string): Promise<
     chat.addErrorMessage(`Failed to save config: ${result.error}`);
     return;
   }
+
+  currentModel = chosen.model.id;
+  renderModelIndicator();
 
   if (switchingProvider) {
     chat.addErrorMessage(
@@ -761,9 +803,17 @@ window.orbit.onAgentEvent((event) => {
     case "message_end": {
       // Commit per-assistant-message usage to the session total
       // Each assistant message = one LLM call billed separately
-      const msg = (event as { message?: { role?: string } }).message;
+      const msg = (event as { message?: { role?: string; stopReason?: string; errorMessage?: string } }).message;
       if (msg?.role === "assistant") {
         commitTurnUsage();
+        // Surface assistant-side errors (e.g. 401 invalid API key) so the user
+        // isn't staring at a silent UI after a failed call.
+        if (msg.stopReason === "error" && msg.errorMessage) {
+          chat.hideThinking();
+          chat.addErrorMessage(msg.errorMessage);
+          statusBadge.textContent = "error";
+          statusBadge.className = "status-badge error";
+        }
       }
       break;
     }
@@ -988,75 +1038,14 @@ window.orbit.onUiRequest((request) => {
     const key = request.widgetKey as string;
     const lines = request.widgetLines as string[] | undefined;
 
-    if (key === LoomWidgetKey.Plan && lines) {
-      console.log("[orbit] plan widget received, lines:", lines.length);
-      artifacts.setPlanText(decodeMarkdownWidget(lines));
-      // First plan: auto-reveal artifact pane and switch to Plan tab.
-      if (!hasShownPlanOnce) {
-        setArtifactCollapsed(false);
-        switchTab("plan");
-        hasShownPlanOnce = true;
-      } else {
-        markTabNew("plan");
-      }
-    }
-
-    if (key === LoomWidgetKey.Steps && lines) {
-      console.log("[orbit] steps widget received, count:", lines[0]?.length);
-      try {
-        const steps = decodeJsonWidget<ShellStep[]>(lines);
-        console.log("[orbit] parsed steps:", steps.length);
-        stepGraph.render(steps);
-        markTabNew("steps");
-      } catch (e) { console.error("[orbit] steps parse error:", e); }
-    }
-
-    if (key === LoomWidgetKey.Results && lines) {
-      try {
-        const block = decodeJsonWidget<ResultBlock>(lines);
-        artifacts.addResultBlock(block);
-        markTabNew("results");
-      } catch { /* ignore parse errors */ }
-    }
-
-    // Legacy alias: /plan slash command emits "plan-view" — route to Plan tab.
-    if (key === LoomWidgetKey.PlanView && lines) {
-      artifacts.setPlanText(decodeMarkdownWidget(lines));
-      if (!hasShownPlanOnce) { switchTab("plan"); hasShownPlanOnce = true; }
-      else { markTabNew("plan"); }
-    }
-
-    // /notebook dumps the live notebook.md content — route to Notebook tab.
+    // The brain still emits Plan/Steps/Results/PlanView/Parameters widgets,
+    // but the UI no longer surfaces them — only the notebook pane remains.
     if (key === LoomWidgetKey.Notebook && lines) {
       artifacts.setNotebookMarkdown(decodeMarkdownWidget(lines));
       setArtifactCollapsed(false);
-      switchTab("results");
-    }
-
-    // Phase 4: parameter form — replaces plan view
-    if (key === LoomWidgetKey.Parameters && lines) {
-      console.log("[orbit] parameters widget received, lines[0] length:", lines[0]?.length);
-      try {
-        const spec = decodeJsonWidget<ParameterFormPayload>(lines);
-        console.log("[orbit] parsed spec:", spec.title, spec.groups?.length, "groups");
-        artifacts.showParameters(spec);
-        switchTab("plan");
-          shell.append(`  ✓ Parameter form ready (${spec.groups?.length ?? 0} groups)`, "tool-end");
-        console.log("[orbit] showParameters complete");
-      } catch (err) {
-        console.error("[orbit] parameters parse/render error:", err);
-        }
     }
   }
 });
-
-function switchTab(name: string): void {
-  tabs.forEach((t) => t.classList.remove("active"));
-  panels.forEach((p) => p.classList.remove("active"));
-  document.querySelector(`[data-tab="${name}"]`)?.classList.add("active");
-  document.getElementById(`tab-${name}`)?.classList.add("active");
-  clearTabNew(name);
-}
 
 // ── Agent Status ──────────────────────────────────────────────────────────────
 
@@ -1066,11 +1055,9 @@ window.orbit.onAgentStatus((status, msg) => {
   statusBadge.className = "status-badge " + status;
 
   // Show cwd welcome once, after the first successful agent start.
-  // Also open the artifact pane on the Notebook tab so the user sees it.
   if (status === "running" && !hasShownStartupWelcome) {
     hasShownStartupWelcome = true;
     setArtifactCollapsed(false);
-    switchTab("results");
     void showCwdWelcome();
   }
 });
@@ -1106,91 +1093,6 @@ document.addEventListener("mouseup", () => {
   document.body.style.userSelect = "";
 });
 
-// ── Artifact Tabs ─────────────────────────────────────────────────────────────
-
-const tabs = document.querySelectorAll<HTMLButtonElement>("#artifact-tabs .tab");
-const panels = document.querySelectorAll<HTMLElement>(".tab-panel");
-
-let hasShownPlanOnce = false;
-
-/** Add a "new content" indicator to a tab if it's not currently active. */
-function markTabNew(name: string): void {
-  const tab = document.querySelector<HTMLElement>(`[data-tab="${name}"]`);
-  if (!tab || tab.classList.contains("active")) return;
-  tab.classList.add("has-new");
-}
-
-/** Clear the new-content indicator on a tab (called when user clicks it). */
-function clearTabNew(name: string): void {
-  const tab = document.querySelector<HTMLElement>(`[data-tab="${name}"]`);
-  tab?.classList.remove("has-new");
-}
-
-tabs.forEach((tab) => {
-  tab.addEventListener("click", () => {
-    const target = tab.dataset.tab;
-    tabs.forEach((t) => t.classList.remove("active"));
-    panels.forEach((p) => p.classList.remove("active"));
-    tab.classList.add("active");
-    document.getElementById(`tab-${target}`)?.classList.add("active");
-    if (target) clearTabNew(target);
-  });
-});
-
-// ── Plan Actions (slash commands) ────────────────────────────────────────────
-
-/** No-op helpers kept so existing call sites for clearButtonBusy don't break. */
-function clearButtonBusy(_btn: HTMLButtonElement): void { /* no-op */ }
-
-const paramsBackBtn = document.getElementById("params-back-btn")!;
-paramsBackBtn.addEventListener("click", () => {
-  artifacts.hideParameters();
-});
-
-const paramsSaveBtn = document.getElementById("params-save-btn")!;
-paramsSaveBtn.addEventListener("click", () => {
-  artifacts.saveParameters();
-  artifacts.hideParameters();
-  chat.addInfoMessage("Parameters saved.");
-});
-
-function runReviewParams(): void {
-  if (!artifacts.getPlanText()) {
-    chat.addErrorMessage("No plan to review yet.");
-    return;
-  }
-  chat.addUserMessage("/review");
-  chat.showThinking();
-  statusBadge.textContent = "analyzing parameters…";
-  statusBadge.className = "status-badge thinking";
-  shell.append("▸ Analyzing plan for critical parameters…", "info");
-  window.orbit.prompt("/review");
-}
-
-function runTestExecution(): void {
-  if (!artifacts.getPlanText()) {
-    chat.addErrorMessage("No plan to test yet.");
-    return;
-  }
-  const saved = artifacts.getSavedParameters() || {};
-  artifacts.clearResults();
-  chat.addUserMessage("/test");
-  artifacts.setParametersDisabled(true);
-  window.orbit.prompt(`/test ${JSON.stringify({ savedParameters: saved })}`);
-}
-
-function runRealExecution(): void {
-  if (!artifacts.getPlanText()) {
-    chat.addErrorMessage("No plan to execute yet.");
-    return;
-  }
-  const saved = artifacts.getSavedParameters() || {};
-  artifacts.clearResults();
-  chat.addUserMessage("/execute");
-  artifacts.setParametersDisabled(true);
-  window.orbit.prompt(`/execute ${JSON.stringify({ savedParameters: saved })}`);
-}
-
 // ── Preferences ──────────────────────────────────────────────────────────────
 
 const prefsOverlay = document.getElementById("prefs-overlay")!;
@@ -1202,6 +1104,7 @@ const prefsBrowseCwd = document.getElementById("prefs-browse-cwd")!;
 const prefsProvider = document.getElementById("prefs-provider") as HTMLSelectElement;
 const prefsModel = document.getElementById("prefs-model") as HTMLSelectElement;
 const prefsApiKey = document.getElementById("prefs-api-key") as HTMLInputElement;
+const prefsApiKeyStatus = document.getElementById("prefs-api-key-status")!;
 
 // Model catalog by provider — labels include cost guidance
 // (in/out price per 1M tokens). Update when providers add/change models.
@@ -1267,6 +1170,7 @@ function populateModels(provider: string, selected?: string): void {
 prefsProvider.addEventListener("change", () => {
   populateModels(prefsProvider.value);
 });
+wireApiKeyValidation(prefsProvider, prefsApiKey, prefsApiKeyStatus);
 const prefsGalaxyUrl = document.getElementById("prefs-galaxy-url") as HTMLInputElement;
 const prefsGalaxyKey = document.getElementById("prefs-galaxy-key") as HTMLInputElement;
 const prefsDefaultCwd = document.getElementById("prefs-default-cwd") as HTMLInputElement;
@@ -1283,6 +1187,10 @@ async function openPreferences(): Promise<void> {
   prefsProvider.value = config.llm?.provider || "anthropic";
   populateModels(prefsProvider.value, config.llm?.model);
   prefsApiKey.value = config.llm?.apiKey || "";
+  // Trigger a re-validation of the persisted key so users see ✗ immediately
+  // when the stored key is invalid (e.g. pasted garbage) — without it, the
+  // state only becomes visible after the first failed agent call.
+  prefsApiKey.dispatchEvent(new Event("input"));
 
   // Galaxy: use active profile
   const activeProfile = config.galaxy?.active
@@ -1340,6 +1248,10 @@ async function savePreferences(): Promise<void> {
   const result = await window.orbit.saveConfig(config as Record<string, unknown>);
   if (result.success) {
     closePreferences();
+    if (config.llm?.model) {
+      currentModel = config.llm.model;
+      renderModelIndicator();
+    }
     chat.addUserMessage("[system] Preferences saved. Agent restarted.");
   } else {
     alert(`Failed to save preferences: ${result.error}`);

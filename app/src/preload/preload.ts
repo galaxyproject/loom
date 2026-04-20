@@ -12,6 +12,19 @@ export interface UiRequest {
   [key: string]: unknown;
 }
 
+export interface ReplayTool {
+  id: string;
+  name: string;
+  resultText?: string;
+  isError?: boolean;
+}
+
+export interface ReplaySegment {
+  role: "user" | "assistant";
+  text: string;
+  tools?: ReplayTool[];
+}
+
 export interface ProcInfo {
   pid: number;
   ppid: number;
@@ -32,6 +45,7 @@ export interface OrbitAPI {
   openFile(filePath: string): Promise<{ opened: boolean; error?: string }>;
   getConfig(): Promise<Record<string, unknown>>;
   saveConfig(config: Record<string, unknown>): Promise<{ success: boolean; error?: string }>;
+  validateApiKey(provider: string, key: string): Promise<{ valid: boolean; error?: string }>;
   respondToUiRequest(id: string, response: Record<string, unknown>): void;
   restartAgent(): Promise<void>;
   resetSession(): Promise<void>;
@@ -45,6 +59,7 @@ export interface OrbitAPI {
   onCwdChanged(callback: (dir: string) => void): () => void;
   onOpenPreferences(callback: () => void): () => void;
   onProcUpdate(callback: (procs: ProcInfo[]) => void): () => void;
+  onSessionHistory(callback: (history: ReplaySegment[]) => void): () => void;
 }
 
 const api: OrbitAPI = {
@@ -56,6 +71,7 @@ const api: OrbitAPI = {
   openFile: (filePath) => ipcRenderer.invoke("file:open", filePath),
   getConfig: () => ipcRenderer.invoke("config:get"),
   saveConfig: (config) => ipcRenderer.invoke("config:save", config),
+  validateApiKey: (provider, key) => ipcRenderer.invoke("apiKey:validate", provider, key),
 
   respondToUiRequest: (id, response) => {
     ipcRenderer.send("agent:ui-response", {
@@ -108,6 +124,12 @@ const api: OrbitAPI = {
     const handler = (_e: unknown, procs: ProcInfo[]) => callback(procs);
     ipcRenderer.on("proc:update", handler);
     return () => ipcRenderer.removeListener("proc:update", handler);
+  },
+
+  onSessionHistory: (callback) => {
+    const handler = (_e: unknown, history: ReplaySegment[]) => callback(history);
+    ipcRenderer.on("agent:session-history", handler);
+    return () => ipcRenderer.removeListener("agent:session-history", handler);
   },
 };
 
