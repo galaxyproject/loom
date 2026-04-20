@@ -75,8 +75,8 @@ export function scanSessions(db: Db, sessionsDir: string = defaultSessionsDir())
     ) VALUES (@entry_id, @session_id, @parent_id, @entry_type, @timestamp, @role, @text_content, @raw_json)
   `);
   const insTc = db.prepare(`
-    INSERT OR IGNORE INTO tool_calls(entry_id, session_id, tool_name, arguments_json, result_text)
-    VALUES (@entry_id, @session_id, @tool_name, @arguments_json, @result_text)
+    INSERT OR IGNORE INTO tool_calls(entry_id, session_id, tool_use_id, tool_name, arguments_json, result_text)
+    VALUES (@entry_id, @session_id, @tool_use_id, @tool_name, @arguments_json, @result_text)
   `);
 
   const indexOne = db.transaction((filePath: string) => {

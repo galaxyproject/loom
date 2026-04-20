@@ -36,6 +36,7 @@ export function registerSessionIndexTools(pi: ExtensionAPI): void {
     label: "Search prior sessions",
     description:
       "Full-text search across every Pi session you've had in this account. " +
+      "Searches message text only -- for tool-call arguments use chat_find_tool_calls. " +
       "Default scope is 'all' (every project). Use scope='cwd' to restrict to the " +
       "current analysis directory. Returns ranked hits with a snippet; follow up " +
       "with chat_session_context to read surrounding turns.",

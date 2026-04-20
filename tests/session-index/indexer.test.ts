@@ -92,6 +92,21 @@ describe("scanSessions", () => {
     db.close();
   });
 
+  it("indexes parallel tool_use calls to the same tool without collapsing", () => {
+    const fp = path.join(sessionsDir, encodeCwd("/tmp/proj"), "sess-basic.jsonl");
+    // Append an assistant message with TWO tool_use blocks for the same tool name.
+    fs.appendFileSync(fp,
+      `{"type":"message","id":"par","parentId":"e2","timestamp":"2026-04-01T10:00:30Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"tuA","name":"workflow_set_overrides","input":{"stepId":"ism","overrides":{"variant_ism_width":600}}},{"type":"tool_use","id":"tuB","name":"workflow_set_overrides","input":{"stepId":"ism","overrides":{"ism_scanner":{"max_region_width":600}}}}]}}\n`,
+    );
+    const db = openIndexDb(dbPath);
+    scanSessions(db, sessionsDir);
+    const rows = db.prepare("SELECT tool_use_id, arguments_json FROM tool_calls WHERE entry_id = 'par'").all() as Array<{ tool_use_id: string; arguments_json: string }>;
+    expect(rows).toHaveLength(2);
+    const useIds = rows.map(r => r.tool_use_id).sort();
+    expect(useIds).toEqual(["tuA", "tuB"]);
+    db.close();
+  });
+
   it("does not index a partial line written without a trailing newline", () => {
     const fp = path.join(sessionsDir, encodeCwd("/tmp/proj"), "sess-basic.jsonl");
     // Simulate Pi mid-write: append a partial message line with NO trailing newline

@@ -19,6 +19,7 @@ export interface EntryRow {
 
 export interface ToolCallRow {
   entry_id: string;
+  tool_use_id: string;
   tool_name: string;
   arguments_json: string;
   result_text: string | null;
@@ -126,19 +127,14 @@ export function parseSessionFile(
     }
   }
 
-  // Join tool-call results (resolve by tool_use_id stashed on each call)
+  // Join tool-call results by tool_use_id (now a first-class field).
   const byUseId = new Map<string, ToolCallRow>();
   for (const tc of toolCalls) {
-    const useId = (tc as ToolCallRow & { __tool_use_id?: string }).__tool_use_id;
-    if (useId) byUseId.set(useId, tc);
+    byUseId.set(tc.tool_use_id, tc);
   }
   for (const [useId, text] of pendingResults) {
     const target = byUseId.get(useId);
     if (target) target.result_text = text;
-  }
-  // Clean internal marker before returning
-  for (const tc of toolCalls) {
-    delete (tc as ToolCallRow & { __tool_use_id?: string }).__tool_use_id;
   }
 
   if (!header && !opts.skipHeader) {
@@ -211,24 +207,27 @@ function flattenTextBlocks(content: unknown): string | null {
 
 function extractToolUses(
   obj: Record<string, unknown>,
-): Array<{ tool_name: string; arguments_json: string; result_text: null; __tool_use_id?: string }> {
+): Array<{ tool_use_id: string; tool_name: string; arguments_json: string; result_text: null }> {
   const content = (obj as { message?: { content?: unknown } }).message?.content;
   if (!Array.isArray(content)) return [];
   const out: Array<{
+    tool_use_id: string;
     tool_name: string;
     arguments_json: string;
     result_text: null;
-    __tool_use_id?: string;
   }> = [];
   for (const block of content) {
     if (!block || typeof block !== "object") continue;
     const b = block as { type?: string; name?: string; input?: unknown; id?: string };
     if (b.type !== "tool_use" || typeof b.name !== "string") continue;
+    const tool_use_id = typeof b.id === "string" && b.id.length > 0
+      ? b.id
+      : `synth-${b.name}-${out.length}`;
     out.push({
+      tool_use_id,
       tool_name: b.name,
       arguments_json: JSON.stringify(b.input ?? {}),
       result_text: null,
-      __tool_use_id: b.id,
     });
   }
   return out;

@@ -2,7 +2,7 @@
  * by dropping the existing DB and rebuilding from scratch -- the source of
  * truth is the Pi JSONLs, so this is cheap and safe.
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const SCHEMA_SQL = `
 CREATE TABLE sessions (
@@ -34,10 +34,11 @@ CREATE INDEX entries_type    ON entries(entry_type);
 CREATE TABLE tool_calls (
   entry_id       TEXT NOT NULL REFERENCES entries(entry_id) ON DELETE CASCADE,
   session_id     TEXT NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
+  tool_use_id    TEXT NOT NULL,
   tool_name      TEXT NOT NULL,
   arguments_json TEXT NOT NULL,
   result_text    TEXT,
-  PRIMARY KEY (entry_id, tool_name)
+  PRIMARY KEY (entry_id, tool_use_id)
 );
 CREATE INDEX tool_calls_name ON tool_calls(tool_name);
 
