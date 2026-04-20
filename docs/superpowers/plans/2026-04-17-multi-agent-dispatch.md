@@ -1477,3 +1477,41 @@ The branch is ready for a draft PR against `dannon/loom` whenever the user wants
 - **Spec ambiguity escape hatch** — Task 7 calls out that if the Pi Agent API cannot be bound from the type files alone, the implementer adds `Task 7a` asking the user for guidance rather than guessing. Tasks 1-6 remain testable independently so forward progress is not blocked.
 - **No upstream API changes** — the feature lives entirely inside this fork; a future upstream PR would need the `dannon/loom` maintainer's agreement on the single-writer architecture (see spec §1).
 - **Token ceiling is a hard safety net** — even if the critic never approves and `max_rounds` is large, the dispatcher halts on cumulative usage > 300k (configurable). Revisit the ceiling after observing real-world runs.
+
+---
+
+## Sprint 1.5 (post-MVP): feature flag
+
+Added in PR #12 review pass after MVP landed. The MVP exposes a research-quality
+tool whose API will likely move once Pi.dev exposes an executable tool registry
+to extensions (spec §12), so we don't want it on by default for every Loom user
+yet.
+
+**What landed:**
+
+1. `shared/team-dispatch-contract.{js,d.ts}` -- `TeamDispatchDetails` and
+   `TEAM_DISPATCH_KIND` moved out of the renderer and into the cross-boundary
+   contract directory. Brain and renderer now reference the same shape; `kind`
+   is required + literal-typed so drift is a compile error.
+2. `shared/loom-config.d.ts` -- `experiments?: { teamDispatch?: boolean }`.
+3. `extensions/loom/teams/is-enabled.ts` -- accessor that prefers
+   `LOOM_TEAM_DISPATCH=1` / `=0` over the config field, with `=0` forcing off
+   even when the config opts in. Off by default.
+4. `extensions/loom/index.ts` -- `registerTeamTools(pi)` is gated.
+5. `extensions/loom/context.ts` -- the team_dispatch system-prompt block was
+   duplicated in the no-plan and active-plan branches; deduped into
+   `buildTeamDispatchContext()` and gated the same way.
+6. `tests/team-is-enabled.test.ts` -- 6 tests covering the resolution order.
+7. `tests/extension-integration.test.ts` -- `team_dispatch` removed from the
+   default `EXPECTED_TOOLS`; new describe block toggles `LOOM_TEAM_DISPATCH=1`
+   and asserts the tool registers and the count bumps by one. Default block
+   explicitly clears the env var so an ambient setting can't mask the
+   default-off contract.
+
+**How to opt in:** `export LOOM_TEAM_DISPATCH=1` for one session, or set
+`{ "experiments": { "teamDispatch": true } }` in `~/.loom/config.json`.
+
+**When to flip the default:** when the upstream Pi.dev work in §12 of the
+spec lands (executable tool accessor for extensions), letting roles call the
+read-only Loom/Galaxy tools. At that point the API churn risk drops and the
+feature delivers more value, justifying a default-on flip.

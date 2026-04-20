@@ -4,6 +4,12 @@
 **Status:** Approved for implementation planning
 **Owner:** nekrut (fork) / dannon (upstream review)
 
+> **Rollout note (2026-04-19):** the MVP ships behind an opt-in flag,
+> `experiments.teamDispatch` in `~/.loom/config.json`, with an env override
+> `LOOM_TEAM_DISPATCH=1` (or `=0` to force off). Default Loom sessions do
+> not register the tool or carry the prompt block. See §12 for the upstream
+> work that would justify flipping the default.
+
 ## 1. Context and motivation
 
 Researchers want to frame parts of an analysis as a short-lived team of specialists cooperating on a single task, expressed in natural language. Canonical example:
