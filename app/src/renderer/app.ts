@@ -565,6 +565,24 @@ function flushPendingMessage(): void {
  *   /model <name>   — switch LLM model (e.g. /model sonnet, /model claude-opus-4-6)
  *   /help           — list slash commands
  */
+function slashCommandsHtml(): string {
+  return (
+    `<h3>Slash commands</h3>` +
+    `<ul>` +
+    `<li><code>/model &lt;name&gt;</code> — switch LLM model</li>` +
+    `<li><code>/new</code> — start a fresh session</li>` +
+    `<li><code>/resume</code> — restart agent and replay prior session</li>` +
+    `<li><code>/plan</code> — show current plan summary</li>` +
+    `<li><code>/status</code> — show Galaxy connection status</li>` +
+    `<li><code>/notebook</code> — show notebook info</li>` +
+    `<li><code>/summarize [N [M]]</code> — summarize prompts N–M into the notebook</li>` +
+    `<li><code>/decisions</code> — show decision log</li>` +
+    `<li><code>/connect</code> — open Galaxy connection settings</li>` +
+    `<li><code>/help</code> — show this help</li>` +
+    `</ul>`
+  );
+}
+
 function handleSlashCommand(text: string): boolean {
   const [cmd, ...rest] = text.slice(1).split(/\s+/);
 
@@ -587,6 +605,13 @@ function handleSlashCommand(text: string): boolean {
     return true;
   }
 
+  if (cmd === "resume" || cmd === "continue") {
+    chat.addUserMessage(text);
+    chat.addInfoMessage("<i>Restarting agent with prior session…</i>");
+    void window.orbit.restartAgent();
+    return true;
+  }
+
   // pi-galaxy-analyst commands — pass through to agent
   if (cmd === "plan" || cmd === "status" || cmd === "notebook" || cmd === "decisions" || cmd === "profiles") {
     chat.addUserMessage(text);
@@ -606,20 +631,7 @@ function handleSlashCommand(text: string): boolean {
 
   if (cmd === "help") {
     chat.addUserMessage(text);
-    chat.addInfoMessage(
-      `<h3>Slash commands</h3>` +
-      `<ul>` +
-      `<li><code>/model &lt;name&gt;</code> — switch LLM model</li>` +
-      `<li><code>/new</code> — start a fresh session</li>` +
-      `<li><code>/plan</code> — show current plan summary</li>` +
-      `<li><code>/status</code> — show Galaxy connection status</li>` +
-      `<li><code>/notebook</code> — show notebook info</li>` +
-      `<li><code>/summarize [N [M]]</code> — summarize prompts N–M into the notebook</li>` +
-      `<li><code>/decisions</code> — show decision log</li>` +
-      `<li><code>/connect</code> — open Galaxy connection settings</li>` +
-      `<li><code>/help</code> — show this help</li>` +
-      `</ul>`
-    );
+    chat.addInfoMessage(slashCommandsHtml());
     return true;
   }
 
@@ -1438,6 +1450,10 @@ document.addEventListener("keydown", (e) => {
 
 window.orbit.onOpenPreferences(() => {
   openPreferences();
+});
+
+window.orbit.onShowSlashCommands(() => {
+  chat.addInfoMessage(slashCommandsHtml());
 });
 
 // ── Agent shell event feed ────────────────────────────────────────────────────

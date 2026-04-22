@@ -248,6 +248,13 @@ function buildMenu(): void {
       label: "Help",
       submenu: [
         {
+          label: "Slash Commands",
+          click: () => {
+            if (mainWindow) mainWindow.webContents.send("menu:show-slash-commands");
+          },
+        },
+        { type: "separator" },
+        {
           label: "Orbit Documentation",
           click: () => {
             import("electron").then(({ shell }) => {

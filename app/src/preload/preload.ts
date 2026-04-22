@@ -60,6 +60,7 @@ export interface OrbitAPI {
   ): () => void;
   onCwdChanged(callback: (dir: string) => void): () => void;
   onOpenPreferences(callback: () => void): () => void;
+  onShowSlashCommands(callback: () => void): () => void;
   onProcUpdate(callback: (procs: ProcInfo[]) => void): () => void;
   onSessionHistory(callback: (history: ReplaySegment[]) => void): () => void;
 }
@@ -122,6 +123,12 @@ const api: OrbitAPI = {
     const handler = () => callback();
     ipcRenderer.on("menu:open-preferences", handler);
     return () => ipcRenderer.removeListener("menu:open-preferences", handler);
+  },
+
+  onShowSlashCommands: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("menu:show-slash-commands", handler);
+    return () => ipcRenderer.removeListener("menu:show-slash-commands", handler);
   },
 
   onProcUpdate: (callback) => {
