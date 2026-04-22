@@ -354,6 +354,10 @@ body:not(.artifact-collapsed) #artifact-toggle {
   gap: 12px;
 }
 
+#messages > * {
+  flex-shrink: 0;
+}
+
 #messages::-webkit-scrollbar {
   width: 6px;
 }
@@ -498,8 +502,10 @@ body:not(.artifact-collapsed) #artifact-toggle {
   font-style: italic;
 }
 
-#messages hr {
-  display: none !important;
+.message.assistant:not(.system-info) hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 14px 0;
 }
 
 .message.assistant:not(.system-info) table {
@@ -637,6 +643,7 @@ body:not(.artifact-collapsed) #artifact-toggle {
   border-radius: var(--radius);
   margin: 6px 0;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .tool-card-header {
