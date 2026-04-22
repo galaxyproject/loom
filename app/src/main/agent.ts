@@ -257,7 +257,8 @@ export class AgentManager {
     }
 
     const type = data.type as string;
-    log("← event:", type, type === "message_update" ? "" : JSON.stringify(data).slice(0, 150));
+    const noisy = type === "message_update" || type === "tool_execution_update";
+    log("← event:", type, noisy ? "" : JSON.stringify(data).slice(0, 150));
 
     if (type === "response" && data.id) {
       const pending = this.pendingResponses.get(data.id as string);

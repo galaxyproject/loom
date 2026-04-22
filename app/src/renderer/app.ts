@@ -565,6 +565,19 @@ function flushPendingMessage(): void {
  *   /model <name>   — switch LLM model (e.g. /model sonnet, /model claude-opus-4-6)
  *   /help           — list slash commands
  */
+function formatArgsPreview(args: Record<string, unknown> | undefined): string | undefined {
+  if (!args || typeof args !== "object") return undefined;
+  const cmd = (args as { command?: unknown }).command;
+  if (typeof cmd === "string" && cmd.length > 0) return `$ ${cmd}`;
+  const path = (args as { path?: unknown; file_path?: unknown }).path ?? (args as { file_path?: unknown }).file_path;
+  if (typeof path === "string") return path;
+  try {
+    return JSON.stringify(args);
+  } catch {
+    return undefined;
+  }
+}
+
 function slashCommandsHtml(): string {
   return (
     `<h3>Slash commands</h3>` +
@@ -1000,7 +1013,9 @@ window.orbit.onAgentEvent((event) => {
       const id = (event as { toolCallId?: string }).toolCallId || "";
       const partial = (event as { partialResult?: { details?: unknown } }).partialResult;
       const details = (partial as { details?: { kind?: string } } | undefined)?.details;
-      chat.updateToolCard(id, "running", undefined, details);
+      const args = (event as { args?: Record<string, unknown> }).args;
+      const preview = formatArgsPreview(args);
+      chat.updateToolCard(id, "running", preview, details);
       break;
     }
 
