@@ -1585,6 +1585,20 @@ body:not(.artifact-collapsed) #artifact-toggle {
   background: var(--bg-hover);
 }
 
+/* Constrain inline images (matplotlib PNGs, figures referenced from
+   notebook.md, etc.) so they never overflow their container. `height:auto`
+   preserves aspect ratio; `display:block` drops the baseline gap so margins
+   work predictably. Covers every markdown context: notebook tab, chat
+   assistant replies, and plan/result blocks. */
+.result-markdown img,
+.message.assistant img,
+.plan-rendered img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 8px 0;
+}
+
 /* Team dispatch (multi-agent critic loop) tool card */
 .team-dispatch-card { margin: 6px 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .team-dispatch-header { width: 100%; text-align: left; background: var(--bg-hover); border: none; color: var(--text); padding: 6px 10px; cursor: pointer; font: inherit; }
