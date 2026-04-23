@@ -32,7 +32,6 @@ export interface ProcInfo {
   pmem: number;
   rss: number;
   etime: string;
-  nlwp: number;
   command: string;
 }
 
