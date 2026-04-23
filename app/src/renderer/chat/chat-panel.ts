@@ -4,6 +4,8 @@ import {
   type TeamDispatchDetails,
 } from "../../../../shared/team-dispatch-contract.js";
 
+const PROMPT_COUNTER_STORAGE_KEY = "orbit.promptCounter";
+
 export class ChatPanel {
   private container: HTMLElement;
   private currentMessage: HTMLElement | null = null;
@@ -11,7 +13,9 @@ export class ChatPanel {
   private toolCards = new Map<string, HTMLElement>();
   private scrollLocked = true;
   private thinkingEl: HTMLElement | null = null;
-  private promptCounter = 0;
+  // Persist across renderer reloads (Cmd+R, HMR, crash-recovery) so prompt
+  // numbering survives session interruptions. Cleared by clear().
+  private promptCounter = readPersistedPromptCounter();
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -50,6 +54,7 @@ export class ChatPanel {
 
   addUserMessage(text: string): void {
     const n = ++this.promptCounter;
+    writePersistedPromptCounter(this.promptCounter);
     const turn = document.createElement("div");
     turn.className = "user-turn";
     turn.dataset.promptNum = String(n);
@@ -81,6 +86,7 @@ export class ChatPanel {
     this.toolCards.clear();
     this.thinkingEl = null;
     this.promptCounter = 0;
+    writePersistedPromptCounter(0);
   }
 
   showThinking(): void {
@@ -296,6 +302,26 @@ function escapeHtml(text: string): string {
   const el = document.createElement("span");
   el.textContent = text;
   return el.innerHTML;
+}
+
+function readPersistedPromptCounter(): number {
+  try {
+    const raw = sessionStorage.getItem(PROMPT_COUNTER_STORAGE_KEY);
+    if (!raw) return 0;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writePersistedPromptCounter(n: number): void {
+  try {
+    if (n <= 0) sessionStorage.removeItem(PROMPT_COUNTER_STORAGE_KEY);
+    else sessionStorage.setItem(PROMPT_COUNTER_STORAGE_KEY, String(n));
+  } catch {
+    // sessionStorage may be unavailable in odd contexts — best effort only
+  }
 }
 
 const PLAN_FENCE_PLACEHOLDER_PREFIX = "LOOM_PLAN_FENCE_";
