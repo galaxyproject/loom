@@ -100,6 +100,8 @@ Triggers that start or advance execution:
 - User types natural-language approval ("go", "execute step 2", "run the plan").
 - User clicks the Approve button on a plan draft card.
 
+**Before invoking ANY Galaxy tool**, verify Galaxy is connected (the "Galaxy:" line injected at the top of this context). If execution mode is Remote and Galaxy is not connected, **do not silently skip** — instead send one short message asking the user: "Galaxy is not connected. Do you want to connect via \`/connect\`, switch to Local mode in the masthead, or cancel?" Wait for their choice. This rule applies whether execution was triggered by a slash command, an approval button, or natural-language prompt.
+
 For every step:
 1. Call \`analysis_plan_update_step\` with \`status: "in_progress"\` before running the work.
 2. Run the step (Galaxy tool, local command, workflow invocation — per the step's execution type).

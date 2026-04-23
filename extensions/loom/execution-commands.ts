@@ -1,8 +1,27 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { formatPlanSummary, getCurrentPlan } from "./state.js";
+import { formatPlanSummary, getCurrentPlan, getState } from "./state.js";
+import { loadConfig } from "./config.js";
 
 interface ExecutionCommandArgs {
   savedParameters?: Record<string, string | number | boolean>;
+}
+
+/**
+ * Return an agent instruction when the user tries to execute but Galaxy is
+ * required and not connected. Returns null if execution can proceed.
+ */
+function galaxyGateMessage(): string | null {
+  const cfg = loadConfig();
+  const mode = cfg.executionMode || "remote";
+  if (mode !== "remote") return null;
+  if (getState().galaxyConnected) return null;
+  return (
+    `Galaxy is not connected but execution mode is Remote. ` +
+    `Before doing anything else, ask the user exactly one short question: ` +
+    `"Galaxy is not connected. Do you want to connect via /connect, ` +
+    `switch to Local mode in the masthead, or cancel?" ` +
+    `Do NOT call any tools until the user chooses.`
+  );
 }
 
 export function registerExecutionCommands(pi: ExtensionAPI): void {
@@ -35,6 +54,12 @@ export function registerExecutionCommands(pi: ExtensionAPI): void {
         return;
       }
 
+      const gate = galaxyGateMessage();
+      if (gate) {
+        pi.sendUserMessage(gate);
+        return;
+      }
+
       const parsed = parseExecutionArgs(args);
       pi.sendUserMessage(
         `The user typed /test. Configured parameters:\n` +
@@ -57,6 +82,12 @@ export function registerExecutionCommands(pi: ExtensionAPI): void {
     const plan = getCurrentPlan();
     if (!plan) {
       ctx.ui.notify("No active analysis plan", "warning");
+      return;
+    }
+
+    const gate = galaxyGateMessage();
+    if (gate) {
+      pi.sendUserMessage(gate);
       return;
     }
 
