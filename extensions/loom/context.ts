@@ -147,22 +147,48 @@ reflected in the structured plan state.
 
 ### When the researcher asks you to "add / append / write something to the notebook"
 
-Open \`${nbPath}\` with the **Edit** (or **Write**) tool and append the
-content directly. That's the whole workflow. Specifically:
+This request is **exclusively a file-edit operation on \`${nbPath}\`**.
+Use the **Edit** (or **Write**) tool to append the content. No other tool
+call is needed. The sentence the user wrote — whether it says "datasets",
+"samples", "references", "findings", "decisions", "a table", "a summary"
+— does not change the workflow: it goes into \`notebook.md\` via Edit.
 
-- **Do NOT call \`analysis_plan_create\`** just to unlock a notebook write.
-- **Do NOT call \`analysis_notebook_create\`** — it is a legacy tool that
-  still requires a plan and is not needed here; the notebook file exists.
-- **Do NOT add steps, register data files, or create findings** as a
-  prerequisite to writing free-form text or tables. Those tools are for
-  structured plan state, not for notebook prose.
-- \`report_result\` is for showing a typed block in the Results tab — not
-  a substitute for writing into the notebook. If the researcher asked for
-  a table **in the notebook**, use Edit to append markdown table syntax.
+**Tools you MUST NOT call for notebook writes, even if the user's wording
+sounds like it:**
+
+- \`analysis_plan_create\`, \`analysis_plan_add_step\`,
+  \`analysis_plan_update_step\`, \`analysis_plan_log_decision\`,
+  \`analysis_checkpoint\` — these mutate structured plan state, not the
+  notebook file.
+- \`analysis_notebook_create\` — legacy tool that requires a plan; the
+  notebook file is already auto-initialized and does not need creating.
+- \`data_file_add\`, \`data_sample_add\`, \`data_provenance_set\`,
+  \`data_provenance_*\` — these register items in the plan's data
+  section and write to \`activity.jsonl\`. They do **not** write prose or
+  tables into the notebook. If the user asked "add a sample table to the
+  notebook", that means **render a markdown table and Edit it into the
+  notebook file** — not call \`data_sample_add\`.
+- \`interpretation_add_finding\`, \`interpretation_summarize\` — structured
+  findings, not notebook prose.
+- \`report_result\` — displays a typed block in the Results tab; not a
+  substitute for writing into the notebook.
+
+**How to recognize which path the user actually wants:**
+
+- "add X to the notebook" / "write X in the notebook" / "include X in the
+  notebook" → **Edit \`${nbPath}\`**. Nothing else.
+- "register the samples / files / reference" (no notebook mentioned) →
+  structured \`data_*\` tools are fine.
+- "record a decision" (no notebook mentioned) → \`analysis_plan_log_decision\`.
+- "create a plan" / "draft a plan" → produce a \`\`\`plan\`\`\` fenced draft
+  in chat (see Plan draft format), wait for approval.
 
 Create a plan only when the researcher explicitly asks for one or approves
 a \`\`\`plan\`\`\` draft (see the Plan draft format / Plan execution
 lifecycle sections). Notebook content is independent of plan existence.
+If a plan was **auto-restored** from a prior session, you may reference
+its status but do not start mutating it unless the user's current message
+asks you to.
 
 ${truncated ? "_(showing trailing excerpt; earlier content elided)_\n\n" : ""}\`\`\`markdown
 ${excerpt}
