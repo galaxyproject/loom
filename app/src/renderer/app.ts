@@ -1433,12 +1433,18 @@ window.orbit.onUiRequest((request) => {
       try {
         const payload = decodeJsonWidget<ParameterFormPayload>(lines);
         chat.addParameterCard(payload, (values) => {
-          // Populate the chat input with an /execute call carrying the
-          // chosen values. Do NOT auto-send — give the user a chance to
-          // review the assembled command.
-          const savedParameters = values;
-          const args = JSON.stringify({ savedParameters });
-          inputEl.value = `/execute ${args}`;
+          // Submit destination adapts to context:
+          //   - A plan is committed (planId is non-empty) → the user is
+          //     reviewing parameters before running: populate /execute
+          //     with the values so the slash handler dispatches.
+          //   - No plan yet (drafting) → drop the values back into chat
+          //     as a plain message so the agent can read them and fold
+          //     them into the drafted plan.
+          const json = JSON.stringify(values, null, 2);
+          const hasCommittedPlan = typeof payload.planId === "string" && payload.planId.length > 0;
+          inputEl.value = hasCommittedPlan
+            ? `/execute ${JSON.stringify({ savedParameters: values })}`
+            : `Use these parameter values:\n\`\`\`json\n${json}\n\`\`\``;
           inputEl.focus();
           inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
         });
