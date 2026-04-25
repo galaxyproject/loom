@@ -300,41 +300,37 @@ Or pass flags directly: `loom --provider litellm --model your-model-name`.
 | `/profiles` | List saved Galaxy server profiles |
 | `/new` | Start a fresh session (Orbit only) |
 
-In Orbit, plan-related slash commands are active in the plan editor: `/review`, `/test`, `/execute`, `/run`. These are designed around the Galaxy-first path; Local mode should be treated as an override/debug path until a fuller local runtime exists.
+In Orbit, `/execute` (alias `/run`) tells the agent to advance the next pending step in the most recent plan section of `notebook.md`. Galaxy routing for each step is decided when the plan is drafted, not at execution time.
 
 ## Tool reference
 
-Loom registers 34 brain-level tools across the five-phase lifecycle:
+Loom registers a small set of extension tools. Plans, decisions, results, and interpretation all live as markdown sections in `notebook.md` — the agent maintains them via the standard Edit/Write tools.
 
 | Category | Tools |
 |----------|-------|
-| **Phase management** | `analysis_set_phase` |
-| **Problem definition** | `research_question_refine`, `research_add_literature` |
-| **Data acquisition** | `data_set_source`, `data_add_sample`, `data_add_file`, `data_link_galaxy`, `data_generate_samplesheet`, `data_get_provenance` |
-| **Analysis** | `analysis_plan_create`, `analysis_plan_add_step`, `analysis_plan_update_step`, `analysis_plan_get`, `analysis_plan_activate`, `analysis_plan_summary`, `analysis_step_log`, `analysis_checkpoint` |
-| **Notebooks** | `analysis_notebook_create`, `analysis_notebook_open`, `analysis_notebook_list` |
-| **Interpretation** | `interpretation_add_finding`, `interpretation_summarize` |
-| **Publication** | `publication_init`, `publication_generate_methods`, `publication_add_figure`, `publication_update_figure`, `publication_recommend_figures`, `publication_get_status` |
-| **Workflow integration** | `workflow_to_plan`, `workflow_invocation_link`, `workflow_invocation_check` |
-| **BRC context** | `brc_set_context` |
 | **GTN tutorials** | `gtn_search`, `gtn_fetch` |
-| **Shell-facing** | `report_result`, `analyze_plan_parameters` |
+| **Galaxy invocations** | `galaxy_invocation_record`, `galaxy_invocation_check_all`, `galaxy_invocation_check_one` |
+| **Multi-agent (experimental)** | `team_dispatch` (gated by `LOOM_TEAM_DISPATCH=1`) |
 
-## Five-phase lifecycle
+Galaxy MCP (registered separately when credentials are present) provides `galaxy_connect`, `galaxy_search_tools_by_name`, `galaxy_run_tool`, `galaxy_invoke_workflow`, `galaxy_search_iwc`, history/dataset operations, etc.
 
-Loom guides analyses through five phases. Forward transitions are validated so the notebook reflects a defensible research lifecycle rather than an arbitrary label change.
+## Project model
 
-1. **Problem Definition** -- refine the research question (PICO framework), add literature references.
-2. **Data Acquisition** -- track data sources (GEO, SRA, local), register samples, generate samplesheets, link to Galaxy datasets.
-3. **Analysis** -- create a step-by-step plan, execute tools / workflows via Galaxy, log every decision, record QC checkpoints with pass/fail criteria.
-4. **Interpretation** -- review results in biological context, run pathway analysis.
-5. **Publication** -- generate methods sections from the tool versions actually used, track figures, prepare data sharing.
+A "project" is a working directory. `notebook.md` in that directory is the durable record — chronological, accumulates over the project's lifetime: ad-hoc exploration notes, plan sections, executed steps, interpretations, new plans, and so on. Multiple plans coexist.
 
-Everything persists to a **notebook file** -- a readable markdown document with YAML blocks for structured data. Open it in any editor, share it with collaborators, or use it to reproduce the analysis later.
+Plans are markdown sections (`## Plan A:`, `## Plan B:`) with checkbox steps and a routing tag in the header (`[local]`, `[hybrid]`, `[remote]`). The agent decides routing **per plan during drafting**, by consulting the Galaxy workflow registry and tool catalog when Galaxy is connected:
+
+- A full IWC workflow match → entire plan runs as one Galaxy invocation (mode: **remote**).
+- Otherwise step-by-step: heavy compute → Galaxy if available; light/exploratory → local.
+- All decisions are documented inline in the markdown so the user can review and override.
+
+Galaxy invocations get a typed sidecar: a `loom-invocation` fenced YAML block embedded in the notebook. Polling tools (`galaxy_invocation_check_all`) read these blocks, query Galaxy, and apply deterministic state transitions (all-jobs-ok → completed, any-error → failed) by rewriting the YAML in place.
+
+Phases (problem definition → data acquisition → analysis → interpretation → publication) are narrative organizing concepts the agent uses when drafting the markdown — not enforced state transitions.
 
 ### Git-tracked notebooks
 
-When Loom creates a notebook it initializes a git repo in the working directory (if one doesn't already exist) and commits every meaningful change as it happens. Step completions, QC checkpoints, decisions, phase transitions -- each gets its own commit with a descriptive message like `Add step: Read Mapping` or `QC: Post-alignment QC (passed)`.
+When Loom initializes `notebook.md` it sets up a git repo in the working directory (if one doesn't already exist) and commits every meaningful change as it happens. Each agent or user write to the notebook produces a commit.
 
 This gives you:
 
@@ -356,7 +352,6 @@ The auto-created `.gitignore` excludes large bioinformatics files (FASTQ, BAM, V
 | Desktop | Electron 35 |
 | Build | Vite + electron-forge |
 | Markdown | `marked` |
-| DAG | React Flow + dagre |
 | Fonts | Inter (body), JetBrains Mono (code) |
 | Theme | Galaxy brand dark (`#2c3143` + gold accent `#ffd700`) |
 
