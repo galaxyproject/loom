@@ -368,6 +368,80 @@ answers, and turn-by-turn dialogue that doesn't need persistence.
 }
 
 /**
+ * Router for the curated galaxyproject/galaxy-skills repo. The agent
+ * fetches a specific SKILL.md or reference doc on demand via
+ * \`galaxy_skills_fetch\`. This block names the canonical paths and when
+ * to use each — the upstream AGENTS.md condensed.
+ */
+function buildGalaxySkillsContext(): string {
+  return `## Galaxy skills (operational know-how)
+
+Curated upstream at \`galaxyproject/galaxy-skills\`. Use the
+\`galaxy_skills_fetch(path)\` tool to load a skill on demand. **Don't
+guess Galaxy operational patterns from training data — fetch the
+relevant skill first.** Each fetch is cached locally for 24h.
+
+### When to fetch which skill
+
+- **Manipulating dataset collections** (filter, sort, relabel, restructure,
+  flatten, nest, merge; building paired collections from PE FASTQ; mapping
+  a tool over a collection) →
+  \`galaxy_skills_fetch("collection-manipulation/SKILL.md")\`. Deep
+  references when you need them:
+  - \`collection-manipulation/references/tools.md\` — catalog of 26
+    collection-operation tools with IDs and parameter shapes.
+  - \`collection-manipulation/references/apply-rules.md\` — Apply Rules
+    DSL deep-dive.
+  - \`collection-manipulation/references/api-patterns.md\` — Galaxy Tools
+    API patterns (the \`{"src": "hdca", "id": ...}\` shape and the
+    \`values\` wrapper, etc.).
+  - \`collection-manipulation/references/test-patterns.md\` — real test
+    patterns from the Galaxy test suite.
+
+  **CRITICAL**: every collection operation MUST go through Galaxy's native
+  tools (not ad-hoc per-file processing) for reproducibility and workflow
+  extractability. PE FASTQ → build a paired collection FIRST, then run
+  downstream tools against the collection (one invocation per pair, not
+  per file).
+
+- **Galaxy MCP tool usage / common gotchas** →
+  \`galaxy_skills_fetch("galaxy-integration/mcp-reference/SKILL.md")\` and
+  \`galaxy_skills_fetch("galaxy-integration/mcp-reference/gotchas.md")\`.
+  Other refs: \`galaxy-integration/galaxy-integration.md\` (BioBlend
+  patterns), \`galaxy-integration/mcp-reference/history-access.md\`.
+
+- **Workflow report templates** (Workflow Editor's Report tab,
+  markdown directives) →
+  \`galaxy_skills_fetch("workflow-reports/SKILL.md")\`. References:
+  \`workflow-reports/references/directives.md\`, plus worked examples
+  under \`workflow-reports/examples/\`.
+
+- **Nextflow → Galaxy conversion** (pipelines / modules / processes →
+  Galaxy tools / workflows) →
+  \`galaxy_skills_fetch("nf-to-galaxy/SKILL.md")\` (router). Sub-skills:
+  \`nf-to-galaxy/nf-process-to-galaxy-tool/SKILL.md\`,
+  \`nf-to-galaxy/nf-subworkflow-to-galaxy-workflow/SKILL.md\`,
+  \`nf-to-galaxy/nf-pipeline-to-galaxy-workflow/SKILL.md\`. Shared:
+  \`nf-to-galaxy/check-tool-availability.md\`,
+  \`nf-to-galaxy/testing-and-validation.md\`,
+  \`tool-dev/references/testing.md\` (Planemo).
+
+- **Galaxy tool development** (XML wrappers, packaging, testing, where to
+  put tools) → \`galaxy_skills_fetch("tool-dev/SKILL.md")\`. Sub-skill:
+  \`tool-dev/tool-selection-diagram/SKILL.md\` for selection-diagram
+  generation.
+
+- **Updating ToolShed tool revisions in usegalaxy-tools** →
+  \`galaxy_skills_fetch("update-usegalaxy-tool/SKILL.md")\`.
+
+- **Hub news posts** → \`galaxy_skills_fetch("hub-news-posts/SKILL.md")\`.
+
+Skills follow planning/approval checkpoints internally — read the SKILL.md
+fully before acting on what it teaches.
+`;
+}
+
+/**
  * System-prompt block describing team_dispatch usage. Empty when the
  * experimental flag is off so default sessions never see guidance for a
  * tool that isn't registered.
@@ -411,6 +485,7 @@ export function setupContextInjection(pi: ExtensionAPI): void {
       buildChatFormattingBlock(),
       buildNotebookWriteBlock(),
       buildGalaxyContextBlock(),
+      buildGalaxySkillsContext(),
       buildLocalEnvContext(),
       buildNotebookExcerptBlock(),
       buildRecentActivityBlock(),

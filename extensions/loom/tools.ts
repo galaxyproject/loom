@@ -6,6 +6,7 @@
  * Edit/Write tools. The only tools registered here are:
  *   - GTN tutorial discovery / fetch
  *   - Galaxy invocation tracking (record + poll status from the notebook)
+ *   - Galaxy skills fetch (operational know-how from galaxyproject/galaxy-skills)
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -24,6 +25,9 @@ import {
   galaxyGet,
   type GalaxyInvocationResponse,
 } from "./galaxy-api";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 
 export function registerPlanTools(pi: ExtensionAPI): void {
 
@@ -257,6 +261,91 @@ analyses in Galaxy.`,
         return new Text("❌ GTN fetch failed");
       }
       return new Text(`📖 Fetched GTN tutorial (${d?.length || 0} chars)`);
+    },
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Tool: Fetch a galaxy-skills SKILL.md or reference doc
+  // ─────────────────────────────────────────────────────────────────────────────
+  pi.registerTool({
+    name: "galaxy_skills_fetch",
+    label: "Fetch Galaxy Skill",
+    description: `Fetch operational know-how from the curated galaxyproject/galaxy-skills
+repo. Pass a relative path inside the repo, e.g. \`collection-manipulation/SKILL.md\` or
+\`galaxy-integration/mcp-reference/gotchas.md\`. The system prompt's "Galaxy skills" section
+lists the available skill paths and when to use each. Results are cached locally for 24h.`,
+    parameters: Type.Object({
+      path: Type.String({
+        description:
+          "Relative path inside galaxy-skills, e.g. 'collection-manipulation/SKILL.md', " +
+          "'galaxy-integration/mcp-reference/SKILL.md', 'galaxy-integration/mcp-reference/gotchas.md'.",
+      }),
+    }),
+    async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
+      const cleanPath = params.path.replace(/^\/+/, "").replace(/\\/g, "/");
+      // Reject path traversal so a malformed path can't escape the repo / cache.
+      if (cleanPath.includes("..") || cleanPath === "") {
+        return {
+          content: [{ type: "text", text: `Error: Invalid skill path "${params.path}"` }],
+          details: { error: true },
+        };
+      }
+
+      const cacheDir = path.join(os.homedir(), ".loom", "cache", "galaxy-skills");
+      const cachePath = path.join(cacheDir, cleanPath);
+      const ttlMs = 24 * 60 * 60 * 1000;
+      try {
+        const stat = fs.statSync(cachePath);
+        if (Date.now() - stat.mtimeMs < ttlMs) {
+          const cached = fs.readFileSync(cachePath, "utf-8");
+          return {
+            content: [{ type: "text", text: cached }],
+            details: { path: cleanPath, length: cached.length, cached: true },
+          };
+        }
+      } catch {
+        // No cache hit (file missing or stat failed) — fall through to fetch.
+      }
+
+      const url = `https://raw.githubusercontent.com/galaxyproject/galaxy-skills/main/${cleanPath}`;
+      try {
+        const response = await fetch(url, { signal });
+        if (!response.ok) {
+          return {
+            content: [{
+              type: "text",
+              text: `Error: Failed to fetch "${cleanPath}" (HTTP ${response.status}). ` +
+                `Check the path against the galaxy-skills router in the system prompt.`,
+            }],
+            details: { error: true, path: cleanPath },
+          };
+        }
+        const text = await response.text();
+
+        try {
+          fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+          fs.writeFileSync(cachePath, text, "utf-8");
+        } catch (err) {
+          console.error("[galaxy_skills_fetch] cache write failed:", err);
+        }
+
+        return {
+          content: [{ type: "text", text }],
+          details: { path: cleanPath, length: text.length, cached: false },
+        };
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        return {
+          content: [{ type: "text", text: `Error fetching skill: ${msg}` }],
+          details: { error: true, path: cleanPath },
+        };
+      }
+    },
+    renderResult: (result) => {
+      const d = result.details as { path?: string; length?: number; cached?: boolean; error?: boolean } | undefined;
+      if (d?.error) return new Text("❌ Galaxy skill fetch failed");
+      const tag = d?.cached ? "(cached)" : "(fetched)";
+      return new Text(`📘 ${d?.path} ${tag} (${d?.length || 0} chars)`);
     },
   });
 
