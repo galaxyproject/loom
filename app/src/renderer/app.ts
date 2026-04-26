@@ -432,6 +432,18 @@ welcomeSave.addEventListener("click", async () => {
     return;
   }
 
+  // Galaxy: both-or-neither. The Preferences modal enforces the same
+  // rule (see savePreferences below). Refusing to ship a half-filled
+  // profile prevents a silent persistence trap where the renderer
+  // shows "connected" while the brain rejects the credentials.
+  const galaxyUrl = welcomeGalaxyUrl.value.trim();
+  const galaxyKey = welcomeGalaxyKey.value.trim();
+  if (Boolean(galaxyUrl) !== Boolean(galaxyKey)) {
+    welcomeError.textContent =
+      "Galaxy: provide both URL and API key, or leave both blank.";
+    return;
+  }
+
   const cfg: Record<string, unknown> = {
     llm: {
       provider: welcomeProvider.value,
@@ -440,8 +452,6 @@ welcomeSave.addEventListener("click", async () => {
     },
   };
 
-  const galaxyUrl = welcomeGalaxyUrl.value.trim();
-  const galaxyKey = welcomeGalaxyKey.value.trim();
   if (galaxyUrl && galaxyKey) {
     cfg.galaxy = {
       active: "default",
@@ -455,6 +465,25 @@ welcomeSave.addEventListener("click", async () => {
   await window.orbit.saveConfig(cfg);
   welcomeOverlay.classList.add("hidden");
   await refreshGalaxyStatus();
+});
+
+// Skip the welcome screen — close the overlay without configuring a
+// provider so the user can browse the UI / read docs first. Tells them
+// in chat where to come back when they're ready.
+const welcomeSkip = document.getElementById("welcome-skip")!;
+welcomeSkip.addEventListener("click", () => {
+  welcomeOverlay.classList.add("hidden");
+  chat.addInfoMessage(
+    `<i>No LLM provider configured yet. Open <code>Preferences</code> ` +
+    `(Cmd/Ctrl+,) when you're ready to add an API key.</i>`,
+  );
+});
+
+// Esc dismisses the welcome overlay (same affordance as prefs Esc handler).
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !welcomeOverlay.classList.contains("hidden")) {
+    welcomeSkip.click();
+  }
 });
 
 async function checkFirstRun(): Promise<void> {
@@ -1707,9 +1736,24 @@ window.orbit.onUiRequest((request) => {
 // ── Agent Status ──────────────────────────────────────────────────────────────
 
 let hasShownStartupWelcome = false;
+// When the badge is in a stuck state (error or persistent connecting…)
+// make it clickable: open Preferences so the user can fix credentials /
+// model / etc. without leaving Orbit.
+const STUCK_STATUS = new Set(["error", "connecting"]);
+let statusBadgeIsStuck = false;
+statusBadge.style.cursor = "default";
+statusBadge.title = "";
+statusBadge.addEventListener("click", () => {
+  if (statusBadgeIsStuck) void openPreferences();
+});
+
 window.orbit.onAgentStatus((status, msg) => {
   statusBadge.textContent = msg || status;
   statusBadge.className = "status-badge " + status;
+
+  statusBadgeIsStuck = STUCK_STATUS.has(status);
+  statusBadge.style.cursor = statusBadgeIsStuck ? "pointer" : "default";
+  statusBadge.title = statusBadgeIsStuck ? "Click to open Preferences" : "";
 
   // Show cwd welcome once, after the first successful agent start.
   if (status === "running" && !hasShownStartupWelcome) {
@@ -1880,6 +1924,8 @@ function renderSkillsRows(): void {
     removeBtn.textContent = "Remove";
     removeBtn.title = "Remove this skill repo";
     removeBtn.addEventListener("click", () => {
+      const label = prefsSkillsState[idx]?.name || prefsSkillsState[idx]?.url || "this skill repo";
+      if (!confirm(`Remove ${label}?`)) return;
       prefsSkillsState.splice(idx, 1);
       renderSkillsRows();
     });
@@ -1971,6 +2017,17 @@ async function savePreferences(): Promise<void> {
     skills?: { repos?: Array<{ name?: string; url?: string; branch?: string; enabled?: boolean }> };
   };
 
+  // Galaxy validation: both-or-neither. The renderer's footer indicator
+  // turns green on profile presence, but the brain only registers the
+  // MCP when both URL and API key are non-empty — half-filled gets you
+  // a green dot with no Galaxy tools. Block save up front instead.
+  const galaxyUrlVal = prefsGalaxyUrl.value.trim();
+  const galaxyKeyVal = prefsGalaxyKey.value.trim();
+  if (Boolean(galaxyUrlVal) !== Boolean(galaxyKeyVal)) {
+    alert("Galaxy: provide both URL and API key, or leave both blank.");
+    return;
+  }
+
   const config: typeof current = { ...current };
 
   config.llm = {
@@ -1979,16 +2036,14 @@ async function savePreferences(): Promise<void> {
     apiKey: prefsApiKey.value.trim() || undefined,
   };
 
-  // Galaxy: save as "default" profile
-  if (prefsGalaxyUrl.value.trim() || prefsGalaxyKey.value.trim()) {
+  // Galaxy: save as "default" profile (only when both fields are present
+  // — validation above guarantees we never persist a half-filled entry).
+  if (galaxyUrlVal && galaxyKeyVal) {
     config.galaxy = {
       active: "default",
       profiles: {
         ...(current.galaxy?.profiles || {}),
-        default: {
-          url: prefsGalaxyUrl.value.trim(),
-          apiKey: prefsGalaxyKey.value.trim(),
-        },
+        default: { url: galaxyUrlVal, apiKey: galaxyKeyVal },
       },
     };
   } else {
@@ -2019,7 +2074,9 @@ async function savePreferences(): Promise<void> {
       currentModel = config.llm.model;
       renderModelIndicator();
     }
-    chat.addUserMessage("[system] Preferences saved. Agent restarted.");
+    // Info card, not a fake user prompt — was getting numbered as a real
+    // user submission and inflating the prompt counter.
+    chat.addInfoMessage("<i>Preferences saved. Agent restarted.</i>");
   } else {
     alert(`Failed to save preferences: ${result.error}`);
   }
