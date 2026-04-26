@@ -1330,17 +1330,15 @@ function acceptSlashPopup(index: number): void {
 }
 
 inputEl.addEventListener("keydown", (e) => {
-  // Slash popup intercepts navigation/completion keys when open.
+  // Slash popup is a hint, not a modal: Tab completes, ↑/↓ navigate
+  // within it, Esc dismisses. Enter still submits whatever the user
+  // typed — the popup auto-closes as a side effect of submit.
   if (isSlashPopupOpen()) {
-    if (e.key === "ArrowUp")     { e.preventDefault(); moveSlashPopup("up"); return; }
-    if (e.key === "ArrowDown")   { e.preventDefault(); moveSlashPopup("down"); return; }
-    if (e.key === "Tab")         { e.preventDefault(); acceptSlashPopup(slashPopupActive); return; }
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      acceptSlashPopup(slashPopupActive);
-      return;
-    }
-    if (e.key === "Escape")      { e.preventDefault(); closeSlashPopup(); return; }
+    if (e.key === "ArrowUp")    { e.preventDefault(); moveSlashPopup("up"); return; }
+    if (e.key === "ArrowDown")  { e.preventDefault(); moveSlashPopup("down"); return; }
+    if (e.key === "Tab")        { e.preventDefault(); acceptSlashPopup(slashPopupActive); return; }
+    if (e.key === "Escape")     { e.preventDefault(); closeSlashPopup(); return; }
+    // Enter falls through to the regular submit path below.
   }
 
   if (e.key === "ArrowUp" && shouldRecallOnArrow("up")) {
@@ -1357,6 +1355,7 @@ inputEl.addEventListener("keydown", (e) => {
 
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
+    closeSlashPopup();
     submit();
   }
 });
