@@ -237,6 +237,10 @@ honor it and skip the remaining gates.
 
 ### Plan section template (used in the chat draft AND the notebook write)
 
+Each step is a top-level checklist item with its routing and tool(s)
+on **indented sub-bullets**. Markdown collapses continuation-indent
+text into the parent line; sub-bullets render as a real nested list.
+
 \`\`\`markdown
 ## Plan A: <Title> [local|hybrid|remote]
 
@@ -245,9 +249,11 @@ honor it and skip the remaining gates.
 ### Steps
 
 - [ ] 1. **<Step name>** {#plan-a-step-1} — <one-line purpose>
-       Routing: local | Galaxy: <tool-id>
-- [ ] 2. **<Step name>** {#plan-a-step-2} — ...
-- ...
+  - Routing: local
+  - Tool: <tool-name-or-galaxy-id>
+- [ ] 2. **<Step name>** {#plan-a-step-2} — <one-line purpose>
+  - Routing: Galaxy
+  - Tool: <galaxy-tool-id>
 
 ### Parameters
 
@@ -262,10 +268,44 @@ Conventions:
   individual steps unambiguously.
 - Routing tag in the section header: \`[local]\`, \`[hybrid]\`, or
   \`[remote]\`. Tag literal so future tooling can grep.
+- Step routing/tool details go on **sub-bullets**, not on the same line
+  as the step heading. Markdown will collapse same-line continuation
+  text and the rendered notebook becomes unreadable.
 - Mark step status by editing the checkbox: \`- [ ]\` (pending),
   \`- [x]\` (completed), \`- [!]\` (failed).
 - Multiple plans coexist; append new plan sections at the bottom of the
   notebook. Don't delete old plans.
+`;
+}
+
+/**
+ * Chat formatting discipline. End-to-end testing showed the agent
+ * live-narrating execution in chat as a stream of run-on tokens — no
+ * blank lines between progress updates, adjacent **bold** markers
+ * concatenating and failing to parse. Result: a wall of broken text.
+ */
+function buildChatFormattingBlock(): string {
+  return `## Chat formatting
+
+Chat is rendered as markdown. Tokens stream live, so adjacent bold/italic
+markers without whitespace between them break parsing — the user sees
+literal \`**asterisks**\` instead of bold. Two rules:
+
+- **Always separate distinct progress updates with a blank line.** If
+  you announce "Starting step 2", complete it, and then announce step
+  3, those are three distinct messages — put a blank line (\`\\n\\n\`)
+  between each. Same for any sequence of messages emitted in one turn.
+- **Don't narrate execution step-by-step in chat.** The notebook is
+  the durable progress record (checkboxes flip as steps complete) and
+  Galaxy invocation status updates land in the YAML blocks. Keep chat
+  for **dialogue + final status** — open questions, requested
+  decisions, and a single end-of-turn summary like
+  *"All 8 steps done. Variant call results in plan-a-step-7. Ready
+  for interpretation?"*
+
+When you do post a multi-line update, prefer a markdown list or a
+fenced code block over inline-bold-heavy run-on prose. Lists naturally
+get blank lines from the renderer; run-on prose does not.
 `;
 }
 
@@ -368,6 +408,7 @@ export function setupContextInjection(pi: ExtensionAPI): void {
     const systemPrompt = [
       buildPlanConventionBlock(),
       buildParameterReviewBlock(),
+      buildChatFormattingBlock(),
       buildNotebookWriteBlock(),
       buildGalaxyContextBlock(),
       buildLocalEnvContext(),
