@@ -189,7 +189,8 @@ Prefer **omitting \`timeout\` entirely** over capping too low.
 
 /**
  * Plan-section convention block. Plans live as markdown sections, not
- * structured state. This guidance shapes how the agent writes them.
+ * structured state. This guidance shapes how the agent drafts, reviews,
+ * and eventually writes them.
  */
 function buildPlanConventionBlock(): string {
   return `## Project model and plan sections
@@ -199,8 +200,42 @@ durable log — chronological, accumulates over the project's lifetime:
 ad-hoc exploration, plan drafts, plan execution, interpretations, new
 plans based on interpretations, and so on. Multiple plans coexist.
 
-**Plans are markdown sections.** When the user asks for one, write a
-section using the Edit/Write tool:
+**Don't propose a plan unless asked.** Most user requests are questions,
+explorations, summaries, ad-hoc edits — answer those directly. A plan
+is for multi-step pipeline orchestration the user explicitly wants
+driven (e.g. "draft a plan for variant calling on this data", "set up
+the geographic distribution analysis").
+
+### Plan lifecycle — the four-stage approval gate
+
+When the user **does** ask for a plan, follow this order strictly:
+
+1. **Draft in chat (NOT in the notebook yet).** Reply in chat with a
+   fenced markdown block formatted as a plan section (see template
+   below). This is a proposal for review. Do not call Edit/Write to
+   put it into \`notebook.md\` at this point.
+2. **Wait for explicit plan approval.** The user must signal approval
+   with words like "yes", "go", "approve", "looks good", "proceed",
+   "execute", or by directly asking for parameters. If they request
+   changes ("add step 3 for QC", "drop the indel filtering step"),
+   revise the draft IN CHAT and ask again. Loop until they approve.
+3. **Show the parameter table in chat.** Once the plan structure is
+   approved, surface the parameter table for the user to review and
+   edit. See the "Parameter review" block below for what to show and
+   how to handle edits. Still NOT in the notebook.
+4. **Wait for explicit parameters approval.** Same trigger words as
+   step 2. Iterate on user edits until they approve.
+
+**Only after both gates pass** do you Edit/Write the plan section
+(plan markdown + parameter table) into \`notebook.md\` and begin
+execution. Writing earlier pollutes the notebook with proposals the
+user may have rejected.
+
+If the user explicitly says "save this plan to the notebook even
+though I haven't approved it" or similar, that's a manual override —
+honor it and skip the remaining gates.
+
+### Plan section template (used in the chat draft AND the notebook write)
 
 \`\`\`markdown
 ## Plan A: <Title> [local|hybrid|remote]
@@ -216,9 +251,9 @@ section using the Edit/Write tool:
 
 ### Parameters
 
-| Step | Parameter | Value |
-| --- | --- | --- |
-| 1   | ...       | ...   |
+| Step | Tool | Parameter | Default | Value | Description |
+| --- | --- | --- | --- | --- | --- |
+| 1   | ... | ...       | ...     | ...   | ...         |
 \`\`\`
 
 Conventions:
@@ -231,12 +266,45 @@ Conventions:
   \`- [x]\` (completed), \`- [!]\` (failed).
 - Multiple plans coexist; append new plan sections at the bottom of the
   notebook. Don't delete old plans.
+`;
+}
 
-**Don't propose a plan unless asked.** Most user requests are questions,
-explorations, summaries, ad-hoc edits — answer those directly. A plan
-is for multi-step pipeline orchestration the user explicitly wants
-driven (e.g. "draft a plan for variant calling on this data", "set up
-the geographic distribution analysis").
+/**
+ * Parameter review discipline. Issue users hit: agent silently chose a
+ * "biology-relevant" subset and hid the rest. Cure: show everything by
+ * default; let the user opt into a curated view.
+ */
+function buildParameterReviewBlock(): string {
+  return `## Parameter review
+
+When the user asks to review/show/list parameters for a plan or for a
+tool, **show every parameter the tool exposes** — do not silently
+filter to a "critical" or "biology-relevant" subset. The user is the
+domain expert; let them decide what to ignore.
+
+Format: a single markdown table per tool, columns
+\`Parameter | Default | Value | Description\`. \`Value\` mirrors
+\`Default\` until the user edits it. Keep \`Description\` to one line.
+
+If the table would be unwieldy (>30 rows for a single tool), still
+show all rows — but offer at the end: *"That's the complete set. If
+you want a curated view focused on biology-relevant knobs only, say
+'show critical only' and I'll filter."* Default = full set.
+
+Editing flow:
+
+- The user edits values inline by saying things like *"set min_qual
+  to 30, leave others"* or by pasting an updated table back at you.
+- After each edit batch, re-show the table with the new values
+  highlighted (e.g. wrap modified values in **bold**) so the user
+  can confirm they took.
+- When the user approves ("looks good", "go", etc.), proceed to the
+  notebook write + execute gate (see Plan lifecycle).
+
+Do not put the parameter table into \`notebook.md\` until the plan
+itself has cleared the four-stage approval gate. The chat exchange is
+the working surface for parameters; the notebook is the durable
+record once everything is settled.
 `;
 }
 
@@ -299,6 +367,7 @@ export function setupContextInjection(pi: ExtensionAPI): void {
   pi.on("before_agent_start", async (_event, ctx) => {
     const systemPrompt = [
       buildPlanConventionBlock(),
+      buildParameterReviewBlock(),
       buildNotebookWriteBlock(),
       buildGalaxyContextBlock(),
       buildLocalEnvContext(),
