@@ -46,10 +46,6 @@
   --radius: 6px;
   --font: "JetBrains Mono", Monaco, Menlo, Consolas, "Courier New", monospace;
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-
-  /* Step status colors (dark theme) */
-  --state-ok-border: #4ade80;
-  --state-error-border: #f87171;
 }
 
 * {
@@ -568,8 +564,8 @@ body:not(.artifact-collapsed) #artifact-toggle {
 }
 
 .status-badge.running {
-  background: rgba(72, 161, 221, 0.2);
-  color: var(--accent-light);
+  background: var(--accent-bg);
+  color: var(--accent);
 }
 
 .status-badge.error {
@@ -623,7 +619,7 @@ body:not(.artifact-collapsed) #artifact-toggle {
 #usage-cost {
   padding-left: 6px;
   border-left: 1px solid rgba(255,255,255,0.15);
-  color: gold;
+  color: var(--accent);
   white-space: nowrap;
 }
 
@@ -947,7 +943,7 @@ body:not(.artifact-collapsed) #artifact-toggle {
 
 .status-badge.thinking {
   background: rgba(255, 215, 0, 0.15);
-  color: #c8a200;
+  color: var(--galaxy-gold-dark);
   animation: blink 1.5s step-end infinite;
 }
 
@@ -1284,7 +1280,7 @@ body:not(.artifact-collapsed) #artifact-toggle {
 .shell-line.shell-tool-start { color: #80c3ea; }
 .shell-line.shell-tool-end { color: var(--success); padding-left: 16px; }
 .shell-line.shell-tool-error { color: #ff817b; padding-left: 16px; }
-.shell-line.shell-status { color: #c8a200; }
+.shell-line.shell-status { color: var(--galaxy-gold-dark); }
 .shell-line.shell-info { color: rgba(255, 255, 255, 0.5); }
 .shell-line.shell-stdout {
   color: rgba(255, 255, 255, 0.7);
@@ -1310,7 +1306,7 @@ body:not(.artifact-collapsed) #artifact-toggle {
 
 #input:focus {
   border-color: var(--accent-light);
-  box-shadow: 0 0 0 2px rgba(72, 161, 221, 0.15);
+  box-shadow: 0 0 0 2px var(--accent-bg);
 }
 
 #input::placeholder {
@@ -1448,7 +1444,7 @@ body:not(.artifact-collapsed) #artifact-toggle {
 
 .modal-close:hover {
   opacity: 1;
-  color: gold;
+  color: var(--accent);
 }
 
 .modal-body {
@@ -1510,7 +1506,7 @@ body:not(.artifact-collapsed) #artifact-toggle {
 .prefs-row input:focus,
 .prefs-row select:focus {
   border-color: var(--accent-light);
-  box-shadow: 0 0 0 2px rgba(72, 161, 221, 0.15);
+  box-shadow: 0 0 0 2px var(--accent-bg);
 }
 
 .prefs-row-with-btn {
@@ -1659,6 +1655,43 @@ body:not(.artifact-collapsed) #artifact-toggle {
   background: #8d2731;
 }
 
+/* Base button used across modals, prefs, plan-draft cards, file viewer.
+   Without this rule the modifier-only selectors (.prefs-row-with-btn .plan-btn,
+   .modal-actions .plan-btn, etc.) only adjust padding/size and the unstyled
+   button falls back to the OS default — white pill on a dark theme. */
+.plan-btn {
+  background: var(--bg-surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.plan-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.plan-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.plan-btn.primary,
+.plan-btn.execute {
+  background: var(--accent);
+  color: var(--galaxy-dark);
+  border-color: var(--accent);
+}
+.plan-btn.primary:hover:not(:disabled),
+.plan-btn.execute:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--galaxy-dark);
+}
+
 /* ── Notebook / Activity Pane ─────────────────────────────────────────────── */
 
 #artifact-content {
@@ -1733,7 +1766,7 @@ body:not(.artifact-collapsed) #artifact-toggle {
 
 .pane-tab.active {
   opacity: 1;
-  border-bottom-color: var(--accent, #5b8def);
+  border-bottom-color: var(--accent);
 }
 
 .pane-tab[hidden] {
@@ -1798,7 +1831,7 @@ body:not(.artifact-collapsed) #artifact-toggle {
 }
 
 .activity-event-kind {
-  color: var(--accent, #5b8def);
+  color: var(--accent);
   font-weight: 600;
 }
 
@@ -1877,7 +1910,7 @@ body:not(.artifact-collapsed) #artifact-toggle {
 
 .ext-input:focus {
   outline: none;
-  border-color: var(--accent, #4a90e2);
+  border-color: var(--accent);
 }
 
 .ext-options {
@@ -1898,8 +1931,8 @@ body:not(.artifact-collapsed) #artifact-toggle {
 
 .ext-option:hover,
 .ext-option.focused {
-  background: rgba(74, 144, 226, 0.15);
-  border-color: var(--accent, #4a90e2);
+  background: var(--accent-bg);
+  border-color: var(--accent);
 }
 
 
