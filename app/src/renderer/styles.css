@@ -64,6 +64,17 @@ html, body {
   line-height: 1.5;
 }
 
+/* Focus rings: keyboard navigators get a visible gold outline; mouse
+   clickers keep the clean look (matched by per-control \`outline: none\`
+   on \`:focus\` rules). \`:focus-visible\` is the modern way to draw this
+   distinction — supported by every browser Electron ships against.
+   Specific overrides may add padding/inset on top of this base. */
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
 /* Global link color — gold on dark theme */
 a {
   color: var(--accent);
@@ -467,6 +478,13 @@ body:not(.files-collapsed) #files-toggle {
   border: 1px solid var(--border);
   flex-shrink: 0;
   transition: background 0.15s, border-color 0.15s;
+  /* Reset native button styling — element is a <button> for keyboard
+     accessibility but visually it's the same status pill it always was. */
+  appearance: none;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
 }
 .status-dot::before {
   content: "";

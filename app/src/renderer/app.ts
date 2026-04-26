@@ -1342,6 +1342,12 @@ function closeSlashPopup(): void {
   slashPopup.innerHTML = "";
   slashPopupItems = [];
   slashPopupActive = -1;
+  inputEl.removeAttribute("aria-activedescendant");
+  inputEl.setAttribute("aria-expanded", "false");
+}
+
+function slashRowId(i: number): string {
+  return `slash-popup-item-${i}`;
 }
 
 function maybeOpenSlashPopup(): void {
@@ -1362,6 +1368,7 @@ function maybeOpenSlashPopup(): void {
   slashPopupActive = 0;
   renderSlashPopup();
   slashPopup.classList.remove("hidden");
+  inputEl.setAttribute("aria-expanded", "true");
 }
 
 function renderSlashPopup(): void {
@@ -1369,7 +1376,9 @@ function renderSlashPopup(): void {
   slashPopupItems.forEach((cmd, i) => {
     const row = document.createElement("div");
     row.className = "slash-popup-item" + (i === slashPopupActive ? " active" : "");
+    row.id = slashRowId(i);
     row.setAttribute("role", "option");
+    row.setAttribute("aria-selected", String(i === slashPopupActive));
     row.dataset.index = String(i);
 
     const nameEl = document.createElement("span");
@@ -1396,6 +1405,15 @@ function renderSlashPopup(): void {
     });
     slashPopup.appendChild(row);
   });
+
+  // ARIA wiring: the listbox owns the items, but focus stays on the
+  // textarea — aria-activedescendant points screen readers at the
+  // currently-highlighted row so they announce it on ↑/↓.
+  if (slashPopupActive >= 0 && slashPopupItems[slashPopupActive]) {
+    inputEl.setAttribute("aria-activedescendant", slashRowId(slashPopupActive));
+  } else {
+    inputEl.removeAttribute("aria-activedescendant");
+  }
 }
 
 function moveSlashPopup(direction: "up" | "down"): void {

@@ -43,19 +43,24 @@
       <div id="messages"></div>
 
       <div id="input-area">
-        <div id="slash-popup" class="hidden" role="listbox"></div>
-        <span id="queued-indicator" class="hidden" title="Queued — will send when agent is ready">queued ↓</span>
+        <div id="slash-popup" class="hidden" role="listbox" aria-label="Slash commands"></div>
+        <span id="queued-indicator" class="hidden" title="Queued — will send when agent is ready">queued <span aria-hidden="true">↓</span></span>
         <textarea
           id="input"
           placeholder="Ask for a plan, drop a file path, or type / for commands"
           rows="1"
+          aria-label="Chat input"
+          aria-haspopup="listbox"
+          aria-controls="slash-popup"
+          aria-autocomplete="list"
+          aria-expanded="false"
         ></textarea>
-        <button id="send-btn" title="Send">
+        <button id="send-btn" title="Send" aria-label="Send message">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13"/>
           </svg>
         </button>
-        <button id="abort-btn" title="Stop" class="hidden">
+        <button id="abort-btn" title="Stop" class="hidden" aria-label="Stop streaming response">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <rect x="6" y="6" width="12" height="12" rx="2"/>
           </svg>
@@ -128,23 +133,23 @@
       <button id="model-indicator" title="Click to change model" class="hidden">
         <span id="model-indicator-name">—</span>
       </button>
-      <div id="galaxy-status" class="status-dot status-dot-disconnected" title="Galaxy: not configured">
+      <button id="galaxy-status" class="status-dot status-dot-disconnected" title="Galaxy: not configured" aria-label="Galaxy connection: not configured. Click to open Preferences.">
         <span class="status-dot-label">Galaxy</span>
-      </div>
+      </button>
       <div id="usage-bar" title="Session token usage">
         <span id="usage-tokens">0 tok</span>
         <span id="usage-cost"></span>
       </div>
-      <button id="files-toggle" title="Toggle files sidebar (Ctrl+B)">
+      <button id="files-toggle" title="Toggle files sidebar (Ctrl+B)" aria-label="Toggle files sidebar">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
         </svg>
       </button>
       <div id="cwd-bar">
         <span id="cwd-path" title="Analysis directory">~</span>
-        <button id="cwd-change" title="Change directory">change</button>
+        <button id="cwd-change" title="Change directory" aria-label="Change analysis directory">change</button>
       </div>
-      <button id="artifact-toggle" title="Toggle notebook pane (Ctrl+\)">
+      <button id="artifact-toggle" title="Toggle notebook pane (Ctrl+\)" aria-label="Toggle notebook pane">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="3" y="3" width="18" height="18" rx="2"/>
           <line x1="15" y1="3" x2="15" y2="21"/>
