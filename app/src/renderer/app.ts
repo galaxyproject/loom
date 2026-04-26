@@ -659,6 +659,8 @@ function submit(): void {
   const text = inputEl.value.trim();
   if (!text) return;
 
+  appendHistoryEntry(text);
+
   // Slash commands — handled locally, no LLM round-trip (allowed even while streaming)
   if (text.startsWith("/")) {
     if (handleSlashCommand(text)) {
@@ -741,24 +743,37 @@ function formatArgsPreview(args: Record<string, unknown> | undefined): string | 
   }
 }
 
+interface SlashCommand {
+  name: string;
+  usage?: string;
+  description: string;
+}
+
+const SLASH_COMMANDS: SlashCommand[] = [
+  { name: "model",     usage: "/model <name>",         description: "switch LLM model" },
+  { name: "new",       description: "start a fresh session" },
+  { name: "resume",    description: "restart agent and replay prior session" },
+  { name: "chat",      description: "restore the chat pane from the session transcript (no agent restart)" },
+  { name: "plan",      description: "show current plan summary" },
+  { name: "status",    description: "show Galaxy connection status" },
+  { name: "notebook",  description: "show notebook info" },
+  { name: "summarize", usage: "/summarize [N [M]]",    description: "summarize prompts N–M into the notebook" },
+  { name: "cost",      description: "append session token/cost breakdown to the notebook" },
+  { name: "decisions", description: "show decision log" },
+  { name: "connect",   description: "open Galaxy connection settings" },
+  { name: "help",      description: "show this help" },
+];
+
+function escapeHtmlBasic(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 function slashCommandsHtml(): string {
-  return (
-    `<h3>Slash commands</h3>` +
-    `<ul>` +
-    `<li><code>/model &lt;name&gt;</code> — switch LLM model</li>` +
-    `<li><code>/new</code> — start a fresh session</li>` +
-    `<li><code>/resume</code> — restart agent and replay prior session</li>` +
-    `<li><code>/chat</code> — restore the chat pane from the session transcript (no agent restart)</li>` +
-    `<li><code>/plan</code> — show current plan summary</li>` +
-    `<li><code>/status</code> — show Galaxy connection status</li>` +
-    `<li><code>/notebook</code> — show notebook info</li>` +
-    `<li><code>/summarize [N [M]]</code> — summarize prompts N–M into the notebook</li>` +
-    `<li><code>/cost</code> — append session token/cost breakdown to the notebook</li>` +
-    `<li><code>/decisions</code> — show decision log</li>` +
-    `<li><code>/connect</code> — open Galaxy connection settings</li>` +
-    `<li><code>/help</code> — show this help</li>` +
-    `</ul>`
-  );
+  const items = SLASH_COMMANDS.map((c) => {
+    const label = c.usage ?? `/${c.name}`;
+    return `<li><code>${escapeHtmlBasic(label)}</code> — ${escapeHtmlBasic(c.description)}</li>`;
+  }).join("");
+  return `<h3>Slash commands</h3><ul>${items}</ul>`;
 }
 
 function handleSlashCommand(text: string): boolean {
@@ -1141,7 +1156,205 @@ async function switchModelByAlias(originalText: string, alias: string): Promise<
   }
 }
 
+// ─── Prompt history (↑ / ↓ to recall previous submissions) ──────────────────
+
+const HISTORY_KEY = "loom.promptHistory";
+const HISTORY_MAX = 100;
+
+function loadPromptHistory(): string[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((s) => typeof s === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePromptHistory(): void {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(promptHistory));
+  } catch { /* ignore quota errors */ }
+}
+
+const promptHistory: string[] = loadPromptHistory();
+let historyCursor: number = promptHistory.length;  // index of NEXT slot
+let historyDraft: string = "";  // user's pre-recall buffer
+
+function appendHistoryEntry(text: string): void {
+  if (!text.trim()) return;
+  // Skip exact-duplicate of last entry to keep navigation useful.
+  if (promptHistory[promptHistory.length - 1] === text) {
+    historyCursor = promptHistory.length;
+    return;
+  }
+  promptHistory.push(text);
+  if (promptHistory.length > HISTORY_MAX) {
+    promptHistory.splice(0, promptHistory.length - HISTORY_MAX);
+  }
+  historyCursor = promptHistory.length;
+  historyDraft = "";
+  savePromptHistory();
+}
+
+/** Should ↑/↓ recall instead of moving the caret? Yes when input is empty
+ *  or the caret is on the first/last visual line, mirroring shell semantics. */
+function shouldRecallOnArrow(direction: "up" | "down"): boolean {
+  if (inputEl.value === "") return true;
+  const pos = inputEl.selectionStart ?? 0;
+  if (direction === "up") {
+    // First line iff there's no \n before the caret.
+    return inputEl.value.lastIndexOf("\n", pos - 1) === -1;
+  }
+  // Last line iff there's no \n at or after the caret.
+  return inputEl.value.indexOf("\n", pos) === -1;
+}
+
+function recallHistory(direction: "up" | "down"): void {
+  if (direction === "up") {
+    if (historyCursor <= 0) return;
+    if (historyCursor === promptHistory.length) {
+      // Stash the in-progress draft so ↓ past the end restores it.
+      historyDraft = inputEl.value;
+    }
+    historyCursor -= 1;
+  } else {
+    if (historyCursor >= promptHistory.length) return;
+    historyCursor += 1;
+  }
+  inputEl.value =
+    historyCursor === promptHistory.length ? historyDraft : promptHistory[historyCursor];
+  inputEl.dispatchEvent(new Event("input"));
+  // Caret to end so the next ↑/↓ continues navigating cleanly.
+  const end = inputEl.value.length;
+  inputEl.setSelectionRange(end, end);
+}
+
+// ─── Slash-command autocomplete popup ────────────────────────────────────────
+
+const slashPopup = document.getElementById("slash-popup")!;
+let slashPopupItems: SlashCommand[] = [];
+let slashPopupActive = -1;
+
+function isSlashPopupOpen(): boolean {
+  return !slashPopup.classList.contains("hidden");
+}
+
+function closeSlashPopup(): void {
+  slashPopup.classList.add("hidden");
+  slashPopup.innerHTML = "";
+  slashPopupItems = [];
+  slashPopupActive = -1;
+}
+
+function maybeOpenSlashPopup(): void {
+  const v = inputEl.value;
+  // Only open when the input begins with `/` and has no space yet (i.e.
+  // the user is still typing the command name, not its arguments).
+  if (!v.startsWith("/") || v.includes(" ") || v.includes("\n")) {
+    closeSlashPopup();
+    return;
+  }
+  const query = v.slice(1).toLowerCase();
+  const matches = SLASH_COMMANDS.filter((c) => c.name.startsWith(query));
+  if (matches.length === 0) {
+    closeSlashPopup();
+    return;
+  }
+  slashPopupItems = matches;
+  slashPopupActive = 0;
+  renderSlashPopup();
+  slashPopup.classList.remove("hidden");
+}
+
+function renderSlashPopup(): void {
+  slashPopup.innerHTML = "";
+  slashPopupItems.forEach((cmd, i) => {
+    const row = document.createElement("div");
+    row.className = "slash-popup-item" + (i === slashPopupActive ? " active" : "");
+    row.setAttribute("role", "option");
+    row.dataset.index = String(i);
+
+    const nameEl = document.createElement("span");
+    nameEl.className = "slash-popup-name";
+    nameEl.textContent = `/${cmd.name}`;
+    row.appendChild(nameEl);
+
+    if (cmd.usage && cmd.usage !== `/${cmd.name}`) {
+      const usageEl = document.createElement("span");
+      usageEl.className = "slash-popup-usage";
+      usageEl.textContent = cmd.usage.slice(`/${cmd.name}`.length).trim();
+      row.appendChild(usageEl);
+    }
+
+    const descEl = document.createElement("span");
+    descEl.className = "slash-popup-desc";
+    descEl.textContent = cmd.description;
+    row.appendChild(descEl);
+
+    row.addEventListener("mousedown", (ev) => {
+      // mousedown (not click) so the textarea doesn't lose focus first.
+      ev.preventDefault();
+      acceptSlashPopup(i);
+    });
+    slashPopup.appendChild(row);
+  });
+}
+
+function moveSlashPopup(direction: "up" | "down"): void {
+  if (slashPopupItems.length === 0) return;
+  if (direction === "up") {
+    slashPopupActive = (slashPopupActive - 1 + slashPopupItems.length) % slashPopupItems.length;
+  } else {
+    slashPopupActive = (slashPopupActive + 1) % slashPopupItems.length;
+  }
+  renderSlashPopup();
+  const activeRow = slashPopup.querySelector(".slash-popup-item.active") as HTMLElement | null;
+  activeRow?.scrollIntoView({ block: "nearest" });
+}
+
+function acceptSlashPopup(index: number): void {
+  const cmd = slashPopupItems[index];
+  if (!cmd) return;
+  // Drop user back at the cursor position right after the command name. If
+  // there's a usage hint with args, leave a trailing space; otherwise the
+  // bare command (Enter submits it).
+  const needsArg = cmd.usage && cmd.usage.length > `/${cmd.name}`.length;
+  inputEl.value = `/${cmd.name}${needsArg ? " " : ""}`;
+  closeSlashPopup();
+  inputEl.dispatchEvent(new Event("input"));
+  inputEl.focus();
+  const end = inputEl.value.length;
+  inputEl.setSelectionRange(end, end);
+}
+
 inputEl.addEventListener("keydown", (e) => {
+  // Slash popup intercepts navigation/completion keys when open.
+  if (isSlashPopupOpen()) {
+    if (e.key === "ArrowUp")     { e.preventDefault(); moveSlashPopup("up"); return; }
+    if (e.key === "ArrowDown")   { e.preventDefault(); moveSlashPopup("down"); return; }
+    if (e.key === "Tab")         { e.preventDefault(); acceptSlashPopup(slashPopupActive); return; }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      acceptSlashPopup(slashPopupActive);
+      return;
+    }
+    if (e.key === "Escape")      { e.preventDefault(); closeSlashPopup(); return; }
+  }
+
+  if (e.key === "ArrowUp" && shouldRecallOnArrow("up")) {
+    if (promptHistory.length === 0) return;
+    e.preventDefault();
+    recallHistory("up");
+    return;
+  }
+  if (e.key === "ArrowDown" && shouldRecallOnArrow("down") && historyCursor < promptHistory.length) {
+    e.preventDefault();
+    recallHistory("down");
+    return;
+  }
+
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
     submit();
@@ -1151,6 +1364,12 @@ inputEl.addEventListener("keydown", (e) => {
 inputEl.addEventListener("input", () => {
   inputEl.style.height = "auto";
   inputEl.style.height = Math.min(inputEl.scrollHeight, 150) + "px";
+  maybeOpenSlashPopup();
+});
+
+inputEl.addEventListener("blur", () => {
+  // Defer so a click inside the popup can still fire.
+  setTimeout(() => closeSlashPopup(), 100);
 });
 
 sendBtn.addEventListener("click", submit);

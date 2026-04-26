@@ -1049,6 +1049,63 @@ body:not(.artifact-collapsed) #artifact-toggle {
 }
 #input-area { position: relative; }
 
+/* Slash-command autocomplete popup. Positioned above the textarea. */
+#slash-popup {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  font-size: 12px;
+  z-index: 50;
+}
+
+#slash-popup.hidden { display: none; }
+
+.slash-popup-item {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--text);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.slash-popup-item:last-child { border-bottom: 0; }
+
+.slash-popup-item:hover,
+.slash-popup-item.active {
+  background: var(--bg-hover);
+}
+
+.slash-popup-item .slash-popup-name {
+  font-family: var(--font);
+  font-weight: 600;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.slash-popup-item .slash-popup-usage {
+  font-family: var(--font);
+  color: var(--text-dim);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.slash-popup-item .slash-popup-desc {
+  color: var(--text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
