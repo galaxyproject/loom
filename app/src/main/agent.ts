@@ -101,6 +101,16 @@ export class AgentManager {
   private mcpBootstrapRestartDone = false; // → guard: only auto-restart once per app lifetime
   private silentRestarting = false;  // → suppresses status flicker during MCP bootstrap restart
 
+  /**
+   * Crash-restart bookkeeping. We allow up to MAX_RESTARTS_PER_WINDOW
+   * silent retries inside RESTART_WINDOW_MS — anything past that is a
+   * persistent failure and we surface it to the user via chat error +
+   * sticky status badge.
+   */
+  private crashRestartTimes: number[] = [];
+  private static readonly MAX_RESTARTS_PER_WINDOW = 3;
+  private static readonly RESTART_WINDOW_MS = 60_000;
+
   constructor(window: BrowserWindow, cwd: string) {
     this.window = window;
     this.cwd = cwd;
@@ -239,16 +249,30 @@ export class AgentManager {
 
     spawnedProcess.on("exit", (code, signal) => {
       log("agent exited, code:", code, "signal:", signal, "pid:", spawnedProcess.pid);
-      if (this.process === spawnedProcess) {
-        this.process = null;
-        if (code !== 0 && code !== null) {
-          this.setStatus("error", `Agent exited with code ${code}`);
-        } else {
-          this.setStatus("stopped");
-        }
-      } else {
+      if (this.process !== spawnedProcess) {
         log("(stale exit — newer agent already running, ignoring)");
+        return;
       }
+      this.process = null;
+
+      // Clean exit (intentional stop, or normal termination).
+      if (code === 0 || code === null) {
+        this.setStatus("stopped");
+        return;
+      }
+
+      // Crash. Try a bounded silent restart before surfacing to the user.
+      if (this.shouldAutoRestart()) {
+        const attempt = this.crashRestartTimes.length;
+        log(`agent crashed (code ${code}); silent restart ${attempt}/${AgentManager.MAX_RESTARTS_PER_WINDOW}`);
+        this.appendShellNote(`[orbit] brain exited with code ${code}; restarting (attempt ${attempt}/${AgentManager.MAX_RESTARTS_PER_WINDOW})`);
+        // Defer to next tick so listeners fully unwind before we spawn.
+        setTimeout(() => this.start(), 100);
+        return;
+      }
+      log(`agent crashed (code ${code}) and exhausted restart budget`);
+      this.appendShellNote(`[orbit] brain has crashed too many times in 60s; auto-restart disabled`);
+      this.setStatus("error", `Agent crashed repeatedly (code ${code}). Click status badge to open Preferences.`);
     });
 
     spawnedProcess.on("error", (err) => {
@@ -258,6 +282,32 @@ export class AgentManager {
         this.setStatus("error", err.message);
       }
     });
+  }
+
+  /**
+   * Returns true if we have budget to silently restart. Records the
+   * current timestamp into the rolling window before deciding.
+   */
+  private shouldAutoRestart(): boolean {
+    const now = Date.now();
+    this.crashRestartTimes = this.crashRestartTimes.filter(
+      (t) => now - t < AgentManager.RESTART_WINDOW_MS,
+    );
+    if (this.crashRestartTimes.length >= AgentManager.MAX_RESTARTS_PER_WINDOW) {
+      return false;
+    }
+    this.crashRestartTimes.push(now);
+    return true;
+  }
+
+  /**
+   * Push a one-line note into the activity-shell stream so power users
+   * can see what happened without seeing chat clutter for every retry.
+   * The renderer's onAgentShell handler already paints these.
+   */
+  private appendShellNote(text: string): void {
+    if (this.window.isDestroyed()) return;
+    this.window.webContents.send("agent:shell", { kind: "info", text });
   }
 
   stop(): void {

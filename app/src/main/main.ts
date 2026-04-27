@@ -219,8 +219,23 @@ function createWindow(cwd: string): void {
 
   // Diagnostic listeners (macOS display-sleep UI-wipe bug tracking)
   const wc = mainWindow.webContents;
-  wc.on("render-process-gone", (_e, details) =>
-    log("[diag] render-process-gone:", details.reason, "exitCode:", details.exitCode));
+  let renderReloadDone = false;
+  wc.on("render-process-gone", (_e, details) => {
+    log("[diag] render-process-gone:", details.reason, "exitCode:", details.exitCode);
+    // Recover from a one-off renderer crash by reloading once. Multiple
+    // crashes leave the blank window so the user notices something is
+    // wrong rather than seeing infinite reload churn.
+    if (renderReloadDone) {
+      log("renderer already reloaded once this session; not retrying");
+      return;
+    }
+    renderReloadDone = true;
+    if (details.reason === "killed" || details.reason === "clean-exit") return;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      log("auto-reloading renderer after crash");
+      mainWindow.reload();
+    }
+  });
   wc.on("unresponsive", () => log("[diag] webContents unresponsive"));
   wc.on("responsive", () => log("[diag] webContents responsive"));
 
