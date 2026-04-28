@@ -10,9 +10,10 @@
     HTML before it reaches innerHTML. Image sources include orbit-artifact:
     (notebook figures) and data:/blob: (rendered images, PDFs). Connect-src
     lets the renderer reach the Vite dev server (ws:) when running `npm start`.
-    object-src allows blob: for the file-viewer PDF preview (<embed src="blob:…">).
+    object-src + frame-src allow blob: for the file-viewer PDF preview —
+    Chromium's built-in PDF viewer creates an inner frame at the blob URL.
   -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' orbit-artifact: data: blob:; connect-src 'self' http://localhost:* ws://localhost:*; font-src 'self' data:; object-src blob:; base-uri 'self'; form-action 'none';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' orbit-artifact: data: blob:; connect-src 'self' http://localhost:* ws://localhost:*; font-src 'self' data:; object-src blob:; frame-src blob:; base-uri 'self'; form-action 'none';" />
   <title>orbit</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>

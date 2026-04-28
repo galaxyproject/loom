@@ -11,6 +11,11 @@ import { ProcMonitor } from "./proc-monitor.js";
 
 // Workaround for systems where chrome-sandbox isn't suid root
 app.commandLine.appendSwitch("no-sandbox");
+// Pair with --no-zygote so child renderers fork directly from the main
+// process instead of through Chromium's namespace-sandboxed zygote, which
+// fails with ESRCH on /dev/shm under restrictive AppArmor profiles
+// (Ubuntu 24.04+) and breaks DevTools and the PDF viewer.
+app.commandLine.appendSwitch("no-zygote");
 
 // Custom scheme for serving files out of the current analysis cwd. The renderer
 // rewrites relative <img src> in notebook.md to orbit-artifact://cwd/<path>, and
