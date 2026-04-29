@@ -154,6 +154,7 @@
       <button id="galaxy-status" class="footer-control is-interactive status-dot status-dot-disconnected" title="Galaxy: not configured" aria-label="Galaxy connection: not configured. Click to open Preferences.">
         <span class="status-dot-label">Galaxy</span>
       </button>
+      <button id="report-issue-btn" class="footer-control is-interactive" title="Report an issue" aria-label="Report an issue">Report</button>
       <div id="exec-mode-toggle" class="footer-control footer-control-segmented" role="radiogroup" aria-label="Execution mode" title="Execution mode: Local = everything runs locally; Cloud = agent decides per plan whether each step runs locally or on Galaxy.">
         <button id="exec-mode-local" class="exec-mode-btn" data-mode="local" role="radio" aria-checked="false">Local</button>
         <button id="exec-mode-cloud" class="exec-mode-btn active" data-mode="cloud" role="radio" aria-checked="true">Cloud</button>
@@ -416,6 +417,51 @@
           <button id="ext-confirm" class="plan-btn primary hidden">OK</button>
           <button id="ext-deny" class="plan-btn hidden">No</button>
           <button id="ext-accept" class="plan-btn primary hidden">Yes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Report-issue modal -->
+  <div id="report-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Report an issue</h2>
+        <button id="report-close" class="modal-close" title="Close" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="report-account-note">
+          You'll need a GitHub account to submit this — your default browser
+          will open the pre-filled issue page on
+          <a href="https://github.com/galaxyproject/loom" target="_blank" rel="noopener noreferrer">github.com/galaxyproject/loom</a>,
+          and you click <em>Submit</em> there. No GitHub account?
+          <a href="https://github.com/signup" target="_blank" rel="noopener noreferrer">Create one</a>
+          — if you're serious about data analysis, you'll want one anyway
+          (code, notebooks, collaboration all live there).
+        </div>
+        <div class="prefs-row">
+          <label for="report-title">Title</label>
+          <input id="report-title" type="text" placeholder="Short summary" required />
+        </div>
+        <div class="prefs-row">
+          <label for="report-body">What happened?</label>
+          <textarea id="report-body" rows="6" placeholder="Steps to reproduce, expected vs actual, screenshots if relevant..."></textarea>
+        </div>
+        <div class="report-options">
+          <label><input type="checkbox" id="report-include-sysinfo" /> Include system info</label>
+          <label><input type="checkbox" id="report-include-logs" /> Include logs</label>
+        </div>
+        <details class="report-disclosure">
+          <summary>What's in this report?</summary>
+          <p><b>System info:</b> Orbit version, OS, Electron/Node versions, LLM model + provider name (no API key), Galaxy connection state (no credentials).</p>
+          <p><b>Logs:</b> last 30 lines of <code>activity.jsonl</code> (if present in the cwd) and last ~150 lines of the in-app shell stream. These can include filenames, tool arguments, and command output -- review the issue body on GitHub before you click Submit there.</p>
+          <p>Both are off by default. Opt in only when you've decided you're OK sharing them on a public issue.</p>
+        </details>
+      </div>
+      <div class="modal-footer">
+        <div class="modal-actions">
+          <button id="report-cancel" class="plan-btn">Cancel</button>
+          <button id="report-submit" class="plan-btn primary">Open as GitHub issue</button>
         </div>
       </div>
     </div>

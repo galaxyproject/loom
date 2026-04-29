@@ -48,4 +48,15 @@ export class ShellPanel {
   clear(): void {
     this.body.innerHTML = "";
   }
+
+  /** Last N lines of the shell stream as plain text — used by the issue reporter. */
+  tail(n: number): string {
+    const lines: string[] = [];
+    const children = this.body.children;
+    const start = Math.max(0, children.length - n);
+    for (let i = start; i < children.length; i++) {
+      lines.push(children[i].textContent ?? "");
+    }
+    return lines.join("\n");
+  }
 }

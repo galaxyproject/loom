@@ -1511,7 +1511,8 @@ body:not(.artifact-collapsed) #artifact-toggle {
 
 .prefs-row input[type="text"],
 .prefs-row input[type="password"],
-.prefs-row select {
+.prefs-row select,
+.prefs-row textarea {
   flex: 1;
   padding: 6px 10px;
   background: var(--bg);
@@ -1524,10 +1525,57 @@ body:not(.artifact-collapsed) #artifact-toggle {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
+.prefs-row textarea {
+  resize: vertical;
+  min-height: 80px;
+  font-family: var(--font-sans);
+  line-height: 1.4;
+}
+
 .prefs-row input:focus,
-.prefs-row select:focus {
+.prefs-row select:focus,
+.prefs-row textarea:focus {
   border-color: var(--accent-light);
   box-shadow: 0 0 0 2px var(--accent-bg);
+}
+
+.report-account-note {
+  background: var(--accent-bg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.report-options {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text);
+  margin-top: 8px;
+}
+.report-options label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.report-disclosure {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.report-disclosure summary {
+  cursor: pointer;
+  color: var(--text);
+}
+.report-disclosure p {
+  margin-top: 6px;
+  line-height: 1.5;
 }
 
 .prefs-row-with-btn {

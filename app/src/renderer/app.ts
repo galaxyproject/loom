@@ -2332,6 +2332,123 @@ window.orbit.onShowSlashCommands(() => {
   chat.addInfoMessage(slashCommandsHtml());
 });
 
+// ── Report-issue modal ───────────────────────────────────────────────────────
+//
+// One-click affordance for alpha testers: pre-fills a GitHub "new issue" URL
+// with the user's title/description plus opt-in sysinfo + log tails, then
+// opens the user's browser. The renderer never gets a generic openExternal —
+// the URL is constructed in main against a hard-coded repo (#33 option A).
+
+const reportBtn = document.getElementById("report-issue-btn")!;
+const reportOverlay = document.getElementById("report-overlay")!;
+const reportClose = document.getElementById("report-close")!;
+const reportCancel = document.getElementById("report-cancel")!;
+const reportSubmit = document.getElementById("report-submit") as HTMLButtonElement;
+const reportTitle = document.getElementById("report-title") as HTMLInputElement;
+const reportBody = document.getElementById("report-body") as HTMLTextAreaElement;
+const reportIncludeSysinfo = document.getElementById("report-include-sysinfo") as HTMLInputElement;
+const reportIncludeLogs = document.getElementById("report-include-logs") as HTMLInputElement;
+
+const REPORT_BODY_CAP = 6000;
+
+function openReportModal(): void {
+  reportTitle.value = "";
+  reportBody.value = "";
+  // Default to no auto-collected data. The destination is a public GitHub
+  // issue, so opt-in beats opt-out -- forces the user to read the
+  // disclosure before sharing logs or sysinfo.
+  reportIncludeSysinfo.checked = false;
+  reportIncludeLogs.checked = false;
+  reportOverlay.classList.remove("hidden");
+  reportTitle.focus();
+}
+function closeReportModal(): void {
+  reportOverlay.classList.add("hidden");
+}
+
+async function buildReportBody(userText: string): Promise<string> {
+  const sections: string[] = [userText.trim() || "(no description provided)"];
+
+  if (reportIncludeSysinfo.checked) {
+    try {
+      const info = await window.orbit.getReportSysinfo();
+      const cfg = (await window.orbit.getConfig()) as {
+        llm?: { provider?: string; model?: string };
+        galaxy?: { active: string | null };
+      };
+      // Deliberately not including cwd -- a path like /home/<user>/<project>
+      // leaks both username and project name to a public issue, and isn't
+      // useful for debugging.
+      sections.push(
+        `## System info\n` +
+        `- Orbit: ${info.appVersion}\n` +
+        `- Platform: ${info.platform} ${info.arch}\n` +
+        `- Electron: ${info.electronVersion}, Chrome: ${info.chromeVersion}, Node: ${info.nodeVersion}\n` +
+        `- LLM: ${cfg.llm?.provider ?? "(none)"} / ${cfg.llm?.model ?? "(none)"}\n` +
+        `- Galaxy: ${cfg.galaxy?.active ? "configured" : "not configured"}`
+      );
+    } catch (err) {
+      sections.push(`## System info\n(failed to collect: ${err instanceof Error ? err.message : String(err)})`);
+    }
+  }
+
+  if (reportIncludeLogs.checked) {
+    // Activity tail (last 30 lines of activity.jsonl, if present)
+    try {
+      const res = await window.orbit.readFile("activity.jsonl");
+      if (res.ok) {
+        const text = new TextDecoder("utf-8").decode(res.bytes);
+        const lines = text.split("\n").filter(Boolean);
+        const tail = lines.slice(-30).join("\n");
+        sections.push("## activity.jsonl (last 30 lines)\n```\n" + tail + "\n```");
+      }
+    } catch { /* file missing or unreadable — skip */ }
+
+    // Shell tail (last ~150 lines of in-memory ShellPanel)
+    const shellTail = shell.tail(150);
+    if (shellTail.trim()) {
+      sections.push("## Shell stream (last ~150 lines)\n```\n" + shellTail + "\n```");
+    }
+  }
+
+  let body = sections.join("\n\n");
+  if (body.length > REPORT_BODY_CAP) {
+    body = body.slice(0, REPORT_BODY_CAP - 50) + "\n\n…(truncated)";
+  }
+  return body;
+}
+
+reportBtn.addEventListener("click", openReportModal);
+reportClose.addEventListener("click", closeReportModal);
+reportCancel.addEventListener("click", closeReportModal);
+reportOverlay.addEventListener("click", (e) => {
+  if (e.target === reportOverlay) closeReportModal();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !reportOverlay.classList.contains("hidden")) {
+    closeReportModal();
+  }
+});
+
+reportSubmit.addEventListener("click", async () => {
+  const title = reportTitle.value.trim();
+  if (!title) {
+    // Native validity tooltip is consistent with how form validation works
+    // elsewhere in the app and avoids silent failure when the button click
+    // doesn't appear to do anything.
+    reportTitle.reportValidity();
+    return;
+  }
+  reportSubmit.disabled = true;
+  try {
+    const body = await buildReportBody(reportBody.value);
+    await window.orbit.openIssueReport({ title, body });
+    closeReportModal();
+  } finally {
+    reportSubmit.disabled = false;
+  }
+});
+
 // ── Agent shell event feed ────────────────────────────────────────────────────
 
 /** Extract a short, useful summary from an agent event and append to the shell. */

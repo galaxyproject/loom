@@ -82,6 +82,15 @@ export interface OrbitAPI {
   onProcUpdate(callback: (procs: ProcInfo[]) => void): () => void;
   onSessionHistory(callback: (history: ReplaySegment[]) => void): () => void;
   replayChat(): Promise<{ ok: true; segments: number } | { ok: false; error: string }>;
+  getReportSysinfo(): Promise<{
+    appVersion: string;
+    electronVersion: string;
+    nodeVersion: string;
+    chromeVersion: string;
+    platform: string;
+    arch: string;
+  }>;
+  openIssueReport(payload: { title: string; body: string }): Promise<{ opened: boolean }>;
 }
 
 const api: OrbitAPI = {
@@ -167,6 +176,9 @@ const api: OrbitAPI = {
   },
 
   replayChat: () => ipcRenderer.invoke("chat:replay"),
+
+  getReportSysinfo: () => ipcRenderer.invoke("report:sysinfo"),
+  openIssueReport: (payload) => ipcRenderer.invoke("report:open-issue", payload),
   onSessionHistory: (callback) => {
     const handler = (_e: unknown, history: ReplaySegment[]) => callback(history);
     ipcRenderer.on("agent:session-history", handler);

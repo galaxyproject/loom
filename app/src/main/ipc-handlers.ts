@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow, shell } from "electron";
+import { ipcMain, dialog, BrowserWindow, shell, app } from "electron";
 import type { AgentManager } from "./agent.js";
 import { startFilesWatcher, resolveWithin } from "./files-handler.js";
 import { loadSessionHistory } from "./session-replay.js";
@@ -367,6 +367,32 @@ export function registerIpcHandlers(agent: AgentManager): void {
     if (err) return { opened: false, error: err };
     return { opened: true };
   });
+
+  // Issue reporter: returns sysinfo for the renderer to bundle into the
+  // report body. No secrets — just versions + platform + arch.
+  ipcMain.handle("report:sysinfo", () => ({
+    appVersion: app.getVersion(),
+    electronVersion: process.versions.electron,
+    nodeVersion: process.versions.node,
+    chromeVersion: process.versions.chrome,
+    platform: process.platform,
+    arch: process.arch,
+  }));
+
+  // Issue reporter: opens a pre-filled GitHub "new issue" URL in the user's
+  // browser. The renderer never gets a generic openExternal capability —
+  // we hard-code the repo here so a compromised renderer can't redirect.
+  ipcMain.handle(
+    "report:open-issue",
+    async (_e, payload: { title?: unknown; body?: unknown }) => {
+      const title = typeof payload?.title === "string" ? payload.title : "";
+      const body = typeof payload?.body === "string" ? payload.body : "";
+      const params = new URLSearchParams({ title, body });
+      const url = `https://github.com/galaxyproject/loom/issues/new?${params.toString()}`;
+      await shell.openExternal(url);
+      return { opened: true };
+    },
+  );
 }
 
 /**
