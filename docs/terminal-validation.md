@@ -1,109 +1,98 @@
 # Terminal Validation
 
-This runbook keeps loom validation focused on the non-Electron product path.
+Runbook for validating Loom's CLI/runtime path without launching the Orbit shell.
 
-## Goal
+The current product model: `notebook.md` in the working directory is the durable project record. Plans, decisions, and results live there as markdown sections. Galaxy invocations are tracked with `loom-invocation` fenced YAML blocks the agent rewrites in place. There are no typed plan / step / decision tools to validate; the validation is "the markdown round-trips and the agent can read its own work back".
 
-Validate the CLI/runtime experience directly:
-
-- no Electron shell required
-- notebook creation and resume work in a normal directory
-- Galaxy connection and history state show up in `/status`
-- provenance and analysis state persist to the markdown notebook
-
-## 1. Local Checks
+## 1. Local checks
 
 From the repo root:
 
 ```bash
+npm install
 npm run typecheck
 npm test
-npm run validate:provenance
+cd app && npx tsc --noEmit
 ```
 
 Expected:
 
-- typecheck passes
-- full test suite passes
-- provenance sync regression passes
+- root typecheck passes
+- vitest passes (full suite)
+- Orbit typecheck passes too -- Orbit's main process uses several brain-side modules and breaks if their types drift
 
-## 2. Extension-Only Runtime Check
+## 2. Extension-only runtime check
 
-Load the extension directly into Pi:
+Load the Loom extension into a clean Pi process with no other extensions:
 
 ```bash
-pi --no-extensions -e /Users/dannon/work/pi-galaxy-analyst/extensions/loom
+mkdir -p /tmp/loom-validation
+cd /tmp/loom-validation
+pi --no-extensions -e /path/to/loom/extensions/loom
 ```
 
 Check:
 
-- `/status`
-- `/plan`
-- `/connect`
-- `/notebook`
-- `/profiles`
+- startup completes without extension load errors
+- `notebook.md` is created in cwd if absent
+- the slash commands respond:
+  - `/status` -- Galaxy connection + notebook path
+  - `/notebook` -- prints the notebook content
+  - `/profiles` -- lists saved Galaxy profiles
+  - `/connect` -- profile picker / new-server prompt
+  - `/execute`, `/run` -- "no pending step" message when the notebook is empty
 
-This isolates extension behavior from the loom wrapper.
+This isolates extension behavior from the `loom` CLI wrapper.
 
-## 3. Wrapper Check
+## 3. CLI wrapper check
 
 Use a clean working directory:
 
 ```bash
 mkdir -p /tmp/loom-cli-validation
 cd /tmp/loom-cli-validation
-node /Users/dannon/work/pi-galaxy-analyst/bin/loom.js --provider litellm --model gpt-oss-120b
+node /path/to/loom/bin/loom.js --provider anthropic --model claude-sonnet-4-6
 ```
 
 Notes:
 
-- `loom` writes Galaxy MCP configuration into `~/.pi/agent/mcp.json` during startup
-- use the wrapper path when you want to validate the real end-user terminal experience
-- informational wrapper commands are side-effect free:
-  `loom --help`, `loom --version`, and `loom --list-models` should not rewrite MCP config
+- `loom` writes Galaxy MCP configuration into `~/.pi/agent/mcp.json` during startup. With no Galaxy credentials available, it strips the `galaxy` server entry instead of writing a placeholder key.
+- Informational wrapper commands are side-effect free: `loom --help`, `loom --version`, `loom --list-models` should not rewrite MCP config.
 
 Check:
 
 - startup completes
-- Galaxy auto-connect or `/connect` works
-- `/status` reflects connection state
+- if Galaxy credentials are present, `/status` reports the active profile and URL
+- if no credentials, `/status` says "Galaxy: not connected" and `/connect` walks through profile setup
 
-## 4. Notebook Creation and Resume
+## 4. Notebook round-trip
 
-In the same directory:
+In the same working directory:
 
-1. Ask for a simple analysis plan
-2. Confirm a notebook file is created
-3. Exit
-4. Restart `loom` in the same directory
-
-Expected:
-
-- the notebook auto-loads
-- the session resumes existing state instead of starting empty
-
-## 5. Minimal Galaxy Flow
-
-Run the smallest practical terminal-only workflow:
-
-1. create the analysis plan
-2. set the data source
-3. add sample/file provenance
-4. create a Galaxy history
-5. add and run a FastQC step
-6. log a decision and QC checkpoint
+1. Ask the agent for a small analysis plan.
+2. Approve it. Confirm the plan section appears in `notebook.md` as `## Plan A: …`.
+3. Exit the session.
+4. Restart `loom` (or `pi --no-extensions -e …`) in the same directory.
 
 Expected:
 
-- `/status` shows Galaxy history state
-- the notebook contains the provenance section, plan state, and Galaxy IDs where applicable
+- session resumes with the existing notebook attached
+- `/notebook` prints the same content
+- `git log` (in the cwd) shows commits for the notebook initialization and any plan additions, **iff** the repo was created by Loom or has `git config loom.managed true`. Otherwise the notebook still updates but auto-commit stays off.
 
-## 6. Current Caveat
+## 5. Minimal Galaxy flow
 
-As of April 2, 2026:
+If a Galaxy server with credentials is available, run an end-to-end Galaxy step:
 
-- the terminal/runtime path itself is working
-- the remaining live blocker is model quality for tool calling
-- `litellm/gpt-oss-120b` is not reliable enough for smooth multi-step live validation
+1. `/connect` and pick a profile (or add a new server).
+2. Ask the agent to draft a one-step plan that uses a Galaxy tool you trust (FastQC on a small dataset is the usual smoke test).
+3. Approve the plan and the parameter table.
+4. Let the agent invoke the tool.
 
-If a stronger tool-calling model is available, use it for this runbook.
+Expected in the notebook after invocation:
+
+- a plan section with the routing tag (`[hybrid]` or `[remote]`)
+- a `loom-invocation` fenced block referencing the step anchor
+- after the agent calls `galaxy_invocation_check_all` (or `/run`), the YAML status updates from `in_progress` to `completed` (or `failed`) and the matching checkbox flips
+
+That round-trip is the strongest signal that the notebook-as-state model is intact: the agent reads its own previous work, polls Galaxy, and rewrites the durable record without any external state store.

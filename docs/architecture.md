@@ -6,6 +6,7 @@ Related docs:
 
 - Product/runtime overview: [`README.md`](../README.md)
 - Repo conventions and development workflow: [`CLAUDE.md`](../CLAUDE.md)
+- Day-to-day agent behavior rules: [`AGENTS.md`](../AGENTS.md)
 
 ## Purpose
 
@@ -13,295 +14,196 @@ Loom is an AI research harness for Galaxy bioinformatics built on Pi.dev.
 
 The architecture is intentionally split into:
 
-- a **brain** that owns analysis state, lifecycle rules, notebook persistence, Galaxy policy, and shell-neutral behavior
+- a **brain** that owns Galaxy connection state, notebook persistence, Galaxy invocation tracking, system-prompt context, and shell-neutral behavior
 - one or more **shells** that present that behavior to users over RPC
 
 Today the primary shells are:
 
-- `loom` — terminal CLI
-- Orbit — Electron desktop shell in [`app/`](../app/)
-
-Future shells may include:
-
-- a lightweight local web UI
-- a hosted multi-user service with auth and Galaxy account linkage
+- `loom` -- terminal CLI ([`bin/loom.js`](../bin/loom.js))
+- Orbit -- Electron desktop shell ([`app/`](../app/))
 
 The key rule is that shells do not become alternate brains. They render and orchestrate the same Loom runtime.
 
-## System Overview
+## System overview
 
 ```text
 User
   ↓
 Shell (CLI / Orbit / future web)
-  ↓ RPC / IPC
+  ↓ Pi RPC over JSON-line stdio
 Loom brain (Pi extension in extensions/loom/)
   ↓
-Galaxy MCP + Galaxy tools/workflows
+Galaxy MCP (galaxy-mcp via uvx) + Galaxy tools/workflows
   ↓
-Notebook + git history in analysis directory
+notebook.md + git history in the analysis directory
 ```
 
 Core repository areas:
 
-- [`extensions/loom/`](../extensions/loom/) — brain runtime
-- [`bin/loom.js`](../bin/loom.js) — CLI bootstrap and Pi entrypoint
-- [`app/`](../app/) — Orbit Electron shell
-- [`shared/`](../shared/) — cross-boundary contracts and shared utilities
-- analysis directory — notebook markdown, git history, outputs
+- [`extensions/loom/`](../extensions/loom/) -- brain runtime (Pi extension)
+- [`bin/loom.js`](../bin/loom.js) -- CLI bootstrap
+- [`app/`](../app/) -- Orbit Electron shell
+- [`shared/`](../shared/) -- cross-boundary contracts (config, shell-contract, team-dispatch-contract)
+- analysis directory -- `notebook.md`, `activity.jsonl`, git history
 
-## Design Principles
+## Design principles
 
-1. **One brain, many shells.**
-   Loom owns the analysis model. Shells should stay thin.
+1. **One brain, many shells.** Loom owns Galaxy + notebook semantics. Shells stay thin.
+2. **Galaxy-first execution.** Real bioinformatics jobs are expected to run in Galaxy. Local mode is an escape hatch.
+3. **Markdown-as-state.** Plans, decisions, and results are markdown sections in `notebook.md`. There is no parallel typed plan/step/decision store. The only structured side-records are `loom-invocation` YAML blocks for in-flight Galaxy work.
+4. **Durable research record.** The notebook is auto-tracked in git when Loom owns the repo (or the user opts in via `git config loom.managed true`).
+5. **Shell-neutral contracts.** Brain output flows through typed widget/status/notify events in [`shared/loom-shell-contract.js`](../shared/loom-shell-contract.js).
+6. **Session continuity by directory.** The analysis directory is the unit of continuity. Pi sessions and notebook state both key off the working directory.
 
-2. **Galaxy-first execution.**
-   Real jobs are expected to run in Galaxy. Local mode is an escape hatch, not the primary runtime model.
+## Brain modules
 
-3. **Durable research record.**
-   Plans, decisions, checkpoints, provenance, and outputs persist to a notebook in the working directory and are tracked in git.
+The Loom brain is loaded as a Pi extension from [`extensions/loom/`](../extensions/loom/). Notable modules:
 
-4. **Shell-neutral contracts.**
-   Shell-specific rendering belongs in Orbit or future web code. Brain output should flow through typed widget/status/notify contracts.
+- [`index.ts`](../extensions/loom/index.ts) -- entry wiring: registers tools, slash commands, lifecycle hooks, UI bridge, context injection.
+- [`state.ts`](../extensions/loom/state.ts) -- session state. Connection flag, current Galaxy history id, notebook path, and a chokidar watcher that re-fires the UI bridge on every notebook write. Also runs the auto-commit hook when the repo has `loom.managed=true`.
+- [`session-bootstrap.ts`](../extensions/loom/session-bootstrap.ts) -- session lifecycle: resets state on `session_start`, ensures `notebook.md` exists, drops a `session.jsonl` symlink to Pi's session file, snapshots the notebook on `session_before_compact` and `session_shutdown`, sends the startup greeting (Galaxy-aware).
+- [`execution-commands.ts`](../extensions/loom/execution-commands.ts) -- `/execute` and `/run` slash commands; pure prompt nudges, no execution policy.
+- [`tools.ts`](../extensions/loom/tools.ts) -- LLM-callable tools: `gtn_search`, `gtn_fetch`, `skills_fetch`, `galaxy_invocation_record`, `galaxy_invocation_check_all`, `galaxy_invocation_check_one`.
+- [`teams/tool.ts`](../extensions/loom/teams/tool.ts) -- `team_dispatch` (gated by `LOOM_TEAM_DISPATCH=1`).
+- [`session-index/tools.ts`](../extensions/loom/session-index/tools.ts) -- `chat_search`, `chat_session_context`, `chat_find_tool_calls` (gated by `LOOM_SESSION_INDEX=1`).
+- [`activity.ts`](../extensions/loom/activity.ts) + [`activity-hooks.ts`](../extensions/loom/activity-hooks.ts) -- streams user prompts and tool calls into `<cwd>/activity.jsonl`. The file is git-ignored by Loom's auto-`.gitignore`; it's a per-session sidecar, not durable record.
+- [`context.ts`](../extensions/loom/context.ts) -- assembles the system-prompt context (Galaxy posture, notebook digest, skill router).
+- [`ui-bridge.ts`](../extensions/loom/ui-bridge.ts) -- forwards notebook changes from the chokidar watcher to the shell as `Notebook` widget payloads.
+- [`profiles.ts`](../extensions/loom/profiles.ts) -- Galaxy server profile persistence; resolves plaintext vs encrypted API keys (encrypted-only profiles fail loud unless the shell has injected `GALAXY_API_KEY`).
+- [`git.ts`](../extensions/loom/git.ts) -- bioinformatics-aware `.gitignore`, `loom.managed` repo marker, auto-commit on notebook change.
+- [`notebook-writer.ts`](../extensions/loom/notebook-writer.ts) -- read/write helpers and `loom-invocation` YAML round-trip.
 
-5. **Session continuity by directory.**
-   The analysis directory is the unit of continuity. Notebook state and Pi session state are both keyed off that workspace context.
+## Shell responsibilities
 
-## Brain Responsibilities
+### CLI (`bin/loom.js`)
 
-The Loom brain lives in [`extensions/loom/`](../extensions/loom/).
+- boots Pi in RPC mode with `extensions/loom` loaded
+- loads `~/.loom/config.json` via `shared/loom-config.js`
+- registers (or strips) the Galaxy MCP server entry in `~/.pi/agent/mcp.json` based on credential availability
+- forwards `GALAXY_URL` / `GALAXY_API_KEY` into the agent's environment
 
-Primary responsibilities:
+The CLI never owns analysis semantics. Slash commands behave the same as in Orbit; widget events collapse to text summaries in the terminal.
 
-- maintain analysis plan state
-- enforce lifecycle rules
-- persist and restore notebooks
-- define LLM-callable tools
-- inject system context
-- emit shell-neutral UI events
-- manage Galaxy profile/config policy
-- own execution/playbook semantics for slash-command-driven workflows
+### Orbit (`app/`)
 
-Important modules:
+- starts and supervises the brain subprocess (`src/main/agent.ts`)
+- bridges renderer ↔ brain via Electron IPC and `window.orbit` (preload typed bridge)
+- renders the three-pane layout: file tree / chat / tabbed artifact pane (Notebook, Activity, File)
+- owns shell-only state: window geometry, prompt history, preferences (`~/.orbit/`)
+- decrypts Galaxy API keys via Electron `safeStorage` and injects `GALAXY_API_KEY` into the brain at spawn time (`buildSecretEnv` in `app/src/main/agent.ts`)
+- watches `~/.loom/config.json` and re-encrypts plaintext keys the brain wrote during `/connect`
 
-- [`index.ts`](../extensions/loom/index.ts)
-  Entry wiring for tools, commands, UI bridge, context injection, and lifecycle hooks.
+### Future web shell
 
-- [`state.ts`](../extensions/loom/state.ts)
-  In-memory source of truth for the current plan plus lifecycle validation, provenance, findings, publication state, workflow linkage, and notebook sync hooks.
+Two materially different possibilities:
 
-- [`tools.ts`](../extensions/loom/tools.ts)
-  Brain-level tool registry. Mutates state and emits structured results/widgets.
+- **thin local shell** -- talks to a local Loom runtime over the same shell contract Orbit uses
+- **hosted service** -- multi-user tenancy, remote session ownership, remote notebook storage, Galaxy account linking
 
-- [`context.ts`](../extensions/loom/context.ts)
-  Builds the system prompt context, including execution mode, Galaxy posture, plan summary, and behavior rules.
+These are not small variations of the same architecture. The choice has to be made before the web shell grows further.
 
-- [`ui-bridge.ts`](../extensions/loom/ui-bridge.ts)
-  Translates plan mutations into shell-facing widget events.
+## Shared contracts
 
-- [`session-bootstrap.ts`](../extensions/loom/session-bootstrap.ts)
-  Owns startup restore policy, greeting policy, fresh-session handling, and compact/shutdown persistence.
+Cross-boundary code lives in [`shared/`](../shared/):
 
-- [`execution-commands.ts`](../extensions/loom/execution-commands.ts)
-  Owns `/review`, `/test`, `/execute`, and `/run` semantics so shells do not encode execution policy in prompt strings.
+- [`loom-config.js`](../shared/loom-config.js) -- canonical `~/.loom/config.json` load/save. Atomic write (`tmp` + `rename`), `0600` permissions, lazy-seeds `galaxy-skills` if no skill repos are configured. Skill-repo URLs are restricted to `github.com/galaxyproject/*` (see `ALLOWED_SKILLS_PREFIX`); the agent treats fetched SKILL.md content as authoritative, so an arbitrary repo would be a prompt-injection vector.
+- [`loom-shell-contract.js`](../shared/loom-shell-contract.js) -- widget keys (`Notebook`, etc.) and payload encoders/decoders shared by brain and shells.
+- [`team-dispatch-contract.js`](../shared/team-dispatch-contract.js) -- payload contract for the `team_dispatch` tool.
 
-- [`profiles.ts`](../extensions/loom/profiles.ts)
-  Galaxy profile persistence and sync behavior.
+Shells must not reverse-engineer brain payloads from implementation details; if you need a new payload shape, add it to `shared/`.
 
-## Shell Responsibilities
+## Data flows
 
-### CLI
-
-The CLI entrypoint is [`bin/loom.js`](../bin/loom.js).
-
-Responsibilities:
-
-- boot Pi in RPC mode
-- load shared Loom config (~/.loom/config.json)
-- register or strip Galaxy MCP based on execution mode + credential availability
-- inject credentials into environment / MCP config (remote mode only)
-
-The CLI is still a shell, even though it is thin. It should not own analysis semantics that differ from Orbit.
-
-### Orbit
-
-Orbit lives in [`app/`](../app/).
-
-Responsibilities:
-
-- start and supervise the agent subprocess
-- bridge renderer ↔ agent via IPC
-- render chat, plan, step graph, notebook/results, and parameter form
-- manage shell-specific state like window geometry
-- expose user actions such as working-directory switch, preferences, and fresh session reset
-
-Main modules:
-
-- [`src/main/agent.ts`](../app/src/main/agent.ts)
-  Agent subprocess lifecycle and RPC line transport.
-
-- [`src/main/ipc-handlers.ts`](../app/src/main/ipc-handlers.ts)
-  Main-process request handlers for renderer actions.
-
-- [`src/preload/preload.ts`](../app/src/preload/preload.ts)
-  Typed `window.orbit` bridge.
-
-- [`src/renderer/app.ts`](../app/src/renderer/app.ts)
-  Main renderer orchestration. Consumes shared shell contract payloads.
-
-### Future Web Shell
-
-The intended direction is valid, but not fully designed yet. There are two materially different possibilities:
-
-- **thin local shell**
-  Similar to Orbit: talks to a local Loom runtime and renders the same shell contract
-
-- **hosted service**
-  Introduces auth, multi-user tenancy, remote session ownership, remote file/notebook access, and Galaxy account linking
-
-Those are not small variations of the same architecture. Before the web shell grows much further, decide which one it is.
-
-## Shared Contracts
-
-The shared cross-boundary code lives in [`shared/`](../shared/).
-
-Current shared contracts:
-
-- [`loom-config.js`](../shared/loom-config.js)
-  Shared config load/save/path semantics for CLI, brain, and Orbit
-
-- [`loom-shell-contract.js`](../shared/loom-shell-contract.js)
-  Shared widget keys and payload encoding/decoding for brain ↔ shell communication
-
-This is important because Orbit and future shells should not reverse-engineer brain payloads from implementation details.
-
-## Data Flow
-
-### Orbit User Message Path
+### User message (Orbit)
 
 ```text
 User types in Orbit
 → renderer calls window.orbit.prompt(...)
-→ main process forwards to AgentManager
-→ AgentManager writes JSON RPC line to Loom subprocess stdin
+→ main forwards to AgentManager
+→ AgentManager writes a JSON-RPC line to the brain's stdin
 → Pi + Loom process the turn
-→ tools mutate state / emit widget events
-→ main process forwards events back to renderer
-→ Orbit updates chat + artifact panes
+→ tools edit notebook.md (Edit/Write) or call galaxy-mcp
+→ chokidar fires on notebook write
+→ ui-bridge encodes a Notebook widget payload
+→ main forwards events to renderer
+→ Orbit updates chat + Notebook tab
 ```
 
-### Plan Mutation Path
+### Notebook persistence
 
 ```text
-tool executes
-→ state mutation in state.ts
-→ notifyPlanChange()
-→ ui-bridge.ts
-→ structured widget payload
-→ shell renders plan / steps / results / parameters
+Edit/Write tool rewrites notebook.md
+→ chokidar "change" event in state.ts
+→ notifyNotebookChange(content) → ui-bridge
+→ if loom.managed: commitFile(notebookPath, "Notebook updated")
 ```
 
-### Notebook Persistence Path
+There is no separate plan/state mutation path -- the markdown file *is* the state.
+
+### Galaxy invocation tracking
 
 ```text
-tool or command mutates plan
-→ state.ts updates currentPlan
-→ notebook sync helper updates markdown notebook
-→ git commit records meaningful change
+agent calls galaxy_invocation_record({ invocationId, notebookAnchor, label })
+→ tools.ts appends a `loom-invocation` fenced YAML block to notebook.md
+→ later: agent (or /run) calls galaxy_invocation_check_all
+→ tool scans notebook for in-flight blocks, polls Galaxy, rewrites YAML in place
+   (status: in_progress → completed | failed; deterministic, all-jobs-ok rules)
 ```
 
-## Session Lifecycle
+The notebook is the only authority. There is no external invocation store.
 
-Session lifecycle policy now lives in [`session-bootstrap.ts`](../extensions/loom/session-bootstrap.ts).
+## Session lifecycle
 
-At session start:
+`extensions/loom/session-bootstrap.ts` owns:
 
-1. reset in-memory state
-2. detect whether this is a fresh session (`LOOM_FRESH_SESSION=1`)
-3. if not fresh, try notebook restore from the working directory
-4. if no notebook was restored, fall back to compacted Pi session state
-5. if appropriate, send a startup greeting / recap message
+1. `session_start`:
+   - reset state
+   - drop / refresh the `session.jsonl` symlink to Pi's authoritative session file
+   - `initSessionArtifacts(cwd)` -- ensures `notebook.md` exists; ensures git repo (creating it with `loom.managed=true` if absent); attaches the chokidar watcher
+   - send a Galaxy-aware startup greeting (suppressed when `LOOM_FRESH_SESSION=1` or `--continue`)
+2. `session_before_compact` and `session_shutdown`:
+   - `pi.appendEntry("notebook_snapshot", …)` -- stash the notebook content in Pi's session log so a post-compact agent can re-orient by re-reading
 
-At compaction/shutdown:
+Invariants:
 
-- current plan is appended to Pi session entries for fallback restore
+- the notebook on disk wins; no compacted state can override it
+- restored notebook content emits to the shell once UI context is available
+- directory switch in Orbit starts a fresh agent session in the new cwd
 
-Important invariants:
+## Config model
 
-- notebook restore wins over stale compacted session state
-- restored plans emit to the shell once UI context is available
-- directory switch in Orbit starts a fresh agent session in the new `cwd`
+Three layers:
 
-## Config Model
+1. **Brain config** -- `~/.loom/config.json`. LLM provider/model/key, Galaxy profiles (`apiKey` / `apiKeyEncrypted`), skill repos, `executionMode` (`cloud` default, `local` opt-in), default cwd. Read/written via `shared/loom-config.js`.
+2. **Shell-only state** -- Orbit uses `~/.orbit/` for window geometry and prompt history; CLI has no persistent shell state.
+3. **Analysis-local state** -- the working directory. `notebook.md` (durable), `activity.jsonl` (per-session sidecar, gitignored), `session.jsonl` (symlink to Pi's session file), `.loom/env/` (per-analysis conda env, gitignored).
 
-Three layers exist:
+`ensureGitRepo(cwd)` returns `true` (and `commitFile` runs on every notebook write) only when Loom created the repo or the user manually set `git config loom.managed true`. Existing repos that don't opt in still get notebook updates -- just no auto-commits.
 
-1. **Brain config** — `~/.loom/config.json`
-   Shared user-facing config: LLM provider/model/key, Galaxy profiles, execution mode, default working directory
-
-2. **Shell-specific state**
-   Orbit uses `~/.orbit/` for window state and similar shell-only concerns
-
-3. **Analysis-local state**
-   Notebook markdown and git history live in the analysis directory
-
-The single source of truth for reading/writing brain config is now:
-
-- [`shared/loom-config.js`](../shared/loom-config.js)
-
-## Execution Model
-
-Supported posture:
-
-- **Remote** is the standard path.
-  Galaxy MCP is available, and real jobs are expected to happen there.
-
-- **Local** is an escape hatch.
-  It is intentionally discouraged for ordinary work and does not define the long-term execution architecture.
-
-That means product and shell design should optimize for Galaxy-backed execution, provenance, and resumability.
-
-## Brain ↔ Shell Boundary
-
-This boundary is the most important one to preserve.
+## Brain ↔ shell boundary
 
 The brain may:
 
-- emit widgets
-- emit statuses
-- emit notifications
-- request user input/selection/confirmation
+- emit widgets, statuses, notifications
+- request user input / selection / confirmation
+- write to `notebook.md` and `activity.jsonl` in the cwd
 
 The shell may:
 
 - display those events
-- forward user text/commands
+- forward user text and slash commands
 - manage shell-local affordances and state
+- inject env vars (e.g. `GALAXY_API_KEY` from safeStorage) at brain spawn time
 
-The shell should not:
+The shell must not:
 
-- own lifecycle rules
-- own plan semantics
-- own execution policy for core analysis flows
-- fork brain contracts into shell-specific ad hoc payloads
+- own plan / execution policy for the analysis flow
+- reverse-engineer brain payloads (use `shared/loom-shell-contract.js`)
+- write `~/.loom/config.json` outside the shared loader (Orbit's exception: re-encrypt plaintext keys after `/connect` writes them, via `fs.watch` in `app/src/main/main.ts`)
 
-## Current Constraints
+## Current constraints
 
-- Local mode is still an exception path, not a mature first-class runtime.
-- Orbit remains the richest shell; CLI is thinner and web is not yet architecturally fixed.
-- Notebook persistence is local-directory-based, which is correct for local shells but must be reconsidered carefully for any hosted deployment.
-- Hosted multi-user web architecture will require explicit decisions about session ownership, storage, auth, and Galaxy credential linkage.
-
-## Recommended Next Steps
-
-If onboarding other engineers, point them here first, then to:
-
-- [`README.md`](../README.md) for product-level framing
-- [`CLAUDE.md`](../CLAUDE.md) for repo conventions and dev workflow
-
-Architecturally, the next decisions that matter are:
-
-1. define whether `web/` is a thin local shell or the start of a hosted service
-2. preserve the shared shell contract as the only brain→shell protocol
-3. keep execution policy in Loom, not in shells
-4. treat Galaxy as the real runtime substrate for production work
+- Local execution mode is an exception path, not a mature first-class runtime.
+- Orbit is the richest shell; the CLI is intentionally thinner; the web shell is undecided.
+- Notebook persistence is local-directory-based, which is correct for local shells but must be reconsidered for any hosted deployment.
+- Skill repo allowlist is `galaxyproject/*` only -- third-party skill repos would need a more permissive `isAllowedSkillUrl` (and a story for prompt-injection risk).
