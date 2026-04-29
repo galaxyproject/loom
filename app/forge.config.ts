@@ -52,6 +52,25 @@ function stageLoomBundle(): void {
     ? "npm ci --omit=dev --no-audit --no-fund"
     : "npm install --omit=dev --omit=optional --no-audit --no-fund";
   execSync(installCmd, { cwd: LOOM_STAGE_DIR, stdio: "inherit" });
+
+  pruneLoomNodeModules();
+}
+
+// Trim runtime-irrelevant chunks from the staged Loom node_modules. Targets
+// only known-safe heavy directories; keeps everything that might be loaded.
+function pruneLoomNodeModules(): void {
+  // koffi ships prebuilt .node binaries for ~18 platforms (darwin/linux/
+  // win32/freebsd/openbsd/musl x ia32/x64/arm64/...). We only need the
+  // build platform's. Keeping just `<platform>_<arch>` saves ~30MB.
+  const koffiBuild = path.join(LOOM_STAGE_DIR, "node_modules", "koffi", "build", "koffi");
+  if (fs.existsSync(koffiBuild)) {
+    const keepDir = `${process.platform}_${process.arch}`;
+    for (const entry of fs.readdirSync(koffiBuild)) {
+      if (entry !== keepDir) {
+        fs.rmSync(path.join(koffiBuild, entry), { recursive: true, force: true });
+      }
+    }
+  }
 }
 
 function downloadFile(url: string, dest: string): Promise<void> {
@@ -116,6 +135,21 @@ async function stageNodeBundle(): Promise<void> {
 
   const extractedPath = path.join(LOOM_STAGE_PARENT, distName);
   fs.renameSync(extractedPath, NODE_STAGE_DIR);
+
+  pruneNodeBundle();
+}
+
+// Drop pieces of the Node distribution that aren't used at runtime: C/C++
+// headers for native module compilation (~60MB), man pages, top-level docs.
+// `lib/node_modules/{npm,corepack}` stays so Pi's bash tool can still run
+// `npm install` if a user/agent invokes it.
+function pruneNodeBundle(): void {
+  for (const subdir of ["include", "share"]) {
+    fs.rmSync(path.join(NODE_STAGE_DIR, subdir), { recursive: true, force: true });
+  }
+  for (const file of ["CHANGELOG.md", "README.md"]) {
+    fs.rmSync(path.join(NODE_STAGE_DIR, file), { force: true });
+  }
 }
 
 // Bundle uv/uvx so Galaxy MCP (`uvx galaxy-mcp>=1.4.0`) doesn't need a
