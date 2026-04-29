@@ -29,6 +29,8 @@ function packagedExecutablePath(): string {
     return path.join(root, "out", `Orbit-linux-${arch}`, "orbit");
   }
   if (process.platform === "darwin") {
+    // Inner binary name follows forge.config.ts `executableName: "orbit"`
+    // (lowercase), not the .app bundle's display name.
     return path.join(
       root,
       "out",
@@ -36,11 +38,11 @@ function packagedExecutablePath(): string {
       "Orbit.app",
       "Contents",
       "MacOS",
-      "Orbit",
+      "orbit",
     );
   }
   if (process.platform === "win32") {
-    return path.join(root, "out", `Orbit-win32-${arch}`, "Orbit.exe");
+    return path.join(root, "out", `Orbit-win32-${arch}`, "orbit.exe");
   }
   throw new Error(`Unsupported platform: ${process.platform}`);
 }
@@ -72,11 +74,22 @@ test("Orbit launches and the renderer initializes without errors", async () => {
     // Force a fresh session so the brain doesn't try to --continue from
     // an unrelated prior session if one happened to exist on disk.
     LOOM_FRESH_SESSION: "1",
+    // Skip the safeStorage keychain probe -- on macOS it pops a system
+    // "keychain cannot be found" dialog under a redirected HOME and
+    // blocks the test indefinitely.
+    LOOM_DISABLE_SAFE_STORAGE: "1",
   };
 
   const app = await electron.launch({
     executablePath: packagedExecutablePath(),
-    args: [`--user-data-dir=${userDataDir}`],
+    args: [
+      `--user-data-dir=${userDataDir}`,
+      // Linux-only: tells Chromium to skip libsecret/kwallet and use a
+      // plaintext file backend. Has no effect on macOS or Windows --
+      // those are covered by LOOM_DISABLE_SAFE_STORAGE above. Defensive
+      // on Linux CI runners that don't have a secret service daemon.
+      "--password-store=basic",
+    ],
     env: isolatedEnv,
     cwd: fakeCwd,
   });
