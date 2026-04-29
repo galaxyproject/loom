@@ -28,10 +28,13 @@ import {
   saveProfile,
   switchProfile,
   profileNameFromUrl,
+  warnOnUnusableActiveProfile,
 } from "./profiles";
 import { LoomWidgetKey, encodeMarkdownWidget } from "../../shared/loom-shell-contract.js";
 
 export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
+
+  warnOnUnusableActiveProfile();
 
   setupUIBridge(pi);
   registerSessionLifecycle(pi);
