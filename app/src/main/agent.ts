@@ -50,7 +50,20 @@ function resolveLoomBin(): string {
   return path.resolve(__dirname, "../../../bin/loom.js");
 }
 
+// Resolve the Node binary the brain runs under. Dev assumes Node 20+ on PATH.
+// Packaged Orbit ships its own Node next to Loom (Resources/node/) so users
+// don't need to have Node installed; this also keeps native module ABI in sync
+// with whatever Node ran `npm ci` during prePackage staging.
+function resolveNodeBin(): string {
+  if (app?.isPackaged) {
+    const nodeName = process.platform === "win32" ? "node.exe" : path.join("bin", "node");
+    return path.join(process.resourcesPath, "node", nodeName);
+  }
+  return "node";
+}
+
 const LOOM_BIN = resolveLoomBin();
+const NODE_BIN = resolveNodeBin();
 
 export type AgentStatus = "running" | "stopped" | "error";
 
@@ -242,14 +255,14 @@ export class AgentManager {
 
     const fresh = this.nextStartIsFresh;
     this.nextStartIsFresh = false;
-    log("starting agent", { bin: LOOM_BIN, cwd: this.cwd, continue: args.includes("--continue"), fresh });
+    log("starting agent", { node: NODE_BIN, bin: LOOM_BIN, cwd: this.cwd, continue: args.includes("--continue"), fresh });
 
     try {
       // Decrypted API keys flow to the brain via env so the child never reads
       // plaintext from disk. buildSecretEnv re-reads config each spawn so
       // key rotation in the settings UI takes effect on restart without
       // needing to plumb explicit invalidation.
-      this.process = spawn("node", args, {
+      this.process = spawn(NODE_BIN, args, {
         stdio: ["pipe", "pipe", "pipe"],
         cwd: this.cwd,
         env: {
