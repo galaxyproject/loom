@@ -9,6 +9,7 @@ import { AgentManager } from "./agent.js";
 import { registerFilesIpc, startFilesWatcher, stopFilesWatcher } from "./files-handler.js";
 import { ProcMonitor } from "./proc-monitor.js";
 import { migratePlaintextSecrets, isAvailable as safeStorageAvailable } from "./secure-config.js";
+import { getConfigDir, getConfigPath } from "../../../shared/loom-config.js";
 
 // Workaround for systems where chrome-sandbox isn't suid root
 app.commandLine.appendSwitch("no-sandbox");
@@ -70,6 +71,44 @@ function saveWindowState(win: BrowserWindow): void {
 let mainWindow: BrowserWindow | null = null;
 let agentManager: AgentManager | null = null;
 let procMonitor: ProcMonitor | null = null;
+let configWatcher: fs.FSWatcher | null = null;
+let configMigrationTimer: NodeJS.Timeout | null = null;
+
+/**
+ * Watch ~/.loom/config.json for plaintext writes from the brain process
+ * (e.g. /connect saves a new profile) and re-encrypt them. Only called
+ * when safeStorage is available -- otherwise plaintext is the best we
+ * can do anyway.
+ *
+ * fs.watch on the directory (not the file) survives the atomic
+ * tmp+rename pattern saveConfig uses: a file-level watch loses its
+ * inode after the rename. Filename filter keeps it cheap.
+ */
+function startConfigWatcher(): void {
+  const dir = getConfigDir();
+  const targetFile = path.basename(getConfigPath()); // "config.json"
+  try {
+    mkdirSync(dir, { recursive: true });
+    configWatcher = fs.watch(dir, { persistent: false }, (_event, filename) => {
+      if (filename !== targetFile) return;
+      // Debounce: atomic tmp+rename can produce two events back-to-back,
+      // and migratePlaintextSecrets does its own write that re-fires the
+      // watcher. 100ms collapses these into one migration pass.
+      if (configMigrationTimer) clearTimeout(configMigrationTimer);
+      configMigrationTimer = setTimeout(() => {
+        configMigrationTimer = null;
+        try {
+          const result = migratePlaintextSecrets();
+          if (result.migrated) log("re-encrypted plaintext secrets after config change");
+        } catch (err) {
+          log("config-change migration failed:", err);
+        }
+      }, 100);
+    });
+  } catch (err) {
+    log("config watcher failed to start:", err);
+  }
+}
 
 function getDefaultCwd(): string {
   // Priority: env var > brain config.defaultCwd > hardcoded default
@@ -404,6 +443,11 @@ app.whenReady().then(() => {
     } catch (err) {
       log("secret migration failed:", err);
     }
+    // Close the plaintext-write window from /connect mid-session: the brain
+    // process can't encrypt (no safeStorage), so it persists keys plaintext
+    // and we re-encrypt as soon as the file changes. fs.watch on the
+    // directory survives the atomic tmp+rename pattern in saveConfig().
+    startConfigWatcher();
   } else {
     log("safeStorage unavailable — keys remain plaintext on disk");
   }
