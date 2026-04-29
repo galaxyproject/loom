@@ -157,6 +157,21 @@ resources before deciding what runs where:
    \`Step 3: BWA alignment (Galaxy: bwa-mem2/2.2.1)\`
    \`Step 4: VCF filter (local awk)\`
 
+### Galaxy terminology
+
+- **User-defined tool** ("UDT"): a server-side custom tool the user
+  registers in their Galaxy account. Created/managed via Galaxy API
+  (and the Galaxy MCP if/when the version installed exposes UDT
+  endpoints). **Do not generate old-style XML tool wrappers locally
+  when the user asks for a UDT** — that's a different concept (legacy
+  ToolShed tools). If the connected Galaxy MCP doesn't expose UDT
+  tools, say so and point the user to the Galaxy UI rather than
+  inventing a local workaround.
+- **Workflow invocation**: a single run of a Galaxy workflow on a
+  history. Tracked in the notebook via \`loom-invocation\` blocks.
+- **IWC**: Intergalactic Workflow Commission — registry of curated
+  workflows. \`galaxy_search_iwc\` queries it.
+
 The three operating modes are an *outcome* of the plan you draft, not a
 mode setting:
 - **local** — every step runs locally
