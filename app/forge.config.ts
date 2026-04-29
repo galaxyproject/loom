@@ -11,7 +11,18 @@ const REPO_ROOT = path.resolve(APP_DIR, "..");
 const LOOM_STAGE_PARENT = path.resolve(APP_DIR, ".loom-stage");
 const LOOM_STAGE_DIR = path.join(LOOM_STAGE_PARENT, "loom");
 const NODE_STAGE_DIR = path.join(LOOM_STAGE_PARENT, "node");
+const UV_STAGE_DIR = path.join(LOOM_STAGE_PARENT, "uv");
 const TARBALL_CACHE_DIR = path.join(LOOM_STAGE_PARENT, "cache");
+
+// uv release target triple per (platform, arch). Mirrors astral-sh/uv's
+// asset names on its GitHub releases.
+const UV_TARGETS: Record<string, string> = {
+  "darwin-arm64": "aarch64-apple-darwin",
+  "darwin-x64": "x86_64-apple-darwin",
+  "linux-x64": "x86_64-unknown-linux-gnu",
+  "linux-arm64": "aarch64-unknown-linux-gnu",
+  "win32-x64": "x86_64-pc-windows-msvc",
+};
 
 // Files copied verbatim from the Loom repo root into the staged bundle.
 // Mirrors the npm `files` allowlist plus package-lock.json (used by npm ci).
@@ -107,20 +118,67 @@ async function stageNodeBundle(): Promise<void> {
   fs.renameSync(extractedPath, NODE_STAGE_DIR);
 }
 
+// Bundle uv/uvx so Galaxy MCP (`uvx galaxy-mcp>=1.4.0`) doesn't need a
+// system-installed uv. Pulls the latest release tarball from astral-sh/uv.
+// "latest" resolves to a specific tag at fetch time -- the cached tarball
+// won't auto-refresh; remove `.loom-stage/cache/` to pick up newer uv.
+async function stageUvBundle(): Promise<void> {
+  const key = `${process.platform}-${process.arch}`;
+  const target = UV_TARGETS[key];
+  if (!target) {
+    throw new Error(
+      `[loom-stage] no uv target mapping for ${key}; add it to UV_TARGETS.`,
+    );
+  }
+  const isWin = process.platform === "win32";
+  const ext = isWin ? "zip" : "tar.gz";
+  const filename = `uv-${target}.${ext}`;
+  const url = `https://github.com/astral-sh/uv/releases/latest/download/${filename}`;
+
+  fs.rmSync(UV_STAGE_DIR, { recursive: true, force: true });
+  fs.mkdirSync(UV_STAGE_DIR, { recursive: true });
+  fs.mkdirSync(TARBALL_CACHE_DIR, { recursive: true });
+
+  const tarballPath = path.join(TARBALL_CACHE_DIR, filename);
+
+  if (fs.existsSync(tarballPath)) {
+    console.log(`[loom-stage] reusing cached ${filename}`);
+  } else {
+    console.log(`[loom-stage] downloading ${url}`);
+    await downloadFile(url, tarballPath);
+  }
+
+  console.log(`[loom-stage] extracting ${filename}`);
+  if (isWin) {
+    execSync(
+      `powershell -Command "Expand-Archive -Path '${tarballPath}' -DestinationPath '${UV_STAGE_DIR}'"`,
+      { stdio: "inherit" },
+    );
+  } else {
+    // Tarball lays out as uv-<target>/uv + uv-<target>/uvx; --strip-components=1
+    // flattens that into UV_STAGE_DIR/uv + UV_STAGE_DIR/uvx.
+    execSync(
+      `tar -xzf "${tarballPath}" -C "${UV_STAGE_DIR}" --strip-components=1`,
+      { stdio: "inherit" },
+    );
+  }
+}
+
 const config: ForgeConfig = {
   packagerConfig: {
     name: "Orbit",
     executableName: "orbit",
     icon: "resources/icon",
-    // Copies the staged Loom bundle and Node runtime to Contents/Resources/
-    // in the packaged app. agent.ts resolves process.resourcesPath/loom/bin/
-    // loom.js + process.resourcesPath/node/bin/node.
-    extraResource: [LOOM_STAGE_DIR, NODE_STAGE_DIR],
+    // Copies the staged Loom bundle, Node runtime, and uv binary to
+    // Contents/Resources/ in the packaged app. agent.ts resolves
+    // process.resourcesPath/{loom,node,uv}/... at brain spawn time.
+    extraResource: [LOOM_STAGE_DIR, NODE_STAGE_DIR, UV_STAGE_DIR],
   },
   hooks: {
     prePackage: async () => {
       stageLoomBundle();
       await stageNodeBundle();
+      await stageUvBundle();
     },
   },
   makers: [
