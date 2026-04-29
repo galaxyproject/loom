@@ -50,13 +50,13 @@ export interface OrbitAPI {
   getState(): Promise<unknown>;
   getCwd(): Promise<string>;
   openFile(filePath: string): Promise<{ opened: boolean; error?: string }>;
-  listFiles(opts?: { includeHidden?: boolean }): Promise<
-    | { ok: true; root: FileNode; cwd: string }
-    | { ok: false; error: string }
-  >;
-  readFile(relPath: string): Promise<
-    | { ok: true; size: number; bytes: Uint8Array }
-    | { ok: false; error: string; size?: number }
+  listFiles(opts?: {
+    includeHidden?: boolean;
+  }): Promise<{ ok: true; root: FileNode; cwd: string } | { ok: false; error: string }>;
+  readFile(
+    relPath: string,
+  ): Promise<
+    { ok: true; size: number; bytes: Uint8Array } | { ok: false; error: string; size?: number }
   >;
   writeFile(relPath: string, content: string): Promise<{ ok: true } | { ok: false; error: string }>;
   onFilesChanged(callback: () => void): () => void;
@@ -73,7 +73,7 @@ export interface OrbitAPI {
   onAgentEvent(callback: (event: AgentEvent) => void): () => void;
   onUiRequest(callback: (request: UiRequest) => void): () => void;
   onAgentStatus(
-    callback: (status: "running" | "stopped" | "error", msg?: string) => void
+    callback: (status: "running" | "stopped" | "error", msg?: string) => void,
   ): () => void;
   getAgentStatus(): Promise<{ status: "running" | "stopped" | "error"; message?: string }>;
   onCwdChanged(callback: (dir: string) => void): () => void;
@@ -140,11 +140,8 @@ const api: OrbitAPI = {
   },
 
   onAgentStatus: (callback) => {
-    const handler = (
-      _e: unknown,
-      status: "running" | "stopped" | "error",
-      msg?: string
-    ) => callback(status, msg);
+    const handler = (_e: unknown, status: "running" | "stopped" | "error", msg?: string) =>
+      callback(status, msg);
     ipcRenderer.on("agent:status", handler);
     return () => ipcRenderer.removeListener("agent:status", handler);
   },

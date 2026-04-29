@@ -85,22 +85,22 @@ function sendStartupGreeting(pi: ExtensionAPI): void {
   if (hasCredentials) {
     pi.sendUserMessage(
       `Session started in this project directory. Read \`notebook.md\` to see prior work. ` +
-      (isOrbit
-        ? `Reply with one short sentence: "What do you want to work on next?" ` +
-          `No greeting, no emojis, no product branding.`
-        : `Give a brief welcome, then ask what to work on next, referencing the notebook contents if there is prior work. ` +
-          `Keep it to 2-3 sentences.`) +
-      connectInstr
+        (isOrbit
+          ? `Reply with one short sentence: "What do you want to work on next?" ` +
+            `No greeting, no emojis, no product branding.`
+          : `Give a brief welcome, then ask what to work on next, referencing the notebook contents if there is prior work. ` +
+            `Keep it to 2-3 sentences.`) +
+        connectInstr,
     );
     return;
   }
 
   pi.sendUserMessage(
     `Session started in this project directory. No Galaxy server configured. ` +
-    (isOrbit
-      ? `Reply with two short sentences: mention /connect for Galaxy, then ask "What do you want to work on?". ` +
-        `No greeting, no emojis, no product branding.`
-      : `Give a brief welcome, mention /connect to set up a Galaxy server, and ask what to work on. ` +
-        `Keep it to 2-3 sentences.`)
+      (isOrbit
+        ? `Reply with two short sentences: mention /connect for Galaxy, then ask "What do you want to work on?". ` +
+          `No greeting, no emojis, no product branding.`
+        : `Give a brief welcome, mention /connect to set up a Galaxy server, and ask what to work on. ` +
+          `Keep it to 2-3 sentences.`),
   );
 }

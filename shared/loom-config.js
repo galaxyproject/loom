@@ -24,7 +24,11 @@ export const ALLOWED_SKILLS_PREFIX = "https://github.com/galaxyproject/";
 export function isAllowedSkillUrl(url) {
   if (typeof url !== "string") return false;
   let parsed;
-  try { parsed = new URL(url.trim()); } catch { return false; }
+  try {
+    parsed = new URL(url.trim());
+  } catch {
+    return false;
+  }
   if (parsed.protocol !== "https:") return false;
   if (parsed.hostname.toLowerCase() !== "github.com") return false;
   const cleaned = parsed.pathname

@@ -3,14 +3,8 @@ import { ShellPanel } from "./chat/shell-panel.js";
 import { ArtifactPanel } from "./artifacts/artifact-panel.js";
 import { FilesPanel } from "./files/files-panel.js";
 import { FileViewer } from "./files/file-viewer.js";
-import {
-  LoomWidgetKey,
-  decodeMarkdownWidget,
-} from "../../../shared/loom-shell-contract.js";
-import {
-  ALLOWED_SKILLS_PREFIX,
-  isAllowedSkillUrl,
-} from "../../../shared/loom-config.js";
+import { LoomWidgetKey, decodeMarkdownWidget } from "../../../shared/loom-shell-contract.js";
+import { ALLOWED_SKILLS_PREFIX, isAllowedSkillUrl } from "../../../shared/loom-config.js";
 
 declare global {
   interface Window {
@@ -71,26 +65,29 @@ let streaming = false;
 
 // Per-1M-token pricing (USD). null = unknown → cost hidden.
 // Update as providers change pricing or add models.
-const PRICING: Record<string, { in: number; out: number; cacheRead?: number; cacheWrite?: number }> = {
+const PRICING: Record<
+  string,
+  { in: number; out: number; cacheRead?: number; cacheWrite?: number }
+> = {
   // Anthropic
-  "claude-opus-4-7":      { in: 15, out: 75, cacheRead: 1.5, cacheWrite: 18.75 },
-  "claude-opus-4-6":      { in: 15, out: 75, cacheRead: 1.5, cacheWrite: 18.75 },
-  "claude-opus-4-5":      { in: 15, out: 75, cacheRead: 1.5, cacheWrite: 18.75 },
-  "claude-sonnet-4-6":    { in: 3, out: 15, cacheRead: 0.3, cacheWrite: 3.75 },
-  "claude-sonnet-4-5":    { in: 3, out: 15, cacheRead: 0.3, cacheWrite: 3.75 },
-  "claude-haiku-4-5":     { in: 1, out: 5, cacheRead: 0.1, cacheWrite: 1.25 },
+  "claude-opus-4-7": { in: 15, out: 75, cacheRead: 1.5, cacheWrite: 18.75 },
+  "claude-opus-4-6": { in: 15, out: 75, cacheRead: 1.5, cacheWrite: 18.75 },
+  "claude-opus-4-5": { in: 15, out: 75, cacheRead: 1.5, cacheWrite: 18.75 },
+  "claude-sonnet-4-6": { in: 3, out: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+  "claude-sonnet-4-5": { in: 3, out: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+  "claude-haiku-4-5": { in: 1, out: 5, cacheRead: 0.1, cacheWrite: 1.25 },
   // OpenAI
-  "gpt-4o":               { in: 2.5, out: 10, cacheRead: 1.25 },
-  "gpt-4o-mini":          { in: 0.15, out: 0.6, cacheRead: 0.075 },
-  "gpt-4-turbo":          { in: 10, out: 30 },
-  "o1":                   { in: 15, out: 60, cacheRead: 7.5 },
-  "o1-mini":              { in: 3, out: 12, cacheRead: 1.5 },
+  "gpt-4o": { in: 2.5, out: 10, cacheRead: 1.25 },
+  "gpt-4o-mini": { in: 0.15, out: 0.6, cacheRead: 0.075 },
+  "gpt-4-turbo": { in: 10, out: 30 },
+  o1: { in: 15, out: 60, cacheRead: 7.5 },
+  "o1-mini": { in: 3, out: 12, cacheRead: 1.5 },
   // Google
-  "gemini-2.5-pro":       { in: 1.25, out: 10 },
-  "gemini-2.5-flash":     { in: 0.15, out: 0.6 },
+  "gemini-2.5-pro": { in: 1.25, out: 10 },
+  "gemini-2.5-flash": { in: 0.15, out: 0.6 },
   // Ollama (local) — free
-  "qwen3-coder:30b":      { in: 0, out: 0 },
-  "qwen3:8b":             { in: 0, out: 0 },
+  "qwen3-coder:30b": { in: 0, out: 0 },
+  "qwen3:8b": { in: 0, out: 0 },
 };
 
 interface Usage {
@@ -116,7 +113,9 @@ let sessionCostFromPi: number | null = null;
 let turnCostFromPi: number = 0;
 
 /** Match a model ID against the pricing table (handles date suffixes). */
-function findPricing(model: string): { in: number; out: number; cacheRead?: number; cacheWrite?: number } | null {
+function findPricing(
+  model: string,
+): { in: number; out: number; cacheRead?: number; cacheWrite?: number } | null {
   // Exact match first
   if (PRICING[model]) return PRICING[model];
   // Strip date suffix (e.g. claude-opus-4-6-20250514)
@@ -148,7 +147,8 @@ function computeCost(u: Usage, model: string | null): number | null {
 }
 
 function renderUsage(): void {
-  const total = sessionUsage.input + sessionUsage.output + sessionUsage.cacheRead + sessionUsage.cacheWrite;
+  const total =
+    sessionUsage.input + sessionUsage.output + sessionUsage.cacheRead + sessionUsage.cacheWrite;
   usageTokensEl.textContent = `${formatTokens(total)} tok`;
   usageTokensEl.title =
     `Session usage:\n` +
@@ -288,7 +288,10 @@ document.addEventListener("keydown", (e) => {
     // Allow native Ctrl+B (bold) inside any editable text field — only
     // intercept when focus is outside inputs/textareas/contenteditable.
     const target = e.target as HTMLElement | null;
-    if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+    if (
+      target &&
+      (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+    ) {
       return;
     }
     e.preventDefault();
@@ -387,7 +390,9 @@ const galaxyStatus = document.getElementById("galaxy-status")!;
 
 async function refreshGalaxyStatus(): Promise<void> {
   const cfg = (await window.orbit.getConfig()) as Record<string, unknown>;
-  const galaxy = cfg.galaxy as { active?: string; profiles?: Record<string, { url?: string; apiKey?: string }> } | undefined;
+  const galaxy = cfg.galaxy as
+    | { active?: string; profiles?: Record<string, { url?: string; apiKey?: string }> }
+    | undefined;
   const active = galaxy?.active;
   const profile = active ? galaxy?.profiles?.[active] : undefined;
   const connected = !!(profile?.url && profile?.apiKey);
@@ -422,7 +427,10 @@ const execLocalBtn = document.getElementById("exec-mode-local") as HTMLButtonEle
 const execCloudBtn = document.getElementById("exec-mode-cloud") as HTMLButtonElement;
 
 function applyExecModeUi(mode: "local" | "cloud"): void {
-  for (const [btn, btnMode] of [[execLocalBtn, "local"], [execCloudBtn, "cloud"]] as const) {
+  for (const [btn, btnMode] of [
+    [execLocalBtn, "local"],
+    [execCloudBtn, "cloud"],
+  ] as const) {
     const active = btnMode === mode;
     btn.classList.toggle("active", active);
     btn.setAttribute("aria-checked", active ? "true" : "false");
@@ -486,12 +494,15 @@ function wireApiKeyValidation(
   const validateNow = async () => {
     const provider = providerEl.value;
     const key = keyEl.value.trim();
-    if (!key) { setStatus("", ""); return; }
+    if (!key) {
+      setStatus("", "");
+      return;
+    }
     const mySeq = ++seq;
     setStatus("checking", "Checking…");
     try {
       const res = await window.orbit.validateApiKey(provider, key);
-      if (mySeq !== seq) return;  // a newer request superseded this one
+      if (mySeq !== seq) return; // a newer request superseded this one
       if (res.valid) setStatus("valid", "\u2713 Valid");
       else setStatus("invalid", `\u2717 ${res.error || "Invalid"}`);
     } catch (err) {
@@ -540,8 +551,7 @@ welcomeSave.addEventListener("click", async () => {
   const galaxyUrl = welcomeGalaxyUrl.value.trim();
   const galaxyKey = welcomeGalaxyKey.value.trim();
   if (Boolean(galaxyUrl) !== Boolean(galaxyKey)) {
-    welcomeError.textContent =
-      "Galaxy: provide both URL and API key, or leave both blank.";
+    welcomeError.textContent = "Galaxy: provide both URL and API key, or leave both blank.";
     return;
   }
 
@@ -576,7 +586,7 @@ welcomeSkip.addEventListener("click", () => {
   welcomeOverlay.classList.add("hidden");
   chat.addInfoMessage(
     `<i>No LLM provider configured yet. Open <code>Preferences</code> ` +
-    `(Cmd/Ctrl+,) when you're ready to add an API key.</i>`,
+      `(Cmd/Ctrl+,) when you're ready to add an API key.</i>`,
   );
 });
 
@@ -626,7 +636,12 @@ function commitTurnUsage(): void {
   sessionUsage.cacheRead += turnUsage.cacheRead;
   sessionUsage.cacheWrite += turnUsage.cacheWrite;
   if (currentModel) {
-    const m = perModelUsage.get(currentModel) ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    const m = perModelUsage.get(currentModel) ?? {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    };
     m.input += turnUsage.input;
     m.output += turnUsage.output;
     m.cacheRead += turnUsage.cacheRead;
@@ -662,12 +677,14 @@ renderUsage();
 // Populate model indicator from config at startup so it shows before the first message
 void (async () => {
   try {
-    const cfg = await window.orbit.getConfig() as { llm?: { model?: string } };
+    const cfg = (await window.orbit.getConfig()) as { llm?: { model?: string } };
     if (cfg.llm?.model) {
       currentModel = cfg.llm.model;
       renderModelIndicator();
     }
-  } catch { /* getConfig may not be available yet */ }
+  } catch {
+    /* getConfig may not be available yet */
+  }
 })();
 
 // ── CWD Display ──────────────────────────────────────────────────────────────
@@ -678,7 +695,9 @@ async function refreshCwd(): Promise<void> {
     cwdPathEl.textContent = cwd;
     cwdPathEl.title = cwd;
     chat.setCwd(cwd);
-  } catch { /* getCwd not available yet */ }
+  } catch {
+    /* getCwd not available yet */
+  }
 }
 
 function resetUiForFreshContext(): void {
@@ -707,7 +726,9 @@ function applyCwdChange(dir: string): void {
   chat.setCwd(dir);
   cwdPathEl.textContent = dir;
   cwdPathEl.title = dir;
-  chat.addInfoMessage(`<i>Switched analysis directory to <code>${dir.replace(/</g, "&lt;")}</code>.</i>`);
+  chat.addInfoMessage(
+    `<i>Switched analysis directory to <code>${dir.replace(/</g, "&lt;")}</code>.</i>`,
+  );
   hasShownStartupWelcome = false;
   // Re-root the file tree, close any open viewer, hide the File tab — the
   // old relPath is meaningless in the new cwd.
@@ -830,7 +851,9 @@ messagesEl.addEventListener("plan-draft-action", (e) => {
   } else if (action === "edit") {
     inputEl.value =
       "Here is the plan with my edits — please revise your draft accordingly:\n\n" +
-      "```plan\n" + body + "\n```";
+      "```plan\n" +
+      body +
+      "\n```";
     inputEl.focus();
     inputEl.dispatchEvent(new Event("input"));
   }
@@ -862,7 +885,9 @@ function formatArgsPreview(args: Record<string, unknown> | undefined): string | 
   if (!args || typeof args !== "object") return undefined;
   const cmd = (args as { command?: unknown }).command;
   if (typeof cmd === "string" && cmd.length > 0) return `$ ${cmd}`;
-  const path = (args as { path?: unknown; file_path?: unknown }).path ?? (args as { file_path?: unknown }).file_path;
+  const path =
+    (args as { path?: unknown; file_path?: unknown }).path ??
+    (args as { file_path?: unknown }).file_path;
   if (typeof path === "string") return path;
   try {
     return JSON.stringify(args);
@@ -878,18 +903,25 @@ interface SlashCommand {
 }
 
 const SLASH_COMMANDS: SlashCommand[] = [
-  { name: "model",     usage: "/model <name>",         description: "switch LLM model" },
-  { name: "new",       description: "start a fresh session" },
-  { name: "resume",    description: "restart agent and replay prior session" },
-  { name: "chat",      description: "restore the chat pane from the session transcript (no agent restart)" },
-  { name: "plan",      description: "show current plan summary" },
-  { name: "status",    description: "show Galaxy connection status" },
-  { name: "notebook",  description: "show notebook info" },
-  { name: "summarize", usage: "/summarize [N [M]]",    description: "summarize prompts N–M into the notebook" },
-  { name: "cost",      description: "append session token/cost breakdown to the notebook" },
+  { name: "model", usage: "/model <name>", description: "switch LLM model" },
+  { name: "new", description: "start a fresh session" },
+  { name: "resume", description: "restart agent and replay prior session" },
+  {
+    name: "chat",
+    description: "restore the chat pane from the session transcript (no agent restart)",
+  },
+  { name: "plan", description: "show current plan summary" },
+  { name: "status", description: "show Galaxy connection status" },
+  { name: "notebook", description: "show notebook info" },
+  {
+    name: "summarize",
+    usage: "/summarize [N [M]]",
+    description: "summarize prompts N–M into the notebook",
+  },
+  { name: "cost", description: "append session token/cost breakdown to the notebook" },
   { name: "decisions", description: "show decision log" },
-  { name: "connect",   description: "open Galaxy connection settings" },
-  { name: "help",      description: "show this help" },
+  { name: "connect", description: "open Galaxy connection settings" },
+  { name: "help", description: "show this help" },
 ];
 
 function escapeHtmlBasic(s: string): string {
@@ -913,7 +945,7 @@ function handleSlashCommand(text: string): boolean {
       chat.addUserMessage(text);
       chat.addErrorMessage(
         "Usage: /model <name>. Examples: /model sonnet, /model haiku, /model opus, " +
-        "or /model claude-sonnet-4-6 for an exact id."
+          "or /model claude-sonnet-4-6 for an exact id.",
       );
       return true;
     }
@@ -950,7 +982,13 @@ function handleSlashCommand(text: string): boolean {
   }
 
   // pi-galaxy-analyst commands — pass through to agent
-  if (cmd === "plan" || cmd === "status" || cmd === "notebook" || cmd === "decisions" || cmd === "profiles") {
+  if (
+    cmd === "plan" ||
+    cmd === "status" ||
+    cmd === "notebook" ||
+    cmd === "decisions" ||
+    cmd === "profiles"
+  ) {
     chat.addUserMessage(text);
     window.orbit.prompt(`/${cmd}`);
     return true;
@@ -999,9 +1037,15 @@ function handleSummarize(raw: string, argStr: string): void {
 
   const nums = (argStr.match(/\d+/g) ?? []).map(Number);
   let from: number, to: number;
-  if (nums.length === 0) { from = 1; to = total; }
-  else if (nums.length === 1) { from = to = nums[0]; }
-  else { from = Math.min(nums[0], nums[1]); to = Math.max(nums[0], nums[1]); }
+  if (nums.length === 0) {
+    from = 1;
+    to = total;
+  } else if (nums.length === 1) {
+    from = to = nums[0];
+  } else {
+    from = Math.min(nums[0], nums[1]);
+    to = Math.max(nums[0], nums[1]);
+  }
 
   if (from < 1 || to > total) {
     chat.addUserMessage(raw);
@@ -1064,17 +1108,20 @@ function handleCost(raw: string): void {
     totals.cacheWrite += u.cacheWrite;
     const cost = computeCost(u, model);
     const costStr = cost === null ? "unknown (no pricing entry)" : `$${cost.toFixed(4)}`;
-    if (cost === null) totalCostKnown = false; else grandCost += cost;
+    if (cost === null) totalCostKnown = false;
+    else grandCost += cost;
     rows.push(
       `| \`${model}\` | ${u.input.toLocaleString()} | ${u.output.toLocaleString()} | ` +
-      `${u.cacheRead.toLocaleString()} | ${u.cacheWrite.toLocaleString()} | ${costStr} |`
+        `${u.cacheRead.toLocaleString()} | ${u.cacheWrite.toLocaleString()} | ${costStr} |`,
     );
   }
 
-  const totalCostStr = totalCostKnown ? `$${grandCost.toFixed(4)}` : `≥$${grandCost.toFixed(4)} (some models unpriced)`;
+  const totalCostStr = totalCostKnown
+    ? `$${grandCost.toFixed(4)}`
+    : `≥$${grandCost.toFixed(4)} (some models unpriced)`;
   rows.push(
     `| **Total** | **${totals.input.toLocaleString()}** | **${totals.output.toLocaleString()}** | ` +
-    `**${totals.cacheRead.toLocaleString()}** | **${totals.cacheWrite.toLocaleString()}** | **${totalCostStr}** |`
+      `**${totals.cacheRead.toLocaleString()}** | **${totals.cacheWrite.toLocaleString()}** | **${totalCostStr}** |`,
   );
 
   const table =
@@ -1099,7 +1146,7 @@ function handleCost(raw: string): void {
   chat.addUserMessage(raw);
   chat.addInfoMessage(
     `<i>Asking the agent to append the session cost breakdown to ` +
-    `<code>notebook.md</code>…</i>`,
+      `<code>notebook.md</code>…</i>`,
   );
   chat.showThinking();
   setStatusBadge("thinking", "thinking...");
@@ -1123,7 +1170,9 @@ async function confirmAndResetSession(): Promise<void> {
   }
 
   if (!status.hasContent) {
-    const ok = confirm("Start a fresh session? This will erase the current chat and notebook view.");
+    const ok = confirm(
+      "Start a fresh session? This will erase the current chat and notebook view.",
+    );
     if (!ok) return;
     await resetSession();
     return;
@@ -1185,18 +1234,20 @@ async function showCwdWelcome(prefix?: string): Promise<void> {
   let cwd = "~";
   try {
     cwd = await window.orbit.getCwd();
-  } catch { /* getCwd unavailable */ }
+  } catch {
+    /* getCwd unavailable */
+  }
   // Optional prefix lets callers (e.g. resetSession) merge their own
   // "Started fresh session" line into the same info card so the user
   // doesn't see a stack of three near-identical messages on /new.
   const prefixHtml = prefix ? `<i>${prefix}</i><br>` : "";
   chat.addInfoMessage(
     prefixHtml +
-    `<b>Current working directory:</b> <code>${cwd.replace(/</g, "&lt;")}</code><br>` +
-    // Class instead of id so multiple cwd-welcome cards don't all share
-    // an id, and so the delegated listener wired once below works on
-    // every link regardless of how many welcomes have been shown.
-    `For a new project you may want to <a href="#" class="switch-dir-link">switch to a new directory</a> to keep everything clean.`
+      `<b>Current working directory:</b> <code>${cwd.replace(/</g, "&lt;")}</code><br>` +
+      // Class instead of id so multiple cwd-welcome cards don't all share
+      // an id, and so the delegated listener wired once below works on
+      // every link regardless of how many welcomes have been shown.
+      `For a new project you may want to <a href="#" class="switch-dir-link">switch to a new directory</a> to keep everything clean.`,
   );
 }
 
@@ -1228,7 +1279,7 @@ async function resetSession(): Promise<void> {
 async function switchModelByAlias(originalText: string, alias: string): Promise<void> {
   chat.addUserMessage(originalText);
 
-  const cfg = await window.orbit.getConfig() as { llm?: { provider?: string } };
+  const cfg = (await window.orbit.getConfig()) as { llm?: { provider?: string } };
   const currentProvider = cfg.llm?.provider || "anthropic";
 
   // Search strategy: prefer current provider, then search all providers.
@@ -1238,9 +1289,9 @@ async function switchModelByAlias(originalText: string, alias: string): Promise<
   const search = (p: string): ModelChoice | undefined => {
     const cat = MODELS_BY_PROVIDER[p] || [];
     return (
-      cat.find(m => m.id === alias) ||
-      cat.find(m => m.id.toLowerCase().includes(alias)) ||
-      cat.find(m => m.label.toLowerCase().includes(alias))
+      cat.find((m) => m.id === alias) ||
+      cat.find((m) => m.id.toLowerCase().includes(alias)) ||
+      cat.find((m) => m.label.toLowerCase().includes(alias))
     );
   };
 
@@ -1253,23 +1304,27 @@ async function switchModelByAlias(originalText: string, alias: string): Promise<
     for (const p of Object.keys(MODELS_BY_PROVIDER)) {
       if (p === currentProvider) continue;
       const m = search(p);
-      if (m) { chosen = { provider: p, model: m }; break; }
+      if (m) {
+        chosen = { provider: p, model: m };
+        break;
+      }
     }
   }
 
   if (!chosen) {
     const all = Object.entries(MODELS_BY_PROVIDER)
-      .map(([p, models]) => `  ${p}: ${models.map(m => m.id).join(", ")}`)
+      .map(([p, models]) => `  ${p}: ${models.map((m) => m.id).join(", ")}`)
       .join("\n");
-    chat.addErrorMessage(
-      `No model matches "${alias}". Available models:\n${all}`
-    );
+    chat.addErrorMessage(`No model matches "${alias}". Available models:\n${all}`);
     return;
   }
 
   // Save updated config
-  const current = await window.orbit.getConfig() as Record<string, unknown>;
-  const llm = ((current.llm as Record<string, unknown> | undefined) || {}) as Record<string, unknown>;
+  const current = (await window.orbit.getConfig()) as Record<string, unknown>;
+  const llm = ((current.llm as Record<string, unknown> | undefined) || {}) as Record<
+    string,
+    unknown
+  >;
 
   const switchingProvider = chosen.provider !== currentProvider;
   if (switchingProvider) {
@@ -1292,7 +1347,7 @@ async function switchModelByAlias(originalText: string, alias: string): Promise<
   if (switchingProvider) {
     chat.addErrorMessage(
       `Switched to ${chosen.provider} / ${chosen.model.id}. Agent restarting… ` +
-      `(if you don't have a ${chosen.provider} API key set in Preferences, the agent will fail to start)`
+        `(if you don't have a ${chosen.provider} API key set in Preferences, the agent will fail to start)`,
     );
   } else {
     chat.addErrorMessage(`Model switched to ${chosen.model.id}. Agent restarting…`);
@@ -1318,12 +1373,14 @@ function loadPromptHistory(): string[] {
 function savePromptHistory(): void {
   try {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(promptHistory));
-  } catch { /* ignore quota errors */ }
+  } catch {
+    /* ignore quota errors */
+  }
 }
 
 const promptHistory: string[] = loadPromptHistory();
-let historyCursor: number = promptHistory.length;  // index of NEXT slot
-let historyDraft: string = "";  // user's pre-recall buffer
+let historyCursor: number = promptHistory.length; // index of NEXT slot
+let historyDraft: string = ""; // user's pre-recall buffer
 
 function appendHistoryEntry(text: string): void {
   if (!text.trim()) return;
@@ -1495,10 +1552,26 @@ inputEl.addEventListener("keydown", (e) => {
   // within it, Esc dismisses. Enter still submits whatever the user
   // typed — the popup auto-closes as a side effect of submit.
   if (isSlashPopupOpen()) {
-    if (e.key === "ArrowUp")    { e.preventDefault(); moveSlashPopup("up"); return; }
-    if (e.key === "ArrowDown")  { e.preventDefault(); moveSlashPopup("down"); return; }
-    if (e.key === "Tab")        { e.preventDefault(); acceptSlashPopup(slashPopupActive); return; }
-    if (e.key === "Escape")     { e.preventDefault(); closeSlashPopup(); return; }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      moveSlashPopup("up");
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      moveSlashPopup("down");
+      return;
+    }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      acceptSlashPopup(slashPopupActive);
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeSlashPopup();
+      return;
+    }
     // Enter falls through to the regular submit path below.
   }
 
@@ -1508,7 +1581,11 @@ inputEl.addEventListener("keydown", (e) => {
     recallHistory("up");
     return;
   }
-  if (e.key === "ArrowDown" && shouldRecallOnArrow("down") && historyCursor < promptHistory.length) {
+  if (
+    e.key === "ArrowDown" &&
+    shouldRecallOnArrow("down") &&
+    historyCursor < promptHistory.length
+  ) {
     e.preventDefault();
     recallHistory("down");
     return;
@@ -1553,7 +1630,12 @@ window.orbit.onAgentEvent((event) => {
   console.log("[orbit] event:", type, JSON.stringify(event).slice(0, 150));
 
   // Capture usage from any event that carries a message with usage
-  if (type === "message_start" || type === "message_update" || type === "message_end" || type === "turn_end") {
+  if (
+    type === "message_start" ||
+    type === "message_update" ||
+    type === "message_end" ||
+    type === "turn_end"
+  ) {
     captureUsage(event as Record<string, unknown>);
   }
 
@@ -1570,7 +1652,8 @@ window.orbit.onAgentEvent((event) => {
 
     case "message_update": {
       // Pi.dev wraps events in assistantMessageEvent
-      const ame = (event as { assistantMessageEvent?: Record<string, unknown> }).assistantMessageEvent;
+      const ame = (event as { assistantMessageEvent?: Record<string, unknown> })
+        .assistantMessageEvent;
       if (!ame) break;
 
       const ameType = ame.type as string;
@@ -1608,7 +1691,9 @@ window.orbit.onAgentEvent((event) => {
     case "message_end": {
       // Commit per-assistant-message usage to the session total
       // Each assistant message = one LLM call billed separately
-      const msg = (event as { message?: { role?: string; stopReason?: string; errorMessage?: string } }).message;
+      const msg = (
+        event as { message?: { role?: string; stopReason?: string; errorMessage?: string } }
+      ).message;
       if (msg?.role === "assistant") {
         commitTurnUsage();
         // Surface assistant-side errors (e.g. 401 invalid API key) so the user
@@ -1655,7 +1740,9 @@ window.orbit.onAgentEvent((event) => {
     case "tool_execution_end": {
       const id = (event as { toolCallId?: string }).toolCallId || "";
       const isError = Boolean((event as { isError?: boolean }).isError);
-      const result = (event as { result?: { content?: Array<{ text?: string }>; details?: unknown } }).result;
+      const result = (
+        event as { result?: { content?: Array<{ text?: string }>; details?: unknown } }
+      ).result;
       const text = result?.content?.[0]?.text;
       const details = (result as { details?: { kind?: string } } | undefined)?.details;
       chat.updateToolCard(id, isError ? "error" : "done", text, details);
@@ -1731,8 +1818,14 @@ function openExtInput(id: string, title: string, placeholder?: string): void {
     cleanup();
   };
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Enter") { e.preventDefault(); respond(extInputEl.value); }
-    if (e.key === "Escape") { e.preventDefault(); respond(undefined); }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      respond(extInputEl.value);
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      respond(undefined);
+    }
   };
   const onOk = () => respond(extInputEl.value);
   const onCancel = () => respond(undefined);
@@ -1766,7 +1859,12 @@ function openExtSelect(id: string, title: string, options: string[]): void {
   });
 
   const onCancel = () => respond(undefined);
-  const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); respond(undefined); } };
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      respond(undefined);
+    }
+  };
   const cleanup = () => {
     extCancelBtn.removeEventListener("click", onCancel);
     document.removeEventListener("keydown", onKey);
@@ -1784,14 +1882,22 @@ function openExtConfirm(id: string, title: string, message: string): void {
   extOverlay.classList.remove("hidden");
 
   const respond = (confirmed: boolean | undefined) => {
-    window.orbit.respondToUiRequest(id, confirmed === undefined ? { cancelled: true } : { confirmed });
+    window.orbit.respondToUiRequest(
+      id,
+      confirmed === undefined ? { cancelled: true } : { confirmed },
+    );
     hideExtModal();
     cleanup();
   };
   const onYes = () => respond(true);
   const onNo = () => respond(false);
   const onCancel = () => respond(undefined);
-  const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); respond(undefined); } };
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      respond(undefined);
+    }
+  };
   const cleanup = () => {
     extAcceptBtn.removeEventListener("click", onYes);
     extDenyBtn.removeEventListener("click", onNo);
@@ -1805,7 +1911,11 @@ function openExtConfirm(id: string, title: string, message: string): void {
 }
 
 window.orbit.onUiRequest((request) => {
-  console.log("[orbit] UI request:", request.method, (request as Record<string, unknown>).widgetKey || "");
+  console.log(
+    "[orbit] UI request:",
+    request.method,
+    (request as Record<string, unknown>).widgetKey || "",
+  );
   const method = request.method;
   const id = (request as Record<string, unknown>).id as string;
 
@@ -1987,26 +2097,29 @@ const prefsApiKeyStatus = document.getElementById("prefs-api-key-status")!;
 
 // Model catalog by provider — labels include cost guidance
 // (in/out price per 1M tokens). Update when providers add/change models.
-interface ModelChoice { id: string; label: string; }
+interface ModelChoice {
+  id: string;
+  label: string;
+}
 const MODELS_BY_PROVIDER: Record<string, ModelChoice[]> = {
   anthropic: [
-    { id: "claude-opus-4-7",   label: "Opus 4.7 — $15/$75 (most capable)" },
+    { id: "claude-opus-4-7", label: "Opus 4.7 — $15/$75 (most capable)" },
     { id: "claude-sonnet-4-6", label: "Sonnet 4.6 — $3/$15 (recommended)" },
-    { id: "claude-haiku-4-5",  label: "Haiku 4.5 — $1/$5 (cheapest)" },
-    { id: "claude-opus-4-6",   label: "Opus 4.6 — $15/$75" },
+    { id: "claude-haiku-4-5", label: "Haiku 4.5 — $1/$5 (cheapest)" },
+    { id: "claude-opus-4-6", label: "Opus 4.6 — $15/$75" },
     { id: "claude-sonnet-4-5", label: "Sonnet 4.5 — $3/$15" },
-    { id: "claude-opus-4-5",   label: "Opus 4.5 — $15/$75" },
+    { id: "claude-opus-4-5", label: "Opus 4.5 — $15/$75" },
   ],
   openai: [
     { id: "gpt-4o-mini", label: "GPT-4o mini — $0.15/$0.60 (cheapest)" },
-    { id: "gpt-4o",      label: "GPT-4o — $2.50/$10" },
+    { id: "gpt-4o", label: "GPT-4o — $2.50/$10" },
     { id: "gpt-4-turbo", label: "GPT-4 Turbo — $10/$30" },
-    { id: "o1-mini",     label: "o1-mini — $3/$12" },
-    { id: "o1",          label: "o1 — $15/$60" },
+    { id: "o1-mini", label: "o1-mini — $3/$12" },
+    { id: "o1", label: "o1 — $15/$60" },
   ],
   google: [
     { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash — $0.15/$0.60 (cheapest)" },
-    { id: "gemini-2.5-pro",   label: "Gemini 2.5 Pro — $1.25/$10" },
+    { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro — $1.25/$10" },
   ],
   mistral: [
     { id: "mistral-large-latest", label: "Mistral Large" },
@@ -2015,14 +2128,12 @@ const MODELS_BY_PROVIDER: Record<string, ModelChoice[]> = {
   ],
   groq: [
     { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B" },
-    { id: "llama-3.1-8b-instant",    label: "Llama 3.1 8B (fast)" },
+    { id: "llama-3.1-8b-instant", label: "Llama 3.1 8B (fast)" },
   ],
-  xai: [
-    { id: "grok-2-latest", label: "Grok 2" },
-  ],
+  xai: [{ id: "grok-2-latest", label: "Grok 2" }],
   ollama: [
     { id: "qwen3-coder:30b", label: "Qwen3-Coder 30B (local, A5000) — free" },
-    { id: "qwen3:8b",        label: "Qwen3 8B (local, fast) — free" },
+    { id: "qwen3:8b", label: "Qwen3 8B (local, fast) — free" },
   ],
 };
 
@@ -2037,7 +2148,7 @@ function populateModels(provider: string, selected?: string): void {
     prefsModel.appendChild(opt);
   }
   // If saved model isn't in the catalog (custom or older), add it as a free-form entry
-  if (selected && !models.find(m => m.id === selected)) {
+  if (selected && !models.find((m) => m.id === selected)) {
     const opt = document.createElement("option");
     opt.value = selected;
     opt.textContent = `${selected} (custom)`;
@@ -2163,9 +2274,12 @@ prefsGalaxyUrl.addEventListener("input", updatePrefsGalaxyValidity);
 prefsGalaxyKey.addEventListener("input", updatePrefsGalaxyValidity);
 
 async function openPreferences(): Promise<void> {
-  const config = await window.orbit.getConfig() as {
+  const config = (await window.orbit.getConfig()) as {
     llm?: { provider?: string; model?: string; hasApiKey?: boolean };
-    galaxy?: { active: string | null; profiles: Record<string, { url: string; hasApiKey?: boolean }> };
+    galaxy?: {
+      active: string | null;
+      profiles: Record<string, { url: string; hasApiKey?: boolean }>;
+    };
     defaultCwd?: string;
     condaBin?: string;
     skills?: { repos?: Array<{ name?: string; url?: string; branch?: string; enabled?: boolean }> };
@@ -2216,19 +2330,11 @@ async function savePreferences(): Promise<void> {
   // against what's on disk; the sentinel preserves a stored key when the
   // user left the input blank.
   const typedApiKey = prefsApiKey.value.trim();
-  const llmApiKey = typedApiKey
-    ? typedApiKey
-    : prefsLlmHadKey
-    ? UNCHANGED_SECRET
-    : "";
+  const llmApiKey = typedApiKey ? typedApiKey : prefsLlmHadKey ? UNCHANGED_SECRET : "";
 
   const typedGalaxyKey = prefsGalaxyKey.value.trim();
   const galaxyUrl = prefsGalaxyUrl.value.trim();
-  const galaxyApiKey = typedGalaxyKey
-    ? typedGalaxyKey
-    : prefsGalaxyHadKey
-    ? UNCHANGED_SECRET
-    : "";
+  const galaxyApiKey = typedGalaxyKey ? typedGalaxyKey : prefsGalaxyHadKey ? UNCHANGED_SECRET : "";
 
   const hasGalaxyUrl = Boolean(galaxyUrl);
   const hasGalaxyKey = Boolean(typedGalaxyKey || prefsGalaxyHadKey);
@@ -2283,8 +2389,8 @@ async function savePreferences(): Promise<void> {
     const list = disallowed.map((r) => `  • ${r.name}: ${r.url}`).join("\n");
     alert(
       `Skills repos must live under ${ALLOWED_SKILLS_PREFIX}* (alpha ` +
-      `restriction). Disallowed entries:\n\n${list}\n\n` +
-      `Fix or remove them before saving.`,
+        `restriction). Disallowed entries:\n\n${list}\n\n` +
+        `Fix or remove them before saving.`,
     );
     return;
   }
@@ -2381,14 +2487,16 @@ async function buildReportBody(userText: string): Promise<string> {
       // useful for debugging.
       sections.push(
         `## System info\n` +
-        `- Orbit: ${info.appVersion}\n` +
-        `- Platform: ${info.platform} ${info.arch}\n` +
-        `- Electron: ${info.electronVersion}, Chrome: ${info.chromeVersion}, Node: ${info.nodeVersion}\n` +
-        `- LLM: ${cfg.llm?.provider ?? "(none)"} / ${cfg.llm?.model ?? "(none)"}\n` +
-        `- Galaxy: ${cfg.galaxy?.active ? "configured" : "not configured"}`
+          `- Orbit: ${info.appVersion}\n` +
+          `- Platform: ${info.platform} ${info.arch}\n` +
+          `- Electron: ${info.electronVersion}, Chrome: ${info.chromeVersion}, Node: ${info.nodeVersion}\n` +
+          `- LLM: ${cfg.llm?.provider ?? "(none)"} / ${cfg.llm?.model ?? "(none)"}\n` +
+          `- Galaxy: ${cfg.galaxy?.active ? "configured" : "not configured"}`,
       );
     } catch (err) {
-      sections.push(`## System info\n(failed to collect: ${err instanceof Error ? err.message : String(err)})`);
+      sections.push(
+        `## System info\n(failed to collect: ${err instanceof Error ? err.message : String(err)})`,
+      );
     }
   }
 
@@ -2402,7 +2510,9 @@ async function buildReportBody(userText: string): Promise<string> {
         const tail = lines.slice(-30).join("\n");
         sections.push("## activity.jsonl (last 30 lines)\n```\n" + tail + "\n```");
       }
-    } catch { /* file missing or unreadable — skip */ }
+    } catch {
+      /* file missing or unreadable — skip */
+    }
 
     // Shell tail (last ~150 lines of in-memory ShellPanel)
     const shellTail = shell.tail(150);
@@ -2625,12 +2735,15 @@ function renderProcs(procs: ProcInfo[]): void {
   procMonitorCountEl.classList.toggle("zero", procs.length === 0);
 
   if (procs.length === 0) {
-    procMonitorRowsEl.innerHTML = '<tr><td colspan="6" class="empty-procs">No subprocesses running</td></tr>';
+    procMonitorRowsEl.innerHTML =
+      '<tr><td colspan="6" class="empty-procs">No subprocesses running</td></tr>';
     return;
   }
 
   const sorted = [...procs].sort((a, b) => b.pcpu - a.pcpu);
-  procMonitorRowsEl.innerHTML = sorted.map((p) => `
+  procMonitorRowsEl.innerHTML = sorted
+    .map(
+      (p) => `
     <tr>
       <td class="col-num">${p.pid}</td>
       <td class="col-num">${p.pcpu.toFixed(1)}</td>
@@ -2639,7 +2752,9 @@ function renderProcs(procs: ProcInfo[]): void {
       <td class="col-num">${p.etime}</td>
       <td class="col-cmd" title="${escapeAttr(p.command)}">${escapeHtml(p.command)}</td>
     </tr>
-  `).join("");
+  `,
+    )
+    .join("");
 }
 
 function escapeHtml(s: string): string {

@@ -440,9 +440,9 @@ function buildSkillsContext(): string {
   sections.push("");
   sections.push(
     `Use the \`skills_fetch({ repo, path })\` tool to load a skill on demand. ` +
-    `**Don't guess operational patterns from training data — fetch the ` +
-    `relevant skill first.** Each fetch is cached locally for 24h. ` +
-    `When \`repo\` is omitted, the first enabled repo is used.`,
+      `**Don't guess operational patterns from training data — fetch the ` +
+      `relevant skill first.** Each fetch is cached locally for 24h. ` +
+      `When \`repo\` is omitted, the first enabled repo is used.`,
   );
   sections.push("");
 
@@ -459,9 +459,7 @@ function buildSkillsContext(): string {
   if (repos.some((r) => r.name === "galaxy-skills")) {
     sections.push(`### When to fetch which galaxy-skills skill`);
     sections.push("");
-    sections.push(
-      `Always pass \`repo: "galaxy-skills"\` (or omit if it's the default).`,
-    );
+    sections.push(`Always pass \`repo: "galaxy-skills"\` (or omit if it's the default).`);
     sections.push("");
     sections.push(`- **Manipulating dataset collections** (filter, sort, relabel, restructure,
   flatten, nest, merge; building paired collections from PE FASTQ; mapping
@@ -528,13 +526,11 @@ fully before acting on what it teaches.`);
     sections.push("");
     sections.push(
       `For repos other than galaxy-skills, fetch \`AGENTS.md\` (or \`README.md\` ` +
-      `if AGENTS.md is missing) first to discover the available skill paths:`,
+        `if AGENTS.md is missing) first to discover the available skill paths:`,
     );
     sections.push("");
     for (const r of otherRepos) {
-      sections.push(
-        `- \`skills_fetch({ repo: "${r.name}", path: "AGENTS.md" })\``,
-      );
+      sections.push(`- \`skills_fetch({ repo: "${r.name}", path: "AGENTS.md" })\``);
     }
     sections.push("");
   }
@@ -602,7 +598,6 @@ asks what was said.
 }
 
 export function setupContextInjection(pi: ExtensionAPI): void {
-
   pi.on("before_agent_start", async (_event, ctx) => {
     const systemPrompt = [
       buildPlanConventionBlock(),

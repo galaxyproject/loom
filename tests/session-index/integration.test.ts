@@ -45,7 +45,7 @@ describe("session-index end-to-end", () => {
 
     // 2. Agent pulls context around the top hit
     const ctx = getSessionContext(db, { entry_id: best.entry_id, before: 1, after: 1 });
-    const rationale = ctx.find(r => r.text.includes("secondary-cluster gap"));
+    const rationale = ctx.find((r) => r.text.includes("secondary-cluster gap"));
     expect(rationale).toBeDefined();
 
     // 3. Agent also finds the structured tool call

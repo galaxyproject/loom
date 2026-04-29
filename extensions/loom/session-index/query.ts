@@ -108,7 +108,12 @@ export function getSessionContext(db: Db, params: ContextParams): ContextRow[] {
       LIMIT @n
       `,
     )
-    .all({ sid: anchor.session_id, ts: anchor.timestamp, eid: params.entry_id, n: before }) as ContextRow[];
+    .all({
+      sid: anchor.session_id,
+      ts: anchor.timestamp,
+      eid: params.entry_id,
+      n: before,
+    }) as ContextRow[];
 
   const anchorRow = db
     .prepare(
@@ -129,7 +134,12 @@ export function getSessionContext(db: Db, params: ContextParams): ContextRow[] {
       LIMIT @n
       `,
     )
-    .all({ sid: anchor.session_id, ts: anchor.timestamp, eid: params.entry_id, n: after }) as ContextRow[];
+    .all({
+      sid: anchor.session_id,
+      ts: anchor.timestamp,
+      eid: params.entry_id,
+      n: after,
+    }) as ContextRow[];
 
   return [...beforeRows.reverse(), anchorRow, ...afterRows];
 }
@@ -138,9 +148,7 @@ export function findToolCalls(db: Db, params: ToolCallParams): ToolCallHit[] {
   const limit = clampLimit(params.limit);
   const scopeCwd = params.scope === "cwd" && params.cwd;
   const scopeClause = scopeCwd ? "AND s.cwd = @cwd" : "";
-  const argsClause = params.args_contains
-    ? "AND tc.arguments_json LIKE @args ESCAPE '\\'"
-    : "";
+  const argsClause = params.args_contains ? "AND tc.arguments_json LIKE @args ESCAPE '\\'" : "";
 
   const bindParams: Record<string, unknown> = { tool: params.tool_name, limit };
   if (params.args_contains) bindParams.args = `%${escapeLike(params.args_contains)}%`;
@@ -168,16 +176,16 @@ export function findToolCalls(db: Db, params: ToolCallParams): ToolCallHit[] {
       `,
     )
     .all(bindParams) as Array<{
-      entry_id: string;
-      session_id: string;
-      cwd: string;
-      notebook_path: string | null;
-      timestamp: string;
-      arguments_json: string;
-      result_text: string | null;
-    }>;
+    entry_id: string;
+    session_id: string;
+    cwd: string;
+    notebook_path: string | null;
+    timestamp: string;
+    arguments_json: string;
+    result_text: string | null;
+  }>;
 
-  return rows.map(r => ({
+  return rows.map((r) => ({
     entry_id: r.entry_id,
     session_id: r.session_id,
     cwd: r.cwd,

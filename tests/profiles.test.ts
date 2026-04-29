@@ -29,7 +29,9 @@ beforeEach(() => {
 afterEach(() => {
   if (prevHome === undefined) delete process.env.HOME;
   else process.env.HOME = prevHome;
-  try { fs.rmSync(sandboxHome, { recursive: true, force: true }); } catch {}
+  try {
+    fs.rmSync(sandboxHome, { recursive: true, force: true });
+  } catch {}
 });
 
 describe("EncryptedProfileUnavailableError", () => {
@@ -44,7 +46,10 @@ describe("EncryptedProfileUnavailableError", () => {
 
 describe("resolveProfileApiKey", () => {
   it("returns plaintext when apiKey is set", () => {
-    const got = resolveProfileApiKey("p", { url: "https://x.galaxyproject.org", apiKey: "plain-key" });
+    const got = resolveProfileApiKey("p", {
+      url: "https://x.galaxyproject.org",
+      apiKey: "plain-key",
+    });
     expect(got).toBe("plain-key");
   });
 
@@ -55,12 +60,12 @@ describe("resolveProfileApiKey", () => {
   });
 
   it("throws a plain Error when no key field is set", () => {
-    expect(() =>
-      resolveProfileApiKey("empty", { url: "https://usegalaxy.org" }),
-    ).toThrow(/no API key/i);
-    expect(() =>
-      resolveProfileApiKey("empty", { url: "https://usegalaxy.org" }),
-    ).not.toThrow(EncryptedProfileUnavailableError);
+    expect(() => resolveProfileApiKey("empty", { url: "https://usegalaxy.org" })).toThrow(
+      /no API key/i,
+    );
+    expect(() => resolveProfileApiKey("empty", { url: "https://usegalaxy.org" })).not.toThrow(
+      EncryptedProfileUnavailableError,
+    );
   });
 });
 
@@ -132,7 +137,11 @@ describe("warnOnUnusableActiveProfile", () => {
     const errors: string[] = [];
     const orig = console.error;
     console.error = (msg: string) => errors.push(msg);
-    try { fn(); } finally { console.error = orig; }
+    try {
+      fn();
+    } finally {
+      console.error = orig;
+    }
     return errors;
   }
 
@@ -145,7 +154,7 @@ describe("warnOnUnusableActiveProfile", () => {
     delete process.env.GALAXY_API_KEY;
     const errors = captureErrors(() => warnOnUnusableActiveProfile());
     expect(errors.length).toBe(1);
-    expect(errors[0]).toContain("Active profile \"a\"");
+    expect(errors[0]).toContain('Active profile "a"');
     expect(errors[0]).toMatch(/GALAXY_API_KEY/);
   });
 

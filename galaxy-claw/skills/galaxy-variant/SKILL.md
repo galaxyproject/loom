@@ -65,6 +65,7 @@ Guided variant calling on Galaxy -- from raw reads or aligned BAMs to annotated,
 ## Before You Start
 
 Ask the user:
+
 1. **Germline or somatic?** -- different callers and filtering strategies
 2. **What organism and genome build?** -- e.g. hg38, mm39, GRCz11
 3. **WGS or WES/targeted?** -- affects depth expectations and filtering
@@ -82,6 +83,7 @@ Same as RNA-seq pipeline. Use FastQC and fastp. For variant calling, quality is 
 **Tool:** `toolshed.g2.bx.psu.edu/repos/iuc/bwa_mem2/bwa_mem2`
 
 **Key parameters:**
+
 - **Reference genome** -- must match the genome build exactly
 - For paired-end: provide both R1 and R2
 
@@ -96,25 +98,29 @@ Same as RNA-seq pipeline. Use FastQC and fastp. For variant calling, quality is 
 PCR duplicates inflate variant allele frequencies. Mark them so callers can ignore them.
 
 **Expected duplication rates:**
+
 - WGS: 5-15% is normal
 - WES: 10-30% is normal (capture-based enrichment creates more duplicates)
-- >40%: library quality concern
+- > 40%: library quality concern
 
 ### Step 5: Variant Calling
 
 **For germline variants:**
 
 **FreeBayes** (`toolshed.g2.bx.psu.edu/repos/devteam/freebayes/freebayes`):
+
 - Good all-around caller, works well for single samples and small cohorts
 - Key param: `--min-alternate-fraction 0.2` for diploid organisms
 - Sensitive to low-frequency variants
 
 **GATK4 HaplotypeCaller** (if available on your Galaxy):
+
 - Industry standard for germline calling
 - Best with GATK Best Practices pipeline (BaseRecalibration first)
 - More conservative than FreeBayes
 
 **For somatic variants:**
+
 - Requires matched tumor-normal pairs
 - Use **Mutect2** (GATK4) or **VarScan2**
 - Filtering is more aggressive -- somatic variants are rare
@@ -124,11 +130,13 @@ PCR duplicates inflate variant allele frequencies. Mark them so callers can igno
 **Tool:** `toolshed.g2.bx.psu.edu/repos/iuc/bcftools_filter/bcftools_filter`
 
 **Recommended filters for germline FreeBayes calls:**
+
 - `QUAL > 20` -- minimum variant quality
 - `DP > 10` -- minimum read depth
 - `AO > 3` -- minimum alternate observations
 
 **Why these thresholds?**
+
 - QUAL 20 = 99% confidence the variant is real
 - DP 10 = enough coverage to call a heterozygous variant reliably
 - AO 3 = reduces single-read artifacts
@@ -138,18 +146,20 @@ Adjust for your data: WGS with 30x coverage can use stricter filters; low-covera
 ### Step 7: Functional Annotation
 
 **SnpEff** (`toolshed.g2.bx.psu.edu/repos/iuc/snpeff/snpEff`):
+
 - Fast, gene-model-based annotation
 - Reports impact: HIGH (frameshift, stop-gain), MODERATE (missense), LOW (synonymous), MODIFIER (intronic/intergenic)
 
 **VEP** (Variant Effect Predictor):
+
 - More detailed, includes SIFT/PolyPhen predictions
 - Slower but richer annotation
 
 ## Common Problems
 
-| Problem | Likely Cause | Fix |
-|---------|-------------|-----|
-| Too many variants (>5M for WGS) | Insufficient filtering | Apply stricter QUAL/DP filters |
-| Too few variants | Over-filtered or wrong ref genome | Check reference build, relax filters |
-| Transition/transversion ratio off | Ti/Tv should be ~2.0-2.1 for WGS | If <1.5 or >3.0, investigate quality |
-| Many variants in repeats | Mapping artifacts | Filter by mappability or use GATK BQSR |
+| Problem                           | Likely Cause                      | Fix                                    |
+| --------------------------------- | --------------------------------- | -------------------------------------- |
+| Too many variants (>5M for WGS)   | Insufficient filtering            | Apply stricter QUAL/DP filters         |
+| Too few variants                  | Over-filtered or wrong ref genome | Check reference build, relax filters   |
+| Transition/transversion ratio off | Ti/Tv should be ~2.0-2.1 for WGS  | If <1.5 or >3.0, investigate quality   |
+| Many variants in repeats          | Mapping artifacts                 | Filter by mappability or use GATK BQSR |

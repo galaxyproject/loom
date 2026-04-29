@@ -1,0 +1,16 @@
+node_modules/
+app/node_modules/
+web/node_modules/
+
+dist/
+**/.vite/
+app/dist/
+app/out/
+web/dist/
+coverage/
+
+.worktrees/
+.claude/
+
+*.jsonl
+*-notebook.md

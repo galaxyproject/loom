@@ -23,6 +23,7 @@ GalaxyClaw is **pure SKILL.md** -- domain expertise that teaches the agent how t
 ```
 
 The SKILL.md files carry:
+
 - Which tools to use for which tasks
 - Parameter selection rationale (why Q20, why DP>10)
 - QC checkpoints and what to look for
@@ -90,14 +91,14 @@ network:
 
 ## Skills
 
-| Skill | Type | Description |
-|-------|------|-------------|
-| **galaxy-connect** | Setup | Configure galaxy-mcp and authenticate |
-| **galaxy-tools** | Reference | Search, inspect, and run Galaxy tools |
-| **galaxy-history** | Reference | Manage histories and datasets |
-| **galaxy-workflow** | Reference | Import and run Galaxy workflows |
-| **galaxy-rnaseq** | Domain guide | RNA-seq DE pipeline with QC checkpoints |
-| **galaxy-variant** | Domain guide | Variant calling with filtering rationale |
+| Skill                   | Type         | Description                                         |
+| ----------------------- | ------------ | --------------------------------------------------- |
+| **galaxy-connect**      | Setup        | Configure galaxy-mcp and authenticate               |
+| **galaxy-tools**        | Reference    | Search, inspect, and run Galaxy tools               |
+| **galaxy-history**      | Reference    | Manage histories and datasets                       |
+| **galaxy-workflow**     | Reference    | Import and run Galaxy workflows                     |
+| **galaxy-rnaseq**       | Domain guide | RNA-seq DE pipeline with QC checkpoints             |
+| **galaxy-variant**      | Domain guide | Variant calling with filtering rationale            |
 | **galaxy-metagenomics** | Domain guide | Metagenomics profiling (Kraken2, MetaPhlAn, HUMAnN) |
 
 ## Why Galaxy + NemoClaw?

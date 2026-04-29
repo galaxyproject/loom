@@ -55,7 +55,7 @@ export function getGalaxyConfig(): GalaxyConfig | null {
   const url = process.env.GALAXY_URL;
   const apiKey = process.env.GALAXY_API_KEY;
   if (!url || !apiKey) return null;
-  return { url: url.replace(/\/+$/, ''), apiKey };
+  return { url: url.replace(/\/+$/, ""), apiKey };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -68,12 +68,12 @@ export async function galaxyGet<T = unknown>(path: string, signal?: AbortSignal)
 
   const url = `${config.url}/api${path}`;
   const resp = await fetch(url, {
-    headers: { 'x-api-key': config.apiKey },
+    headers: { "x-api-key": config.apiKey },
     signal,
   });
 
   if (!resp.ok) {
-    const body = await resp.text().catch(() => '');
+    const body = await resp.text().catch(() => "");
     throw new Error(`Galaxy API ${resp.status}: ${body || resp.statusText}`);
   }
 

@@ -61,6 +61,7 @@ Guided RNA-seq differential expression analysis on Galaxy. This skill walks thro
 ## Before You Start
 
 Ask the user:
+
 1. **What organism?** -- needed to select the right reference genome and annotation
 2. **Single-end or paired-end reads?**
 3. **How many samples per condition?** -- DE analysis needs at least 3 biological replicates per group
@@ -74,6 +75,7 @@ Ask the user:
 **Tool:** `toolshed.g2.bx.psu.edu/repos/devteam/fastqc/fastqc`
 
 Run FastQC on ALL raw samples. Check:
+
 - **Per base sequence quality** -- should be >Q20 across most of the read. Drops at the 3' end are normal for Illumina.
 - **Adapter content** -- if >5% adapters detected, trimming is essential.
 - **Sequence duplication** -- high duplication is expected in RNA-seq (highly expressed genes). Don't filter duplicates for RNA-seq.
@@ -86,6 +88,7 @@ Run FastQC on ALL raw samples. Check:
 **Tool:** `toolshed.g2.bx.psu.edu/repos/iuc/fastp/fastp`
 
 **Recommended parameters:**
+
 - `--qualified_quality_phred 20` -- trim bases below Q20
 - `--length_required 36` -- discard reads shorter than 36bp after trimming
 - Adapter detection: automatic (fastp auto-detects Illumina adapters)
@@ -101,12 +104,14 @@ Run FastQC again on trimmed reads. Compare before/after. The adapter content pea
 **Tool:** `toolshed.g2.bx.psu.edu/repos/iuc/hisat2/hisat2`
 
 **Key parameters:**
+
 - **Reference genome** -- select the correct genome build (e.g. hg38 for human, mm39 for mouse, GRCz11 for zebrafish)
 - **Strand information** -- most modern RNA-seq libraries are stranded. Check the library prep protocol. If unknown, run a small test with `infer_experiment.py` from RSeQC.
 
 **Why HISAT2?** It's splice-aware (handles exon-exon junctions) and memory-efficient. STAR is an alternative that's faster but uses more RAM. For most Galaxy analyses, HISAT2 is the default choice.
 
 **QC checkpoint:** Check alignment rate. For well-prepared RNA-seq:
+
 - **>80% overall alignment** -- good
 - **60-80%** -- acceptable, may indicate some contamination or rRNA
 - **<60%** -- investigate: wrong reference genome? contamination? degraded RNA?
@@ -116,6 +121,7 @@ Run FastQC again on trimmed reads. Compare before/after. The adapter content pea
 **Tool:** `toolshed.g2.bx.psu.edu/repos/iuc/featurecounts/featurecounts`
 
 **Key parameters:**
+
 - **Annotation file** -- use the GTF matching your reference genome build
 - **Strand specificity** -- must match your library prep (reverse for dUTP/Illumina stranded kits)
 - **Feature type** -- `exon` (default, recommended)
@@ -124,6 +130,7 @@ Run FastQC again on trimmed reads. Compare before/after. The adapter content pea
 **Why featureCounts over htseq-count?** featureCounts is significantly faster with comparable results. Both are valid choices.
 
 **QC checkpoint:** Check the assignment summary. Expect:
+
 - **>60% assigned** -- good
 - **High "Unassigned_NoFeatures"** -- may indicate wrong strandedness setting
 - **High "Unassigned_Ambiguity"** -- normal for overlapping genes, especially in compact genomes
@@ -135,6 +142,7 @@ Run FastQC again on trimmed reads. Compare before/after. The adapter content pea
 Run MultiQC on all FastQC reports, alignment logs, and featureCounts summaries. This gives a single report comparing all samples side-by-side.
 
 **What to look for:**
+
 - Consistent quality and alignment rates across samples
 - Outlier samples that may need to be excluded
 - Batch effects visible in PCA
@@ -144,16 +152,19 @@ Run MultiQC on all FastQC reports, alignment logs, and featureCounts summaries. 
 **Tool:** `toolshed.g2.bx.psu.edu/repos/iuc/deseq2/deseq2`
 
 **Inputs:**
+
 - Count matrix from featureCounts (or individual count files)
 - Factor information: which samples belong to which condition
 
 **Key parameters:**
+
 - **Fit type** -- `parametric` (default, works for most datasets)
 - **Alpha (FDR threshold)** -- `0.05` (standard)
 
 **Why DESeq2 over edgeR?** Both are well-validated. DESeq2 is more conservative with small sample sizes and has better default behavior. edgeR can be more powerful with large sample sizes. For most analyses, DESeq2 is the safer default.
 
 **Interpreting results:**
+
 - **log2FoldChange** -- magnitude of change (positive = upregulated in treatment)
 - **padj** -- FDR-adjusted p-value. Genes with padj < 0.05 are significant
 - **baseMean** -- average expression level. Very low baseMean genes are unreliable
@@ -163,6 +174,7 @@ Run MultiQC on all FastQC reports, alignment logs, and featureCounts summaries. 
 ## When to Use a Pre-Built Workflow Instead
 
 Galaxy has curated RNA-seq workflows available through the IWC (Intergalactic Workflow Commission). If the user wants a standard pipeline without customization:
+
 - Search for "RNA-seq" in Galaxy's published workflows
 - Use `galaxy-workflow` skill to import and run
 
@@ -170,10 +182,10 @@ Pre-built workflows are faster but less flexible. The step-by-step approach abov
 
 ## Common Problems
 
-| Problem | Likely Cause | Fix |
-|---------|-------------|-----|
-| Low alignment rate | Wrong reference genome | Verify organism and genome build |
-| 0% feature assignment | Wrong strandedness | Try "reverse" or "unstranded" |
-| No DE genes | Too few replicates | Need 3+ biological replicates per condition |
-| All genes significant | Batch effect | Include batch as a covariate in the DESeq2 model |
-| PCA shows batch not condition | Strong batch effect | Consider batch correction (e.g. limma removeBatchEffect) or include batch in model |
+| Problem                       | Likely Cause           | Fix                                                                                |
+| ----------------------------- | ---------------------- | ---------------------------------------------------------------------------------- |
+| Low alignment rate            | Wrong reference genome | Verify organism and genome build                                                   |
+| 0% feature assignment         | Wrong strandedness     | Try "reverse" or "unstranded"                                                      |
+| No DE genes                   | Too few replicates     | Need 3+ biological replicates per condition                                        |
+| All genes significant         | Batch effect           | Include batch as a covariate in the DESeq2 model                                   |
+| PCA shows batch not condition | Strong batch effect    | Consider batch correction (e.g. limma removeBatchEffect) or include batch in model |

@@ -21,16 +21,8 @@ import {
   upsertInvocationBlock,
   type InvocationYaml,
 } from "./notebook-writer";
-import {
-  getGalaxyConfig,
-  galaxyGet,
-  type GalaxyInvocationResponse,
-} from "./galaxy-api";
-import {
-  type ConfiguredSkillRepo,
-  listEnabledSkillRepos,
-  findSkillRepo,
-} from "./skills";
+import { getGalaxyConfig, galaxyGet, type GalaxyInvocationResponse } from "./galaxy-api";
+import { type ConfiguredSkillRepo, listEnabledSkillRepos, findSkillRepo } from "./skills";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
@@ -78,7 +70,10 @@ function stripGtnHtml(html: string): string {
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, " ")
     .replace(/&#(\d+);/g, (_m, code) => String.fromCharCode(Number(code)));
-  text = text.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  text = text
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
   return text;
 }
 
@@ -107,7 +102,6 @@ function githubRawBase(repoUrl: string, branch: string): string | null {
 }
 
 export function registerPlanTools(pi: ExtensionAPI): void {
-
   // ─────────────────────────────────────────────────────────────────────────────
   // Tool: Search/browse GTN topics and tutorials
   // ─────────────────────────────────────────────────────────────────────────────
@@ -118,12 +112,16 @@ export function registerPlanTools(pi: ExtensionAPI): void {
 topics. Provide a topic ID to list its tutorials. Use query to filter tutorials by keyword
 in their title or objectives. Use this to find tutorial URLs before fetching with gtn_fetch.`,
     parameters: Type.Object({
-      topic: Type.Optional(Type.String({
-        description: "Topic ID to list tutorials for (e.g., 'transcriptomics', 'introduction')"
-      })),
-      query: Type.Optional(Type.String({
-        description: "Keyword to filter tutorials by title or objectives (case-insensitive)"
-      })),
+      topic: Type.Optional(
+        Type.String({
+          description: "Topic ID to list tutorials for (e.g., 'transcriptomics', 'introduction')",
+        }),
+      ),
+      query: Type.Optional(
+        Type.String({
+          description: "Keyword to filter tutorials by title or objectives (case-insensitive)",
+        }),
+      ),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
       const GTN_API = "https://training.galaxyproject.org/training-material/api";
@@ -138,7 +136,10 @@ in their title or objectives. Use this to find tutorial URLs before fetching wit
             };
           }
 
-          const data = await resp.json() as Record<string, { name: string; title: string; summary: string }>;
+          const data = (await resp.json()) as Record<
+            string,
+            { name: string; title: string; summary: string }
+          >;
           const topics = Object.values(data).map((t) => ({
             name: t.name,
             title: t.title,
@@ -146,14 +147,20 @@ in their title or objectives. Use this to find tutorial URLs before fetching wit
           }));
 
           return {
-            content: [{
-              type: "text",
-              text: JSON.stringify({
-                count: topics.length,
-                topics,
-                hint: "Use gtn_search with a topic name to list its tutorials.",
-              }, null, 2),
-            }],
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    count: topics.length,
+                    topics,
+                    hint: "Use gtn_search with a topic name to list its tutorials.",
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
             details: { count: topics.length },
           };
         }
@@ -161,15 +168,17 @@ in their title or objectives. Use this to find tutorial URLs before fetching wit
         const resp = await fetch(`${GTN_API}/topics/${params.topic}.json`, { signal });
         if (!resp.ok) {
           return {
-            content: [{
-              type: "text",
-              text: `Error: Topic "${params.topic}" not found (HTTP ${resp.status}). Use gtn_search with no arguments to list available topics.`,
-            }],
+            content: [
+              {
+                type: "text",
+                text: `Error: Topic "${params.topic}" not found (HTTP ${resp.status}). Use gtn_search with no arguments to list available topics.`,
+              },
+            ],
             details: { error: true },
           };
         }
 
-        const topicData = await resp.json() as {
+        const topicData = (await resp.json()) as {
           name: string;
           title: string;
           materials: Array<{
@@ -196,23 +205,30 @@ in their title or objectives. Use this to find tutorial URLs before fetching wit
 
         if (params.query) {
           const q = params.query.toLowerCase();
-          tutorials = tutorials.filter((t) =>
-            t.title.toLowerCase().includes(q) ||
-            t.objectives.some((o) => o.toLowerCase().includes(q))
+          tutorials = tutorials.filter(
+            (t) =>
+              t.title.toLowerCase().includes(q) ||
+              t.objectives.some((o) => o.toLowerCase().includes(q)),
           );
         }
 
         return {
-          content: [{
-            type: "text",
-            text: JSON.stringify({
-              topic: topicData.title,
-              count: tutorials.length,
-              ...(params.query ? { query: params.query } : {}),
-              tutorials,
-              hint: "Use gtn_fetch with a tutorial URL to read its full content.",
-            }, null, 2),
-          }],
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  topic: topicData.title,
+                  count: tutorials.length,
+                  ...(params.query ? { query: params.query } : {}),
+                  tutorials,
+                  hint: "Use gtn_fetch with a tutorial URL to read its full content.",
+                },
+                null,
+                2,
+              ),
+            },
+          ],
           details: { topic: params.topic, count: tutorials.length },
         };
       } catch (error) {
@@ -248,7 +264,7 @@ instructions, tool names, parameters, and workflow steps so you can follow along
 analyses in Galaxy.`,
     parameters: Type.Object({
       url: Type.String({
-        description: "URL of the GTN tutorial page (must be on training.galaxyproject.org)"
+        description: "URL of the GTN tutorial page (must be on training.galaxyproject.org)",
       }),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
@@ -266,10 +282,12 @@ analyses in Galaxy.`,
 
       if (parsed.hostname !== GTN_HOST) {
         return {
-          content: [{
-            type: "text",
-            text: `Error: Only URLs on ${GTN_HOST} are allowed. Got: ${parsed.hostname}`,
-          }],
+          content: [
+            {
+              type: "text",
+              text: `Error: Only URLs on ${GTN_HOST} are allowed. Got: ${parsed.hostname}`,
+            },
+          ],
           details: { error: true },
         };
       }
@@ -279,10 +297,12 @@ analyses in Galaxy.`,
 
         if (!response.ok) {
           return {
-            content: [{
-              type: "text",
-              text: `Error: Failed to fetch tutorial (HTTP ${response.status})`,
-            }],
+            content: [
+              {
+                type: "text",
+                text: `Error: Failed to fetch tutorial (HTTP ${response.status})`,
+              },
+            ],
             details: { error: true },
           };
         }
@@ -291,10 +311,12 @@ analyses in Galaxy.`,
         const text = stripGtnHtml(html);
 
         return {
-          content: [{
-            type: "text",
-            text,
-          }],
+          content: [
+            {
+              type: "text",
+              text,
+            },
+          ],
           details: { url: params.url, length: text.length },
         };
       } catch (error) {
@@ -325,11 +347,13 @@ system prompt's "Skills repositories" section lists the available repos and the
 canonical paths inside each. Results are cached locally for 24h. If \`repo\` is
 omitted, the first enabled repo is used (typically \`galaxy-skills\`).`,
     parameters: Type.Object({
-      repo: Type.Optional(Type.String({
-        description:
-          "Name of the skills repo to fetch from (e.g. 'galaxy-skills'). " +
-          "Omit to use the default (first enabled repo).",
-      })),
+      repo: Type.Optional(
+        Type.String({
+          description:
+            "Name of the skills repo to fetch from (e.g. 'galaxy-skills'). " +
+            "Omit to use the default (first enabled repo).",
+        }),
+      ),
       path: Type.String({
         description:
           "Relative path inside the repo, e.g. 'collection-manipulation/SKILL.md', " +
@@ -339,14 +363,19 @@ omitted, the first enabled repo is used (typically \`galaxy-skills\`).`,
     async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
       const repo = findSkillRepo(params.repo);
       if (!repo) {
-        const enabled = listEnabledSkillRepos().map((r) => r.name).join(", ") || "(none)";
+        const enabled =
+          listEnabledSkillRepos()
+            .map((r) => r.name)
+            .join(", ") || "(none)";
         return {
-          content: [{
-            type: "text",
-            text: params.repo
-              ? `Error: Skills repo "${params.repo}" is not configured or is disabled. Enabled: ${enabled}.`
-              : `Error: No skills repos are enabled. Configure one in Preferences → Skills.`,
-          }],
+          content: [
+            {
+              type: "text",
+              text: params.repo
+                ? `Error: Skills repo "${params.repo}" is not configured or is disabled. Enabled: ${enabled}.`
+                : `Error: No skills repos are enabled. Configure one in Preferences → Skills.`,
+            },
+          ],
           details: { error: true },
         };
       }
@@ -362,10 +391,12 @@ omitted, the first enabled repo is used (typically \`galaxy-skills\`).`,
       const rawBase = githubRawBase(repo.url, repo.branch);
       if (!rawBase) {
         return {
-          content: [{
-            type: "text",
-            text: `Error: Repo URL "${repo.url}" must be a GitHub repo (https://github.com/<owner>/<repo>).`,
-          }],
+          content: [
+            {
+              type: "text",
+              text: `Error: Repo URL "${repo.url}" must be a GitHub repo (https://github.com/<owner>/<repo>).`,
+            },
+          ],
           details: { error: true },
         };
       }
@@ -375,7 +406,13 @@ omitted, the first enabled repo is used (typically \`galaxy-skills\`).`,
       // whose branch was switched) keeps serving 24h of stale content from
       // the old upstream because cache lookup keyed only on repo.name.
       const cacheTag = createSkillsCacheTag(repo.url, repo.branch);
-      const cacheDir = path.join(os.homedir(), ".loom", "cache", "skills", `${repo.name}@${cacheTag}`);
+      const cacheDir = path.join(
+        os.homedir(),
+        ".loom",
+        "cache",
+        "skills",
+        `${repo.name}@${cacheTag}`,
+      );
       const cachePath = path.join(cacheDir, cleanPath);
       const ttlMs = 24 * 60 * 60 * 1000;
       try {
@@ -396,11 +433,14 @@ omitted, the first enabled repo is used (typically \`galaxy-skills\`).`,
         const response = await fetch(url, { signal });
         if (!response.ok) {
           return {
-            content: [{
-              type: "text",
-              text: `Error: Failed to fetch "${cleanPath}" from ${repo.name} (HTTP ${response.status}). ` +
-                `Check the path against the skills router in the system prompt.`,
-            }],
+            content: [
+              {
+                type: "text",
+                text:
+                  `Error: Failed to fetch "${cleanPath}" from ${repo.name} (HTTP ${response.status}). ` +
+                  `Check the path against the skills router in the system prompt.`,
+              },
+            ],
             details: { error: true, repo: repo.name, path: cleanPath },
           };
         }
@@ -426,7 +466,9 @@ omitted, the first enabled repo is used (typically \`galaxy-skills\`).`,
       }
     },
     renderResult: (result) => {
-      const d = result.details as { repo?: string; path?: string; length?: number; cached?: boolean; error?: boolean } | undefined;
+      const d = result.details as
+        | { repo?: string; path?: string; length?: number; cached?: boolean; error?: boolean }
+        | undefined;
       if (d?.error) return new Text("❌ Skill fetch failed");
       const tag = d?.cached ? "(cached)" : "(fetched)";
       return new Text(`📘 ${d?.repo}/${d?.path} ${tag} (${d?.length || 0} chars)`);
@@ -458,7 +500,9 @@ Writes a fenced \`loom-invocation\` YAML block at the end of the notebook. Polli
       const notebookPath = getNotebookPath();
       if (!notebookPath) {
         return {
-          content: [{ type: "text", text: JSON.stringify({ success: false, error: "No notebook open." }) }],
+          content: [
+            { type: "text", text: JSON.stringify({ success: false, error: "No notebook open." }) },
+          ],
           details: { error: true } as Record<string, unknown>,
         };
       }
@@ -482,18 +526,27 @@ Writes a fenced \`loom-invocation\` YAML block at the end of the notebook. Polli
         });
 
         return {
-          content: [{
-            type: "text",
-            text: JSON.stringify({
-              success: true,
-              invocationId: inv.invocationId,
-              notebookAnchor: inv.notebookAnchor,
-              label: inv.label,
-              status: inv.status,
-              message: `Recorded invocation ${inv.invocationId} (${inv.label}) at ${inv.notebookAnchor}.`,
-            }, null, 2),
-          }],
-          details: { invocationId: inv.invocationId, notebookAnchor: inv.notebookAnchor } as Record<string, unknown>,
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  success: true,
+                  invocationId: inv.invocationId,
+                  notebookAnchor: inv.notebookAnchor,
+                  label: inv.label,
+                  status: inv.status,
+                  message: `Recorded invocation ${inv.invocationId} (${inv.label}) at ${inv.notebookAnchor}.`,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+          details: { invocationId: inv.invocationId, notebookAnchor: inv.notebookAnchor } as Record<
+            string,
+            unknown
+          >,
         };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
@@ -504,7 +557,9 @@ Writes a fenced \`loom-invocation\` YAML block at the end of the notebook. Polli
       }
     },
     renderResult: (result) => {
-      const d = result.details as { invocationId?: string; notebookAnchor?: string; error?: boolean } | undefined;
+      const d = result.details as
+        | { invocationId?: string; notebookAnchor?: string; error?: boolean }
+        | undefined;
       if (d?.error) return new Text("❌ Failed to record invocation");
       return new Text(`🔗 Invocation ${d?.invocationId} → ${d?.notebookAnchor}`);
     },
@@ -570,18 +625,31 @@ interface CheckInvocationsResult {
   details: Record<string, unknown>;
 }
 
-export async function checkInvocations(specificId: string | undefined, signal?: AbortSignal): Promise<CheckInvocationsResult> {
+export async function checkInvocations(
+  specificId: string | undefined,
+  signal?: AbortSignal,
+): Promise<CheckInvocationsResult> {
   const notebookPath = getNotebookPath();
   if (!notebookPath) {
     return {
-      content: [{ type: "text" as const, text: JSON.stringify({ success: false, error: "No notebook open." }) }],
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({ success: false, error: "No notebook open." }),
+        },
+      ],
       details: { error: true } as Record<string, unknown>,
     };
   }
 
   if (!getGalaxyConfig()) {
     return {
-      content: [{ type: "text" as const, text: JSON.stringify({ success: false, error: "Galaxy credentials not configured." }) }],
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({ success: false, error: "Galaxy credentials not configured." }),
+        },
+      ],
       details: { error: true } as Record<string, unknown>,
     };
   }
@@ -604,7 +672,15 @@ export async function checkInvocations(specificId: string | undefined, signal?: 
         return {
           kind: "early",
           result: {
-            content: [{ type: "text" as const, text: JSON.stringify({ success: false, error: `Invocation ${specificId} not found in notebook.` }) }],
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  success: false,
+                  error: `Invocation ${specificId} not found in notebook.`,
+                }),
+              },
+            ],
             details: { error: true } as Record<string, unknown>,
           },
         };
@@ -618,10 +694,16 @@ export async function checkInvocations(specificId: string | undefined, signal?: 
       return {
         kind: "early",
         result: {
-          content: [{
-            type: "text" as const,
-            text: JSON.stringify({ success: true, results: [], message: "No in-progress invocations." }),
-          }],
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                success: true,
+                results: [],
+                message: "No in-progress invocations.",
+              }),
+            },
+          ],
           details: { checked: 0 } as Record<string, unknown>,
         },
       };
@@ -641,7 +723,8 @@ export async function checkInvocations(specificId: string | undefined, signal?: 
           for (const job of invStep.jobs) {
             if (job.state === "ok") summary.ok++;
             else if (job.state === "running") summary.running++;
-            else if (job.state === "queued" || job.state === "new" || job.state === "waiting") summary.queued++;
+            else if (job.state === "queued" || job.state === "new" || job.state === "waiting")
+              summary.queued++;
             else if (job.state === "error" || job.state === "deleted") summary.error++;
             else summary.other++;
           }
@@ -651,7 +734,12 @@ export async function checkInvocations(specificId: string | undefined, signal?: 
         let nextStatus: InvocationYaml["status"] = block.status;
         let nextSummary = block.summary;
 
-        if (summary.error === 0 && summary.running === 0 && summary.queued === 0 && summary.ok > 0) {
+        if (
+          summary.error === 0 &&
+          summary.running === 0 &&
+          summary.queued === 0 &&
+          summary.ok > 0
+        ) {
           nextStatus = "completed";
           nextSummary = `Workflow completed: ${summary.ok} jobs succeeded`;
           autoAction = "completed";
@@ -696,10 +784,12 @@ export async function checkInvocations(specificId: string | undefined, signal?: 
   const results = lockResult.results;
 
   return {
-    content: [{
-      type: "text" as const,
-      text: JSON.stringify({ success: true, checked: results.length, results }, null, 2),
-    }],
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify({ success: true, checked: results.length, results }, null, 2),
+      },
+    ],
     details: { checked: results.length } as Record<string, unknown>,
   };
 }
