@@ -387,10 +387,14 @@ const galaxyStatus = document.getElementById("galaxy-status")!;
 
 async function refreshGalaxyStatus(): Promise<void> {
   const cfg = (await window.orbit.getConfig()) as Record<string, unknown>;
-  const galaxy = cfg.galaxy as { active?: string; profiles?: Record<string, { url?: string; apiKey?: string }> } | undefined;
+  // getConfig returns the *masked* config — Galaxy profiles carry
+  // `hasApiKey: boolean`, never the plaintext apiKey. Checking
+  // `profile.apiKey` here used to make the dot stay red even when a key
+  // was set, because the field is undefined in the masked shape.
+  const galaxy = cfg.galaxy as { active?: string; profiles?: Record<string, { url?: string; hasApiKey?: boolean }> } | undefined;
   const active = galaxy?.active;
   const profile = active ? galaxy?.profiles?.[active] : undefined;
-  const connected = !!(profile?.url && profile?.apiKey);
+  const connected = !!(profile?.url && profile?.hasApiKey);
 
   if (connected) {
     galaxyStatus.classList.add("status-dot-connected");
