@@ -1,14 +1,9 @@
 import { validateTeamSpec } from "./validate";
 import { parseCriticResponse } from "./critic-parser";
-import type {
-  DispatchDeps,
-  TeamResult,
-  TeamSpec,
-  TeamTurn,
-} from "./types";
+import type { DispatchDeps, TeamResult, TeamSpec, TeamTurn } from "./types";
 
 export interface DispatchOptions {
-  tokenCeiling?: number;   // default 300_000
+  tokenCeiling?: number; // default 300_000
 }
 
 export type OnTurnUpdate = (snapshot: {
@@ -50,11 +45,16 @@ export async function runTeamDispatch(
       const proposerInput = renderProposerInput(spec.description, currentCritique);
       const proposerPreamble = buildPreamble(spec, proposer, "proposer");
       const proposerResult = await deps.runRoleTurn(
-        proposer, proposerPreamble, proposerInput, signal,
+        proposer,
+        proposerPreamble,
+        proposerInput,
+        signal,
       );
       currentProposal = proposerResult.content;
       transcript.push({
-        round, role: proposer.name, content: currentProposal,
+        round,
+        role: proposer.name,
+        content: currentProposal,
       });
       totalUsage = add(totalUsage, proposerResult.usage);
       onTurn?.({ round, max_rounds: maxRounds, current_role: proposer.name, turns: transcript });
@@ -67,12 +67,12 @@ export async function runTeamDispatch(
       if (signal.aborted) return aborted(transcript, round, currentProposal, totalUsage);
       const criticInput = renderCriticInput(spec.description, currentProposal);
       const criticPreamble = buildPreamble(spec, critic, "critic");
-      const criticResult = await deps.runRoleTurn(
-        critic, criticPreamble, criticInput, signal,
-      );
+      const criticResult = await deps.runRoleTurn(critic, criticPreamble, criticInput, signal);
       const verdict = parseCriticResponse(criticResult.content);
       transcript.push({
-        round, role: critic.name, content: criticResult.content,
+        round,
+        role: critic.name,
+        content: criticResult.content,
         approved: verdict.approved,
       });
       totalUsage = add(totalUsage, criticResult.usage);
@@ -137,33 +137,74 @@ function renderCriticInput(description: string, proposal: string): string {
   );
 }
 
-function buildPreamble(spec: TeamSpec, role: { system_prompt: string }, kind: "proposer" | "critic"): string {
+function buildPreamble(
+  spec: TeamSpec,
+  role: { system_prompt: string },
+  kind: "proposer" | "critic",
+): string {
   const teamContext =
     `You are one role in a two-agent team collaborating on the task: "${spec.description}". ` +
     `Respond only from your role's perspective.`;
-  const criticContract = kind === "critic"
-    ? ` When you have finished critiquing, finish your response with a JSON line: ` +
-      `{"approved": boolean, "critique": "one paragraph"}.`
-    : "";
+  const criticContract =
+    kind === "critic"
+      ? ` When you have finished critiquing, finish your response with a JSON line: ` +
+        `{"approved": boolean, "critique": "one paragraph"}.`
+      : "";
   return `${teamContext}${criticContract}\n\n${role.system_prompt}`;
 }
 
-function add(a: { input_tokens: number; output_tokens: number }, b: { input_tokens: number; output_tokens: number }) {
-  return { input_tokens: a.input_tokens + b.input_tokens, output_tokens: a.output_tokens + b.output_tokens };
+function add(
+  a: { input_tokens: number; output_tokens: number },
+  b: { input_tokens: number; output_tokens: number },
+) {
+  return {
+    input_tokens: a.input_tokens + b.input_tokens,
+    output_tokens: a.output_tokens + b.output_tokens,
+  };
 }
 
-function exceedsCeiling(u: { input_tokens: number; output_tokens: number }, ceiling: number): boolean {
+function exceedsCeiling(
+  u: { input_tokens: number; output_tokens: number },
+  ceiling: number,
+): boolean {
   return u.input_tokens + u.output_tokens > ceiling;
 }
 
-function aborted(transcript: TeamTurn[], round: number, finalOutput: string, usage: { input_tokens: number; output_tokens: number }): TeamResult {
-  return { converged: false, aborted: true, rounds: round, final_output: finalOutput, transcript, usage };
+function aborted(
+  transcript: TeamTurn[],
+  round: number,
+  finalOutput: string,
+  usage: { input_tokens: number; output_tokens: number },
+): TeamResult {
+  return {
+    converged: false,
+    aborted: true,
+    rounds: round,
+    final_output: finalOutput,
+    transcript,
+    usage,
+  };
 }
 
-function budgetExhausted(transcript: TeamTurn[], round: number, finalOutput: string, usage: { input_tokens: number; output_tokens: number }): TeamResult {
-  return { converged: false, budget_exhausted: true, rounds: round, final_output: finalOutput, transcript, usage };
+function budgetExhausted(
+  transcript: TeamTurn[],
+  round: number,
+  finalOutput: string,
+  usage: { input_tokens: number; output_tokens: number },
+): TeamResult {
+  return {
+    converged: false,
+    budget_exhausted: true,
+    rounds: round,
+    final_output: finalOutput,
+    transcript,
+    usage,
+  };
 }
 
 function isAbortError(err: unknown): boolean {
-  return err instanceof Error && (err.name === "AbortError" || err.message.toLowerCase().includes("abort"));
+  return (
+    err instanceof Error &&
+    (err.name === "AbortError" || err.message.toLowerCase().includes("abort"))
+  );
 }

@@ -36,12 +36,14 @@ Connect and authenticate with any Galaxy bioinformatics server using **galaxy-mc
 ## Configuration
 
 Set environment variables:
+
 ```bash
 export GALAXY_URL=https://usegalaxy.org
 export GALAXY_API_KEY=your-api-key-here
 ```
 
 The galaxy-mcp MCP server must be registered in your agent config:
+
 ```json
 {
   "mcpServers": {
@@ -67,15 +69,16 @@ Call the galaxy-mcp `get_server_info` tool. This returns the Galaxy version, bra
 
 ## Common Servers
 
-| Server | URL | Notes |
-|--------|-----|-------|
-| **usegalaxy.org** | `https://usegalaxy.org` | Main US server, largest tool collection |
-| **usegalaxy.eu** | `https://usegalaxy.eu` | European server, strong training support |
-| **usegalaxy.org.au** | `https://usegalaxy.org.au` | Australian server, supports OAuth |
+| Server               | URL                        | Notes                                    |
+| -------------------- | -------------------------- | ---------------------------------------- |
+| **usegalaxy.org**    | `https://usegalaxy.org`    | Main US server, largest tool collection  |
+| **usegalaxy.eu**     | `https://usegalaxy.eu`     | European server, strong training support |
+| **usegalaxy.org.au** | `https://usegalaxy.org.au` | Australian server, supports OAuth        |
 
 ## After Connecting
 
 The agent has access to Galaxy's full API via MCP tools. Use the other galaxy-claw skills for specific tasks:
+
 - `galaxy-tools` -- search and run tools
 - `galaxy-history` -- manage histories and datasets
 - `galaxy-workflow` -- run workflows

@@ -20,9 +20,7 @@ describe("session-index db", () => {
       .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
       .all()
       .map((r: { name: string }) => r.name);
-    expect(tables).toEqual(
-      expect.arrayContaining(["sessions", "entries", "tool_calls", "meta"]),
-    );
+    expect(tables).toEqual(expect.arrayContaining(["sessions", "entries", "tool_calls", "meta"]));
     // FTS5 virtual table's shadow tables exist too
     expect(tables).toEqual(expect.arrayContaining(["entries_fts"]));
     db.close();
@@ -40,7 +38,10 @@ describe("session-index db", () => {
   it("rebuilds cleanly if schema_version mismatches", () => {
     const p = path.join(dir, "idx.db");
     const db1 = openIndexDb(p);
-    db1.prepare("INSERT INTO sessions(session_id, file_path, cwd, created_at, last_indexed_at, last_indexed_offset) VALUES (?, ?, ?, ?, ?, ?)")
+    db1
+      .prepare(
+        "INSERT INTO sessions(session_id, file_path, cwd, created_at, last_indexed_at, last_indexed_offset) VALUES (?, ?, ?, ?, ?, ?)",
+      )
       .run("s1", "/tmp/f.jsonl", "/tmp", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", 0);
     db1.prepare("UPDATE meta SET value='0' WHERE key='schema_version'").run();
     db1.close();

@@ -61,15 +61,15 @@ metadata:
 
 ## Sub-Skills
 
-| Skill | Purpose |
-|-------|---------|
-| `galaxy-connect` | Configure galaxy-mcp and authenticate |
-| `galaxy-tools` | Search, inspect, and run any Galaxy tool |
-| `galaxy-history` | Manage histories and datasets |
-| `galaxy-workflow` | Import and run Galaxy workflows |
-| `galaxy-rnaseq` | Guided RNA-seq DE pipeline |
-| `galaxy-variant` | Guided variant calling pipeline |
-| `galaxy-metagenomics` | Guided metagenomics profiling |
+| Skill                 | Purpose                                  |
+| --------------------- | ---------------------------------------- |
+| `galaxy-connect`      | Configure galaxy-mcp and authenticate    |
+| `galaxy-tools`        | Search, inspect, and run any Galaxy tool |
+| `galaxy-history`      | Manage histories and datasets            |
+| `galaxy-workflow`     | Import and run Galaxy workflows          |
+| `galaxy-rnaseq`       | Guided RNA-seq DE pipeline               |
+| `galaxy-variant`      | Guided variant calling pipeline          |
+| `galaxy-metagenomics` | Guided metagenomics profiling            |
 
 ## Install
 

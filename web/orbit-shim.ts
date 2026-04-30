@@ -23,10 +23,11 @@ function emit(event: string, ...args: unknown[]): void {
   listeners[event]?.forEach((cb) => cb(...args));
 }
 
-function on(event: string, cb: Callback<unknown[]>): () => void {
+function on<T extends unknown[]>(event: string, cb: Callback<T>): () => void {
+  const listener = cb as Callback<unknown[]>;
   if (!listeners[event]) listeners[event] = new Set();
-  listeners[event].add(cb);
-  return () => listeners[event].delete(cb);
+  listeners[event].add(listener);
+  return () => listeners[event].delete(listener);
 }
 
 function send(msg: Record<string, unknown>): void {
@@ -88,7 +89,7 @@ function connect(): void {
 connect();
 
 // Expose the same OrbitAPI shape the renderer expects.
-(window as Record<string, unknown>).orbit = {
+(window as unknown as Record<string, unknown>).orbit = {
   prompt: (message: string) => invoke("agent:prompt", message),
   abort: () => invoke("agent:abort"),
   newSession: () => invoke("agent:new-session"),
@@ -102,7 +103,10 @@ connect();
   getConfig: () => invoke("config:get"),
   saveConfig: (config: unknown) => invoke("config:save", config),
   respondToUiRequest: (id: string, response: Record<string, unknown>) => {
-    send({ channel: "agent:ui-response", args: [{ type: "extension_ui_response", id, ...response }] });
+    send({
+      channel: "agent:ui-response",
+      args: [{ type: "extension_ui_response", id, ...response }],
+    });
   },
   restartAgent: () => invoke("agent:restart"),
   resetSession: () => invoke("agent:reset-session"),

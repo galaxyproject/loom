@@ -6,13 +6,7 @@
  * now?" debugging during long-running steps.
  */
 
-export type ShellLineType =
-  | "tool-start"
-  | "tool-end"
-  | "tool-error"
-  | "status"
-  | "info"
-  | "stdout";
+export type ShellLineType = "tool-start" | "tool-end" | "tool-error" | "status" | "info" | "stdout";
 
 export class ShellPanel {
   private body: HTMLElement;

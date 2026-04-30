@@ -8,8 +8,9 @@ describe("parseCriticResponse", () => {
   });
 
   it("parses JSON at end of a longer response", () => {
-    const text = "Here is my reasoning.\nThe proposal misses X.\n" +
-                 '{"approved": false, "critique": "misses X"}';
+    const text =
+      "Here is my reasoning.\nThe proposal misses X.\n" +
+      '{"approved": false, "critique": "misses X"}';
     const r = parseCriticResponse(text);
     expect(r).toEqual({ approved: false, critique: "misses X" });
   });

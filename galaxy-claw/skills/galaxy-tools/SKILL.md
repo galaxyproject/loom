@@ -47,6 +47,7 @@ Use the galaxy-mcp `search_tools` tool with a keyword query. Galaxy searches too
 ### Inspect tool parameters
 
 Use the galaxy-mcp tool detail/show endpoint to get the full input schema. Galaxy tools have rich parameter definitions including:
+
 - Required vs optional inputs
 - Data type constraints (FASTQ, BAM, VCF, etc.)
 - Conditional parameters (show X only when Y is selected)
@@ -57,6 +58,7 @@ As of Galaxy v26.0, tools also expose formal JSON Schema at `/api/tools/{tool_id
 ### Run a tool
 
 Use galaxy-mcp's tool execution. Provide:
+
 - **Tool ID** -- from the search results
 - **History ID** -- where to put the outputs (create one first if needed)
 - **Inputs** -- parameter values matching the tool's schema
@@ -66,38 +68,45 @@ The job runs server-side on Galaxy infrastructure. Poll for completion.
 ## Common Tools by Category
 
 ### Quality Control
+
 - **FastQC** -- read quality reports
 - **MultiQC** -- aggregate QC across samples
 - **fastp** -- all-in-one preprocessing (trim, filter, QC)
 - **Trimmomatic** -- adapter trimming
 
 ### Alignment
+
 - **BWA-MEM2** -- short read alignment (DNA)
 - **HISAT2** -- spliced alignment (RNA-seq)
 - **minimap2** -- long read alignment
 - **Bowtie2** -- short read alignment
 
 ### Quantification
+
 - **featureCounts** -- gene-level read counting
 - **Salmon** -- transcript quantification (alignment-free)
 - **StringTie** -- transcript assembly and quantification
 
 ### Differential Expression
+
 - **DESeq2** -- differential expression (count-based)
 - **edgeR** -- differential expression (count-based)
 - **limma-voom** -- differential expression
 
 ### Variant Calling
+
 - **FreeBayes** -- short variant calling
 - **GATK4 HaplotypeCaller** -- germline variant calling
 - **bcftools** -- variant manipulation and filtering
 
 ### Metagenomics
+
 - **Kraken2** -- taxonomic classification
 - **MetaPhlAn** -- microbial profiling
 - **HUMAnN** -- functional profiling
 
 ### File Manipulation
+
 - **samtools** -- BAM/SAM manipulation
 - **bedtools** -- BED/interval operations
 

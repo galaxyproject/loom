@@ -102,7 +102,11 @@ function startWatchingNotebook(filePath: string, autoCommit = false): void {
 
 function stopWatchingNotebook(): void {
   if (currentWatcher) {
-    try { currentWatcher.close(); } catch { /* ignore */ }
+    try {
+      currentWatcher.close();
+    } catch {
+      /* ignore */
+    }
     currentWatcher = null;
   }
   watcherPath = null;
@@ -180,7 +184,11 @@ export function initSessionArtifacts(cwd: string): void {
 // Galaxy connection state
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function setGalaxyConnection(connected: boolean, historyId?: string, _serverUrl?: string): void {
+export function setGalaxyConnection(
+  connected: boolean,
+  historyId?: string,
+  _serverUrl?: string,
+): void {
   state.galaxyConnected = connected;
   if (historyId) {
     state.currentHistoryId = historyId;

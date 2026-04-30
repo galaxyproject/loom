@@ -127,10 +127,11 @@ describe("upsertInvocationBlock", () => {
   it("replaces in place when invocation_id already exists", () => {
     const original = makeInvocation();
     const initial = "# Plan A\n\n" + renderInvocationYaml(original) + "\nMore prose after.\n";
-    const updated = upsertInvocationBlock(
-      initial,
-      { ...original, status: "completed", summary: "ok" },
-    );
+    const updated = upsertInvocationBlock(initial, {
+      ...original,
+      status: "completed",
+      summary: "ok",
+    });
     const blocks = findInvocationBlocks(updated);
     expect(blocks).toHaveLength(1);
     expect(blocks[0].status).toBe("completed");

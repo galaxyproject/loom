@@ -93,10 +93,7 @@ export function loadActivityLog(sessionDir: string): void {
  * on failure. Also updates the in-memory mirror and notifies listeners so
  * the UI can refresh incrementally.
  */
-export function appendActivityEvent(
-  sessionDir: string,
-  event: ActivityEvent,
-): string | null {
+export function appendActivityEvent(sessionDir: string, event: ActivityEvent): string | null {
   const filePath = path.join(sessionDir, "activity.jsonl");
   try {
     mkdirSync(sessionDir, { recursive: true });

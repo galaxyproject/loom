@@ -32,9 +32,11 @@ Guided metagenomics analysis on Galaxy -- from raw reads to community compositio
 ## Two Main Approaches
 
 ### Amplicon sequencing (16S/18S/ITS)
+
 Targeted sequencing of marker genes. Cheaper, good for "who's there?" questions.
 
 ### Whole metagenome shotgun (WMS)
+
 Sequence everything. More expensive, but answers "who's there?" AND "what are they doing?"
 
 Ask the user which type of data they have before proceeding.
@@ -88,6 +90,7 @@ Same as other pipelines. Quality is important -- metagenomic classification is s
 **Tool:** `toolshed.g2.bx.psu.edu/repos/iuc/kraken2/kraken2`
 
 **Key parameters:**
+
 - **Database** -- critical choice. Galaxy provides several:
   - `Standard` -- bacteria, archaea, viruses, human (most common)
   - `PlusPF` -- standard + protozoa + fungi
@@ -104,6 +107,7 @@ Same as other pipelines. Quality is important -- metagenomic classification is s
 MetaPhlAn uses clade-specific marker genes. Slower than Kraken2 but more accurate at species level. Better for quantitative abundance estimates.
 
 **When to choose MetaPhlAn over Kraken2:**
+
 - Quantitative species-level abundance is important
 - Low-biomass samples where false positives are costly
 - Published benchmarks matter for your study
@@ -123,6 +127,7 @@ Bracken refines Kraken2's output by redistributing reads classified at higher ta
 HUMAnN profiles metabolic pathways and gene families. Answers "what is the community doing?"
 
 **Outputs:**
+
 - **Gene families** -- UniRef90/50 gene family abundances
 - **Pathway abundance** -- MetaCyc pathway abundances
 - **Pathway coverage** -- what fraction of each pathway is present
@@ -151,20 +156,20 @@ Galaxy has QIIME2 tools for the full amplicon workflow. Use the `galaxy-tools` s
 
 ## Common Problems
 
-| Problem | Likely Cause | Fix |
-|---------|-------------|-----|
-| Most reads unclassified | Wrong database or host contamination | Try a more comprehensive database; check for host reads |
-| Unrealistic species | Database contamination or low confidence | Increase confidence threshold; filter low-abundance taxa |
-| Very low diversity | Over-aggressive quality filtering | Relax fastp parameters; check for primer contamination |
-| Batch effects in diversity | DNA extraction method differences | Include extraction batch as covariate |
+| Problem                    | Likely Cause                             | Fix                                                      |
+| -------------------------- | ---------------------------------------- | -------------------------------------------------------- |
+| Most reads unclassified    | Wrong database or host contamination     | Try a more comprehensive database; check for host reads  |
+| Unrealistic species        | Database contamination or low confidence | Increase confidence threshold; filter low-abundance taxa |
+| Very low diversity         | Over-aggressive quality filtering        | Relax fastp parameters; check for primer contamination   |
+| Batch effects in diversity | DNA extraction method differences        | Include extraction batch as covariate                    |
 
 ## Key Decision: Kraken2 vs MetaPhlAn
 
-| Criterion | Kraken2 | MetaPhlAn |
-|-----------|---------|-----------|
-| Speed | Very fast | Moderate |
-| Accuracy (species) | Good | Better |
-| Quantification | Relative (use Bracken) | Directly quantitative |
-| Database | General genomic | Marker genes only |
-| False positives | More | Fewer |
-| Recommendation | Initial screening, large datasets | Publication-quality abundance |
+| Criterion          | Kraken2                           | MetaPhlAn                     |
+| ------------------ | --------------------------------- | ----------------------------- |
+| Speed              | Very fast                         | Moderate                      |
+| Accuracy (species) | Good                              | Better                        |
+| Quantification     | Relative (use Bracken)            | Directly quantitative         |
+| Database           | General genomic                   | Marker genes only             |
+| False positives    | More                              | Fewer                         |
+| Recommendation     | Initial screening, large datasets | Publication-quality abundance |

@@ -43,9 +43,15 @@ function findJsonObjects(text: string): string[] {
   const out: string[] = [];
   let i = 0;
   while (i < text.length) {
-    if (text[i] !== "{") { i++; continue; }
+    if (text[i] !== "{") {
+      i++;
+      continue;
+    }
     const end = scanBalancedBrace(text, i);
-    if (end < 0) { i++; continue; }
+    if (end < 0) {
+      i++;
+      continue;
+    }
     out.push(text.slice(i, end + 1));
     i = end + 1;
   }
@@ -58,13 +64,25 @@ function scanBalancedBrace(text: string, start: number): number {
   let escaped = false;
   for (let i = start; i < text.length; i++) {
     const c = text[i];
-    if (escaped) { escaped = false; continue; }
-    if (inString) {
-      if (c === "\\") { escaped = true; continue; }
-      if (c === '"')  { inString = false; continue; }
+    if (escaped) {
+      escaped = false;
       continue;
     }
-    if (c === '"') { inString = true; continue; }
+    if (inString) {
+      if (c === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (c === '"') {
+        inString = false;
+        continue;
+      }
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      continue;
+    }
     if (c === "{") depth++;
     else if (c === "}") {
       depth--;

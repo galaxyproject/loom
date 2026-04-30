@@ -26,7 +26,7 @@
 - Each project directory gets a `notebook.md` and `activity.jsonl`,
   auto-initialized on session start. The notebook is git-tracked
   (auto-committed when Loom owns the repo, i.e. `git config
-  loom.managed true` -- set automatically when Loom runs `git init`,
+loom.managed true` -- set automatically when Loom runs `git init`,
   manual opt-in for pre-existing repos). `activity.jsonl` is a
   per-session sidecar and is gitignored.
 
@@ -77,18 +77,18 @@ Question: how do mtDNA variants distribute across tissues in this dataset?
 ### Steps
 
 - [ ] 1. **QC FASTQ** {#plan-a-step-1} — fastp adapter trim + per-base QC
-       Routing: local
+     Routing: local
 - [ ] 2. **Reference index** {#plan-a-step-2} — bwa index of chrM
-       Routing: local
+     Routing: local
 - [ ] 3. **Read alignment** {#plan-a-step-3} — bwa mem PE 4 samples
-       Routing: Galaxy (bwa-mem2/2.2.1)
+     Routing: Galaxy (bwa-mem2/2.2.1)
 - ...
 
 ### Parameters
 
 | Step | Parameter | Value |
-| --- | --- | --- |
-| 1   | min_qual  | 20    |
+| ---- | --------- | ----- |
+| 1    | min_qual  | 20    |
 ```
 
 Conventions:
@@ -108,8 +108,9 @@ driven (e.g. "draft a plan for variant calling on this data").
 
 ## Galaxy integration
 
-Three operating modes are an *outcome* of the plan you draft, not a
+Three operating modes are an _outcome_ of the plan you draft, not a
 configuration setting:
+
 - **local** — every step runs locally
 - **hybrid** — some local, some Galaxy
 - **remote** — entire plan is one Galaxy workflow invocation
@@ -192,12 +193,12 @@ quick commands, 3600 s short pipelines, 86400 s overnight. Prefer
 
 Loom registers a small set of tools at the extension layer:
 
-| Category | Tools |
-|----------|-------|
-| GTN tutorials | `gtn_search`, `gtn_fetch` |
-| Skills | `skills_fetch` (fetch SKILL.md / reference docs from configured repos) |
-| Galaxy invocations | `galaxy_invocation_record`, `galaxy_invocation_check_all`, `galaxy_invocation_check_one` |
-| Multi-agent (experimental) | `team_dispatch` (gated by `LOOM_TEAM_DISPATCH=1`) |
+| Category                     | Tools                                                                                           |
+| ---------------------------- | ----------------------------------------------------------------------------------------------- |
+| GTN tutorials                | `gtn_search`, `gtn_fetch`                                                                       |
+| Skills                       | `skills_fetch` (fetch SKILL.md / reference docs from configured repos)                          |
+| Galaxy invocations           | `galaxy_invocation_record`, `galaxy_invocation_check_all`, `galaxy_invocation_check_one`        |
+| Multi-agent (experimental)   | `team_dispatch` (gated by `LOOM_TEAM_DISPATCH=1`)                                               |
 | Session index (experimental) | `chat_search`, `chat_session_context`, `chat_find_tool_calls` (gated by `LOOM_SESSION_INDEX=1`) |
 
 Galaxy MCP (separately registered when credentials are present)
@@ -212,12 +213,12 @@ There are no `analysis_*` plan tools. Plans are markdown sections.
 
 ## Slash commands
 
-| Command | What it does |
-|---------|-------------|
-| `/notebook` | View current notebook content |
-| `/status` | Galaxy connection + notebook path summary |
-| `/connect [name]` | Connect to Galaxy (prompts for credentials, or switches profile) |
-| `/profiles` | List saved Galaxy server profiles |
+| Command                   | What it does                                                           |
+| ------------------------- | ---------------------------------------------------------------------- |
+| `/notebook`               | View current notebook content                                          |
+| `/status`                 | Galaxy connection + notebook path summary                              |
+| `/connect [name]`         | Connect to Galaxy (prompts for credentials, or switches profile)       |
+| `/profiles`               | List saved Galaxy server profiles                                      |
 | `/execute` (alias `/run`) | Tell the agent to run the next pending step in the latest plan section |
 
 ## Communication Style

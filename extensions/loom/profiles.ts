@@ -34,7 +34,7 @@ export class EncryptedProfileUnavailableError extends Error {
   constructor(public profileName: string) {
     super(
       `Profile "${profileName}" has only an encrypted API key; this process can't decrypt it. ` +
-      `Run from Orbit (auto-injects the key) or export GALAXY_API_KEY explicitly.`,
+        `Run from Orbit (auto-injects the key) or export GALAXY_API_KEY explicitly.`,
     );
     this.name = "EncryptedProfileUnavailableError";
   }
@@ -83,7 +83,10 @@ export function profileNameFromUrl(url: string): string {
     return host.replace(/\./g, "-").replace(/-+$/, "");
   } catch {
     // Fallback: slugify the whole string
-    return url.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
+    return url
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .toLowerCase();
   }
 }
 
@@ -100,7 +103,9 @@ export function profileNameFromUrl(url: string): string {
  */
 export function validateGalaxyUrl(url: string): { ok: true } | { ok: false; reason: string } {
   let parsed: URL;
-  try { parsed = new URL(url.trim()); } catch {
+  try {
+    parsed = new URL(url.trim());
+  } catch {
     return { ok: false, reason: "Not a valid URL." };
   }
   if (parsed.protocol === "http:") {
@@ -182,8 +187,8 @@ export function warnOnUnusableActiveProfile(): void {
   if (!profile.apiKeyEncrypted) return;
   console.error(
     `[galaxy] Active profile "${active}" has only an encrypted API key and ` +
-    `GALAXY_API_KEY is not set in the environment. Galaxy calls will fail. ` +
-    `Run from Orbit (auto-injects the decrypted key) or export GALAXY_API_KEY explicitly.`,
+      `GALAXY_API_KEY is not set in the environment. Galaxy calls will fail. ` +
+      `Run from Orbit (auto-injects the decrypted key) or export GALAXY_API_KEY explicitly.`,
   );
 }
 
@@ -217,8 +222,8 @@ export function switchProfile(name: string): boolean {
     delete process.env.GALAXY_API_KEY;
     console.warn(
       `[galaxy] Profile "${name}" has only an encrypted API key. Cleared ` +
-      `GALAXY_API_KEY in this session; restart the shell so Orbit can ` +
-      `re-inject the decrypted key for this profile.`,
+        `GALAXY_API_KEY in this session; restart the shell so Orbit can ` +
+        `re-inject the decrypted key for this profile.`,
     );
   }
   // mcp.json holds a literal "${GALAXY_API_KEY}" reference; pi-mcp-adapter
@@ -268,7 +273,11 @@ export function syncMcpConfig(url: string): void {
       // 0600 first so a concurrent reader can't catch the file with a
       // wider mode between writeFile and chmod.
       fs.writeFileSync(mcpPath, JSON.stringify(config, null, 2), { mode: 0o600 });
-      try { fs.chmodSync(mcpPath, 0o600); } catch { /* perm-tightening best-effort */ }
+      try {
+        fs.chmodSync(mcpPath, 0o600);
+      } catch {
+        /* perm-tightening best-effort */
+      }
     }
   } catch {
     // Non-fatal

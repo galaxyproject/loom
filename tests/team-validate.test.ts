@@ -5,7 +5,7 @@ import type { TeamSpec } from "../extensions/loom/teams/types";
 const ok = (): TeamSpec => ({
   description: "find relevant RNA-seq papers",
   roles: [
-    { name: "Finder",    system_prompt: "find papers" },
+    { name: "Finder", system_prompt: "find papers" },
     { name: "Validator", system_prompt: "score relevance" },
   ],
 });

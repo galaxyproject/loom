@@ -14,10 +14,10 @@ import * as path from "node:path";
 
 export interface FileNode {
   name: string;
-  relPath: string;              // always "" for root, otherwise relative to cwd with forward slashes
+  relPath: string; // always "" for root, otherwise relative to cwd with forward slashes
   type: "file" | "directory";
-  size?: number;                // files only
-  children?: FileNode[];        // directories only
+  size?: number; // files only
+  children?: FileNode[]; // directories only
 }
 
 const FS_BLOCKLIST = new Set([
@@ -37,7 +37,7 @@ const FS_BLOCKLIST = new Set([
 ]);
 
 const MAX_DEPTH = 8;
-const MAX_ENTRIES_PER_DIR = 2000;    // refuse to enumerate pathological dirs
+const MAX_ENTRIES_PER_DIR = 2000; // refuse to enumerate pathological dirs
 const MAX_READ_BYTES = 5 * 1024 * 1024; // 5 MB — protect the renderer from huge files
 
 /**
