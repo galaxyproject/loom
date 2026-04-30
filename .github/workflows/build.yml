@@ -1,0 +1,45 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            app/package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Typecheck (root)
+        run: npm run typecheck
+
+      - name: Test (root)
+        run: npm test
+
+      - name: Install app deps
+        working-directory: app
+        run: npm ci
+
+      - name: Typecheck (app)
+        working-directory: app
+        run: npx tsc --noEmit
+
+      - name: Package Electron app
+        working-directory: app
+        run: npx electron-forge package
