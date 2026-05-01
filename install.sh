@@ -51,7 +51,7 @@ fi
 
 # Install loom
 info "Installing loom..."
-npm install -g loom
+npm install -g @galaxyproject/loom
 success "loom installed"
 
 echo ""

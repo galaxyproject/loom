@@ -4,7 +4,9 @@ An AI research harness for [Galaxy](https://galaxyproject.org) bioinformatics, b
 
 Loom turns a working directory into a co-scientist project: ad-hoc exploration, plans, executed steps, interpretations, and follow-up plans all accumulate as markdown in a single, durable, git-tracked `notebook.md`. The agent reads and writes that notebook directly; there is no parallel structured-state store. When Galaxy is configured the agent surveys the workflow registry and tool catalog while drafting plans and routes individual steps to Galaxy or local execution as appropriate.
 
-**Loom** is the agent brain — the Pi.dev runtime in [`extensions/loom/`](extensions/loom/), the system-prompt context, Galaxy invocation tracking, the skills system, and the RPC contract. Run it directly from the terminal with `loom` (`npm install -g loom`) or through **Orbit** (in [`app/`](app/)), the Electron desktop shell with a chat + tabbed-artifact layout.
+**Loom** is the agent brain — the Pi.dev runtime in [`extensions/loom/`](extensions/loom/), the system-prompt context, Galaxy invocation tracking, the skills system, and the RPC contract. Run it directly from the terminal with `loom` (`npm install -g @galaxyproject/loom`) or through **Orbit** (in [`app/`](app/)), the Electron desktop shell with a chat + tabbed-artifact layout.
+
+The names trace real cosmology. The universe's large-scale structure is the *cosmic web* -- galaxies strung along filaments of dark matter, woven into sheets and voids. Loom weaves your research record the way the cosmic web weaves galaxies; Orbit is the electron shell you observe it from.
 
 Future shells — a Galaxy-embedded web UI, a hosted server mode, anything else — talk to the same brain over RPC.
 
@@ -201,25 +203,34 @@ Fetched files cache to `~/.loom/cache/skills/<repo-name>/<path>` with a 24-hour 
 
 ## Install
 
-### Quick path — CLI only
+Three paths, depending on what you want.
+
+### Desktop app (Orbit)
+
+Orbit ships as a native installer (signed DMG on macOS, AppImage/deb on Linux, installer on Windows) and bundles its own Node runtime, `uv`, and Loom -- so there are no separate prerequisites. Once a build is signed and published, install it from the [Releases page](https://github.com/galaxyproject/pi-galaxy-analyst/releases). Until then, use the developer install below.
+
+### Loom CLI from npm
+
+Run the brain on the command line without Orbit. Requires Node 20+ and (for Galaxy MCP) [uv](https://docs.astral.sh/uv/).
 
 ```bash
-npm install -g loom
+npm install -g @galaxyproject/loom
+loom
 ```
 
 Or run without installing:
 
 ```bash
-npx loom
+npx @galaxyproject/loom
 ```
 
-You'll also need [uv](https://docs.astral.sh/uv/) for the Galaxy MCP server (invoked automatically via `uvx`):
+Install `uv` if you don't already have it:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### Full install — CLI + Orbit
+### Developer install (build from source)
 
 Clone the repo and install both workspaces:
 
@@ -242,6 +253,8 @@ Or use the CLI:
 node bin/loom.js                       # from repo root
 ```
 
+The developer install needs Node 20+ and `uv` on `PATH`. Per-OS bootstrap below.
+
 #### Linux (Ubuntu/Debian)
 
 ```bash
@@ -257,7 +270,7 @@ nvm install --lts
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Then the "Full install" steps above.
+Then the developer install steps above.
 
 #### macOS
 
@@ -268,7 +281,7 @@ Then the "Full install" steps above.
 brew install node git uv
 ```
 
-Then the "Full install" steps above.
+Then the developer install steps above.
 
 #### Windows (WSL2)
 

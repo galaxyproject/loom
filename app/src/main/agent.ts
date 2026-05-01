@@ -3,7 +3,7 @@ import { createInterface } from "node:readline";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
-import type { BrowserWindow } from "electron";
+import { app, type BrowserWindow } from "electron";
 import { loadConfig } from "./config.js";
 import { resolveLlmApiKey, resolveGalaxyApiKey } from "./secure-config.js";
 import { loadSessionHistory } from "./session-replay.js";
@@ -37,8 +37,44 @@ function buildSecretEnv(): Record<string, string> {
   return env;
 }
 
-// Resolve the loom entry point relative to the app
-const LOOM_BIN = path.resolve(__dirname, "../../../bin/loom.js");
+// Resolve the loom entry point. In dev (`electron-forge start`), Loom lives at
+// the repo root next to app/. In packaged builds, the prePackage hook stages
+// Loom into Resources/loom/ via electron-packager's extraResource so the brain
+// runs out of an installed bundle, not a path that walks up out of the .app.
+// `app` is undefined when this module is imported outside an Electron runtime
+// (e.g. vitest), so optional-chain through `app.isPackaged` to fall back to dev.
+function resolveLoomBin(): string {
+  if (app?.isPackaged) {
+    return path.join(process.resourcesPath, "loom", "bin", "loom.js");
+  }
+  return path.resolve(__dirname, "../../../bin/loom.js");
+}
+
+// Resolve the Node binary the brain runs under. Dev assumes Node 20+ on PATH.
+// Packaged Orbit ships its own Node next to Loom (Resources/node/) so users
+// don't need to have Node installed; this also keeps native module ABI in sync
+// with whatever Node ran `npm ci` during prePackage staging.
+function resolveNodeBin(): string {
+  if (app?.isPackaged) {
+    const nodeName = process.platform === "win32" ? "node.exe" : path.join("bin", "node");
+    return path.join(process.resourcesPath, "node", nodeName);
+  }
+  return "node";
+}
+
+// Bundled uv directory (contains uv + uvx). When packaged, prepend this to
+// the brain's PATH so `command: "uvx"` in mcp.json resolves the shipped
+// binary rather than depending on the user's system uv install.
+function resolveUvDir(): string | null {
+  if (app?.isPackaged) {
+    return path.join(process.resourcesPath, "uv");
+  }
+  return null;
+}
+
+const LOOM_BIN = resolveLoomBin();
+const NODE_BIN = resolveNodeBin();
+const UV_DIR = resolveUvDir();
 
 export type AgentStatus = "running" | "stopped" | "error";
 
@@ -115,6 +151,12 @@ function buildBrainEnv(fresh: boolean): NodeJS.ProcessEnv {
   // fresh-session sentinel for /new flows.
   env.LOOM_SHELL_KIND = "orbit";
   if (fresh) env.LOOM_FRESH_SESSION = "1";
+  // Prepend the bundled uv directory to PATH when packaged so MCP servers
+  // configured with `command: "uvx"` (Galaxy MCP) find the shipped binary.
+  if (UV_DIR) {
+    const sep = process.platform === "win32" ? ";" : ":";
+    env.PATH = `${UV_DIR}${sep}${env.PATH ?? ""}`;
+  }
   return env;
 }
 
@@ -230,14 +272,14 @@ export class AgentManager {
 
     const fresh = this.nextStartIsFresh;
     this.nextStartIsFresh = false;
-    log("starting agent", { bin: LOOM_BIN, cwd: this.cwd, continue: args.includes("--continue"), fresh });
+    log("starting agent", { node: NODE_BIN, bin: LOOM_BIN, cwd: this.cwd, continue: args.includes("--continue"), fresh });
 
     try {
       // Decrypted API keys flow to the brain via env so the child never reads
       // plaintext from disk. buildSecretEnv re-reads config each spawn so
       // key rotation in the settings UI takes effect on restart without
       // needing to plumb explicit invalidation.
-      this.process = spawn("node", args, {
+      this.process = spawn(NODE_BIN, args, {
         stdio: ["pipe", "pipe", "pipe"],
         cwd: this.cwd,
         env: {
