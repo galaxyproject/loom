@@ -27,6 +27,19 @@ vi.mock("node:os", () => ({
   },
 }));
 
+// app/src/main/agent.ts → secure-config.ts imports `electron` at module top.
+// Without this stub the test only resolves when `app/node_modules/electron`
+// is present, which means CI or a fresh clone has to install app/ deps
+// before the root `vitest` can even start. Stub the small surface area we
+// transitively use; safeStorageAvailable() reads isEncryptionAvailable().
+vi.mock("electron", () => ({
+  safeStorage: {
+    isEncryptionAvailable: () => false,
+    encryptString: () => Buffer.from(""),
+    decryptString: () => "",
+  },
+}));
+
 function makeProcess(pid: number) {
   const proc = new EventEmitter() as EventEmitter & Record<string, unknown>;
   proc.pid = pid;
