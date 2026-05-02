@@ -11,16 +11,19 @@ import {
   warnOnUnusableActiveProfile,
 } from "../extensions/loom/profiles";
 
-// All loom-config / profiles paths derive from os.homedir() at call time
-// (POSIX reads HOME), so swapping HOME per test sandboxes the on-disk state
-// without touching the real ~/.loom/config.json.
+// All loom-config / profiles paths derive from os.homedir() at call time.
+// POSIX reads HOME; Windows reads USERPROFILE. Override both so the on-disk
+// state lives entirely in the sandbox dir on every runner.
 let prevHome: string | undefined;
+let prevUserProfile: string | undefined;
 let sandboxHome: string;
 
 beforeEach(() => {
   prevHome = process.env.HOME;
+  prevUserProfile = process.env.USERPROFILE;
   sandboxHome = fs.mkdtempSync(path.join(os.tmpdir(), "loom-profiles-test-"));
   process.env.HOME = sandboxHome;
+  process.env.USERPROFILE = sandboxHome;
   delete process.env.GALAXY_URL;
   delete process.env.GALAXY_API_KEY;
   delete process.env.PI_CODING_AGENT_DIR;
@@ -29,6 +32,8 @@ beforeEach(() => {
 afterEach(() => {
   if (prevHome === undefined) delete process.env.HOME;
   else process.env.HOME = prevHome;
+  if (prevUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = prevUserProfile;
   try { fs.rmSync(sandboxHome, { recursive: true, force: true }); } catch {}
 });
 
