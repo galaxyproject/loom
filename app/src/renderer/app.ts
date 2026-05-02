@@ -1957,6 +1957,17 @@ function setStatusBadge(status: string, msg?: string): void {
 window.orbit.onAgentStatus((status, msg) => {
   setStatusBadge(status, msg);
 
+  // Brain transitioned to stopped/error: clear the "we're streaming" UI
+  // so the user has a clean Send button + no stuck "thinking…" card.
+  // Without this, /resume / agent:restart / a brain crash leaves the
+  // renderer believing a turn is still mid-flight (#63).
+  if (status === "stopped" || status === "error") {
+    streaming = false;
+    sendBtn.classList.remove("hidden");
+    abortBtn.classList.add("hidden");
+    chat.hideThinking();
+  }
+
   // Show cwd welcome once, after the first successful agent start.
   if (status === "running" && !hasShownStartupWelcome) {
     hasShownStartupWelcome = true;
@@ -2251,6 +2262,19 @@ function closePreferences(): void {
 }
 
 async function savePreferences(): Promise<void> {
+  // Saving config restarts the brain (so MCP env / model changes take
+  // effect). If a prompt is currently in flight, the restart silently
+  // drops it — the user's message is lost without warning (#62). Make
+  // them confirm explicitly.
+  if (streaming) {
+    const ok = confirm(
+      "The agent is still working on your previous prompt. " +
+      "Saving Preferences will restart it and your in-flight prompt will be lost.\n\n" +
+      "Continue?"
+    );
+    if (!ok) return;
+  }
+
   // Build a delta — only fields the user can edit. Main reconciles secrets
   // against what's on disk; the sentinel preserves a stored key when the
   // user left the input blank.
