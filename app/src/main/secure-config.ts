@@ -7,6 +7,12 @@ function log(...args: unknown[]): void {
 }
 
 export function isAvailable(): boolean {
+  // Test/automation escape: macOS Keychain pops a "keychain cannot be found"
+  // dialog when probed under a redirected HOME, which blocks headless e2e
+  // runs indefinitely. Setting LOOM_DISABLE_SAFE_STORAGE=1 in the launched
+  // env makes us skip the probe entirely; encrypted secrets just stay
+  // unread for the duration of the test.
+  if (process.env.LOOM_DISABLE_SAFE_STORAGE === "1") return false;
   try {
     return safeStorage.isEncryptionAvailable();
   } catch {
