@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { resetState, initSessionArtifacts, getNotebookPath } from "./state.js";
+import { startGalaxyPoller, stopGalaxyPoller } from "./galaxy-poller.js";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -12,6 +13,10 @@ export function registerSessionLifecycle(pi: ExtensionAPI): void {
     syncSessionJsonlSymlink(ctx);
 
     initSessionArtifacts(process.cwd());
+
+    // Background poller for in-flight Galaxy invocations (#67 part 2).
+    // Idempotent — start() stops any prior timer first.
+    startGalaxyPoller();
 
     const freshSession = process.env.LOOM_FRESH_SESSION === "1";
 
@@ -31,6 +36,7 @@ export function registerSessionLifecycle(pi: ExtensionAPI): void {
   });
 
   pi.on("session_shutdown", async () => {
+    stopGalaxyPoller();
     snapshotNotebook(pi);
   });
 }
