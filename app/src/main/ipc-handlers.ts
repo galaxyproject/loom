@@ -7,6 +7,7 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import { loadConfig, saveConfig, type LoomConfig } from "./config.js";
 import { encryptSecret, isAvailable as safeStorageAvailable } from "./secure-config.js";
+import { getProviders, getModels } from "@mariozechner/pi-ai";
 
 /**
  * Sentinel the renderer sends back in a secret field when the user did NOT
@@ -393,6 +394,52 @@ export function registerIpcHandlers(agent: AgentManager): void {
       return { opened: true };
     },
   );
+
+  // Model registry — pulls from pi-ai's bundled list so the dropdown stays
+  // current with the brain's actual capabilities. Replaces the hand-edited
+  // MODELS_BY_PROVIDER + PRICING constants in the renderer (they're kept as
+  // a fallback if this IPC fails for any reason).
+  //
+  // Filtered to user-facing direct providers (no Bedrock/regional aliases).
+  ipcMain.handle("models:list-all", () => {
+    const USER_FACING_PROVIDERS: ReadonlySet<string> = new Set([
+      "anthropic",
+      "openai",
+      "google",
+      "ollama",
+      "openrouter",
+      "groq",
+      "mistral",
+      "xai",
+    ]);
+    type Pricing = { input: number; output: number; cacheRead?: number; cacheWrite?: number };
+    type Entry = { id: string; label: string; pricing: Pricing };
+    const out: Record<string, Entry[]> = {};
+    try {
+      for (const provider of getProviders()) {
+        if (!USER_FACING_PROVIDERS.has(provider)) continue;
+        const models = getModels(provider);
+        if (!models.length) continue;
+        out[provider] = models.map((m) => {
+          const cleanName = m.name.replace(/^Claude\s+/i, "");
+          const priceTag = `$${m.cost.input}/$${m.cost.output}`;
+          return {
+            id: m.id,
+            label: `${cleanName} — ${priceTag}`,
+            pricing: {
+              input: m.cost.input,
+              output: m.cost.output,
+              cacheRead: m.cost.cacheRead,
+              cacheWrite: m.cost.cacheWrite,
+            },
+          };
+        });
+      }
+      return { ok: true as const, providers: out };
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
 }
 
 /**

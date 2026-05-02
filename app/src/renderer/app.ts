@@ -71,8 +71,10 @@ let streaming = false;
 // ── Usage Tracking ────────────────────────────────────────────────────────────
 
 // Per-1M-token pricing (USD). null = unknown → cost hidden.
-// Update as providers change pricing or add models.
-const PRICING: Record<string, { in: number; out: number; cacheRead?: number; cacheWrite?: number }> = {
+// Fallback only — populateDynamicModelData() at startup overwrites this from
+// pi-ai's bundled registry (via main IPC) so new models like Opus 4.7 don't
+// require a hand-edit. Update as providers change pricing or add models.
+let PRICING: Record<string, { in: number; out: number; cacheRead?: number; cacheWrite?: number }> = {
   // Anthropic
   "claude-opus-4-7":      { in: 15, out: 75, cacheRead: 1.5, cacheWrite: 18.75 },
   "claude-opus-4-6":      { in: 15, out: 75, cacheRead: 1.5, cacheWrite: 18.75 },
@@ -602,6 +604,33 @@ async function checkFirstRun(): Promise<void> {
   }
 }
 void checkFirstRun();
+
+// Pull the model catalog from pi-ai's bundled registry (via main IPC) and
+// overwrite the hardcoded MODELS_BY_PROVIDER + PRICING. The hardcoded
+// values stay as a fallback if the IPC fails (e.g. main bundling regression).
+async function populateDynamicModelData(): Promise<void> {
+  try {
+    const res = await window.orbit.listAllModels();
+    if (!res.ok) return;
+    const newModels: Record<string, ModelChoice[]> = {};
+    const newPricing: typeof PRICING = {};
+    for (const [provider, entries] of Object.entries(res.providers)) {
+      newModels[provider] = entries.map((e) => ({ id: e.id, label: e.label }));
+      for (const e of entries) {
+        newPricing[e.id] = {
+          in: e.pricing.input,
+          out: e.pricing.output,
+          cacheRead: e.pricing.cacheRead,
+          cacheWrite: e.pricing.cacheWrite,
+        };
+      }
+    }
+    if (Object.keys(newModels).length === 0) return;  // never replace with empty
+    MODELS_BY_PROVIDER = newModels;
+    PRICING = newPricing;
+  } catch { /* keep hardcoded fallback */ }
+}
+void populateDynamicModelData();
 
 function captureUsage(event: Record<string, unknown>): void {
   // message_start carries model info; message updates carry rolling usage
@@ -1994,9 +2023,11 @@ const prefsApiKey = document.getElementById("prefs-api-key") as HTMLInputElement
 const prefsApiKeyStatus = document.getElementById("prefs-api-key-status")!;
 
 // Model catalog by provider — labels include cost guidance
-// (in/out price per 1M tokens). Update when providers add/change models.
+// (in/out price per 1M tokens). Fallback only — populateDynamicModelData()
+// at startup overwrites this from pi-ai's bundled registry via main IPC,
+// so new models don't require hand-edits here.
 interface ModelChoice { id: string; label: string; }
-const MODELS_BY_PROVIDER: Record<string, ModelChoice[]> = {
+let MODELS_BY_PROVIDER: Record<string, ModelChoice[]> = {
   anthropic: [
     { id: "claude-opus-4-7",   label: "Opus 4.7 — $15/$75 (most capable)" },
     { id: "claude-sonnet-4-6", label: "Sonnet 4.6 — $3/$15 (recommended)" },

@@ -91,6 +91,14 @@ export interface OrbitAPI {
     arch: string;
   }>;
   openIssueReport(payload: { title: string; body: string }): Promise<{ opened: boolean }>;
+  listAllModels(): Promise<
+    | { ok: true; providers: Record<string, Array<{
+        id: string;
+        label: string;
+        pricing: { input: number; output: number; cacheRead?: number; cacheWrite?: number };
+      }>> }
+    | { ok: false; error: string }
+  >;
 }
 
 const api: OrbitAPI = {
@@ -179,6 +187,8 @@ const api: OrbitAPI = {
 
   getReportSysinfo: () => ipcRenderer.invoke("report:sysinfo"),
   openIssueReport: (payload) => ipcRenderer.invoke("report:open-issue", payload),
+
+  listAllModels: () => ipcRenderer.invoke("models:list-all"),
   onSessionHistory: (callback) => {
     const handler = (_e: unknown, history: ReplaySegment[]) => callback(history);
     ipcRenderer.on("agent:session-history", handler);
