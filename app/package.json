@@ -8,7 +8,8 @@
     "prestart": "./scripts/rename-electron-dev.sh",
     "start": "electron-forge start",
     "package": "electron-forge package",
-    "make": "electron-forge make"
+    "make": "electron-forge make",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",
@@ -27,6 +28,7 @@
     "@electron-forge/maker-squirrel": "^7.6.0",
     "@electron-forge/maker-zip": "^7.6.0",
     "@electron-forge/plugin-vite": "^7.6.0",
+    "@playwright/test": "^1.50.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.7.0",
