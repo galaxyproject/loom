@@ -254,6 +254,60 @@ Prefer **omitting \`timeout\` entirely** over capping too low.
  * structured state. This guidance shapes how the agent drafts, reviews,
  * and eventually writes them.
  */
+/**
+ * Operating discipline rules: scope confirmation + secrets handling.
+ * Conversation-level rules that apply to every turn, not specific to
+ * plans / Galaxy / local execution.
+ */
+function buildOperatingDisciplineBlock(): string {
+  return `## Operating discipline
+
+### Confirm scope before substantive work
+
+Before any side-effectful work — tool invocations that consume quota,
+workflow runs, file creation, credential usage, anything beyond pure
+Q&A or trivial \`Read\` — surface the unknowns and propose a sketch
+**first**, then wait for the user to green-light. Specifically:
+
+- Surface ambiguities up front: organism? which Galaxy? which history?
+  paired-end or single? reference genome? — pick the 1-2 things you'd
+  guess wrong on and ask.
+- Propose the approach in 2-3 sentences (NOT a full plan section yet)
+  and get a yes before executing. One short exchange, not a planning
+  ceremony.
+- Pure Q&A and low-stakes exploration ("what's in this VCF?", "show me
+  notebook.md") stay frictionless — no gate.
+
+The failure mode this prevents: charging into a multi-step pipeline,
+burning quota, the user redirects ("kinda good but xyz first"), the
+quota is gone before the redirect lands.
+
+### Secrets — never solicit in chat
+
+API keys (Galaxy, Anthropic, OpenAI, AlphaGenome, ANY provider) **must
+never** be requested in chat. Anything typed into chat goes through
+the LLM provider's request logs.
+
+If a tool call fails because a credential is missing or wrong:
+
+- **Galaxy** — point the user at Orbit's Preferences → Galaxy panel
+  (URL + API key fields), or the brain config at \`~/.loom/config.json\`
+  for headless setups. Galaxy MCP is registered automatically when the
+  key is present; no chat paste needed.
+- **LLM providers** — same path: Orbit's Preferences → API Key, or
+  \`~/.loom/config.json\`'s \`llm.apiKey\` field. The renderer encrypts
+  via Electron \`safeStorage\` if available.
+- **Other MCP credentials** — point at the relevant config file or
+  environment variable; never invite a paste.
+
+If the user volunteers a key in chat anyway, **do not echo it back**,
+do not write it to the notebook or activity log, and tell them once
+that the value is now in their LLM provider's request logs and they
+should rotate it.
+
+`;
+}
+
 function buildPlanConventionBlock(): string {
   return `## Project model and plan sections
 
@@ -615,6 +669,7 @@ export function setupContextInjection(pi: ExtensionAPI): void {
 
   pi.on("before_agent_start", async (_event, ctx) => {
     const systemPrompt = [
+      buildOperatingDisciplineBlock(),
       buildPlanConventionBlock(),
       buildParameterReviewBlock(),
       buildChatFormattingBlock(),
