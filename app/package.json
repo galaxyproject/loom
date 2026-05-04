@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",
-    "@mariozechner/pi-ai": "^0.70.0",
+    "@mariozechner/pi-ai": "^0.73.0",
     "@types/dompurify": "^3.0.5",
     "@xyflow/react": "^12.10.2",
     "dompurify": "^3.4.1",
@@ -22,13 +22,13 @@
     "react-dom": "^19.2.5"
   },
   "devDependencies": {
-    "@electron-forge/cli": "^7.6.0",
-    "@electron-forge/maker-deb": "^7.6.0",
-    "@electron-forge/maker-dmg": "^7.6.0",
-    "@electron-forge/maker-rpm": "^7.6.0",
-    "@electron-forge/maker-squirrel": "^7.6.0",
-    "@electron-forge/maker-zip": "^7.6.0",
-    "@electron-forge/plugin-vite": "^7.6.0",
+    "@electron-forge/cli": "^7.11.1",
+    "@electron-forge/maker-deb": "^7.11.1",
+    "@electron-forge/maker-dmg": "^7.11.1",
+    "@electron-forge/maker-rpm": "^7.11.1",
+    "@electron-forge/maker-squirrel": "^7.11.1",
+    "@electron-forge/maker-zip": "^7.11.1",
+    "@electron-forge/plugin-vite": "^7.11.1",
     "@playwright/test": "^1.50.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -36,5 +36,9 @@
     "electron": "^41.2.1",
     "typescript": "^6.0.2",
     "vite": "^6.4.2"
+  },
+  "overrides": {
+    "@electron/rebuild": "^4.0.4",
+    "tmp": "^0.2.5"
   }
 }

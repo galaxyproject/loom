@@ -34,14 +34,14 @@
     ]
   },
   "dependencies": {
-    "@mariozechner/pi-coding-agent": "^0.70.0",
+    "@mariozechner/pi-coding-agent": "^0.73.0",
     "@sinclair/typebox": "^0.34.49",
     "better-sqlite3": "^12.9.0",
     "chokidar": "^4.0.3",
     "node-html-parser": "^7.1.0",
     "pi-mcp-adapter": "^2.4.0",
     "pi-web-access": "^0.10.6",
-    "uuid": "^13.0.0",
+    "uuid": "^14.0.0",
     "yaml": "^2.8.2"
   },
   "scripts": {
@@ -52,10 +52,12 @@
     "prepublishOnly": "npm run typecheck && npm test && npm run smoke:pack"
   },
   "devDependencies": {
-    "@mariozechner/pi-ai": "^0.70.0",
+    "@mariozechner/pi-ai": "^0.73.0",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/uuid": "^11.0.0",
     "typescript": "^6.0.2",
     "vitest": "^4.1.4"
+  },
+  "overrides": {
+    "@mozilla/readability": "^0.6.0"
   }
 }
