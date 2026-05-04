@@ -1486,6 +1486,13 @@ body:not(.artifact-collapsed) #artifact-toggle {
   font-size: 12px;
   min-height: 14px;
 }
+
+.prefs-galaxy-actions {
+  margin-top: 6px;
+}
+.prefs-galaxy-actions.hidden {
+  display: none;
+}
 .required {
   color: var(--error);
   font-size: 11px;

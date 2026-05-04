@@ -2104,6 +2104,8 @@ wireApiKeyValidation(prefsProvider, prefsApiKey, prefsApiKeyStatus);
 const prefsGalaxyUrl = document.getElementById("prefs-galaxy-url") as HTMLInputElement;
 const prefsGalaxyKey = document.getElementById("prefs-galaxy-key") as HTMLInputElement;
 const prefsGalaxyError = document.getElementById("prefs-galaxy-error")!;
+const prefsGalaxyActionsRow = document.getElementById("prefs-galaxy-actions-row")!;
+const prefsGalaxyDisconnect = document.getElementById("prefs-galaxy-disconnect") as HTMLButtonElement;
 const prefsDefaultCwd = document.getElementById("prefs-default-cwd") as HTMLInputElement;
 const prefsCondaBin = document.getElementById("prefs-conda-bin") as HTMLSelectElement;
 const prefsSkillsRows = document.getElementById("prefs-skills-rows")!;
@@ -2237,6 +2239,9 @@ async function openPreferences(): Promise<void> {
   prefsGalaxyHadKey = Boolean(activeProfile?.hasApiKey);
   prefsGalaxyKey.value = "";
   prefsGalaxyKey.placeholder = prefsGalaxyHadKey ? "•••••••• (unchanged)" : "";
+  // Disconnect button only makes sense when a profile is currently
+  // configured. Hide entirely when nothing's stored.
+  prefsGalaxyActionsRow.classList.toggle("hidden", !(activeProfile?.url || prefsGalaxyHadKey));
   updatePrefsGalaxyValidity();
 
   prefsDefaultCwd.value = config.defaultCwd || "";
@@ -2379,6 +2384,38 @@ prefsOverlay.addEventListener("click", (e) => {
 prefsBrowseCwd.addEventListener("click", async () => {
   const dir = await window.orbit.browseDirectory();
   if (dir) prefsDefaultCwd.value = dir;
+});
+
+// Disconnect Galaxy: send an explicit clear delta. Main's reconciler
+// already treats apiKey: "" as "drop the stored field" (#49). We send
+// galaxy with no profiles so main writes back active: null + empty
+// profiles map, which the brain reads on next start as "Galaxy not
+// configured" — re-registers MCP only when a key reappears.
+prefsGalaxyDisconnect.addEventListener("click", async () => {
+  if (streaming) {
+    const ok = confirm(
+      "The agent is still working. Disconnecting Galaxy will restart it " +
+      "and your in-flight prompt will be lost.\n\nContinue?"
+    );
+    if (!ok) return;
+  } else {
+    if (!confirm("Disconnect Galaxy and clear stored credentials? Other Preferences are saved as well.")) return;
+  }
+  prefsGalaxyDisconnect.disabled = true;
+  try {
+    const current = (await window.orbit.getConfig()) as Record<string, unknown>;
+    current.galaxy = { active: null, profiles: {} };
+    const result = await window.orbit.saveConfig(current);
+    if (!result.success) {
+      alert(`Failed to disconnect: ${result.error}`);
+      return;
+    }
+    closePreferences();
+    chat.addInfoMessage("<i>Disconnected from Galaxy. Agent restarted.</i>");
+    void refreshGalaxyStatus();
+  } finally {
+    prefsGalaxyDisconnect.disabled = false;
+  }
 });
 
 document.addEventListener("keydown", (e) => {
