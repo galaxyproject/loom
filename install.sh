@@ -3,7 +3,7 @@
 # Loom Installer
 #
 # One-line install:
-#   curl -fsSL https://raw.githubusercontent.com/galaxyproject/pi-galaxy-analyst/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/galaxyproject/loom/main/install.sh | bash
 #
 
 set -e

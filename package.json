@@ -13,7 +13,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/galaxyproject/pi-galaxy-analyst"
+    "url": "https://github.com/galaxyproject/loom"
   },
   "engines": {
     "node": ">=20"

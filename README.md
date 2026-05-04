@@ -207,7 +207,7 @@ Three paths, depending on what you want.
 
 ### Desktop app (Orbit)
 
-Orbit ships as a native installer (signed DMG on macOS, AppImage/deb on Linux, installer on Windows) and bundles its own Node runtime, `uv`, and Loom -- so there are no separate prerequisites. Once a build is signed and published, install it from the [Releases page](https://github.com/galaxyproject/pi-galaxy-analyst/releases). Until then, use the developer install below.
+Orbit ships as a native installer (signed DMG on macOS, AppImage/deb on Linux, installer on Windows) and bundles its own Node runtime, `uv`, and Loom -- so there are no separate prerequisites. Once a build is signed and published, install it from the [Releases page](https://github.com/galaxyproject/loom/releases). Until then, use the developer install below.
 
 ### Loom CLI from npm
 
@@ -235,8 +235,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 Clone the repo and install both workspaces:
 
 ```bash
-git clone https://github.com/galaxyproject/pi-galaxy-analyst.git
-cd pi-galaxy-analyst
+git clone https://github.com/galaxyproject/loom.git
+cd loom
 npm install
 cd app && npm install
 ```
@@ -294,10 +294,10 @@ wsl --install --web-download -d Ubuntu
 Reboot, set up your Ubuntu user, then inside the Ubuntu terminal:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/galaxyproject/pi-galaxy-analyst/main/scripts/setup-wsl.sh | bash
+curl -fsSL https://raw.githubusercontent.com/galaxyproject/loom/main/scripts/setup-wsl.sh | bash
 source ~/.bashrc
 
-cd ~/pi-galaxy-analyst/app && npm start
+cd ~/loom/app && npm start
 ```
 
 Keep your analysis data inside `~/` (the Linux filesystem) — `/mnt/c/` paths are significantly slower across the filesystem boundary.
@@ -538,7 +538,7 @@ Then validate the wrapper in a plain working directory:
 ```bash
 mkdir -p /tmp/loom-cli-validation
 cd /tmp/loom-cli-validation
-node /path/to/pi-galaxy-analyst/bin/loom.js --provider anthropic --model claude-sonnet-4-6
+node /path/to/loom/bin/loom.js --provider anthropic --model claude-sonnet-4-6
 ```
 
 For a full terminal-only runbook, see [docs/terminal-validation.md](docs/terminal-validation.md).
