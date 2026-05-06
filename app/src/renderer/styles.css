@@ -1448,6 +1448,12 @@ body:not(.artifact-collapsed) #artifact-toggle {
   width: 540px;
   max-width: 90vw;
 }
+.welcome-badge {
+  display: block;
+  width: min(280px, 70%);
+  height: auto;
+  margin: 4px auto 18px;
+}
 .welcome-intro {
   color: var(--text-dim);
   margin-bottom: 16px;
