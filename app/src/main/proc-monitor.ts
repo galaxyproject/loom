@@ -89,52 +89,52 @@ export class ProcMonitor {
  * SIGTERM the brain's tool subprocesses on Stop.
  */
 export async function collectDescendantsOf(agentPid: number): Promise<ProcInfo[]> {
-    // Get all processes with their PID and PPID so we can walk the tree.
-    // Note: macOS ps doesn't support `nlwp` (thread count) — don't request it.
-    const { stdout: psOut } = await execFileP("ps", [
-      "-ax",
-      "-o",
-      "pid=,ppid=,pcpu=,pmem=,rss=,etime=,comm=",
-    ]);
+  // Get all processes with their PID and PPID so we can walk the tree.
+  // Note: macOS ps doesn't support `nlwp` (thread count) — don't request it.
+  const { stdout: psOut } = await execFileP("ps", [
+    "-ax",
+    "-o",
+    "pid=,ppid=,pcpu=,pmem=,rss=,etime=,comm=",
+  ]);
 
-    const all = new Map<number, ProcInfo>();
-    for (const line of psOut.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      // Fields: pid ppid pcpu pmem rss etime command
-      const m = trimmed.match(/^(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.+)$/);
-      if (!m) continue;
-      const pid = parseInt(m[1], 10);
-      const ppid = parseInt(m[2], 10);
-      let command = m[7].trim();
-      if (command.length > MAX_COMMAND_LEN) {
-        command = command.slice(0, MAX_COMMAND_LEN - 1) + "…";
-      }
-      all.set(pid, {
-        pid,
-        ppid,
-        pcpu: parseFloat(m[3]) || 0,
-        pmem: parseFloat(m[4]) || 0,
-        rss: parseInt(m[5], 10) || 0,
-        etime: m[6],
-        command,
-      });
+  const all = new Map<number, ProcInfo>();
+  for (const line of psOut.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    // Fields: pid ppid pcpu pmem rss etime command
+    const m = trimmed.match(/^(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.+)$/);
+    if (!m) continue;
+    const pid = parseInt(m[1], 10);
+    const ppid = parseInt(m[2], 10);
+    let command = m[7].trim();
+    if (command.length > MAX_COMMAND_LEN) {
+      command = command.slice(0, MAX_COMMAND_LEN - 1) + "…";
     }
+    all.set(pid, {
+      pid,
+      ppid,
+      pcpu: parseFloat(m[3]) || 0,
+      pmem: parseFloat(m[4]) || 0,
+      rss: parseInt(m[5], 10) || 0,
+      etime: m[6],
+      command,
+    });
+  }
 
-    // Walk descendants breadth-first from agentPid
-    const descendants: ProcInfo[] = [];
-    const queue = [agentPid];
-    const seen = new Set<number>();
-    while (queue.length > 0) {
-      const parent = queue.shift()!;
-      if (seen.has(parent)) continue;
-      seen.add(parent);
-      for (const [pid, info] of all) {
-        if (info.ppid === parent && pid !== agentPid) {
-          descendants.push(info);
-          queue.push(pid);
-        }
+  // Walk descendants breadth-first from agentPid
+  const descendants: ProcInfo[] = [];
+  const queue = [agentPid];
+  const seen = new Set<number>();
+  while (queue.length > 0) {
+    const parent = queue.shift()!;
+    if (seen.has(parent)) continue;
+    seen.add(parent);
+    for (const [pid, info] of all) {
+      if (info.ppid === parent && pid !== agentPid) {
+        descendants.push(info);
+        queue.push(pid);
       }
     }
-    return descendants;
+  }
+  return descendants;
 }

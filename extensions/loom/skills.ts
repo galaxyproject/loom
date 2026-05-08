@@ -48,14 +48,14 @@ export function listEnabledSkillRepos(): ConfiguredSkillRepo[] {
     if (!isSafeSkillName(r.name)) {
       console.warn(
         `[skills] Dropping repo with unsafe name "${r.name}" — ` +
-        `must match /^[A-Za-z0-9._-]+$/ (used as filesystem path)`,
+          `must match /^[A-Za-z0-9._-]+$/ (used as filesystem path)`,
       );
       continue;
     }
     if (!isAllowedSkillUrl(r.url)) {
       console.warn(
         `[skills] Dropping disallowed repo "${r.name}" (${r.url}) — ` +
-        `not under github.com/galaxyproject/*`,
+          `not under github.com/galaxyproject/*`,
       );
       continue;
     }

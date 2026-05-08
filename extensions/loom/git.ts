@@ -148,10 +148,7 @@ export function commitNotebook(notebookPath: string, message: string): void {
 /**
  * Build a human-readable commit message from a change type and its data.
  */
-export function buildCommitMessage(
-  changeType: string,
-  data: Record<string, unknown>,
-): string {
+export function buildCommitMessage(changeType: string, data: Record<string, unknown>): string {
   switch (changeType) {
     case "step_added":
       return `Add step: ${(data.step as { name?: string })?.name ?? "unknown"}`;

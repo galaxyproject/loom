@@ -23,16 +23,26 @@ describe("session-index query API", () => {
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "session-index-query-"));
-    seed(dir, "/tmp/malaria", "sess-1.jsonl", `\
+    seed(
+      dir,
+      "/tmp/malaria",
+      "sess-1.jsonl",
+      `\
 {"type":"session","version":3,"id":"sess-1","timestamp":"2026-04-01T10:00:00Z","cwd":"/tmp/malaria"}
 {"type":"message","id":"m1","parentId":null,"timestamp":"2026-04-01T10:00:05Z","message":{"role":"user","content":[{"type":"text","text":"Tune variant_ism_width for malaria chr6"}]}}
 {"type":"message","id":"m2","parentId":"m1","timestamp":"2026-04-01T10:00:10Z","message":{"role":"assistant","content":[{"type":"text","text":"Set variant_ism_width=600 to widen the scan."},{"type":"tool_use","id":"tu1","name":"workflow_set_overrides","input":{"stepId":"ism","overrides":{"variant_ism_width":600}}}]}}
 {"type":"message","id":"m3","parentId":"m2","timestamp":"2026-04-01T10:00:15Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","content":[{"type":"text","text":"overrides recorded"}]}]}}
-`);
-    seed(dir, "/tmp/hiv", "sess-2.jsonl", `\
+`,
+    );
+    seed(
+      dir,
+      "/tmp/hiv",
+      "sess-2.jsonl",
+      `\
 {"type":"session","version":3,"id":"sess-2","timestamp":"2026-04-02T09:00:00Z","cwd":"/tmp/hiv"}
 {"type":"message","id":"h1","parentId":null,"timestamp":"2026-04-02T09:00:05Z","message":{"role":"user","content":[{"type":"text","text":"Run HIV locus analysis"}]}}
-`);
+`,
+    );
     db = openIndexDb(path.join(dir, "idx.db"));
     scanSessions(db, dir);
   });
@@ -51,13 +61,13 @@ describe("session-index query API", () => {
 
   it("scope='cwd' filters to the given directory", () => {
     const hits = searchChat(db, { query: "analysis", scope: "cwd", cwd: "/tmp/hiv" });
-    expect(hits.every(h => h.cwd === "/tmp/hiv")).toBe(true);
-    expect(hits.some(h => h.cwd === "/tmp/malaria")).toBe(false);
+    expect(hits.every((h) => h.cwd === "/tmp/hiv")).toBe(true);
+    expect(hits.some((h) => h.cwd === "/tmp/malaria")).toBe(false);
   });
 
   it("returns a window of entries around an anchor", () => {
     const ctx = getSessionContext(db, { entry_id: "m2", before: 1, after: 1 });
-    expect(ctx.map(e => e.entry_id)).toEqual(["m1", "m2", "m3"]);
+    expect(ctx.map((e) => e.entry_id)).toEqual(["m1", "m2", "m3"]);
   });
 
   it("finds tool calls by name with args_contains filter", () => {
@@ -65,10 +75,16 @@ describe("session-index query API", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].arguments).toEqual({ stepId: "ism", overrides: { variant_ism_width: 600 } });
 
-    const empty = findToolCalls(db, { tool_name: "workflow_set_overrides", args_contains: "neuroblastoma" });
+    const empty = findToolCalls(db, {
+      tool_name: "workflow_set_overrides",
+      args_contains: "neuroblastoma",
+    });
     expect(empty).toHaveLength(0);
 
-    const match = findToolCalls(db, { tool_name: "workflow_set_overrides", args_contains: "variant_ism_width" });
+    const match = findToolCalls(db, {
+      tool_name: "workflow_set_overrides",
+      args_contains: "variant_ism_width",
+    });
     expect(match).toHaveLength(1);
   });
 
@@ -80,18 +96,23 @@ describe("session-index query API", () => {
   it("includes timestamp-tied entries in the context window", () => {
     // Create a fresh scenario with three entries sharing a timestamp.
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "session-index-tie-"));
-    seed(tmp, "/tmp/tie", "sess-tie.jsonl", `\
+    seed(
+      tmp,
+      "/tmp/tie",
+      "sess-tie.jsonl",
+      `\
 {"type":"session","version":3,"id":"sess-tie","timestamp":"2026-04-05T10:00:00Z","cwd":"/tmp/tie"}
 {"type":"message","id":"a","parentId":null,"timestamp":"2026-04-05T10:00:05Z","message":{"role":"user","content":[{"type":"text","text":"a"}]}}
 {"type":"message","id":"b","parentId":"a","timestamp":"2026-04-05T10:00:10Z","message":{"role":"assistant","content":[{"type":"text","text":"b"}]}}
 {"type":"message","id":"c","parentId":"b","timestamp":"2026-04-05T10:00:10Z","message":{"role":"user","content":[{"type":"text","text":"c"}]}}
 {"type":"message","id":"d","parentId":"c","timestamp":"2026-04-05T10:00:10Z","message":{"role":"assistant","content":[{"type":"text","text":"d"}]}}
 {"type":"message","id":"e","parentId":"d","timestamp":"2026-04-05T10:00:15Z","message":{"role":"user","content":[{"type":"text","text":"e"}]}}
-`);
+`,
+    );
     const db2 = openIndexDb(path.join(tmp, "idx.db"));
     scanSessions(db2, tmp);
     const ctx = getSessionContext(db2, { entry_id: "c", before: 5, after: 5 });
-    expect(ctx.map(e => e.entry_id)).toEqual(["a", "b", "c", "d", "e"]);
+    expect(ctx.map((e) => e.entry_id)).toEqual(["a", "b", "c", "d", "e"]);
     db2.close();
     fs.rmSync(tmp, { recursive: true, force: true });
   });
@@ -100,10 +121,15 @@ describe("session-index query API", () => {
     // variant_ism_width should match literally -- NOT match variantxismxwidth.
     // Seed a second tool call whose args contain 'variantxismxwidth' (underscores replaced).
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "session-index-like-"));
-    seed(tmp, "/tmp/like", "sess-like.jsonl", `\
+    seed(
+      tmp,
+      "/tmp/like",
+      "sess-like.jsonl",
+      `\
 {"type":"session","version":3,"id":"sess-like","timestamp":"2026-04-05T10:00:00Z","cwd":"/tmp/like"}
 {"type":"message","id":"x1","parentId":null,"timestamp":"2026-04-05T10:00:05Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"tux","name":"workflow_set_overrides","input":{"key":"variantxismxwidth","value":600}}]}}
-`);
+`,
+    );
     const db2 = openIndexDb(path.join(tmp, "idx.db"));
     scanSessions(db2, tmp);
     const match = findToolCalls(db2, {

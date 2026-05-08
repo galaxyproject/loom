@@ -33,7 +33,11 @@ function log(...args: unknown[]): void {
 
 function loadConfig(): Record<string, unknown> {
   if (existsSync(LOOM_CONFIG_PATH)) {
-    try { return JSON.parse(readFileSync(LOOM_CONFIG_PATH, "utf-8")); } catch { /* */ }
+    try {
+      return JSON.parse(readFileSync(LOOM_CONFIG_PATH, "utf-8"));
+    } catch {
+      /* */
+    }
   }
   return {};
 }
@@ -72,7 +76,11 @@ function startLoom(): void {
 
   rl.on("line", (line) => {
     let data: Record<string, unknown>;
-    try { data = JSON.parse(line); } catch { return; }
+    try {
+      data = JSON.parse(line);
+    } catch {
+      return;
+    }
 
     const type = data.type as string;
 
@@ -123,10 +131,12 @@ function sendToLoom(obj: Record<string, unknown>): void {
 
 function sendEvent(event: string, ...payload: unknown[]): void {
   if (!activeSocket || activeSocket.readyState !== WebSocket.OPEN) return;
-  activeSocket.send(JSON.stringify({
-    _event: event,
-    _payload: payload.length === 1 ? payload[0] : payload,
-  }));
+  activeSocket.send(
+    JSON.stringify({
+      _event: event,
+      _payload: payload.length === 1 ? payload[0] : payload,
+    }),
+  );
 }
 
 // ── Express + WebSocket ──────────────────────────────────────────────────────
@@ -166,11 +176,13 @@ async function setupVite(): Promise<void> {
       let html = readFileSync(indexPath, "utf-8");
       html = html.replace(
         '<script type="module" src="./app.ts"></script>',
-        '<script type="module" src="/orbit-shim.ts"></script>\n  <script type="module" src="./app.ts"></script>'
+        '<script type="module" src="/orbit-shim.ts"></script>\n  <script type="module" src="./app.ts"></script>',
       );
       html = await vite.transformIndexHtml(req.originalUrl, html);
       res.status(200).set({ "Content-Type": "text/html" }).end(html);
-    } catch (e) { next(e); }
+    } catch (e) {
+      next(e);
+    }
   });
 }
 
@@ -183,7 +195,11 @@ wss.on("connection", (socket) => {
 
   socket.on("message", (raw) => {
     let msg: Record<string, unknown>;
-    try { msg = JSON.parse(raw.toString()); } catch { return; }
+    try {
+      msg = JSON.parse(raw.toString());
+    } catch {
+      return;
+    }
 
     const id = msg.id as string | undefined;
     const channel = msg.channel as string;

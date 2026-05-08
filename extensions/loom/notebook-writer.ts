@@ -36,7 +36,13 @@ export function withNotebookLock<T>(filePath: string, work: () => Promise<T>): P
   const next = prev.then(work, work);
   // Always clear so completed locks don't pin memory; the chain is preserved
   // through the Promise we just created.
-  writeLocks.set(filePath, next.then(() => undefined, () => undefined));
+  writeLocks.set(
+    filePath,
+    next.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
   return next;
 }
 
@@ -46,10 +52,7 @@ export function withNotebookLock<T>(filePath: string, work: () => Promise<T>): P
  * content — never partial. The file watcher in state.ts may still fire
  * on the rename, but it can no longer observe a half-written file.
  */
-export async function writeNotebook(
-  filePath: string,
-  content: string,
-): Promise<void> {
+export async function writeNotebook(filePath: string, content: string): Promise<void> {
   const tmp = `${filePath}.tmp`;
   // O_TRUNC | O_WRONLY | O_CREAT via fs.writeFile — but write to tmp first.
   await fs.writeFile(tmp, content, "utf-8");

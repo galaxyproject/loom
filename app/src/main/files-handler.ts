@@ -14,10 +14,10 @@ import * as path from "node:path";
 
 export interface FileNode {
   name: string;
-  relPath: string;              // always "" for root, otherwise relative to cwd with forward slashes
+  relPath: string; // always "" for root, otherwise relative to cwd with forward slashes
   type: "file" | "directory";
-  size?: number;                // files only
-  children?: FileNode[];        // directories only
+  size?: number; // files only
+  children?: FileNode[]; // directories only
 }
 
 const FS_BLOCKLIST = new Set([
@@ -37,7 +37,7 @@ const FS_BLOCKLIST = new Set([
 ]);
 
 const MAX_DEPTH = 8;
-const MAX_ENTRIES_PER_DIR = 2000;    // refuse to enumerate pathological dirs
+const MAX_ENTRIES_PER_DIR = 2000; // refuse to enumerate pathological dirs
 const MAX_READ_BYTES = 5 * 1024 * 1024; // 5 MB — full read up to here
 const MAX_PREVIEW_BYTES = 1024 * 1024 * 1024; // 1 GB — hard refuse above this
 const PREVIEW_LINE_COUNT = 10;
@@ -50,20 +50,58 @@ const PREVIEW_BYTE_BUDGET = 64 * 1024; // 64 KB cap on the head we read
 // the user. Files outside this set in the (5 MB, 1 GB] band get the same
 // "too large" rejection they got before head-preview existed.
 const TEXT_PREVIEW_EXTS = new Set([
-  ".md", ".txt", ".log", ".rst",
-  ".py", ".js", ".ts", ".tsx", ".jsx", ".sh", ".rb", ".pl", ".r", ".go", ".rs",
-  ".json", ".jsonl", ".yml", ".yaml", ".toml", ".ini", ".cfg", ".conf",
-  ".xml", ".html", ".htm", ".css",
-  ".csv", ".tsv", ".tab",
-  ".fa", ".fasta", ".fna", ".faa", ".ffn",
-  ".fastq", ".fq",
+  ".md",
+  ".txt",
+  ".log",
+  ".rst",
+  ".py",
+  ".js",
+  ".ts",
+  ".tsx",
+  ".jsx",
+  ".sh",
+  ".rb",
+  ".pl",
+  ".r",
+  ".go",
+  ".rs",
+  ".json",
+  ".jsonl",
+  ".yml",
+  ".yaml",
+  ".toml",
+  ".ini",
+  ".cfg",
+  ".conf",
+  ".xml",
+  ".html",
+  ".htm",
+  ".css",
+  ".csv",
+  ".tsv",
+  ".tab",
+  ".fa",
+  ".fasta",
+  ".fna",
+  ".faa",
+  ".ffn",
+  ".fastq",
+  ".fq",
   ".vcf",
-  ".bed", ".bedgraph", ".wig",
-  ".gff", ".gff3", ".gtf",
+  ".bed",
+  ".bedgraph",
+  ".wig",
+  ".gff",
+  ".gff3",
+  ".gtf",
   ".sam",
-  ".pdb", ".cif",
-  ".nwk", ".newick", ".tree",
-  ".phy", ".phylip",
+  ".pdb",
+  ".cif",
+  ".nwk",
+  ".newick",
+  ".tree",
+  ".phy",
+  ".phylip",
 ]);
 
 function isTextLikeForPreview(name: string): boolean {
@@ -269,7 +307,8 @@ export function registerFilesIpc(getCwd: () => string): void {
         const head = headBuf.subarray(0, bytesRead).toString("utf-8");
         const lines = head.split("\n").slice(0, PREVIEW_LINE_COUNT);
         const previewText = lines.join("\n");
-        const truncatedAtByteBudget = bytesRead === PREVIEW_BYTE_BUDGET && lines.length < PREVIEW_LINE_COUNT;
+        const truncatedAtByteBudget =
+          bytesRead === PREVIEW_BYTE_BUDGET && lines.length < PREVIEW_LINE_COUNT;
         return {
           ok: true,
           size: stat.size,

@@ -3,10 +3,12 @@ import { redactArgs } from "../extensions/loom/activity-hooks";
 
 describe("redactArgs", () => {
   it("whole-object redacts credential tools", () => {
-    expect(redactArgs("galaxy_connect", { url: "x", apiKey: "secret" }))
-      .toEqual({ _redacted: true });
-    expect(redactArgs("galaxy_set_profile", { name: "default", apiKey: "k" }))
-      .toEqual({ _redacted: true });
+    expect(redactArgs("galaxy_connect", { url: "x", apiKey: "secret" })).toEqual({
+      _redacted: true,
+    });
+    expect(redactArgs("galaxy_set_profile", { name: "default", apiKey: "k" })).toEqual({
+      _redacted: true,
+    });
   });
 
   it("redacts known credential keys on any tool", () => {

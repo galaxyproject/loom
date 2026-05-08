@@ -41,9 +41,13 @@ export class ChatPanel {
       else if (btn.classList.contains("plan-draft-reject")) action = "reject";
       if (action !== "edit" && card) {
         card.classList.add(action === "approve" ? "approved" : "rejected");
-        card.querySelectorAll<HTMLButtonElement>(
-          ".plan-draft-approve,.plan-draft-edit,.plan-draft-reject",
-        ).forEach((b) => { b.disabled = true; });
+        card
+          .querySelectorAll<HTMLButtonElement>(
+            ".plan-draft-approve,.plan-draft-edit,.plan-draft-reject",
+          )
+          .forEach((b) => {
+            b.disabled = true;
+          });
       }
       this.container.dispatchEvent(
         new CustomEvent("plan-draft-action", {
@@ -144,7 +148,8 @@ export class ChatPanel {
     this.hideThinking();
     const el = document.createElement("div");
     el.className = "message assistant thinking-indicator";
-    el.innerHTML = '<span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span> thinking';
+    el.innerHTML =
+      '<span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span> thinking';
     this.thinkingEl = el;
     this.container.appendChild(el);
     this.scrollToBottom();
@@ -194,7 +199,8 @@ export class ChatPanel {
         flush();
         const n = Number(el.dataset.promptNum);
         activeNum = Number.isFinite(n) ? n : null;
-        const userText = (el.querySelector(".message.user") as HTMLElement | null)?.textContent?.trim() ?? "";
+        const userText =
+          (el.querySelector(".message.user") as HTMLElement | null)?.textContent?.trim() ?? "";
         if (activeNum !== null) {
           buf.push(`[Prompt ${activeNum} — user]`);
           if (userText) buf.push(userText);
@@ -236,7 +242,7 @@ export class ChatPanel {
       this.renderCurrentMessage();
     }
     // Clean up any stray cursors across the whole container
-    this.container.querySelectorAll(".cursor-blink").forEach(c => c.remove());
+    this.container.querySelectorAll(".cursor-blink").forEach((c) => c.remove());
     this.currentMessage = null;
     this.currentText = "";
   }
@@ -388,18 +394,14 @@ function extractPlanFences(src: string): { text: string; planBlocks: string[] } 
   const openMatch = /```plan\b[^\n]*\n([\s\S]*)$/.exec(text);
   if (openMatch) {
     const idx = planBlocks.push(openMatch[1]) - 1;
-    text = text.slice(0, openMatch.index) +
-      `\n\n${PLAN_FENCE_PLACEHOLDER_PREFIX}${idx}\n\n`;
+    text = text.slice(0, openMatch.index) + `\n\n${PLAN_FENCE_PLACEHOLDER_PREFIX}${idx}\n\n`;
   }
   return { text, planBlocks };
 }
 
 function injectPlanFenceCards(html: string, planBlocks: string[]): string {
   if (planBlocks.length === 0) return html;
-  const re = new RegExp(
-    `<p>\\s*${PLAN_FENCE_PLACEHOLDER_PREFIX}(\\d+)\\s*</p>`,
-    "g",
-  );
+  const re = new RegExp(`<p>\\s*${PLAN_FENCE_PLACEHOLDER_PREFIX}(\\d+)\\s*</p>`, "g");
   return html.replace(re, (_m, idxStr: string) => {
     const idx = Number(idxStr);
     const body = planBlocks[idx] ?? "";

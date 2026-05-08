@@ -8,7 +8,7 @@ Loom turns a working directory into a co-scientist project: ad-hoc exploration, 
 
 **Loom** is the agent brain — the Pi.dev runtime in [`extensions/loom/`](extensions/loom/), the system-prompt context, Galaxy invocation tracking, the skills system, and the RPC contract. Run it directly from the terminal with `loom` (`npm install -g @galaxyproject/loom`) or through **Orbit** (in [`app/`](app/)), the Electron desktop shell with a chat + tabbed-artifact layout.
 
-The names trace real cosmology. The universe's large-scale structure is the *cosmic web* -- galaxies strung along filaments of dark matter, woven into sheets and voids. Loom weaves your research record the way the cosmic web weaves galaxies; Orbit is the electron shell you observe it from.
+The names trace real cosmology. The universe's large-scale structure is the _cosmic web_ -- galaxies strung along filaments of dark matter, woven into sheets and voids. Loom weaves your research record the way the cosmic web weaves galaxies; Orbit is the electron shell you observe it from.
 
 Future shells — a Galaxy-embedded web UI, a hosted server mode, anything else — talk to the same brain over RPC.
 
@@ -108,9 +108,9 @@ frequencies across tissues.
 
 ### Parameters
 
-| Step | Tool | Parameter | Default | Value | Description |
-| --- | --- | --- | --- | --- | --- |
-| 1 | fastp | min_qual | 20 | 20 | minimum base quality |
+| Step | Tool  | Parameter | Default | Value | Description          |
+| ---- | ----- | --------- | ------- | ----- | -------------------- |
+| 1    | fastp | min_qual  | 20      | 20    | minimum base quality |
 ```
 
 Conventions:
@@ -138,7 +138,7 @@ When Galaxy is connected, the agent surveys Galaxy resources before drafting:
 - A full IWC workflow match → propose the plan as a single Galaxy invocation (mode: **remote**).
 - Otherwise step-by-step: heavy compute (alignment, large variant calling, big assemblies) → Galaxy if the tool is available; light/exploratory (parsing, awk/sed/jq, small scripts) → local.
 
-The three operating modes (**local** / **hybrid** / **remote**) are an *outcome* of the plan, not a configuration setting.
+The three operating modes (**local** / **hybrid** / **remote**) are an _outcome_ of the plan, not a configuration setting.
 
 ### Galaxy invocation tracking
 
@@ -192,8 +192,17 @@ Add your own repos in **Preferences → Skills**. Each entry is `{ name, url, br
 {
   "skills": {
     "repos": [
-      { "name": "galaxy-skills", "url": "https://github.com/galaxyproject/galaxy-skills", "enabled": true },
-      { "name": "galaxy-genome-skills", "url": "https://github.com/galaxyproject/galaxy-genome-skills", "branch": "main", "enabled": true }
+      {
+        "name": "galaxy-skills",
+        "url": "https://github.com/galaxyproject/galaxy-skills",
+        "enabled": true
+      },
+      {
+        "name": "galaxy-genome-skills",
+        "url": "https://github.com/galaxyproject/galaxy-genome-skills",
+        "branch": "main",
+        "enabled": true
+      }
     ]
   }
 }
@@ -415,7 +424,12 @@ Loom uses a single brain-level config at `~/.loom/config.json`. Every consumer (
   },
   "skills": {
     "repos": [
-      { "name": "galaxy-skills", "url": "https://github.com/galaxyproject/galaxy-skills", "branch": "main", "enabled": true }
+      {
+        "name": "galaxy-skills",
+        "url": "https://github.com/galaxyproject/galaxy-skills",
+        "branch": "main",
+        "enabled": true
+      }
     ]
   },
   "defaultCwd": "~/analyses",
@@ -483,47 +497,47 @@ CodeBurn auto-detects Loom/Pi sessions under `~/.pi/agent/sessions/` (Pi is a fi
 
 Type `/` in the chat to open the autocomplete popup. Tab to accept; Enter still submits past it.
 
-| Command | What it does |
-|---------|-------------|
-| `/model <name>` | Switch the LLM model (e.g. `/model sonnet`, `/model claude-opus-4-6`) |
-| `/new` | Start a fresh session (Orbit only). Confirms before deleting the existing notebook |
-| `/resume` | Restart the agent and replay the prior session's chat |
-| `/chat` | Restore the chat pane from the session transcript without restarting the agent |
-| `/notebook` | Show the notebook content in the Notebook tab |
-| `/status` | Galaxy connection + notebook path summary |
-| `/summarize [N [M]]` | Append a summary of prompts N..M into the notebook |
-| `/cost` | Append the session token/cost breakdown to the notebook |
-| `/connect [name]` | Open Galaxy connection settings (or switch to an existing profile) |
-| `/profiles` | List saved Galaxy server profiles |
-| `/execute` (alias `/run`) | Tell the agent to advance the next pending step in the latest plan section |
-| `/help` | Show this list |
+| Command                   | What it does                                                                       |
+| ------------------------- | ---------------------------------------------------------------------------------- |
+| `/model <name>`           | Switch the LLM model (e.g. `/model sonnet`, `/model claude-opus-4-6`)              |
+| `/new`                    | Start a fresh session (Orbit only). Confirms before deleting the existing notebook |
+| `/resume`                 | Restart the agent and replay the prior session's chat                              |
+| `/chat`                   | Restore the chat pane from the session transcript without restarting the agent     |
+| `/notebook`               | Show the notebook content in the Notebook tab                                      |
+| `/status`                 | Galaxy connection + notebook path summary                                          |
+| `/summarize [N [M]]`      | Append a summary of prompts N..M into the notebook                                 |
+| `/cost`                   | Append the session token/cost breakdown to the notebook                            |
+| `/connect [name]`         | Open Galaxy connection settings (or switch to an existing profile)                 |
+| `/profiles`               | List saved Galaxy server profiles                                                  |
+| `/execute` (alias `/run`) | Tell the agent to advance the next pending step in the latest plan section         |
+| `/help`                   | Show this list                                                                     |
 
 ## Tool reference
 
 Loom registers a small set of extension tools. Plans, decisions, results, and interpretation all live as markdown sections in `notebook.md` — the agent maintains them via the standard `Edit`/`Write` tools.
 
-| Category | Tools |
-|----------|-------|
-| **GTN tutorials** | `gtn_search`, `gtn_fetch` |
-| **Galaxy invocations** | `galaxy_invocation_record`, `galaxy_invocation_check_all`, `galaxy_invocation_check_one` |
-| **Skills** | `skills_fetch` (fetch SKILL.md / reference docs from configured repos) |
-| **Multi-agent (experimental)** | `team_dispatch` (gated by `LOOM_TEAM_DISPATCH=1`) |
+| Category                       | Tools                                                                                    |
+| ------------------------------ | ---------------------------------------------------------------------------------------- |
+| **GTN tutorials**              | `gtn_search`, `gtn_fetch`                                                                |
+| **Galaxy invocations**         | `galaxy_invocation_record`, `galaxy_invocation_check_all`, `galaxy_invocation_check_one` |
+| **Skills**                     | `skills_fetch` (fetch SKILL.md / reference docs from configured repos)                   |
+| **Multi-agent (experimental)** | `team_dispatch` (gated by `LOOM_TEAM_DISPATCH=1`)                                        |
 
 Galaxy MCP (registered separately when credentials are present) provides `galaxy_connect`, `galaxy_search_tools_by_name`, `galaxy_run_tool`, `galaxy_invoke_workflow`, `galaxy_search_iwc`, `get_iwc_workflows`, `import_workflow_from_iwc`, user-defined tool lifecycle (`galaxy_create_user_tool`, `galaxy_list_user_tools`, `galaxy_run_user_tool`, `galaxy_delete_user_tool`), history/dataset operations, and more.
 
 ## Tech stack
 
-| Component | Technology |
-|---|---|
-| Agent | Pi.dev (`@mariozechner/pi-coding-agent`) |
-| MCP bridge | `pi-mcp-adapter`, `uvx galaxy-mcp` |
-| Language | TypeScript (strict) |
-| Tests | Vitest |
-| Desktop | Electron 35 |
-| Build | Vite + electron-forge |
-| Markdown | `marked` |
-| Fonts | Inter (body), JetBrains Mono (code) |
-| Theme | Galaxy brand dark (`#2c3143` + gold accent `#ffd700`) |
+| Component  | Technology                                            |
+| ---------- | ----------------------------------------------------- |
+| Agent      | Pi.dev (`@mariozechner/pi-coding-agent`)              |
+| MCP bridge | `pi-mcp-adapter`, `uvx galaxy-mcp`                    |
+| Language   | TypeScript (strict)                                   |
+| Tests      | Vitest                                                |
+| Desktop    | Electron 35                                           |
+| Build      | Vite + electron-forge                                 |
+| Markdown   | `marked`                                              |
+| Fonts      | Inter (body), JetBrains Mono (code)                   |
+| Theme      | Galaxy brand dark (`#2c3143` + gold accent `#ffd700`) |
 
 ## Terminal-only validation
 

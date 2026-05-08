@@ -1,4 +1,14 @@
-import { app, BrowserWindow, Menu, dialog, powerMonitor, nativeImage, protocol, net, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  Menu,
+  dialog,
+  powerMonitor,
+  nativeImage,
+  protocol,
+  net,
+  shell,
+} from "electron";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import * as fs from "node:fs";
 import path from "node:path";
@@ -244,9 +254,7 @@ function createWindow(cwd: string): void {
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
-    mainWindow.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`)
-    );
+    mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
   }
 
   agentManager = new AgentManager(mainWindow, cwd);
@@ -295,11 +303,23 @@ function createWindow(cwd: string): void {
     // `activate` would create a new AgentManager while the previous brain
     // subprocess kept running — leaking processes and keeping stale FS
     // watchers / proc-monitor timers alive.
-    try { agentManager?.stop(); } catch (err) { log("agentManager.stop on close failed:", err); }
+    try {
+      agentManager?.stop();
+    } catch (err) {
+      log("agentManager.stop on close failed:", err);
+    }
     agentManager = null;
-    try { procMonitor?.stop(); } catch (err) { log("procMonitor.stop on close failed:", err); }
+    try {
+      procMonitor?.stop();
+    } catch (err) {
+      log("procMonitor.stop on close failed:", err);
+    }
     procMonitor = null;
-    try { stopFilesWatcher(); } catch (err) { log("stopFilesWatcher on close failed:", err); }
+    try {
+      stopFilesWatcher();
+    } catch (err) {
+      log("stopFilesWatcher on close failed:", err);
+    }
     mainWindow = null;
   });
 }
