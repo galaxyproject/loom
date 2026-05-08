@@ -1,5 +1,7 @@
 # Loom & Orbit
 
+![Ask me about Loom](app/src/renderer/assets/badges/ask-me-about-loom.svg)
+
 An AI research harness for [Galaxy](https://galaxyproject.org) bioinformatics, built on [Pi.dev](https://pi.dev).
 
 Loom turns a working directory into a co-scientist project: ad-hoc exploration, plans, executed steps, interpretations, and follow-up plans all accumulate as markdown in a single, durable, git-tracked `notebook.md`. The agent reads and writes that notebook directly; there is no parallel structured-state store. When Galaxy is configured the agent surveys the workflow registry and tool catalog while drafting plans and routes individual steps to Galaxy or local execution as appropriate.
