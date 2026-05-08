@@ -174,6 +174,14 @@ if (!isInformationalCommand) {
     delete mcpConfig.mcpServers.galaxy;
   }
 
+  // BRC Analytics is a public, anonymous HTTP MCP -- no creds required, so we
+  // register it unconditionally. It exposes BRC genome/assembly/lineage
+  // lookups that the agent can call alongside Galaxy MCP.
+  mcpConfig.mcpServers["brc-analytics"] = {
+    url: "https://dev.brc-analytics.org/api/v1/mcp/",
+    directTools: true,
+  };
+
   mkdirSync(dirname(mcpConfigPath), { recursive: true });
   // mcp.json carries Galaxy credentials in its env block — keep file mode
   // 0600 so other users on a shared machine can't read the API key. The
