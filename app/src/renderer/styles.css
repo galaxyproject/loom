@@ -595,6 +595,31 @@ body:not(.artifact-collapsed) #artifact-toggle {
   animation: blink 1.5s step-end infinite;
 }
 
+/* Heartbeat dot next to the agent status badge. CSS class is added/
+   removed on each agent event (debounced to ~1Hz in JS) — restarts the
+   pulse animation. If the heartbeat stops while the badge still says
+   running/thinking, the brain is genuinely hung. */
+.agent-heartbeat {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  margin-left: -4px;
+  margin-right: 4px;
+  align-self: center;
+  flex-shrink: 0;
+  transition: background 0.4s;
+}
+.agent-heartbeat.pulse {
+  background: var(--accent);
+  animation: heartbeat-pulse 0.8s ease-out;
+}
+@keyframes heartbeat-pulse {
+  0%   { background: var(--accent); transform: scale(1.6); box-shadow: 0 0 4px var(--accent); }
+  100% { background: var(--text-dim); transform: scale(1); box-shadow: 0 0 0 transparent; }
+}
+
 #model-indicator {
   font-family: var(--font);
 }

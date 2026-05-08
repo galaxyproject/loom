@@ -1634,6 +1634,10 @@ window.orbit.onAgentEvent((event) => {
   const type = event.type as string;
   console.log("[orbit] event:", type, JSON.stringify(event).slice(0, 150));
 
+  // Liveness: any event from the brain pulses the heartbeat dot. Debounced
+  // inside tickHeartbeat — message_update fires very rapidly during streaming.
+  tickHeartbeat();
+
   // Capture usage from any event that carries a message with usage
   if (type === "message_start" || type === "message_update" || type === "message_end" || type === "turn_end") {
     captureUsage(event as Record<string, unknown>);
@@ -1647,6 +1651,7 @@ window.orbit.onAgentEvent((event) => {
       streaming = true;
       sendBtn.classList.add("hidden");
       abortBtn.classList.remove("hidden");
+      startTurnTimer();
       // Don't hide thinking yet — wait for actual text content
       break;
 
@@ -1747,6 +1752,7 @@ window.orbit.onAgentEvent((event) => {
     case "agent_end":
       chat.hideThinking();
       streaming = false;
+      stopTurnTimer();
       setStatusBadge("");
       sendBtn.classList.remove("hidden");
       abortBtn.classList.add("hidden");
@@ -1762,6 +1768,7 @@ window.orbit.onAgentEvent((event) => {
       chat.hideThinking();
       chat.addErrorMessage(msg);
       streaming = false;
+      stopTurnTimer();
       setStatusBadge("error");
       sendBtn.classList.remove("hidden");
       abortBtn.classList.add("hidden");
@@ -1991,12 +1998,66 @@ statusBadge.addEventListener("click", () => {
  * "connecting", or "" for the default ready state). `msg` overrides
  * the badge label when present; otherwise the status word is shown.
  */
+// Liveness state. While a turn is in flight we re-render the badge
+// every second so the (M:SS) elapsed counter keeps moving — gives the
+// user a visible signal the brain is alive even when no tool name is
+// changing (#71). turnStartedAt is set on agent_start, cleared on
+// agent_end / status:stopped.
+let lastBadgeBaseText = "";
+let turnStartedAt: number | null = null;
+let elapsedTimer: ReturnType<typeof setInterval> | null = null;
+
+function formatElapsed(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return m > 0 ? `${m}:${String(s).padStart(2, "0")}` : `${s}s`;
+}
+
+function renderBadgeText(): void {
+  if (turnStartedAt) {
+    const elapsed = formatElapsed(Date.now() - turnStartedAt);
+    statusBadge.textContent = `${lastBadgeBaseText} (${elapsed})`;
+  } else {
+    statusBadge.textContent = lastBadgeBaseText;
+  }
+}
+
+function startTurnTimer(): void {
+  turnStartedAt = Date.now();
+  if (elapsedTimer) clearInterval(elapsedTimer);
+  elapsedTimer = setInterval(renderBadgeText, 1000);
+}
+
+function stopTurnTimer(): void {
+  turnStartedAt = null;
+  if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+  renderBadgeText();
+}
+
 function setStatusBadge(status: string, msg?: string): void {
-  statusBadge.textContent = msg || status || "Ready";
+  lastBadgeBaseText = msg || status || "Ready";
   statusBadge.className = ("footer-control status-badge " + (status || "")).trim();
   statusBadgeIsStuck = STUCK_STATUS.has(status);
   statusBadge.style.cursor = statusBadgeIsStuck ? "pointer" : "default";
   statusBadge.title = statusBadgeIsStuck ? "Click to open Preferences" : "";
+  renderBadgeText();
+}
+
+// Heartbeat dot next to the badge — pulses each time an agent event
+// arrives (debounced to ~1Hz so it doesn't strobe during streaming).
+// If it goes still while the badge still says running, the brain is
+// genuinely hung.
+const heartbeatEl = document.getElementById("agent-heartbeat")!;
+let lastHeartbeat = 0;
+function tickHeartbeat(): void {
+  const now = performance.now();
+  if (now - lastHeartbeat < 900) return;
+  lastHeartbeat = now;
+  heartbeatEl.classList.remove("pulse");
+  // Force reflow so removing+adding the class restarts the animation.
+  void (heartbeatEl as HTMLElement).offsetWidth;
+  heartbeatEl.classList.add("pulse");
 }
 
 window.orbit.onAgentStatus((status, msg) => {
