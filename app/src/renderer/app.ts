@@ -1030,7 +1030,7 @@ function handleSlashCommand(text: string): boolean {
     return true;
   }
 
-  // pi-galaxy-analyst commands — pass through to agent
+  // Loom commands — pass through to agent
   if (cmd === "plan" || cmd === "status" || cmd === "notebook" || cmd === "decisions" || cmd === "profiles") {
     chat.addUserMessage(text);
     window.orbit.prompt(`/${cmd}`);

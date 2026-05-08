@@ -7,7 +7,7 @@
 #   # Reboot, then open Ubuntu from Start menu and set up your user.
 #
 # Then inside Ubuntu/WSL2:
-#   curl -fsSL https://raw.githubusercontent.com/galaxyproject/pi-galaxy-analyst/main/scripts/setup-wsl.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/galaxyproject/loom/main/scripts/setup-wsl.sh | bash
 
 set -euo pipefail
 
@@ -17,7 +17,7 @@ echo ""
 # ── Check we're in WSL2 ──────────────────────────────────────────────────────
 if ! grep -qi microsoft /proc/version 2>/dev/null; then
   echo "WARNING: This doesn't look like WSL2. Script is designed for WSL2 on Windows."
-  echo "On native Linux, just run: cd pi-galaxy-analyst/app && npm install && npm start"
+  echo "On native Linux, just run: cd loom/app && npm install && npm start"
   read -rp "Continue anyway? [y/N] " yn
   [[ "$yn" =~ ^[Yy] ]] || exit 0
 fi
@@ -59,13 +59,13 @@ else
   echo "uv/uvx found."
 fi
 
-# ── Clone pi-galaxy-analyst ──────────────────────────────────────────────────
-LOOM_DIR="$HOME/pi-galaxy-analyst"
+# ── Clone Loom ───────────────────────────────────────────────────────────────
+LOOM_DIR="$HOME/loom"
 if [ ! -d "$LOOM_DIR" ]; then
-  echo "Cloning pi-galaxy-analyst..."
-  git clone https://github.com/galaxyproject/pi-galaxy-analyst.git "$LOOM_DIR"
+  echo "Cloning loom..."
+  git clone https://github.com/galaxyproject/loom.git "$LOOM_DIR"
 else
-  echo "pi-galaxy-analyst already cloned at $LOOM_DIR"
+  echo "loom already cloned at $LOOM_DIR"
 fi
 
 # ── Install npm dependencies ─────────────────────────────────────────────────
@@ -79,10 +79,10 @@ echo ""
 echo "=== Setup complete ==="
 echo ""
 echo "To start Orbit (the Electron shell):"
-echo "  cd ~/pi-galaxy-analyst/app && npm start"
+echo "  cd ~/loom/app && npm start"
 echo ""
 echo "Or to use the Loom CLI directly:"
-echo "  cd ~/pi-galaxy-analyst && node bin/loom.js"
+echo "  cd ~/loom && node bin/loom.js"
 echo ""
 echo "Notes:"
 echo "  - WSLg provides the display automatically (Windows 11 / updated Windows 10)"

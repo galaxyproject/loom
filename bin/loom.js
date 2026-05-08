@@ -268,7 +268,7 @@ Set up one of the following:
 
   3. Custom provider (~/.pi/agent/models.json):
      For local/self-hosted models via litellm, ollama, etc.
-     See: https://github.com/galaxyproject/pi-galaxy-analyst#local-llms
+     See: https://github.com/galaxyproject/loom#local-llms
 
   4. OAuth login:
      Run with --provider anthropic (or openai, google, etc.)
