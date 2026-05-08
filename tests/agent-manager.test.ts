@@ -8,6 +8,10 @@ const readdirSyncMock = vi.fn(() => []);
 
 vi.mock("node:child_process", () => ({
   spawn: spawnMock,
+  // execFile is pulled in transitively via agent.ts -> proc-monitor.ts
+  // (collectDescendantsOf walks `ps` for the abort-kill path, #64). Tests
+  // don't trigger abort, but the import must resolve.
+  execFile: vi.fn(),
 }));
 
 vi.mock("node:readline", () => ({
