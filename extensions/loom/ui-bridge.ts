@@ -9,10 +9,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { onNotebookChange, getNotebookPath } from "./state.js";
-import {
-  LoomWidgetKey,
-  encodeMarkdownWidget,
-} from "../../shared/loom-shell-contract.js";
+import { LoomWidgetKey, encodeMarkdownWidget } from "../../shared/loom-shell-contract.js";
 
 export function setupUIBridge(pi: ExtensionAPI): void {
   let latestCtx: ExtensionContext | null = null;

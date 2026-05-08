@@ -16,10 +16,7 @@ export class FilesPanel {
   private showHidden = false;
   private loading = false;
 
-  constructor(
-    container: HTMLElement,
-    onFileOpen: (relPath: string) => void,
-  ) {
+  constructor(container: HTMLElement, onFileOpen: (relPath: string) => void) {
     this.container = container;
     this.onFileOpen = onFileOpen;
   }

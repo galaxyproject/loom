@@ -32,18 +32,13 @@ const piModelRegistryModulePath = join(piPackageDir, "dist/core/model-registry.j
 const userArgs = process.argv.slice(2);
 
 function hasArg(flag) {
-  return userArgs.includes(flag) || userArgs.some(arg => arg.startsWith(`${flag}=`));
+  return userArgs.includes(flag) || userArgs.some((arg) => arg.startsWith(`${flag}=`));
 }
 
-const isInformationalCommand = [
-  "--help",
-  "-h",
-  "--version",
-  "--list-models",
-].some(hasArg);
+const isInformationalCommand = ["--help", "-h", "--version", "--list-models"].some(hasArg);
 
 function getListModelsSearchPattern() {
-  const index = userArgs.findIndex(arg => arg === "--list-models");
+  const index = userArgs.findIndex((arg) => arg === "--list-models");
   if (index === -1) return undefined;
   const candidate = userArgs[index + 1];
   if (!candidate || candidate.startsWith("-") || candidate.startsWith("@")) {
@@ -87,8 +82,7 @@ async function handleInformationalCommand() {
 // each shell's own dir.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const agentDir = process.env.PI_CODING_AGENT_DIR
-  || join(homedir(), ".pi", "agent");
+const agentDir = process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Apply consolidated config
@@ -188,7 +182,11 @@ if (!isInformationalCommand) {
   // mode option on writeFileSync sets perms only when the file is *created*;
   // a follow-up chmod ensures we tighten existing files too.
   writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2), { mode: 0o600 });
-  try { chmodSync(mcpConfigPath, 0o600); } catch { /* best-effort */ }
+  try {
+    chmodSync(mcpConfigPath, 0o600);
+  } catch {
+    /* best-effort */
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -197,21 +195,33 @@ if (!isInformationalCommand) {
 
 function checkLLMProvider() {
   const skipFlags = ["--version", "--help", "-h", "--api-key", "--list-models"];
-  if (userArgs.some(a => skipFlags.some(f => a.startsWith(f)))) return;
+  if (userArgs.some((a) => skipFlags.some((f) => a.startsWith(f)))) return;
   if (hasArg("--provider")) return;
 
   // Consolidated config has an API key
   if (loomConfig.llm?.apiKey) return;
 
   const providerEnvVars = [
-    "ANTHROPIC_API_KEY", "ANTHROPIC_OAUTH_TOKEN",
-    "OPENAI_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY",
-    "MISTRAL_API_KEY", "XAI_API_KEY", "OPENROUTER_API_KEY",
-    "CEREBRAS_API_KEY", "AI_GATEWAY_API_KEY", "HF_TOKEN",
-    "AWS_PROFILE", "AWS_ACCESS_KEY_ID", "GOOGLE_CLOUD_PROJECT",
-    "AZURE_OPENAI_API_KEY", "COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_OAUTH_TOKEN",
+    "OPENAI_API_KEY",
+    "GEMINI_API_KEY",
+    "GROQ_API_KEY",
+    "MISTRAL_API_KEY",
+    "XAI_API_KEY",
+    "OPENROUTER_API_KEY",
+    "CEREBRAS_API_KEY",
+    "AI_GATEWAY_API_KEY",
+    "HF_TOKEN",
+    "AWS_PROFILE",
+    "AWS_ACCESS_KEY_ID",
+    "GOOGLE_CLOUD_PROJECT",
+    "AZURE_OPENAI_API_KEY",
+    "COPILOT_GITHUB_TOKEN",
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
   ];
-  if (providerEnvVars.some(v => process.env[v])) return;
+  if (providerEnvVars.some((v) => process.env[v])) return;
 
   // Config has an encrypted key but this CLI can't decrypt it — Electron's
   // safeStorage lives in the Orbit main process. Point the user at the two
@@ -245,7 +255,7 @@ Do one of the following:
     try {
       const models = JSON.parse(readFileSync(modelsPath, "utf-8"));
       const providers = models.providers || {};
-      if (Object.values(providers).some(p => p.apiKey)) return;
+      if (Object.values(providers).some((p) => p.apiKey)) return;
     } catch {}
   }
 
@@ -286,7 +296,11 @@ if (!hasArg("--provider")) {
   // Prefer consolidated config
   if (loomConfig.llm?.provider) {
     providerArgs.push("--provider", loomConfig.llm.provider);
-    if (loomConfig.llm.model && !userArgs.includes("--model") && !userArgs.some(a => a.startsWith("--model="))) {
+    if (
+      loomConfig.llm.model &&
+      !userArgs.includes("--model") &&
+      !userArgs.some((a) => a.startsWith("--model="))
+    ) {
       providerArgs.push("--model", loomConfig.llm.model);
     }
   } else {
@@ -299,7 +313,7 @@ if (!hasArg("--provider")) {
         const [providerName, providerConfig] = Object.entries(providers)[0] || [];
         if (providerName && providerConfig?.models?.length) {
           providerArgs.push("--provider", providerName);
-          if (!userArgs.includes("--model") && !userArgs.some(a => a.startsWith("--model="))) {
+          if (!userArgs.includes("--model") && !userArgs.some((a) => a.startsWith("--model="))) {
             providerArgs.push("--model", providerConfig.models[0].id);
           }
         }
@@ -309,7 +323,16 @@ if (!hasArg("--provider")) {
 }
 
 // Build args: inject extensions, pass through everything else
-const args = ["-e", mcpAdapterPath, "-e", webAccessPath, "-e", extensionPath, ...providerArgs, ...userArgs];
+const args = [
+  "-e",
+  mcpAdapterPath,
+  "-e",
+  webAccessPath,
+  "-e",
+  extensionPath,
+  ...providerArgs,
+  ...userArgs,
+];
 
 if (await handleInformationalCommand()) {
   process.exit(0);

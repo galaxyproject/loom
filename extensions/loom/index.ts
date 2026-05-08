@@ -19,10 +19,7 @@ import { isTeamDispatchEnabled } from "./teams/is-enabled";
 import { registerSessionIndexTools } from "./session-index/tools";
 import { isSessionIndexEnabled } from "./session-index/is-enabled";
 import * as fs from "fs";
-import {
-  getState,
-  getNotebookPath,
-} from "./state";
+import { getState, getNotebookPath } from "./state";
 import {
   loadProfiles,
   saveProfile,
@@ -33,7 +30,6 @@ import {
 import { LoomWidgetKey, encodeMarkdownWidget } from "../../shared/loom-shell-contract.js";
 
 export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
-
   warnOnUnusableActiveProfile();
 
   setupUIBridge(pi);
@@ -55,17 +51,18 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   // /connect — Galaxy connection with profile support
   // ─────────────────────────────────────────────────────────────────────────────
   pi.registerCommand("connect", {
-    description: "Connect to Galaxy server. Use /connect to pick a profile or add a new one, /connect <name> to switch.",
+    description:
+      "Connect to Galaxy server. Use /connect to pick a profile or add a new one, /connect <name> to switch.",
     handler: async (args, ctx) => {
       const { profiles, active } = loadProfiles();
       const profileNames = Object.keys(profiles);
 
       async function reloadOrMessage(url: string) {
-        if (typeof ctx.reload === 'function') {
+        if (typeof ctx.reload === "function") {
           await ctx.reload();
         } else {
           pi.sendUserMessage(
-            `Please connect to Galaxy at ${url} using the API key from environment variables.`
+            `Please connect to Galaxy at ${url} using the API key from environment variables.`,
           );
         }
       }
@@ -76,13 +73,16 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
           ctx.ui.notify(`Switched to ${requestedName} (${profiles[requestedName].url})`, "info");
           await reloadOrMessage(profiles[requestedName].url);
         } else {
-          ctx.ui.notify(`Unknown profile "${requestedName}". Use /profiles to see available profiles.`, "warning");
+          ctx.ui.notify(
+            `Unknown profile "${requestedName}". Use /profiles to see available profiles.`,
+            "warning",
+          );
         }
         return;
       }
 
       if (profileNames.length > 1) {
-        const choices = profileNames.map(name => {
+        const choices = profileNames.map((name) => {
           const marker = name === active ? "* " : "  ";
           return `${marker}${name} (${profiles[name].url})`;
         });
@@ -94,7 +94,8 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
           return;
         }
 
-        const selectedIndex = typeof selection === 'number' ? selection : choices.indexOf(selection);
+        const selectedIndex =
+          typeof selection === "number" ? selection : choices.indexOf(selection);
 
         if (selectedIndex >= 0 && selectedIndex < profileNames.length) {
           const name = profileNames[selectedIndex];
@@ -103,16 +104,18 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
           await reloadOrMessage(profiles[name].url);
           return;
         }
-      } else if (profileNames.length === 1 && active && process.env.GALAXY_URL && process.env.GALAXY_API_KEY) {
+      } else if (
+        profileNames.length === 1 &&
+        active &&
+        process.env.GALAXY_URL &&
+        process.env.GALAXY_API_KEY
+      ) {
         ctx.ui.notify(`Connecting to ${profiles[active].url}...`, "info");
         await reloadOrMessage(profiles[active].url);
         return;
       }
 
-      const galaxyUrl = await ctx.ui.input(
-        "Galaxy Server URL",
-        "https://usegalaxy.org"
-      );
+      const galaxyUrl = await ctx.ui.input("Galaxy Server URL", "https://usegalaxy.org");
       if (!galaxyUrl) {
         ctx.ui.notify("Connection cancelled", "warning");
         return;
@@ -120,7 +123,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
 
       ctx.ui.notify(
         "To get your API key: Log into Galaxy → User → Preferences → Manage API Key",
-        "info"
+        "info",
       );
       const apiKey = await ctx.ui.input("Galaxy API Key");
       if (!apiKey) {
@@ -207,7 +210,10 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
         }
         return;
       }
-      ctx.ui.notify("No notebook in cwd. A new notebook.md is created automatically on session start.", "info");
+      ctx.ui.notify(
+        "No notebook in cwd. A new notebook.md is created automatically on session start.",
+        "info",
+      );
     },
   });
 
@@ -240,27 +246,29 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
 
     if (event.toolName === "galaxy_connect" && !event.isError) {
       try {
-        const resultText = typeof event.result === 'string'
-          ? event.result
-          : JSON.stringify(event.result);
-        if (resultText.includes('"success": true') || resultText.includes('success')) {
+        const resultText =
+          typeof event.result === "string" ? event.result : JSON.stringify(event.result);
+        if (resultText.includes('"success": true') || resultText.includes("success")) {
           const state = getState();
           state.galaxyConnected = true;
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
 
     if (event.toolName === "galaxy_create_history" && !event.isError) {
       try {
-        const resultText = typeof event.result === 'string'
-          ? event.result
-          : JSON.stringify(event.result);
+        const resultText =
+          typeof event.result === "string" ? event.result : JSON.stringify(event.result);
         const match = resultText.match(/"id":\s*"([^"]+)"/);
         if (match) {
           const state = getState();
           state.currentHistoryId = match[1];
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   });
 
@@ -268,18 +276,20 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
     if (event.toolName === "galaxy_connect") {
       try {
         const firstContent = event.content?.[0];
-        const resultText = firstContent && 'text' in firstContent ? firstContent.text : undefined;
+        const resultText = firstContent && "text" in firstContent ? firstContent.text : undefined;
         if (resultText && resultText.includes('"success": true')) {
           const state = getState();
           state.galaxyConnected = true;
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
 
     if (event.toolName === "galaxy_create_history") {
       try {
         const firstContent = event.content?.[0];
-        const resultText = firstContent && 'text' in firstContent ? firstContent.text : undefined;
+        const resultText = firstContent && "text" in firstContent ? firstContent.text : undefined;
         if (resultText) {
           const match = resultText.match(/"id":\s*"([^"]+)"/);
           if (match) {
@@ -287,7 +297,9 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
             state.currentHistoryId = match[1];
           }
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   });
 }

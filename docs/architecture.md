@@ -138,7 +138,7 @@ Edit/Write tool rewrites notebook.md
 → if loom.managed: commitFile(notebookPath, "Notebook updated")
 ```
 
-There is no separate plan/state mutation path -- the markdown file *is* the state.
+There is no separate plan/state mutation path -- the markdown file _is_ the state.
 
 ### Galaxy invocation tracking
 

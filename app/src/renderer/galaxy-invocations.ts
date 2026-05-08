@@ -110,16 +110,18 @@ function renderRow(inv: Invocation): string {
   const failed = inv.failedJobs ?? 0;
   const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
 
-  const stepsText = inv.totalSteps !== undefined
-    ? `${inv.completedSteps ?? 0}/${inv.totalSteps} steps`
-    : "";
-  const jobsText = total > 0
-    ? `${done}/${total} jobs${failed > 0 ? ` · ${failed} failed` : ""}`
-    : "";
+  const stepsText =
+    inv.totalSteps !== undefined ? `${inv.completedSteps ?? 0}/${inv.totalSteps} steps` : "";
+  const jobsText =
+    total > 0 ? `${done}/${total} jobs${failed > 0 ? ` · ${failed} failed` : ""}` : "";
   const counts = [stepsText, jobsText].filter(Boolean).join(" · ");
 
-  let host = "";
-  try { host = new URL(inv.galaxyServerUrl).host; } catch { host = inv.galaxyServerUrl; }
+  let host: string;
+  try {
+    host = new URL(inv.galaxyServerUrl).host;
+  } catch {
+    host = inv.galaxyServerUrl;
+  }
   const submitted = inv.submittedAt.replace("T", " ").replace(/\.\d+Z$/, "Z");
 
   return `
@@ -143,9 +145,9 @@ function renderRow(inv: Invocation): string {
  * when no invocations exist (with a linger after the last in-progress
  * one finishes so the final state is briefly visible).
  */
-export async function refreshGalaxyInvocations(
-  api: { readFile: (p: string) => Promise<{ ok: true; bytes: Uint8Array } | { ok: false }> },
-): Promise<void> {
+export async function refreshGalaxyInvocations(api: {
+  readFile: (p: string) => Promise<{ ok: true; bytes: Uint8Array } | { ok: false }>;
+}): Promise<void> {
   const section = document.getElementById("activity-galaxy-section");
   const body = document.getElementById("galaxy-invocations-body");
   const countEl = document.getElementById("galaxy-invocations-count");
@@ -158,7 +160,9 @@ export async function refreshGalaxyInvocations(
       const text = new TextDecoder("utf-8").decode(res.bytes);
       invocations = parseInvocationBlocks(text);
     }
-  } catch { /* notebook missing — leave invocations empty */ }
+  } catch {
+    /* notebook missing — leave invocations empty */
+  }
 
   const inProgress = invocations.filter((i) => i.status === "in_progress");
 

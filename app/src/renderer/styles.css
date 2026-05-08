@@ -45,7 +45,9 @@
   --bg-stripe: rgba(255, 255, 255, 0.02);
   --radius: 6px;
   --font: "JetBrains Mono", Monaco, Menlo, Consolas, "Courier New", monospace;
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-sans:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
 
   /* Footer control tokens — single source of truth for the unified footer
      pill style. Every footer item (status, model, Galaxy dot, exec-mode
@@ -62,7 +64,8 @@
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   overflow: hidden;
   background: var(--bg);
@@ -89,7 +92,9 @@ a {
   text-decoration: underline;
   text-decoration-color: rgba(255, 215, 0, 0.4);
   text-underline-offset: 2px;
-  transition: color 0.15s, text-decoration-color 0.15s;
+  transition:
+    color 0.15s,
+    text-decoration-color 0.15s;
 }
 a:hover {
   color: var(--accent-hover);
@@ -213,7 +218,11 @@ body.files-collapsed #files-divider {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: opacity 0.15s, background 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 }
 .files-header-btn:hover {
   opacity: 1;
@@ -236,7 +245,9 @@ body.files-collapsed #files-divider {
   color: var(--text);
 }
 
-#files-tree::-webkit-scrollbar { width: 6px; }
+#files-tree::-webkit-scrollbar {
+  width: 6px;
+}
 #files-tree::-webkit-scrollbar-thumb {
   background: var(--border-strong);
   border-radius: 3px;
@@ -311,7 +322,11 @@ body.files-collapsed #files-divider {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: opacity 0.15s, color 0.15s, border-color 0.15s, background 0.15s;
+  transition:
+    opacity 0.15s,
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
 }
 .pane-title-btn:hover {
   opacity: 1;
@@ -365,7 +380,10 @@ body:not(.artifact-collapsed) #artifact-toggle {
   font-size: 11px;
   cursor: pointer;
   font-family: var(--font-sans);
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
 }
 .file-viewer-btn:hover:not(:disabled) {
   color: var(--accent);
@@ -589,7 +607,10 @@ body:not(.artifact-collapsed) #artifact-toggle {
   font-weight: 500;
   white-space: nowrap;
   appearance: none;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 }
 .footer-control.is-interactive {
   cursor: pointer;
@@ -639,8 +660,16 @@ body:not(.artifact-collapsed) #artifact-toggle {
   animation: heartbeat-pulse 0.8s ease-out;
 }
 @keyframes heartbeat-pulse {
-  0%   { background: var(--accent); transform: scale(1.6); box-shadow: 0 0 4px var(--accent); }
-  100% { background: var(--text-dim); transform: scale(1); box-shadow: 0 0 0 transparent; }
+  0% {
+    background: var(--accent);
+    transform: scale(1.6);
+    box-shadow: 0 0 4px var(--accent);
+  }
+  100% {
+    background: var(--text-dim);
+    transform: scale(1);
+    box-shadow: 0 0 0 transparent;
+  }
 }
 
 #model-indicator {
@@ -662,14 +691,18 @@ body:not(.artifact-collapsed) #artifact-toggle {
 #agent-status {
   margin-right: auto;
 }
-#usage-tokens { white-space: nowrap; }
+#usage-tokens {
+  white-space: nowrap;
+}
 #usage-cost {
   padding-left: 6px;
   border-left: 1px solid rgba(255, 255, 255, 0.15);
   color: var(--accent);
   white-space: nowrap;
 }
-#usage-cost.hidden { display: none; }
+#usage-cost.hidden {
+  display: none;
+}
 
 /* Segmented Local|Cloud control — single rounded-rect container with two
    inner buttons, the active one filled with var(--accent). */
@@ -687,7 +720,9 @@ body:not(.artifact-collapsed) #artifact-toggle {
   height: 100%;
   padding: 0 10px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 .footer-control-segmented .exec-mode-btn:hover:not(.active) {
   color: var(--text);
@@ -856,10 +891,19 @@ body:not(.artifact-collapsed) #artifact-toggle {
   font-weight: 600;
   line-height: 1.3;
 }
-.message.assistant:not(.system-info) h1 { font-size: 18px; }
-.message.assistant:not(.system-info) h2 { font-size: 16px; }
-.message.assistant:not(.system-info) h3 { font-size: 14px; }
-.message.assistant:not(.system-info) h4 { font-size: 13px; color: var(--text); }
+.message.assistant:not(.system-info) h1 {
+  font-size: 18px;
+}
+.message.assistant:not(.system-info) h2 {
+  font-size: 16px;
+}
+.message.assistant:not(.system-info) h3 {
+  font-size: 14px;
+}
+.message.assistant:not(.system-info) h4 {
+  font-size: 13px;
+  color: var(--text);
+}
 
 .message.assistant:not(.system-info) ul,
 .message.assistant:not(.system-info) ol {
@@ -997,12 +1041,24 @@ body:not(.artifact-collapsed) #artifact-toggle {
   line-height: 1;
 }
 
-.thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
-.thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+.thinking-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.thinking-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
 
 @keyframes thinking-bounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-  30% { transform: translateY(-4px); opacity: 1; }
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
 }
 
 .cursor-blink {
@@ -1101,7 +1157,9 @@ body:not(.artifact-collapsed) #artifact-toggle {
   animation: pulse 1.5s ease-in-out infinite;
   pointer-events: none;
 }
-#input-area { position: relative; }
+#input-area {
+  position: relative;
+}
 
 /* Slash-command autocomplete popup. Positioned above the textarea. */
 #slash-popup {
@@ -1119,7 +1177,9 @@ body:not(.artifact-collapsed) #artifact-toggle {
   z-index: 50;
 }
 
-#slash-popup.hidden { display: none; }
+#slash-popup.hidden {
+  display: none;
+}
 
 .slash-popup-item {
   display: flex;
@@ -1131,7 +1191,9 @@ body:not(.artifact-collapsed) #artifact-toggle {
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
-.slash-popup-item:last-child { border-bottom: 0; }
+.slash-popup-item:last-child {
+  border-bottom: 0;
+}
 
 .slash-popup-item:hover,
 .slash-popup-item.active {
@@ -1161,8 +1223,13 @@ body:not(.artifact-collapsed) #artifact-toggle {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 #input-hint {
@@ -1321,7 +1388,9 @@ body:not(.artifact-collapsed) #artifact-toggle {
   letter-spacing: 0.5px;
   flex-shrink: 0;
 }
-.activity-section-header > span { flex: 1; }
+.activity-section-header > span {
+  flex: 1;
+}
 .activity-section-header button {
   background: none;
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -1389,7 +1458,10 @@ body:not(.artifact-collapsed) #artifact-toggle {
   text-overflow: ellipsis;
   width: 100%;
 }
-#proc-monitor-table .col-num { text-align: right; color: var(--text-dim); }
+#proc-monitor-table .col-num {
+  text-align: right;
+  color: var(--text-dim);
+}
 .empty-procs {
   padding: 12px;
   color: var(--text-dim);
@@ -1425,11 +1497,23 @@ body:not(.artifact-collapsed) #artifact-toggle {
   padding: 1px 0;
 }
 
-.shell-line.shell-tool-start { color: #80c3ea; }
-.shell-line.shell-tool-end { color: var(--success); padding-left: 16px; }
-.shell-line.shell-tool-error { color: #ff817b; padding-left: 16px; }
-.shell-line.shell-status { color: var(--galaxy-gold-dark); }
-.shell-line.shell-info { color: rgba(255, 255, 255, 0.5); }
+.shell-line.shell-tool-start {
+  color: #80c3ea;
+}
+.shell-line.shell-tool-end {
+  color: var(--success);
+  padding-left: 16px;
+}
+.shell-line.shell-tool-error {
+  color: #ff817b;
+  padding-left: 16px;
+}
+.shell-line.shell-status {
+  color: var(--galaxy-gold-dark);
+}
+.shell-line.shell-info {
+  color: rgba(255, 255, 255, 0.5);
+}
 .shell-line.shell-stdout {
   color: rgba(255, 255, 255, 0.7);
   padding-left: 16px;
@@ -1571,7 +1655,7 @@ body:not(.artifact-collapsed) #artifact-toggle {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
   width: 560px;
   max-width: 90vw;
   max-height: 85vh;
@@ -1605,7 +1689,9 @@ body:not(.artifact-collapsed) #artifact-toggle {
   cursor: pointer;
   padding: 0 6px;
   opacity: 0.7;
-  transition: opacity 0.15s, color 0.15s;
+  transition:
+    opacity 0.15s,
+    color 0.15s;
 }
 
 .modal-close:hover {
@@ -1667,7 +1753,9 @@ body:not(.artifact-collapsed) #artifact-toggle {
   font-family: var(--font-sans);
   font-size: 13px;
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 
 .prefs-row textarea {
@@ -1792,11 +1880,23 @@ body:not(.artifact-collapsed) #artifact-toggle {
   border-color: var(--accent-light);
 }
 
-.prefs-table .prefs-skills-name { width: 18%; }
-.prefs-table .prefs-skills-url { width: 50%; }
-.prefs-table .prefs-skills-branch { width: 12%; }
-.prefs-table .prefs-skills-enabled { width: 8%; text-align: center; }
-.prefs-table .prefs-skills-actions { width: 12%; text-align: right; }
+.prefs-table .prefs-skills-name {
+  width: 18%;
+}
+.prefs-table .prefs-skills-url {
+  width: 50%;
+}
+.prefs-table .prefs-skills-branch {
+  width: 12%;
+}
+.prefs-table .prefs-skills-enabled {
+  width: 8%;
+  text-align: center;
+}
+.prefs-table .prefs-skills-actions {
+  width: 12%;
+  text-align: right;
+}
 
 .prefs-skills-actions .plan-btn {
   padding: 4px 10px;
@@ -1829,9 +1929,15 @@ body:not(.artifact-collapsed) #artifact-toggle {
   padding: 4px 0;
   color: var(--text-dim);
 }
-.api-key-status.checking { color: var(--text-dim); }
-.api-key-status.valid   { color: #2ea043; }
-.api-key-status.invalid { color: #f85149; }
+.api-key-status.checking {
+  color: var(--text-dim);
+}
+.api-key-status.valid {
+  color: #2ea043;
+}
+.api-key-status.invalid {
+  color: #f85149;
+}
 
 .modal-footer {
   display: flex;
@@ -1882,7 +1988,10 @@ body:not(.artifact-collapsed) #artifact-toggle {
   font: inherit;
   font-size: 12px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
   white-space: nowrap;
 }
 .plan-btn:hover:not(:disabled) {
@@ -2012,7 +2121,9 @@ body:not(.artifact-collapsed) #artifact-toggle {
   font-weight: 400;
   color: rgba(255, 255, 255, 0.6);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .pane-tab-close:hover {
@@ -2140,8 +2251,12 @@ body:not(.artifact-collapsed) #artifact-toggle {
   display: none;
   vertical-align: -2px;
 }
-.notify-marker-warning { color: var(--warning); }
-.notify-marker-error { color: var(--error); }
+.notify-marker-warning {
+  color: var(--warning);
+}
+.notify-marker-error {
+  color: var(--error);
+}
 /* Linux without colored emoji: prefer the SVG. The font-family check
    below targets browsers that fall back to system-monospace for emoji
    codepoints (a tell-tale on Ubuntu without Noto Color Emoji). */
@@ -2150,8 +2265,12 @@ body:not(.artifact-collapsed) #artifact-toggle {
 }
 /* Force-SVG for users who set --no-emoji-prefix; toggleable from
    Preferences later if needed. */
-.no-emoji .notify-marker-emoji { display: none; }
-.no-emoji .notify-marker-svg { display: inline-block; }
+.no-emoji .notify-marker-emoji {
+  display: none;
+}
+.no-emoji .notify-marker-svg {
+  display: inline-block;
+}
 
 /* ── Extension request modal ───────────────────────────────────────────── */
 
@@ -2198,16 +2317,23 @@ body:not(.artifact-collapsed) #artifact-toggle {
   border-color: var(--accent);
 }
 
-
 /* ── Animations ────────────────────────────────────────────────────────────── */
 
 @keyframes fade-up {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes blink {
-  50% { opacity: 0; }
+  50% {
+    opacity: 0;
+  }
 }
 
 /* ── Results ───────────────────────────────────────────────────────────────── */
@@ -2228,11 +2354,24 @@ body:not(.artifact-collapsed) #artifact-toggle {
   color: var(--text);
 }
 
-.result-markdown p { margin: 6px 0; }
-.result-markdown h1, .result-markdown h2, .result-markdown h3 { margin: 12px 0 6px; color: var(--text-bright); }
-.result-markdown h1 { font-size: 16px; }
-.result-markdown h2 { font-size: 14px; }
-.result-markdown h3 { font-size: 13px; }
+.result-markdown p {
+  margin: 6px 0;
+}
+.result-markdown h1,
+.result-markdown h2,
+.result-markdown h3 {
+  margin: 12px 0 6px;
+  color: var(--text-bright);
+}
+.result-markdown h1 {
+  font-size: 16px;
+}
+.result-markdown h2 {
+  font-size: 14px;
+}
+.result-markdown h3 {
+  font-size: 13px;
+}
 
 .result-markdown code {
   font-family: var(--font);
@@ -2251,7 +2390,10 @@ body:not(.artifact-collapsed) #artifact-toggle {
   margin: 8px 0;
 }
 
-.result-markdown pre code { background: transparent; padding: 0; }
+.result-markdown pre code {
+  background: transparent;
+  padding: 0;
+}
 
 .result-markdown ul,
 .result-markdown ol {
@@ -2271,7 +2413,9 @@ body:not(.artifact-collapsed) #artifact-toggle {
   margin: 2px 0;
 }
 
-.result-markdown strong { color: var(--text-bright); }
+.result-markdown strong {
+  color: var(--text-bright);
+}
 
 .result-markdown table {
   width: 100%;
@@ -2316,13 +2460,42 @@ body:not(.artifact-collapsed) #artifact-toggle {
 }
 
 /* Team dispatch (multi-agent critic loop) tool card */
-.team-dispatch-card { margin: 6px 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-.team-dispatch-header { width: 100%; text-align: left; background: var(--bg-hover); border: none; color: var(--text); padding: 6px 10px; cursor: pointer; font: inherit; }
-.team-dispatch-body { padding: 6px 10px; background: var(--bg-surface); }
-.team-dispatch-body.hidden { display: none; }
-.team-turn { margin: 6px 0; }
-.team-turn-meta { font-size: 11px; color: var(--text-dim); font-family: var(--font); }
-.team-turn-content { white-space: pre-wrap; font: inherit; margin: 2px 0 8px; }
+.team-dispatch-card {
+  margin: 6px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.team-dispatch-header {
+  width: 100%;
+  text-align: left;
+  background: var(--bg-hover);
+  border: none;
+  color: var(--text);
+  padding: 6px 10px;
+  cursor: pointer;
+  font: inherit;
+}
+.team-dispatch-body {
+  padding: 6px 10px;
+  background: var(--bg-surface);
+}
+.team-dispatch-body.hidden {
+  display: none;
+}
+.team-turn {
+  margin: 6px 0;
+}
+.team-turn-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: var(--font);
+}
+.team-turn-content {
+  white-space: pre-wrap;
+  font: inherit;
+  margin: 2px 0 8px;
+}
 
 /* Plan draft card — rendered from ```plan``` fences in assistant messages */
 .plan-draft-card {
@@ -2345,14 +2518,20 @@ body:not(.artifact-collapsed) #artifact-toggle {
 .plan-draft-card-body {
   padding: 8px 12px;
 }
-.plan-draft-card-body > :first-child { margin-top: 0; }
-.plan-draft-card-body > :last-child { margin-bottom: 0; }
+.plan-draft-card-body > :first-child {
+  margin-top: 0;
+}
+.plan-draft-card-body > :last-child {
+  margin-bottom: 0;
+}
 .plan-draft-card-body h1 {
   font-size: 15px;
   margin: 0 0 6px;
   color: var(--text);
 }
-.plan-draft-card-body ul { padding-left: 18px; }
+.plan-draft-card-body ul {
+  padding-left: 18px;
+}
 .plan-draft-card-actions {
   display: flex;
   gap: 6px;
@@ -2366,7 +2545,9 @@ body:not(.artifact-collapsed) #artifact-toggle {
   letter-spacing: 0;
   font-weight: 400;
 }
-.plan-draft-card.rejected { opacity: 0.6; }
+.plan-draft-card.rejected {
+  opacity: 0.6;
+}
 .plan-draft-card.rejected .plan-draft-card-header::after {
   content: " · rejected";
   color: var(--text-dim);

@@ -12,23 +12,61 @@ type FileKind = "text" | "image" | "pdf" | "binary";
 
 const TEXT_EXTS = new Set([
   // generic
-  ".md", ".txt", ".log", ".rst",
+  ".md",
+  ".txt",
+  ".log",
+  ".rst",
   // code / config
-  ".py", ".js", ".ts", ".tsx", ".jsx", ".sh", ".rb", ".pl", ".r", ".go", ".rs",
-  ".json", ".jsonl", ".yml", ".yaml", ".toml", ".ini", ".cfg", ".conf",
-  ".xml", ".html", ".htm", ".css",
+  ".py",
+  ".js",
+  ".ts",
+  ".tsx",
+  ".jsx",
+  ".sh",
+  ".rb",
+  ".pl",
+  ".r",
+  ".go",
+  ".rs",
+  ".json",
+  ".jsonl",
+  ".yml",
+  ".yaml",
+  ".toml",
+  ".ini",
+  ".cfg",
+  ".conf",
+  ".xml",
+  ".html",
+  ".htm",
+  ".css",
   // tabular
-  ".csv", ".tsv", ".tab",
+  ".csv",
+  ".tsv",
+  ".tab",
   // bioinformatics text formats
-  ".fa", ".fasta", ".fna", ".faa", ".ffn",
-  ".fastq", ".fq",
+  ".fa",
+  ".fasta",
+  ".fna",
+  ".faa",
+  ".ffn",
+  ".fastq",
+  ".fq",
   ".vcf",
-  ".bed", ".bedgraph", ".wig",
-  ".gff", ".gff3", ".gtf",
+  ".bed",
+  ".bedgraph",
+  ".wig",
+  ".gff",
+  ".gff3",
+  ".gtf",
   ".sam",
-  ".pdb", ".cif",
-  ".nwk", ".newick", ".tree",
-  ".phy", ".phylip",
+  ".pdb",
+  ".cif",
+  ".nwk",
+  ".newick",
+  ".tree",
+  ".phy",
+  ".phylip",
 ]);
 
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"]);
@@ -48,7 +86,7 @@ function extOf(path: string): string {
 
 function kindOf(path: string): FileKind {
   const ext = extOf(path);
-  if (!ext) return "text";                    // no extension → treat as text
+  if (!ext) return "text"; // no extension → treat as text
   if (TEXT_EXTS.has(ext)) return "text";
   if (IMAGE_EXTS.has(ext)) return "image";
   if (PDF_EXTS.has(ext)) return "pdf";
@@ -57,13 +95,19 @@ function kindOf(path: string): FileKind {
 
 function mimeForImage(ext: string): string {
   switch (ext) {
-    case ".png":  return "image/png";
+    case ".png":
+      return "image/png";
     case ".jpg":
-    case ".jpeg": return "image/jpeg";
-    case ".gif":  return "image/gif";
-    case ".svg":  return "image/svg+xml";
-    case ".webp": return "image/webp";
-    default:      return "application/octet-stream";
+    case ".jpeg":
+      return "image/jpeg";
+    case ".gif":
+      return "image/gif";
+    case ".svg":
+      return "image/svg+xml";
+    case ".webp":
+      return "image/webp";
+    default:
+      return "application/octet-stream";
   }
 }
 
@@ -244,7 +288,10 @@ export class FileViewer {
   private reloadImage(bytes: Uint8Array): void {
     const img = this.container.querySelector<HTMLImageElement>("img.file-viewer-image");
     if (!img) return;
-    const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    const buf = bytes.buffer.slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength,
+    ) as ArrayBuffer;
     const blob = new Blob([buf]);
     const nextUrl = URL.createObjectURL(blob);
     const prev = this.currentImageUrl;
@@ -459,12 +506,7 @@ export class FileViewer {
     }
   }
 
-  private renderImage(
-    root: HTMLElement,
-    relPath: string,
-    bytes: Uint8Array,
-    size: number,
-  ): void {
+  private renderImage(root: HTMLElement, relPath: string, bytes: Uint8Array, size: number): void {
     const toolbar = document.createElement("div");
     toolbar.className = "file-viewer-toolbar";
     const filename = document.createElement("span");
@@ -500,12 +542,7 @@ export class FileViewer {
     root.appendChild(wrap);
   }
 
-  private renderPdf(
-    root: HTMLElement,
-    relPath: string,
-    bytes: Uint8Array,
-    size: number,
-  ): void {
+  private renderPdf(root: HTMLElement, relPath: string, bytes: Uint8Array, size: number): void {
     const toolbar = document.createElement("div");
     toolbar.className = "file-viewer-toolbar";
     const filename = document.createElement("span");

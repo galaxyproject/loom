@@ -29,15 +29,15 @@ Flag **gaps**. If a query returns zero meaningful hits ("no genomic foundation m
 
 For each hit that survives a title-and-abstract skim, capture:
 
-| Field | Required | Notes |
-|---|---|---|
-| title | yes | Full title, not abbreviated |
-| first author + year | yes | e.g., "Zhou et al. 2018" |
-| venue | yes | Journal or preprint server |
-| PMID | if available | Required for PubMed-indexed work |
-| DOI | if available | Preferred for preprints and non-PubMed venues |
-| role | yes | One of: precedent, comparator, limitation, replication, novel-connection |
-| relevance | yes | 1-2 sentences, concrete. Not "is related to X" -- say what it supports, refutes, or caveats |
+| Field               | Required     | Notes                                                                                       |
+| ------------------- | ------------ | ------------------------------------------------------------------------------------------- |
+| title               | yes          | Full title, not abbreviated                                                                 |
+| first author + year | yes          | e.g., "Zhou et al. 2018"                                                                    |
+| venue               | yes          | Journal or preprint server                                                                  |
+| PMID                | if available | Required for PubMed-indexed work                                                            |
+| DOI                 | if available | Preferred for preprints and non-PubMed venues                                               |
+| role                | yes          | One of: precedent, comparator, limitation, replication, novel-connection                    |
+| relevance           | yes          | 1-2 sentences, concrete. Not "is related to X" -- say what it supports, refutes, or caveats |
 
 Fifteen to twenty-five candidates is a healthy pre-validation pool for a single research question. Fewer suggests the search was too narrow; many more suggests queries were too generic.
 

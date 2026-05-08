@@ -1,19 +1,11 @@
-import type {
-  ExtensionAPI,
-  ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { Text } from "@mariozechner/pi-tui";
 import { completeSimple } from "@mariozechner/pi-ai";
 import type { Model } from "@mariozechner/pi-ai";
 import { runTeamDispatch } from "./dispatcher";
 import { validateTeamSpec } from "./validate";
-import type {
-  DispatchDeps,
-  RoleTurnResult,
-  TeamSpec,
-  RoleSpec,
-} from "./types";
+import type { DispatchDeps, RoleTurnResult, TeamSpec, RoleSpec } from "./types";
 import { TEAM_DISPATCH_KIND } from "../../../shared/team-dispatch-contract.js";
 import type { TeamDispatchDetails } from "../../../shared/team-dispatch-contract.js";
 
@@ -70,9 +62,7 @@ export function registerTeamTools(pi: ExtensionAPI): void {
             model,
             {
               systemPrompt: preamble,
-              messages: [
-                { role: "user", content: userMessage, timestamp: Date.now() },
-              ],
+              messages: [{ role: "user", content: userMessage, timestamp: Date.now() }],
             },
             { signal: runSignal },
           );
@@ -147,7 +137,10 @@ export function registerTeamTools(pi: ExtensionAPI): void {
  * Resolve a Model<any> from a "provider:modelId" string, a bare Anthropic
  * model id, or by falling back to the session model.
  */
-function resolveModel(ctx: ExtensionContext, modelSpec: string | undefined): Model<any> | undefined {
+function resolveModel(
+  ctx: ExtensionContext,
+  modelSpec: string | undefined,
+): Model<any> | undefined {
   if (modelSpec && modelSpec.trim().length > 0) {
     const colon = modelSpec.indexOf(":");
     const provider = colon >= 0 ? modelSpec.slice(0, colon) : "anthropic";
@@ -156,7 +149,7 @@ function resolveModel(ctx: ExtensionContext, modelSpec: string | undefined): Mod
     if (!found) {
       throw new Error(
         `Unknown model "${modelSpec}" (provider="${provider}", modelId="${modelId}"). ` +
-        `Check ctx.modelRegistry, or omit the model field to use the session default.`,
+          `Check ctx.modelRegistry, or omit the model field to use the session default.`,
       );
     }
     return found;
@@ -180,7 +173,9 @@ function errorResult(err: unknown) {
     summary: `team_dispatch failed: ${message}`,
   };
   return {
-    content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: message }, null, 2) }],
+    content: [
+      { type: "text" as const, text: JSON.stringify({ ok: false, error: message }, null, 2) },
+    ],
     details,
   };
 }

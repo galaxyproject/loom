@@ -1,16 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { runTeamDispatch } from "../extensions/loom/teams/dispatcher";
-import type {
-  TeamSpec,
-  RoleTurnResult,
-  DispatchDeps,
-} from "../extensions/loom/teams/types";
+import type { TeamSpec, RoleTurnResult, DispatchDeps } from "../extensions/loom/teams/types";
 
 function spec(overrides: Partial<TeamSpec> = {}): TeamSpec {
   return {
     description: "find relevant papers",
     roles: [
-      { name: "Finder",    system_prompt: "find" },
+      { name: "Finder", system_prompt: "find" },
       { name: "Validator", system_prompt: "validate" },
     ],
     max_rounds: 5,
@@ -31,10 +27,14 @@ function deps(script: Record<string, string[]>): DispatchDeps {
 
 describe("runTeamDispatch", () => {
   it("converges when the validator approves round 1", async () => {
-    const r = await runTeamDispatch(spec(), deps({
-      Finder:    ["initial proposal"],
-      Validator: ['{"approved": true, "critique": "great"}'],
-    }), new AbortController().signal);
+    const r = await runTeamDispatch(
+      spec(),
+      deps({
+        Finder: ["initial proposal"],
+        Validator: ['{"approved": true, "critique": "great"}'],
+      }),
+      new AbortController().signal,
+    );
     expect(r.converged).toBe(true);
     expect(r.rounds).toBe(1);
     expect(r.final_output).toBe("initial proposal");
@@ -42,14 +42,18 @@ describe("runTeamDispatch", () => {
   });
 
   it("converges on round 3 of 5", async () => {
-    const r = await runTeamDispatch(spec(), deps({
-      Finder:    ["p1", "p2", "p3"],
-      Validator: [
-        '{"approved": false, "critique": "needs X"}',
-        '{"approved": false, "critique": "still missing Y"}',
-        '{"approved": true,  "critique": "ok"}',
-      ],
-    }), new AbortController().signal);
+    const r = await runTeamDispatch(
+      spec(),
+      deps({
+        Finder: ["p1", "p2", "p3"],
+        Validator: [
+          '{"approved": false, "critique": "needs X"}',
+          '{"approved": false, "critique": "still missing Y"}',
+          '{"approved": true,  "critique": "ok"}',
+        ],
+      }),
+      new AbortController().signal,
+    );
     expect(r.converged).toBe(true);
     expect(r.rounds).toBe(3);
     expect(r.final_output).toBe("p3");
@@ -57,13 +61,17 @@ describe("runTeamDispatch", () => {
   });
 
   it("returns best-so-far when max_rounds is hit without approval", async () => {
-    const r = await runTeamDispatch(spec({ max_rounds: 2 }), deps({
-      Finder:    ["p1", "p2"],
-      Validator: [
-        '{"approved": false, "critique": "bad"}',
-        '{"approved": false, "critique": "still bad"}',
-      ],
-    }), new AbortController().signal);
+    const r = await runTeamDispatch(
+      spec({ max_rounds: 2 }),
+      deps({
+        Finder: ["p1", "p2"],
+        Validator: [
+          '{"approved": false, "critique": "bad"}',
+          '{"approved": false, "critique": "still bad"}',
+        ],
+      }),
+      new AbortController().signal,
+    );
     expect(r.converged).toBe(false);
     expect(r.rounds).toBe(2);
     expect(r.final_output).toBe("p2");
@@ -95,7 +103,7 @@ describe("runTeamDispatch", () => {
           err.name = "AbortError";
           throw err;
         }
-        ac.abort();  // abort after the first turn completes
+        ac.abort(); // abort after the first turn completes
         return { content: "p", usage: { input_tokens: 0, output_tokens: 0 } };
       },
     };

@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <!--
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
     CSP: defense-in-depth alongside DOMPurify on every markdown sink.
     `default-src 'self'` blocks inline scripts; `'unsafe-inline'` on style is
     accepted because Vite injects styles inline during dev and we sanitize all
@@ -13,478 +13,635 @@
     object-src + frame-src allow blob: for the file-viewer PDF preview —
     Chromium's built-in PDF viewer creates an inner frame at the blob URL.
   -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' orbit-artifact: data: blob:; connect-src 'self' http://localhost:* ws://localhost:*; font-src 'self' data:; object-src blob:; frame-src blob:; base-uri 'self'; form-action 'none';" />
-  <title>orbit</title>
-  <link rel="stylesheet" href="./styles.css" />
-</head>
-<body>
-  <div id="app">
-    <div id="app-main">
-    <!-- Left pane: File tree sidebar -->
-    <div id="files-pane" class="pane">
-      <div class="pane-title" id="files-title">
-        <span class="files-title-label">Files</span>
-        <div class="files-title-actions">
-          <button id="files-refresh" class="files-header-btn" title="Refresh file tree">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="23 4 23 10 17 10"/>
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' orbit-artifact: data: blob:; connect-src 'self' http://localhost:* ws://localhost:*; font-src 'self' data:; object-src blob:; frame-src blob:; base-uri 'self'; form-action 'none';"
+    />
+    <title>orbit</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <div id="app-main">
+        <!-- Left pane: File tree sidebar -->
+        <div id="files-pane" class="pane">
+          <div class="pane-title" id="files-title">
+            <span class="files-title-label">Files</span>
+            <div class="files-title-actions">
+              <button id="files-refresh" class="files-header-btn" title="Refresh file tree">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <polyline points="23 4 23 10 17 10" />
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                </svg>
+              </button>
+              <button
+                id="files-show-hidden"
+                class="files-header-btn"
+                title="Show hidden files"
+                aria-pressed="false"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div id="files-tree"></div>
+        </div>
+
+        <!-- Draggable divider between files pane and chat -->
+        <div id="files-divider"></div>
+
+        <!-- Left pane: Chat -->
+        <div id="chat-pane" class="pane">
+          <div class="pane-title pane-title-with-controls" id="chat-title">
+            <button
+              id="files-toggle"
+              class="pane-title-btn"
+              title="Toggle files sidebar (Ctrl+B)"
+              aria-label="Toggle files sidebar"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+                />
+              </svg>
+            </button>
+            <span class="pane-title-label">Chat</span>
+            <button
+              id="artifact-toggle"
+              class="pane-title-btn"
+              title="Toggle notebook pane (Ctrl+\)"
+              aria-label="Toggle notebook pane"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <line x1="15" y1="3" x2="15" y2="21" />
+              </svg>
+            </button>
+          </div>
+          <div id="messages"></div>
+
+          <div id="input-area">
+            <div id="slash-popup" class="hidden" role="listbox" aria-label="Slash commands"></div>
+            <span
+              id="queued-indicator"
+              class="hidden"
+              title="Queued — will send when agent is ready"
+              >queued <span aria-hidden="true">↓</span></span
+            >
+            <textarea
+              id="input"
+              placeholder="Ask for a plan, drop a file path, or type / for commands"
+              rows="1"
+              aria-label="Chat input"
+              aria-haspopup="listbox"
+              aria-controls="slash-popup"
+              aria-autocomplete="list"
+              aria-expanded="false"
+            ></textarea>
+            <button id="send-btn" title="Send" aria-label="Send message">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" />
+              </svg>
+            </button>
+            <button id="abort-btn" title="Stop" class="hidden" aria-label="Stop streaming response">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+            </button>
+          </div>
+          <div id="input-hint">
+            <span>Type <code>/</code> to see available commands</span>
+          </div>
+        </div>
+
+        <!-- Draggable divider -->
+        <div id="divider"></div>
+
+        <!-- Right pane: Notebook / Activity -->
+        <div id="artifact-pane" class="pane">
+          <div class="pane-title pane-tabs" id="artifact-tabs">
+            <button class="pane-tab active" data-tab="notebook">Notebook</button>
+            <button class="pane-tab" data-tab="activity">Activity</button>
+            <button class="pane-tab pane-tab-closeable" data-tab="file" hidden>
+              <span class="pane-tab-label">File</span>
+              <span class="pane-tab-close" id="file-tab-close" title="Close file">×</span>
+            </button>
+          </div>
+          <div id="artifact-content">
+            <div id="notebook-view" class="pane-body">
+              <div class="empty-state">
+                <p>
+                  The notebook is the running log of your analysis — plan, steps, decisions, and
+                  Galaxy references — persisted to a markdown file in your working directory and
+                  committed to git on every change.
+                </p>
+                <p>
+                  It'll appear here once the agent writes to <code>notebook.md</code>, or you can
+                  ask it to summarize the conversation so far.
+                </p>
+              </div>
+            </div>
+            <div id="activity-view" class="pane-body hidden">
+              <div id="activity-galaxy-section" class="hidden">
+                <div class="activity-section-header">
+                  <span
+                    >Galaxy invocations
+                    <span id="galaxy-invocations-count" class="zero">0</span></span
+                  >
+                </div>
+                <div id="galaxy-invocations-body"></div>
+              </div>
+              <div id="activity-shell-section">
+                <div class="activity-section-header">
+                  <span>Shell</span>
+                  <button id="agent-shell-clear" title="Clear shell">clear</button>
+                </div>
+                <div id="agent-shell-body"></div>
+              </div>
+              <div id="activity-proc-section">
+                <div class="activity-section-header">
+                  <span>Processes <span id="proc-monitor-count" class="zero">0</span></span>
+                </div>
+                <div id="proc-monitor-body">
+                  <table id="proc-monitor-table">
+                    <thead>
+                      <tr>
+                        <th>PID</th>
+                        <th>CPU%</th>
+                        <th>MEM%</th>
+                        <th>RSS</th>
+                        <th>Time</th>
+                        <th>Command</th>
+                      </tr>
+                    </thead>
+                    <tbody id="proc-monitor-rows">
+                      <tr>
+                        <td colspan="6" class="empty-procs">No subprocesses running</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <div id="file-view" class="pane-body hidden"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer bar — status indicators (pane toggles live in chat-title) -->
+      <div id="app-footer">
+        <span id="agent-status" class="footer-control status-badge">connecting...</span>
+        <span
+          id="agent-heartbeat"
+          class="agent-heartbeat"
+          aria-hidden="true"
+          title="Brain liveness — pulses on every event from the brain"
+        ></span>
+        <button
+          id="galaxy-status"
+          class="footer-control is-interactive status-dot status-dot-disconnected"
+          title="Galaxy: not configured"
+          aria-label="Galaxy connection: not configured. Click to open Preferences."
+        >
+          <span class="status-dot-label">Galaxy</span>
+        </button>
+        <button
+          id="report-issue-btn"
+          class="footer-control is-interactive"
+          title="Report an issue"
+          aria-label="Report an issue"
+        >
+          Report
+        </button>
+        <div
+          id="exec-mode-toggle"
+          class="footer-control footer-control-segmented"
+          role="radiogroup"
+          aria-label="Execution mode"
+          title="Execution mode: Local = everything runs locally; Cloud = agent decides per plan whether each step runs locally or on Galaxy."
+        >
+          <button
+            id="exec-mode-local"
+            class="exec-mode-btn"
+            data-mode="local"
+            role="radio"
+            aria-checked="false"
+          >
+            Local
+          </button>
+          <button
+            id="exec-mode-cloud"
+            class="exec-mode-btn active"
+            data-mode="cloud"
+            role="radio"
+            aria-checked="true"
+          >
+            Cloud
+          </button>
+        </div>
+        <button
+          id="model-indicator"
+          class="footer-control is-interactive hidden"
+          title="Click to change model"
+        >
+          <span id="model-indicator-name">—</span>
+        </button>
+        <div id="usage-bar" class="footer-control" title="Session token usage">
+          <span id="usage-tokens">0 tok</span>
+          <span id="usage-cost"></span>
+        </div>
+        <div id="cwd-bar" class="footer-control">
+          <span id="cwd-path" title="Analysis directory">~</span>
+          <button
+            id="cwd-change"
+            class="cwd-change-btn"
+            title="Change directory"
+            aria-label="Change analysis directory"
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+              />
             </svg>
           </button>
-          <button id="files-show-hidden" class="files-header-btn" title="Show hidden files" aria-pressed="false">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-              <circle cx="12" cy="12" r="3"/>
-            </svg>
-          </button>
         </div>
       </div>
-      <div id="files-tree"></div>
     </div>
 
-    <!-- Draggable divider between files pane and chat -->
-    <div id="files-divider"></div>
+    <!-- Preferences Modal -->
+    <div id="prefs-overlay" class="modal-overlay hidden">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Preferences</h2>
+          <button id="prefs-close" class="modal-close" title="Close">×</button>
+        </div>
+        <div class="modal-body">
+          <section class="prefs-section">
+            <h3>LLM Provider</h3>
+            <div class="prefs-row">
+              <label for="prefs-provider">Provider</label>
+              <select id="prefs-provider">
+                <option value="anthropic">Anthropic</option>
+                <option value="openai">OpenAI</option>
+                <option value="google">Google (Gemini)</option>
+                <option value="mistral">Mistral</option>
+                <option value="groq">Groq</option>
+                <option value="xai">xAI</option>
+                <option value="ollama">Ollama (local)</option>
+              </select>
+            </div>
+            <div class="prefs-row">
+              <label for="prefs-model">Model</label>
+              <select id="prefs-model"></select>
+            </div>
+            <div class="prefs-row prefs-hint">
+              <span></span>
+              <span class="prefs-hint-text">
+                Cost guide: pick the cheapest model that handles your task. Mid-tier models (Sonnet
+                / GPT-4o / Gemini Flash class) are usually fine for plan drafting and routine
+                execution; reach for flagship (Opus / o1 class) only when you hit complex reasoning.
+                Prices in the dropdown are per 1M tokens (input/output).
+              </span>
+            </div>
+            <div class="prefs-row">
+              <label for="prefs-api-key">API Key</label>
+              <input id="prefs-api-key" type="password" placeholder="sk-..." />
+            </div>
+            <div class="prefs-row prefs-hint">
+              <span></span>
+              <span id="prefs-api-key-status" class="api-key-status"></span>
+            </div>
+          </section>
 
-    <!-- Left pane: Chat -->
-    <div id="chat-pane" class="pane">
-      <div class="pane-title pane-title-with-controls" id="chat-title">
-        <button id="files-toggle" class="pane-title-btn" title="Toggle files sidebar (Ctrl+B)" aria-label="Toggle files sidebar">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-          </svg>
-        </button>
-        <span class="pane-title-label">Chat</span>
-        <button id="artifact-toggle" class="pane-title-btn" title="Toggle notebook pane (Ctrl+\)" aria-label="Toggle notebook pane">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="18" height="18" rx="2"/>
-            <line x1="15" y1="3" x2="15" y2="21"/>
-          </svg>
-        </button>
-      </div>
-      <div id="messages"></div>
+          <section class="prefs-section">
+            <h3>Galaxy</h3>
+            <div class="prefs-row">
+              <label for="prefs-galaxy-url">URL</label>
+              <input id="prefs-galaxy-url" type="text" placeholder="https://usegalaxy.org" />
+            </div>
+            <div class="prefs-row">
+              <label for="prefs-galaxy-key">API Key</label>
+              <input id="prefs-galaxy-key" type="password" placeholder="Galaxy API key" />
+            </div>
+            <div id="prefs-galaxy-error" class="prefs-galaxy-error"></div>
+            <div class="prefs-row prefs-galaxy-actions hidden" id="prefs-galaxy-actions-row">
+              <span></span>
+              <button id="prefs-galaxy-disconnect" class="plan-btn danger" type="button">
+                Disconnect Galaxy
+              </button>
+            </div>
+          </section>
 
-      <div id="input-area">
-        <div id="slash-popup" class="hidden" role="listbox" aria-label="Slash commands"></div>
-        <span id="queued-indicator" class="hidden" title="Queued — will send when agent is ready">queued <span aria-hidden="true">↓</span></span>
-        <textarea
-          id="input"
-          placeholder="Ask for a plan, drop a file path, or type / for commands"
-          rows="1"
-          aria-label="Chat input"
-          aria-haspopup="listbox"
-          aria-controls="slash-popup"
-          aria-autocomplete="list"
-          aria-expanded="false"
-        ></textarea>
-        <button id="send-btn" title="Send" aria-label="Send message">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13"/>
-          </svg>
-        </button>
-        <button id="abort-btn" title="Stop" class="hidden" aria-label="Stop streaming response">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-            <rect x="6" y="6" width="12" height="12" rx="2"/>
-          </svg>
-        </button>
-      </div>
-      <div id="input-hint">
-        <span>Type <code>/</code> to see available commands</span>
-      </div>
-    </div>
+          <section class="prefs-section">
+            <h3>Analysis</h3>
+            <div class="prefs-row">
+              <label for="prefs-default-cwd">Default directory</label>
+              <div class="prefs-row-with-btn">
+                <input id="prefs-default-cwd" type="text" placeholder="~/.loom/analyses" />
+                <button id="prefs-browse-cwd" class="plan-btn">Browse</button>
+              </div>
+            </div>
+            <div class="prefs-row">
+              <label for="prefs-conda-bin">Package manager</label>
+              <select id="prefs-conda-bin">
+                <option value="auto">Auto (mamba if available)</option>
+                <option value="mamba">mamba</option>
+                <option value="conda">conda</option>
+              </select>
+            </div>
+          </section>
 
-    <!-- Draggable divider -->
-    <div id="divider"></div>
-
-    <!-- Right pane: Notebook / Activity -->
-    <div id="artifact-pane" class="pane">
-      <div class="pane-title pane-tabs" id="artifact-tabs">
-        <button class="pane-tab active" data-tab="notebook">Notebook</button>
-        <button class="pane-tab" data-tab="activity">Activity</button>
-        <button class="pane-tab pane-tab-closeable" data-tab="file" hidden>
-          <span class="pane-tab-label">File</span>
-          <span class="pane-tab-close" id="file-tab-close" title="Close file">×</span>
-        </button>
-      </div>
-      <div id="artifact-content">
-        <div id="notebook-view" class="pane-body">
-          <div class="empty-state">
-            <p>The notebook is the running log of your analysis — plan, steps, decisions, and Galaxy references — persisted to a markdown file in your working directory and committed to git on every change.</p>
-            <p>It'll appear here once the agent writes to <code>notebook.md</code>, or you can ask it to summarize the conversation so far.</p>
+          <section class="prefs-section">
+            <h3>Skills</h3>
+            <p class="prefs-help">
+              GitHub repos with Claude-Code-style skills (top-level
+              <code>AGENTS.md</code> + nested <code>SKILL.md</code> files). The agent fetches them
+              on demand via the <code>skills_fetch</code> tool.
+              <strong>Alpha restriction:</strong> only repos under
+              <code>github.com/galaxyproject/*</code> are accepted (the agent treats fetched skills
+              as authoritative instructions, so the allowlist limits prompt-injection surface).
+              <code>galaxy-skills</code> is the default and ships with Loom; you can disable or
+              remove it, but a default is re-seeded if all repos are removed.
+            </p>
+            <table id="prefs-skills-table" class="prefs-table">
+              <thead>
+                <tr>
+                  <th class="prefs-skills-name">Name</th>
+                  <th class="prefs-skills-url">GitHub URL</th>
+                  <th class="prefs-skills-branch">Branch</th>
+                  <th class="prefs-skills-enabled">Enabled</th>
+                  <th class="prefs-skills-actions"></th>
+                </tr>
+              </thead>
+              <tbody id="prefs-skills-rows"></tbody>
+            </table>
+            <div class="prefs-row">
+              <button id="prefs-skills-add" class="plan-btn">+ Add repo</button>
+            </div>
+          </section>
+        </div>
+        <div class="modal-footer">
+          <span id="prefs-restart-note">Changes will restart the agent session.</span>
+          <div class="modal-actions">
+            <button id="prefs-cancel" class="plan-btn">Cancel</button>
+            <button id="prefs-save" class="plan-btn execute">Save</button>
           </div>
         </div>
-        <div id="activity-view" class="pane-body hidden">
-          <div id="activity-galaxy-section" class="hidden">
-            <div class="activity-section-header">
-              <span>Galaxy invocations <span id="galaxy-invocations-count" class="zero">0</span></span>
-            </div>
-            <div id="galaxy-invocations-body"></div>
-          </div>
-          <div id="activity-shell-section">
-            <div class="activity-section-header">
-              <span>Shell</span>
-              <button id="agent-shell-clear" title="Clear shell">clear</button>
-            </div>
-            <div id="agent-shell-body"></div>
-          </div>
-          <div id="activity-proc-section">
-            <div class="activity-section-header">
-              <span>Processes <span id="proc-monitor-count" class="zero">0</span></span>
-            </div>
-            <div id="proc-monitor-body">
-              <table id="proc-monitor-table">
-                <thead>
-                  <tr>
-                    <th>PID</th>
-                    <th>CPU%</th>
-                    <th>MEM%</th>
-                    <th>RSS</th>
-                    <th>Time</th>
-                    <th>Command</th>
-                  </tr>
-                </thead>
-                <tbody id="proc-monitor-rows">
-                  <tr><td colspan="6" class="empty-procs">No subprocesses running</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
+      </div>
+    </div>
+
+    <!-- First-run Welcome Overlay -->
+    <div id="welcome-overlay" class="modal-overlay hidden">
+      <div class="modal welcome-modal">
+        <div class="modal-header">
+          <h2>Welcome to orbit</h2>
         </div>
-        <div id="file-view" class="pane-body hidden"></div>
-      </div>
-    </div>
-    </div>
-
-    <!-- Footer bar — status indicators (pane toggles live in chat-title) -->
-    <div id="app-footer">
-      <span id="agent-status" class="footer-control status-badge">connecting...</span>
-      <span id="agent-heartbeat" class="agent-heartbeat" aria-hidden="true" title="Brain liveness — pulses on every event from the brain"></span>
-      <button id="galaxy-status" class="footer-control is-interactive status-dot status-dot-disconnected" title="Galaxy: not configured" aria-label="Galaxy connection: not configured. Click to open Preferences.">
-        <span class="status-dot-label">Galaxy</span>
-      </button>
-      <button id="report-issue-btn" class="footer-control is-interactive" title="Report an issue" aria-label="Report an issue">Report</button>
-      <div id="exec-mode-toggle" class="footer-control footer-control-segmented" role="radiogroup" aria-label="Execution mode" title="Execution mode: Local = everything runs locally; Cloud = agent decides per plan whether each step runs locally or on Galaxy.">
-        <button id="exec-mode-local" class="exec-mode-btn" data-mode="local" role="radio" aria-checked="false">Local</button>
-        <button id="exec-mode-cloud" class="exec-mode-btn active" data-mode="cloud" role="radio" aria-checked="true">Cloud</button>
-      </div>
-      <button id="model-indicator" class="footer-control is-interactive hidden" title="Click to change model">
-        <span id="model-indicator-name">—</span>
-      </button>
-      <div id="usage-bar" class="footer-control" title="Session token usage">
-        <span id="usage-tokens">0 tok</span>
-        <span id="usage-cost"></span>
-      </div>
-      <div id="cwd-bar" class="footer-control">
-        <span id="cwd-path" title="Analysis directory">~</span>
-        <button id="cwd-change" class="cwd-change-btn" title="Change directory" aria-label="Change analysis directory">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Preferences Modal -->
-  <div id="prefs-overlay" class="modal-overlay hidden">
-    <div class="modal">
-      <div class="modal-header">
-        <h2>Preferences</h2>
-        <button id="prefs-close" class="modal-close" title="Close">×</button>
-      </div>
-      <div class="modal-body">
-        <section class="prefs-section">
-          <h3>LLM Provider</h3>
-          <div class="prefs-row">
-            <label for="prefs-provider">Provider</label>
-            <select id="prefs-provider">
-              <option value="anthropic">Anthropic</option>
-              <option value="openai">OpenAI</option>
-              <option value="google">Google (Gemini)</option>
-              <option value="mistral">Mistral</option>
-              <option value="groq">Groq</option>
-              <option value="xai">xAI</option>
-              <option value="ollama">Ollama (local)</option>
-            </select>
-          </div>
-          <div class="prefs-row">
-            <label for="prefs-model">Model</label>
-            <select id="prefs-model"></select>
-          </div>
-          <div class="prefs-row prefs-hint">
-            <span></span>
-            <span class="prefs-hint-text">
-              Cost guide: pick the cheapest model that handles your task. Mid-tier
-              models (Sonnet / GPT-4o / Gemini Flash class) are usually fine for
-              plan drafting and routine execution; reach for flagship (Opus /
-              o1 class) only when you hit complex reasoning. Prices in the dropdown
-              are per 1M tokens (input/output).
-            </span>
-          </div>
-          <div class="prefs-row">
-            <label for="prefs-api-key">API Key</label>
-            <input id="prefs-api-key" type="password" placeholder="sk-..." />
-          </div>
-          <div class="prefs-row prefs-hint">
-            <span></span>
-            <span id="prefs-api-key-status" class="api-key-status"></span>
-          </div>
-        </section>
-
-        <section class="prefs-section">
-          <h3>Galaxy</h3>
-          <div class="prefs-row">
-            <label for="prefs-galaxy-url">URL</label>
-            <input id="prefs-galaxy-url" type="text" placeholder="https://usegalaxy.org" />
-          </div>
-          <div class="prefs-row">
-            <label for="prefs-galaxy-key">API Key</label>
-            <input id="prefs-galaxy-key" type="password" placeholder="Galaxy API key" />
-          </div>
-          <div id="prefs-galaxy-error" class="prefs-galaxy-error"></div>
-          <div class="prefs-row prefs-galaxy-actions hidden" id="prefs-galaxy-actions-row">
-            <span></span>
-            <button id="prefs-galaxy-disconnect" class="plan-btn danger" type="button">Disconnect Galaxy</button>
-          </div>
-        </section>
-
-        <section class="prefs-section">
-          <h3>Analysis</h3>
-          <div class="prefs-row">
-            <label for="prefs-default-cwd">Default directory</label>
-            <div class="prefs-row-with-btn">
-              <input id="prefs-default-cwd" type="text" placeholder="~/.loom/analyses" />
-              <button id="prefs-browse-cwd" class="plan-btn">Browse</button>
-            </div>
-          </div>
-          <div class="prefs-row">
-            <label for="prefs-conda-bin">Package manager</label>
-            <select id="prefs-conda-bin">
-              <option value="auto">Auto (mamba if available)</option>
-              <option value="mamba">mamba</option>
-              <option value="conda">conda</option>
-            </select>
-          </div>
-        </section>
-
-        <section class="prefs-section">
-          <h3>Skills</h3>
-          <p class="prefs-help">
-            GitHub repos with Claude-Code-style skills (top-level
-            <code>AGENTS.md</code> + nested <code>SKILL.md</code> files). The
-            agent fetches them on demand via the <code>skills_fetch</code>
-            tool. <strong>Alpha restriction:</strong> only repos under
-            <code>github.com/galaxyproject/*</code> are accepted (the agent
-            treats fetched skills as authoritative instructions, so the
-            allowlist limits prompt-injection surface).
-            <code>galaxy-skills</code> is the default and ships with Loom;
-            you can disable or remove it, but a default is re-seeded if
-            all repos are removed.
+        <div class="modal-body">
+          <img
+            class="welcome-badge"
+            src="./assets/badges/ask-me-about-loom.svg"
+            alt="Ask me about Loom"
+          />
+          <p class="welcome-intro">
+            orbit is an AI-driven bioinformatics analysis app. Configure your LLM provider to get
+            started. You can change settings later in Preferences.
           </p>
-          <table id="prefs-skills-table" class="prefs-table">
-            <thead>
-              <tr>
-                <th class="prefs-skills-name">Name</th>
-                <th class="prefs-skills-url">GitHub URL</th>
-                <th class="prefs-skills-branch">Branch</th>
-                <th class="prefs-skills-enabled">Enabled</th>
-                <th class="prefs-skills-actions"></th>
-              </tr>
-            </thead>
-            <tbody id="prefs-skills-rows"></tbody>
-          </table>
-          <div class="prefs-row">
-            <button id="prefs-skills-add" class="plan-btn">+ Add repo</button>
-          </div>
-        </section>
-      </div>
-      <div class="modal-footer">
-        <span id="prefs-restart-note">Changes will restart the agent session.</span>
-        <div class="modal-actions">
-          <button id="prefs-cancel" class="plan-btn">Cancel</button>
-          <button id="prefs-save" class="plan-btn execute">Save</button>
-        </div>
-      </div>
-    </div>
-  </div>
 
-  <!-- First-run Welcome Overlay -->
-  <div id="welcome-overlay" class="modal-overlay hidden">
-    <div class="modal welcome-modal">
-      <div class="modal-header">
-        <h2>Welcome to orbit</h2>
-      </div>
-      <div class="modal-body">
-        <img
-          class="welcome-badge"
-          src="./assets/badges/ask-me-about-loom.svg"
-          alt="Ask me about Loom"
-        />
-        <p class="welcome-intro">
-          orbit is an AI-driven bioinformatics analysis app. Configure your LLM provider
-          to get started. You can change settings later in Preferences.
-        </p>
-
-        <section class="prefs-section">
-          <h3>LLM Provider <span class="required">*required</span></h3>
-          <div class="prefs-row">
-            <label for="welcome-provider">Provider</label>
-            <select id="welcome-provider">
-              <option value="anthropic">Anthropic</option>
-              <option value="openai">OpenAI</option>
-              <option value="google">Google (Gemini)</option>
-              <option value="mistral">Mistral</option>
-              <option value="groq">Groq</option>
-              <option value="xai">xAI</option>
-              <option value="ollama">Ollama (local)</option>
-            </select>
-          </div>
-          <div class="prefs-row">
-            <label for="welcome-model">Model</label>
-            <select id="welcome-model"></select>
-          </div>
-          <div class="prefs-row">
-            <label for="welcome-api-key">API Key</label>
-            <input id="welcome-api-key" type="password" placeholder="sk-..." />
-          </div>
-          <div class="prefs-row prefs-hint">
-            <span></span>
-            <span id="welcome-api-key-status" class="api-key-status"></span>
-          </div>
-        </section>
-
-        <details class="welcome-details">
-          <summary>Galaxy server (optional)</summary>
-          <div class="prefs-row">
-            <label for="welcome-galaxy-url">URL</label>
-            <input id="welcome-galaxy-url" type="text" placeholder="https://usegalaxy.org" />
-          </div>
-          <div class="prefs-row">
-            <label for="welcome-galaxy-key">API Key</label>
-            <input id="welcome-galaxy-key" type="password" placeholder="Galaxy API key" />
-          </div>
-          <p class="welcome-hint">
-            Configure Galaxy to enable Remote execution mode. You can do this later in
-            Preferences.
-          </p>
-        </details>
-
-        <details class="welcome-details">
-          <summary>Working directory (optional)</summary>
-          <div class="prefs-row">
-            <label for="welcome-cwd">Default directory</label>
-            <div class="prefs-row-with-btn">
-              <input id="welcome-cwd" type="text" placeholder="~/orbit-analyses" />
-              <button id="welcome-browse-cwd" class="plan-btn">Browse</button>
+          <section class="prefs-section">
+            <h3>LLM Provider <span class="required">*required</span></h3>
+            <div class="prefs-row">
+              <label for="welcome-provider">Provider</label>
+              <select id="welcome-provider">
+                <option value="anthropic">Anthropic</option>
+                <option value="openai">OpenAI</option>
+                <option value="google">Google (Gemini)</option>
+                <option value="mistral">Mistral</option>
+                <option value="groq">Groq</option>
+                <option value="xai">xAI</option>
+                <option value="ollama">Ollama (local)</option>
+              </select>
             </div>
+            <div class="prefs-row">
+              <label for="welcome-model">Model</label>
+              <select id="welcome-model"></select>
+            </div>
+            <div class="prefs-row">
+              <label for="welcome-api-key">API Key</label>
+              <input id="welcome-api-key" type="password" placeholder="sk-..." />
+            </div>
+            <div class="prefs-row prefs-hint">
+              <span></span>
+              <span id="welcome-api-key-status" class="api-key-status"></span>
+            </div>
+          </section>
+
+          <details class="welcome-details">
+            <summary>Galaxy server (optional)</summary>
+            <div class="prefs-row">
+              <label for="welcome-galaxy-url">URL</label>
+              <input id="welcome-galaxy-url" type="text" placeholder="https://usegalaxy.org" />
+            </div>
+            <div class="prefs-row">
+              <label for="welcome-galaxy-key">API Key</label>
+              <input id="welcome-galaxy-key" type="password" placeholder="Galaxy API key" />
+            </div>
+            <p class="welcome-hint">
+              Configure Galaxy to enable Remote execution mode. You can do this later in
+              Preferences.
+            </p>
+          </details>
+
+          <details class="welcome-details">
+            <summary>Working directory (optional)</summary>
+            <div class="prefs-row">
+              <label for="welcome-cwd">Default directory</label>
+              <div class="prefs-row-with-btn">
+                <input id="welcome-cwd" type="text" placeholder="~/orbit-analyses" />
+                <button id="welcome-browse-cwd" class="plan-btn">Browse</button>
+              </div>
+            </div>
+          </details>
+        </div>
+        <div class="modal-footer">
+          <span id="welcome-error" class="welcome-error"></span>
+          <div class="modal-actions">
+            <button id="welcome-skip" class="plan-btn">Skip — set up later</button>
+            <button id="welcome-save" class="plan-btn execute">Save and continue</button>
           </div>
-        </details>
-      </div>
-      <div class="modal-footer">
-        <span id="welcome-error" class="welcome-error"></span>
-        <div class="modal-actions">
-          <button id="welcome-skip" class="plan-btn">Skip — set up later</button>
-          <button id="welcome-save" class="plan-btn execute">Save and continue</button>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- /new confirm modal: shown when user starts a fresh session in a dir with an existing notebook -->
-  <div id="new-session-overlay" class="modal-overlay hidden">
-    <div class="modal">
-      <div class="modal-header">
-        <h2>Start a new session?</h2>
-      </div>
-      <div class="modal-body">
-        <p>This directory already contains an analysis notebook.</p>
-        <p>
-          <strong>Keep notebook</strong> — start a fresh chat, but keep the existing
-          <code>notebook.md</code> and activity log so you can continue adding to them.
-        </p>
-        <p>
-          <strong>Start fresh</strong> — delete <code>notebook.md</code>, <code>activity.jsonl</code>,
-          and the session log, then begin a new analysis. The deletion is committed to git,
-          so the old notebook remains recoverable via <code>git log</code> / <code>git show</code>,
-          but from the UI the old analysis is gone.
-        </p>
-      </div>
-      <div class="modal-footer">
-        <div class="modal-actions">
-          <button id="new-session-cancel" class="plan-btn">Cancel</button>
-          <button id="new-session-keep" class="plan-btn primary">Keep notebook</button>
-          <button id="new-session-fresh" class="plan-btn danger">Start fresh</button>
+    <!-- /new confirm modal: shown when user starts a fresh session in a dir with an existing notebook -->
+    <div id="new-session-overlay" class="modal-overlay hidden">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Start a new session?</h2>
+        </div>
+        <div class="modal-body">
+          <p>This directory already contains an analysis notebook.</p>
+          <p>
+            <strong>Keep notebook</strong> — start a fresh chat, but keep the existing
+            <code>notebook.md</code> and activity log so you can continue adding to them.
+          </p>
+          <p>
+            <strong>Start fresh</strong> — delete <code>notebook.md</code>,
+            <code>activity.jsonl</code>, and the session log, then begin a new analysis. The
+            deletion is committed to git, so the old notebook remains recoverable via
+            <code>git log</code> / <code>git show</code>, but from the UI the old analysis is gone.
+          </p>
+        </div>
+        <div class="modal-footer">
+          <div class="modal-actions">
+            <button id="new-session-cancel" class="plan-btn">Cancel</button>
+            <button id="new-session-keep" class="plan-btn primary">Keep notebook</button>
+            <button id="new-session-fresh" class="plan-btn danger">Start fresh</button>
+          </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Generic extension-request modal (input / select / confirm from the brain) -->
-  <div id="ext-overlay" class="modal-overlay hidden">
-    <div class="modal">
-      <div class="modal-header">
-        <h2 id="ext-title">Request</h2>
-      </div>
-      <div class="modal-body">
-        <div id="ext-message" class="ext-message hidden"></div>
-        <input id="ext-input" type="text" class="ext-input hidden" />
-        <div id="ext-options" class="ext-options hidden"></div>
-      </div>
-      <div class="modal-footer">
-        <div class="modal-actions">
-          <button id="ext-cancel" class="plan-btn">Cancel</button>
-          <button id="ext-confirm" class="plan-btn primary hidden">OK</button>
-          <button id="ext-deny" class="plan-btn hidden">No</button>
-          <button id="ext-accept" class="plan-btn primary hidden">Yes</button>
+    <!-- Generic extension-request modal (input / select / confirm from the brain) -->
+    <div id="ext-overlay" class="modal-overlay hidden">
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="ext-title">Request</h2>
+        </div>
+        <div class="modal-body">
+          <div id="ext-message" class="ext-message hidden"></div>
+          <input id="ext-input" type="text" class="ext-input hidden" />
+          <div id="ext-options" class="ext-options hidden"></div>
+        </div>
+        <div class="modal-footer">
+          <div class="modal-actions">
+            <button id="ext-cancel" class="plan-btn">Cancel</button>
+            <button id="ext-confirm" class="plan-btn primary hidden">OK</button>
+            <button id="ext-deny" class="plan-btn hidden">No</button>
+            <button id="ext-accept" class="plan-btn primary hidden">Yes</button>
+          </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Report-issue modal -->
-  <div id="report-overlay" class="modal-overlay hidden">
-    <div class="modal">
-      <div class="modal-header">
-        <h2>Report an issue</h2>
-        <button id="report-close" class="modal-close" title="Close" aria-label="Close">×</button>
-      </div>
-      <div class="modal-body">
-        <div class="report-account-note">
-          You'll need a GitHub account to submit this — your default browser
-          will open the pre-filled issue page on
-          <a href="https://github.com/galaxyproject/loom" target="_blank" rel="noopener noreferrer">github.com/galaxyproject/loom</a>,
-          and you click <em>Submit</em> there. No GitHub account?
-          <a href="https://github.com/signup" target="_blank" rel="noopener noreferrer">Create one</a>
-          — if you're serious about data analysis, you'll want one anyway
-          (code, notebooks, collaboration all live there).
+    <!-- Report-issue modal -->
+    <div id="report-overlay" class="modal-overlay hidden">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Report an issue</h2>
+          <button id="report-close" class="modal-close" title="Close" aria-label="Close">×</button>
         </div>
-        <div class="prefs-row">
-          <label for="report-title">Title</label>
-          <input id="report-title" type="text" placeholder="Short summary" required />
+        <div class="modal-body">
+          <div class="report-account-note">
+            You'll need a GitHub account to submit this — your default browser will open the
+            pre-filled issue page on
+            <a
+              href="https://github.com/galaxyproject/loom"
+              target="_blank"
+              rel="noopener noreferrer"
+              >github.com/galaxyproject/loom</a
+            >, and you click <em>Submit</em> there. No GitHub account?
+            <a href="https://github.com/signup" target="_blank" rel="noopener noreferrer"
+              >Create one</a
+            >
+            — if you're serious about data analysis, you'll want one anyway (code, notebooks,
+            collaboration all live there).
+          </div>
+          <div class="prefs-row">
+            <label for="report-title">Title</label>
+            <input id="report-title" type="text" placeholder="Short summary" required />
+          </div>
+          <div class="prefs-row">
+            <label for="report-body">What happened?</label>
+            <textarea
+              id="report-body"
+              rows="6"
+              placeholder="Steps to reproduce, expected vs actual, screenshots if relevant..."
+            ></textarea>
+          </div>
+          <div class="report-options">
+            <label><input type="checkbox" id="report-include-sysinfo" /> Include system info</label>
+            <label><input type="checkbox" id="report-include-logs" /> Include logs</label>
+          </div>
+          <details class="report-disclosure">
+            <summary>What's in this report?</summary>
+            <p>
+              <b>System info:</b> Orbit version, OS, Electron/Node versions, LLM model + provider
+              name (no API key), Galaxy connection state (no credentials).
+            </p>
+            <p>
+              <b>Logs:</b> last 30 lines of <code>activity.jsonl</code> (if present in the cwd) and
+              last ~150 lines of the in-app shell stream. These can include filenames, tool
+              arguments, and command output -- review the issue body on GitHub before you click
+              Submit there.
+            </p>
+            <p>
+              Both are off by default. Opt in only when you've decided you're OK sharing them on a
+              public issue.
+            </p>
+          </details>
         </div>
-        <div class="prefs-row">
-          <label for="report-body">What happened?</label>
-          <textarea id="report-body" rows="6" placeholder="Steps to reproduce, expected vs actual, screenshots if relevant..."></textarea>
-        </div>
-        <div class="report-options">
-          <label><input type="checkbox" id="report-include-sysinfo" /> Include system info</label>
-          <label><input type="checkbox" id="report-include-logs" /> Include logs</label>
-        </div>
-        <details class="report-disclosure">
-          <summary>What's in this report?</summary>
-          <p><b>System info:</b> Orbit version, OS, Electron/Node versions, LLM model + provider name (no API key), Galaxy connection state (no credentials).</p>
-          <p><b>Logs:</b> last 30 lines of <code>activity.jsonl</code> (if present in the cwd) and last ~150 lines of the in-app shell stream. These can include filenames, tool arguments, and command output -- review the issue body on GitHub before you click Submit there.</p>
-          <p>Both are off by default. Opt in only when you've decided you're OK sharing them on a public issue.</p>
-        </details>
-      </div>
-      <div class="modal-footer">
-        <div class="modal-actions">
-          <button id="report-cancel" class="plan-btn">Cancel</button>
-          <button id="report-submit" class="plan-btn primary">Open as GitHub issue</button>
+        <div class="modal-footer">
+          <div class="modal-actions">
+            <button id="report-cancel" class="plan-btn">Cancel</button>
+            <button id="report-submit" class="plan-btn primary">Open as GitHub issue</button>
+          </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <script type="module" src="./app.ts"></script>
-</body>
+    <script type="module" src="./app.ts"></script>
+  </body>
 </html>

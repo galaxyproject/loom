@@ -86,7 +86,9 @@ export function loadSessionHistory(
     const msg = evt.message as { role?: string; content?: unknown } | undefined;
     const role = msg?.role;
     if (role !== "user" && role !== "assistant") continue;
-    const blocks: ContentBlock[] = Array.isArray(msg?.content) ? (msg!.content as ContentBlock[]) : [];
+    const blocks: ContentBlock[] = Array.isArray(msg?.content)
+      ? (msg!.content as ContentBlock[])
+      : [];
 
     // Tool results travel in role=user messages; stash them for attachment.
     if (role === "user") {

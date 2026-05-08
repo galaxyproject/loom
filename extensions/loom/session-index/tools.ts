@@ -3,11 +3,7 @@ import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { openIndexDb, defaultDbPath } from "./db";
 import { scanSessions } from "./indexer";
-import {
-  searchChat,
-  getSessionContext,
-  findToolCalls,
-} from "./query";
+import { searchChat, getSessionContext, findToolCalls } from "./query";
 
 export function registerSessionIndexTools(pi: ExtensionAPI): void {
   // Long-lived DB handle for the lifetime of the extension. The session-index
@@ -67,10 +63,16 @@ export function registerSessionIndexTools(pi: ExtensionAPI): void {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return {
-          content: [{
-            type: "text" as const,
-            text: JSON.stringify({ error: msg, hint: "Check FTS5 query syntax (e.g. quoting)." }, null, 2),
-          }],
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                { error: msg, hint: "Check FTS5 query syntax (e.g. quoting)." },
+                null,
+                2,
+              ),
+            },
+          ],
           details: { count: 0, error: msg as string | undefined },
         };
       }

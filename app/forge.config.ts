@@ -160,9 +160,7 @@ async function stageUvBundle(): Promise<void> {
   const key = `${process.platform}-${process.arch}`;
   const target = UV_TARGETS[key];
   if (!target) {
-    throw new Error(
-      `[loom-stage] no uv target mapping for ${key}; add it to UV_TARGETS.`,
-    );
+    throw new Error(`[loom-stage] no uv target mapping for ${key}; add it to UV_TARGETS.`);
   }
   const isWin = process.platform === "win32";
   const ext = isWin ? "zip" : "tar.gz";
@@ -191,10 +189,9 @@ async function stageUvBundle(): Promise<void> {
   } else {
     // Tarball lays out as uv-<target>/uv + uv-<target>/uvx; --strip-components=1
     // flattens that into UV_STAGE_DIR/uv + UV_STAGE_DIR/uvx.
-    execSync(
-      `tar -xzf "${tarballPath}" -C "${UV_STAGE_DIR}" --strip-components=1`,
-      { stdio: "inherit" },
-    );
+    execSync(`tar -xzf "${tarballPath}" -C "${UV_STAGE_DIR}" --strip-components=1`, {
+      stdio: "inherit",
+    });
   }
 }
 

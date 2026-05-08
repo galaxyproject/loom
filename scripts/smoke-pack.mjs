@@ -32,9 +32,7 @@ try {
   // 2. Extract.
   const extractDir = join(tmp, "extracted");
   execSync(`mkdir -p ${JSON.stringify(extractDir)}`);
-  execSync(
-    `tar -xzf ${JSON.stringify(tarballPath)} -C ${JSON.stringify(extractDir)}`,
-  );
+  execSync(`tar -xzf ${JSON.stringify(tarballPath)} -C ${JSON.stringify(extractDir)}`);
   const pkgDir = join(extractDir, "package");
   console.log(`[smoke] extracted to ${pkgDir}`);
 

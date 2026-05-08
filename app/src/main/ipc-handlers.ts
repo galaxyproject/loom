@@ -45,7 +45,7 @@ function maskConfig(cfg: LoomConfig): MaskedLoomConfig {
         Object.entries(cfg.galaxy.profiles).map(([k, v]) => [
           k,
           { url: v.url, hasApiKey: Boolean(v.apiKey || v.apiKeyEncrypted) },
-        ])
+        ]),
       ),
     };
   }
@@ -296,37 +296,43 @@ export function registerIpcHandlers(agent: AgentManager): void {
     }
   });
 
-  ipcMain.handle("notebook:clear-artifacts", async (): Promise<{ cleared: boolean; error?: string }> => {
-    const cwd = agent.getCwd();
-    const targets = ["notebook.md", "activity.jsonl", "session.jsonl"];
-    const removed: string[] = [];
-    try {
-      for (const name of targets) {
-        const p = path.join(cwd, name);
-        try {
-          const stat = fs.lstatSync(p);
-          if (stat.isSymbolicLink() || stat.isFile()) {
-            fs.rmSync(p);
-            removed.push(name);
+  ipcMain.handle(
+    "notebook:clear-artifacts",
+    async (): Promise<{ cleared: boolean; error?: string }> => {
+      const cwd = agent.getCwd();
+      const targets = ["notebook.md", "activity.jsonl", "session.jsonl"];
+      const removed: string[] = [];
+      try {
+        for (const name of targets) {
+          const p = path.join(cwd, name);
+          try {
+            const stat = fs.lstatSync(p);
+            if (stat.isSymbolicLink() || stat.isFile()) {
+              fs.rmSync(p);
+              removed.push(name);
+            }
+          } catch {
+            // file didn't exist -- skip
           }
-        } catch {
-          // file didn't exist -- skip
         }
-      }
-      if (removed.length > 0) {
-        try {
-          execSync(`git add -A ${removed.map((n) => `"${n}"`).join(" ")}`, { cwd, stdio: "ignore" });
-          execSync('git commit -m "Cleared previous analysis"', { cwd, stdio: "ignore" });
-        } catch {
-          // git not available or nothing to commit -- best effort
+        if (removed.length > 0) {
+          try {
+            execSync(`git add -A ${removed.map((n) => `"${n}"`).join(" ")}`, {
+              cwd,
+              stdio: "ignore",
+            });
+            execSync('git commit -m "Cleared previous analysis"', { cwd, stdio: "ignore" });
+          } catch {
+            // git not available or nothing to commit -- best effort
+          }
         }
+        return { cleared: true };
+      } catch (err) {
+        log("notebook:clear-artifacts failed:", err);
+        return { cleared: false, error: String(err) };
       }
-      return { cleared: true };
-    } catch (err) {
-      log("notebook:clear-artifacts failed:", err);
-      return { cleared: false, error: String(err) };
-    }
-  });
+    },
+  );
 
   ipcMain.handle("file:open", async (_e, filePath: string) => {
     log("open file:", filePath);
@@ -383,17 +389,14 @@ export function registerIpcHandlers(agent: AgentManager): void {
   // Issue reporter: opens a pre-filled GitHub "new issue" URL in the user's
   // browser. The renderer never gets a generic openExternal capability —
   // we hard-code the repo here so a compromised renderer can't redirect.
-  ipcMain.handle(
-    "report:open-issue",
-    async (_e, payload: { title?: unknown; body?: unknown }) => {
-      const title = typeof payload?.title === "string" ? payload.title : "";
-      const body = typeof payload?.body === "string" ? payload.body : "";
-      const params = new URLSearchParams({ title, body });
-      const url = `https://github.com/galaxyproject/loom/issues/new?${params.toString()}`;
-      await shell.openExternal(url);
-      return { opened: true };
-    },
-  );
+  ipcMain.handle("report:open-issue", async (_e, payload: { title?: unknown; body?: unknown }) => {
+    const title = typeof payload?.title === "string" ? payload.title : "";
+    const body = typeof payload?.body === "string" ? payload.body : "";
+    const params = new URLSearchParams({ title, body });
+    const url = `https://github.com/galaxyproject/loom/issues/new?${params.toString()}`;
+    await shell.openExternal(url);
+    return { opened: true };
+  });
 
   // Model registry — pulls from pi-ai's bundled list so the dropdown stays
   // current with the brain's actual capabilities. Replaces the hand-edited

@@ -14,25 +14,17 @@ import { appendActivityEvent } from "./activity";
 
 // Read-only / filesystem-traversal tools clutter the log without telling the
 // user anything they'd want to re-read later. Omit them.
-const NOISY_TOOLS = new Set([
-  "read",
-  "grep",
-  "glob",
-  "ls",
-  "find",
-]);
+const NOISY_TOOLS = new Set(["read", "grep", "glob", "ls", "find"]);
 
 // Tools whose argument shape is known to carry credentials. activity.jsonl
 // lives in the project cwd and users may share the dir (commit it, send it
 // over for help) — never persist secrets there.
-const CREDENTIAL_TOOLS = new Set([
-  "galaxy_connect",
-  "galaxy_set_profile",
-]);
+const CREDENTIAL_TOOLS = new Set(["galaxy_connect", "galaxy_set_profile"]);
 
 // Argument keys that universally indicate secrets, redacted on every tool.
 const CREDENTIAL_KEYS = new Set([
-  "apikey", "api_key",
+  "apikey",
+  "api_key",
   "authorization",
   "token",
   "password",
@@ -77,7 +69,9 @@ function summarizeResult(result: unknown): string {
   if (result == null) return "";
   const str = typeof result === "string" ? result : JSON.stringify(result);
   if (str.length <= RESULT_SUMMARY_MAX) return str;
-  return str.slice(0, RESULT_SUMMARY_MAX) + `… [truncated ${str.length - RESULT_SUMMARY_MAX} chars]`;
+  return (
+    str.slice(0, RESULT_SUMMARY_MAX) + `… [truncated ${str.length - RESULT_SUMMARY_MAX} chars]`
+  );
 }
 
 export function registerActivityHooks(pi: ExtensionAPI): void {

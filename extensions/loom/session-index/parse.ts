@@ -56,10 +56,7 @@ export interface ParseOptions {
  * the caller's endOffset still advances past them (so incremental scans
  * don't loop on a corrupt line).
  */
-export function parseSessionFile(
-  filePath: string,
-  opts: ParseOptions = {},
-): ParseResult {
+export function parseSessionFile(filePath: string, opts: ParseOptions = {}): ParseResult {
   const startOffset = opts.startOffset ?? 0;
   const buf = fs.readFileSync(filePath);
   const slice = buf.subarray(startOffset);
@@ -167,13 +164,15 @@ function entryRowFromObj(obj: Record<string, unknown>): EntryRow | null {
     if (r === "user" || r === "assistant") role = r;
     text = flattenTextBlocks(msg?.content);
   } else if (type === "compaction") {
-    text = typeof (obj as { summary?: string }).summary === "string"
-      ? (obj as { summary: string }).summary
-      : null;
+    text =
+      typeof (obj as { summary?: string }).summary === "string"
+        ? (obj as { summary: string }).summary
+        : null;
   } else if (type === "branch_summary") {
-    text = typeof (obj as { summary?: string }).summary === "string"
-      ? (obj as { summary: string }).summary
-      : null;
+    text =
+      typeof (obj as { summary?: string }).summary === "string"
+        ? (obj as { summary: string }).summary
+        : null;
   } else if (type === "custom") {
     text = JSON.stringify((obj as { data?: unknown }).data ?? null);
   }
@@ -220,9 +219,8 @@ function extractToolUses(
     if (!block || typeof block !== "object") continue;
     const b = block as { type?: string; name?: string; input?: unknown; id?: string };
     if (b.type !== "tool_use" || typeof b.name !== "string") continue;
-    const tool_use_id = typeof b.id === "string" && b.id.length > 0
-      ? b.id
-      : `synth-${b.name}-${out.length}`;
+    const tool_use_id =
+      typeof b.id === "string" && b.id.length > 0 ? b.id : `synth-${b.name}-${out.length}`;
     out.push({
       tool_use_id,
       tool_name: b.name,
