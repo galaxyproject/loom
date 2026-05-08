@@ -43,6 +43,36 @@ const MAX_PREVIEW_BYTES = 1024 * 1024 * 1024; // 1 GB — hard refuse above this
 const PREVIEW_LINE_COUNT = 10;
 const PREVIEW_BYTE_BUDGET = 64 * 1024; // 64 KB cap on the head we read
 
+// Mirrors the renderer's TEXT_EXTS in file-viewer.ts -- the head-preview
+// path only makes sense for files the renderer would draw as text. Returning
+// 64 KB of head bytes for an image / pdf / binary would just produce a
+// broken <img> or corrupted pdf in the renderer, with no useful signal to
+// the user. Files outside this set in the (5 MB, 1 GB] band get the same
+// "too large" rejection they got before head-preview existed.
+const TEXT_PREVIEW_EXTS = new Set([
+  ".md", ".txt", ".log", ".rst",
+  ".py", ".js", ".ts", ".tsx", ".jsx", ".sh", ".rb", ".pl", ".r", ".go", ".rs",
+  ".json", ".jsonl", ".yml", ".yaml", ".toml", ".ini", ".cfg", ".conf",
+  ".xml", ".html", ".htm", ".css",
+  ".csv", ".tsv", ".tab",
+  ".fa", ".fasta", ".fna", ".faa", ".ffn",
+  ".fastq", ".fq",
+  ".vcf",
+  ".bed", ".bedgraph", ".wig",
+  ".gff", ".gff3", ".gtf",
+  ".sam",
+  ".pdb", ".cif",
+  ".nwk", ".newick", ".tree",
+  ".phy", ".phylip",
+]);
+
+function isTextLikeForPreview(name: string): boolean {
+  const dot = name.lastIndexOf(".");
+  // No extension -- the renderer treats these as text (READMEs, configs).
+  if (dot <= 0) return true;
+  return TEXT_PREVIEW_EXTS.has(name.slice(dot).toLowerCase());
+}
+
 /**
  * Clamp a user-supplied path to the current cwd. Throws if it escapes.
  * Returns the absolute, normalized path.
@@ -212,6 +242,18 @@ export function registerFilesIpc(getCwd: () => string): void {
         return {
           ok: false,
           error: `File too large (${stat.size} bytes, hard limit ${MAX_PREVIEW_BYTES})`,
+          size: stat.size,
+        };
+      }
+
+      // Head preview only makes sense for text-like files. For images /
+      // pdfs / binaries in the (5 MB, 1 GB] band, fall back to the
+      // pre-existing "too large" rejection so the renderer surfaces a
+      // clear error instead of trying to draw 64 KB of mangled bytes.
+      if (!isTextLikeForPreview(path.basename(abs))) {
+        return {
+          ok: false,
+          error: `File too large (${stat.size} bytes, limit ${MAX_READ_BYTES})`,
           size: stat.size,
         };
       }
