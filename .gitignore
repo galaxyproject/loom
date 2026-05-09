@@ -8,3 +8,6 @@ session.jsonl
 # Agent worktrees
 .worktrees/
 .claude/
+
+# Eval run artifacts (Phase 5+; not committed)
+evals/results/

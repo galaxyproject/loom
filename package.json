@@ -53,6 +53,7 @@
     "prepare": "husky",
     "test": "vitest run",
     "test:watch": "vitest",
+    "evals": "tsx evals/run.ts",
     "typecheck": "tsc --noEmit",
     "smoke:pack": "node scripts/smoke-pack.mjs",
     "prepublishOnly": "npm run typecheck && npm test && npm run smoke:pack"
@@ -74,6 +75,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "prettier": "^3.8.3",
+    "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.59.1",
     "vitest": "^4.1.4"
