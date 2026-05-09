@@ -24,17 +24,29 @@ export function report(runs: ScenarioRun[]): { passed: number; failed: number } 
       for (const f of run.failures) {
         console.log(`  - ${f.assertion}: ${f.detail}`);
       }
-      if (process.env.LOOM_EVALS_VERBOSE) {
-        console.log(`  --- stdout (last 500 chars) ---`);
-        console.log(`  ${run.stdout.slice(-500).split("\n").join("\n  ")}`);
-        if (run.stderr.trim()) {
-          console.log(`  --- stderr (last 500 chars) ---`);
-          console.log(`  ${run.stderr.slice(-500).split("\n").join("\n  ")}`);
-        }
+    }
+    if ((!ok || process.env.LOOM_EVALS_VERBOSE) && run.notebookContent !== null) {
+      console.log(`  --- notebook.md (${run.notebookContent.length} bytes) ---`);
+      console.log(indent(run.notebookContent));
+      console.log(`  --- end notebook ---`);
+    }
+    if (!ok && process.env.LOOM_EVALS_VERBOSE) {
+      console.log(`  --- stdout (last 500 chars) ---`);
+      console.log(`  ${run.stdout.slice(-500).split("\n").join("\n  ")}`);
+      if (run.stderr.trim()) {
+        console.log(`  --- stderr (last 500 chars) ---`);
+        console.log(`  ${run.stderr.slice(-500).split("\n").join("\n  ")}`);
       }
     }
   }
   console.log("");
   console.log(`${passed} passed, ${failed} failed`);
   return { passed, failed };
+}
+
+function indent(text: string): string {
+  return text
+    .split("\n")
+    .map((l) => `  | ${l}`)
+    .join("\n");
 }

@@ -51,6 +51,7 @@ export async function runScenario(
   try {
     const result = await spawnLoom(scenario, model, tmpCwd, tmpAgentDir, tmpRoot);
     const events = parseJsonLines(result.stdout);
+    const notebookContent = readNotebook(tmpCwd);
     return {
       scenarioDir,
       scenario,
@@ -59,11 +60,22 @@ export async function runScenario(
       events,
       stdout: result.stdout,
       stderr: result.stderr,
+      notebookContent,
       failures: [],
       durationMs: Date.now() - start,
     };
   } finally {
     fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+}
+
+function readNotebook(cwd: string): string | null {
+  const nbPath = path.join(cwd, "notebook.md");
+  if (!fs.existsSync(nbPath)) return null;
+  try {
+    return fs.readFileSync(nbPath, "utf-8");
+  } catch {
+    return null;
   }
 }
 

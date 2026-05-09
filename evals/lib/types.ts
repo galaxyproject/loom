@@ -21,7 +21,40 @@ export interface Assertions {
     mustInclude?: string[];
     mustNotInclude?: string[];
   };
+  /**
+   * Structural assertions on the post-run notebook.md. Reads the file from
+   * the scenario's temp cwd after loom exits (or times out -- the runner
+   * captures notebook state before cleanup). Content quality (right tools,
+   * right reasoning) is intentionally out of scope here; that lives in
+   * the galaxy/brc Python harnesses with LLMJudge.
+   */
+  notebook?: NotebookAssertions;
   exitCode?: number;
+}
+
+export interface NotebookAssertions {
+  /** notebook.md must (or must not) exist after the run */
+  exists?: boolean;
+  /** every string must appear in the notebook content */
+  contains?: string[];
+  /** none of these strings may appear */
+  mustNotContain?: string[];
+  /** structural checks on the latest plan section */
+  plan?: PlanAssertions;
+}
+
+export interface PlanAssertions {
+  /** at least one `## Plan X: ... [routing]` heading must exist */
+  exists?: boolean;
+  /** routing tag in the heading must be one of these */
+  routingIn?: ("local" | "galaxy" | "hybrid" | "remote")[];
+  /** plan section must have at least N pending (`- [ ]`) steps */
+  minPendingSteps?: number;
+  /**
+   * Every pending step must carry a description beyond just `**Title**`.
+   * Mirrors init-gate's >= 8 chars heuristic (number/title/anchor stripped).
+   */
+  eachStepHasDescription?: boolean;
 }
 
 export interface Scenario {
@@ -106,6 +139,8 @@ export interface ScenarioRun {
   events: AnyEvent[];
   stdout: string;
   stderr: string;
+  /** Final notebook.md content from the scenario's temp cwd, null if absent. */
+  notebookContent: string | null;
   failures: ScenarioFailure[];
   durationMs: number;
 }
