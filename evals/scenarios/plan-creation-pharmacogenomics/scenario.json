@@ -1,0 +1,23 @@
+{
+  "name": "plan creation: pharmacogenomics from consumer genotyping (consumer register)",
+  "description": "Consumer-tier persona, casual phrasing, personal-data analysis. Adapted from claw's pharmgx-reporter skill ('Give me my pharmacogenomic summary'). Tests whether the model handles a non-researcher register without losing plan structure. We allow a smaller minPendingSteps (3) because consumer pipelines tend to be flatter (parse genotype -> match drug list -> report) than researcher pipelines, and we're testing structure not depth.",
+  "tier": 2,
+  "requiresModel": true,
+  "loomArgs": ["--tools", "read,write,edit", "--no-skills", "--no-context-files"],
+  "inputs": [
+    "I uploaded my 23andMe raw data file. Help me make a plan in notebook.md to figure out which medications might affect me differently because of my genetics. Use this format: a `## Plan A: <title> [<routing>]` heading where routing is one of [local|galaxy|hybrid|remote] (this is personal-scale local-data work so probably `local`), then a `### Steps` section with `- [ ] 1. **Step title** -- short description` for each step. At least 3 steps. Just write the plan, don't run anything yet."
+  ],
+  "timeoutMs": 90000,
+  "assertions": {
+    "events": { "mustInclude": ["agent_start", "turn_end"] },
+    "notebook": {
+      "exists": true,
+      "plan": {
+        "exists": true,
+        "routingIn": ["local", "hybrid"],
+        "minPendingSteps": 3,
+        "eachStepHasDescription": true
+      }
+    }
+  }
+}
