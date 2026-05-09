@@ -5,6 +5,12 @@
  * Each scenario gets its own temp directory containing both the agent dir
  * (PI_CODING_AGENT_DIR) and the working directory. This keeps runs isolated
  * from the user's real ~/.pi/agent and ~/.loom config.
+ *
+ * Tier 2 scenarios (`requiresModel: true`) are run once per available model
+ * in evals/models.json. The runner synthesizes a Pi-shaped models.json into
+ * the temp agent dir so OpenAI-compatible custom providers (TACC, litellm)
+ * become first-class for that one spawn, then passes `--provider` and
+ * `--model` to point loom at it.
  */
 
 import { spawn } from "child_process";
@@ -12,19 +18,23 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { fileURLToPath } from "url";
-import type { AnyEvent, Scenario, ScenarioRun } from "./types.js";
+import { writePiModelsConfig } from "./matrix.js";
+import type { AnyEvent, ModelEntry, Scenario, ScenarioRun } from "./types.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(__filename), "..", "..");
 const loomBin = path.join(repoRoot, "bin", "loom.js");
 
-export async function runScenario(scenarioDir: string): Promise<ScenarioRun> {
+export async function runScenario(
+  scenarioDir: string,
+  model: ModelEntry | null,
+): Promise<ScenarioRun> {
   const scenarioPath = path.join(scenarioDir, "scenario.json");
   const scenario = JSON.parse(fs.readFileSync(scenarioPath, "utf-8")) as Scenario;
 
   const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "loom-eval-"));
   const tmpCwd = path.join(tmpRoot, "cwd");
-  const tmpAgentDir = path.join(tmpRoot, "agent");
+  const tmpAgentDir = path.join(tmpRoot, ".pi", "agent");
   fs.mkdirSync(tmpCwd);
   fs.mkdirSync(tmpAgentDir, { recursive: true });
 
@@ -33,13 +43,18 @@ export async function runScenario(scenarioDir: string): Promise<ScenarioRun> {
     copyDir(fixtureCwd, tmpCwd);
   }
 
+  if (model) {
+    writePiModelsConfig(model, tmpAgentDir);
+  }
+
   const start = Date.now();
   try {
-    const result = await spawnLoom(scenario, tmpCwd, tmpAgentDir);
+    const result = await spawnLoom(scenario, model, tmpCwd, tmpAgentDir, tmpRoot);
     const events = parseJsonLines(result.stdout);
     return {
       scenarioDir,
       scenario,
+      model,
       exitCode: result.exitCode,
       events,
       stdout: result.stdout,
@@ -58,7 +73,13 @@ interface SpawnResult {
   stderr: string;
 }
 
-function spawnLoom(scenario: Scenario, cwd: string, agentDir: string): Promise<SpawnResult> {
+function spawnLoom(
+  scenario: Scenario,
+  model: ModelEntry | null,
+  cwd: string,
+  agentDir: string,
+  fakeHome: string,
+): Promise<SpawnResult> {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     ...(scenario.env ?? {}),
@@ -66,10 +87,14 @@ function spawnLoom(scenario: Scenario, cwd: string, agentDir: string): Promise<S
     PI_SKIP_VERSION_CHECK: "1",
     PI_TELEMETRY: "0",
     LOOM_FRESH_SESSION: "1",
-    HOME: agentDir, // isolates ~/.loom/config.json reads
+    HOME: fakeHome, // isolates ~/.loom/config.json reads
   };
 
   const args = ["--mode", "json"];
+  if (model) {
+    args.push("--provider", model.provider, "--model", model.model);
+  }
+  for (const arg of scenario.loomArgs ?? []) args.push(arg);
   for (const input of scenario.inputs) args.push(input);
 
   const timeoutMs = scenario.timeoutMs ?? 15000;
@@ -89,7 +114,6 @@ function spawnLoom(scenario: Scenario, cwd: string, agentDir: string): Promise<S
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill("SIGTERM");
-      // SIGKILL fallback if SIGTERM doesn't take in 2s
       setTimeout(() => child.kill("SIGKILL"), 2000);
     }, timeoutMs);
     child.on("close", (code) => {

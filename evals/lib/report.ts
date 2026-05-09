@@ -18,7 +18,8 @@ export function report(runs: ScenarioRun[]): { passed: number; failed: number } 
     else failed++;
     const tag = ok ? `${GREEN}PASS${RESET}` : `${RED}FAIL${RESET}`;
     const ms = `${DIM}(${run.durationMs}ms)${RESET}`;
-    console.log(`${tag} ${run.scenario.name} ${ms}`);
+    const modelTag = run.model ? ` ${DIM}[${run.model.id}]${RESET}` : "";
+    console.log(`${tag} ${run.scenario.name}${modelTag} ${ms}`);
     if (!ok) {
       for (const f of run.failures) {
         console.log(`  - ${f.assertion}: ${f.detail}`);

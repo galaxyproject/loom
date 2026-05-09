@@ -22,7 +22,7 @@ export function evaluate(run: ScenarioRun): ScenarioFailure[] {
 
   evaluateToolCalls(run.events, a, failures);
   evaluateEvents(run.events, a, failures);
-  evaluateChatText(run.events, a, failures);
+  evaluateChatText(run.events, a, run.model?.stripThinkingTags ?? false, failures);
 
   return failures;
 }
@@ -99,9 +99,15 @@ function evaluateEvents(events: AnyEvent[], a: Assertions, failures: ScenarioFai
   }
 }
 
-function evaluateChatText(events: AnyEvent[], a: Assertions, failures: ScenarioFailure[]): void {
+function evaluateChatText(
+  events: AnyEvent[],
+  a: Assertions,
+  stripThinkingTags: boolean,
+  failures: ScenarioFailure[],
+): void {
   if (!a.chatText) return;
-  const text = collectChatText(events);
+  let text = collectChatText(events);
+  if (stripThinkingTags) text = stripThinking(text);
 
   for (const needle of a.chatText.mustInclude ?? []) {
     if (!text.includes(needle)) {
@@ -131,4 +137,8 @@ function collectChatText(events: AnyEvent[]): string {
     }
   }
   return parts.join("");
+}
+
+function stripThinking(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
 }
