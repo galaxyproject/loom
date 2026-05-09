@@ -4,8 +4,8 @@ Repo-local orientation for Claude Code and similar agents.
 
 ## Read first
 
-1. [`AGENTS.md`](AGENTS.md)
-   Primary repo behavior and domain guidance. This is the main instruction source for how to operate in this codebase.
+1. [`AGENTS.md`](AGENTS.md) and [`docs/agent/`](docs/agent/)
+   Primary repo behavior and domain guidance. `AGENTS.md` is the slim router (hard constraints + pointers); topic docs under `docs/agent/` cover role, notebook schema, Galaxy routing, commands, and gotchas. This is the main instruction source for how to operate in this codebase.
 
 2. [`docs/architecture.md`](docs/architecture.md)
    Canonical architecture reference for Loom, Orbit, shared contracts, session lifecycle, and future shell direction.
