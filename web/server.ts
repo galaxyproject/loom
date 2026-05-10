@@ -25,6 +25,9 @@ const DEFAULT_CWD = join(LOOM_CONFIG_DIR, "analyses");
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
+const IS_REMOTE_MODE = process.env.LOOM_MODE === "remote";
+const REMOTE_SESSION_CWD = "/tmp/loom-session";
+
 function log(...args: unknown[]): void {
   console.log("[server]", ...args);
 }
@@ -34,12 +37,14 @@ function log(...args: unknown[]): void {
 function loadConfig(): Record<string, unknown> {
   if (existsSync(LOOM_CONFIG_PATH)) {
     try {
-      return JSON.parse(readFileSync(LOOM_CONFIG_PATH, "utf-8"));
+      const cfg = JSON.parse(readFileSync(LOOM_CONFIG_PATH, "utf-8"));
+      cfg._mode = "desktop";
+      return cfg;
     } catch {
       /* */
     }
   }
-  return {};
+  return { _mode: "desktop" };
 }
 
 function saveConfig(config: Record<string, unknown>): void {
@@ -47,7 +52,26 @@ function saveConfig(config: Record<string, unknown>): void {
   writeFileSync(LOOM_CONFIG_PATH, JSON.stringify(config, null, 2) + "\n");
 }
 
+function synthesizedRemoteConfig(): Record<string, unknown> {
+  return {
+    _mode: "remote",
+    executionMode: "cloud",
+    galaxy: {
+      url: process.env.GALAXY_URL ?? null,
+      // apiKey deliberately omitted -- never serialize to renderer
+    },
+    llm: {
+      provider: process.env.LOOM_LLM_PROVIDER ?? "anthropic",
+      model: process.env.LOOM_LLM_MODEL ?? null,
+    },
+  };
+}
+
 function getCwd(): string {
+  if (IS_REMOTE_MODE) {
+    mkdirSync(REMOTE_SESSION_CWD, { recursive: true });
+    return REMOTE_SESSION_CWD;
+  }
   const cfg = loadConfig();
   let cwd = (cfg.defaultCwd as string) || DEFAULT_CWD;
   if (cwd.startsWith("~")) cwd = join(homedir(), cwd.slice(1));
@@ -207,10 +231,14 @@ wss.on("connection", (socket) => {
 
     // Channels that the server handles directly (not forwarded to loom)
     if (channel === "config:get") {
-      respond(id, loadConfig());
+      respond(id, IS_REMOTE_MODE ? synthesizedRemoteConfig() : loadConfig());
       return;
     }
     if (channel === "config:save") {
+      if (IS_REMOTE_MODE) {
+        respond(id, { success: false, error: "config is read-only in remote mode" });
+        return;
+      }
       saveConfig(args[0] as Record<string, unknown>);
       stopLoom();
       startLoom();
@@ -222,6 +250,10 @@ wss.on("connection", (socket) => {
       return;
     }
     if (channel === "agent:set-cwd") {
+      if (IS_REMOTE_MODE) {
+        respond(id, { error: "cwd is fixed in remote mode" });
+        return;
+      }
       cwd = args[0] as string;
       mkdirSync(cwd, { recursive: true });
       stopLoom();
