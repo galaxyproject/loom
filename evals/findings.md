@@ -123,11 +123,11 @@ Fix: fold immediate sub-bullet text into the description measurement.
 (From the latest matrix run, with caveats: single runs are noisy, and
 Maverick especially shows nondeterminism on tool-call format.)
 
-|                  | Plan-creation pass | Notable behavior                                                                                                                                                                                                                                                                          |
-| ---------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Qwen3-32B        | 4-5 / 5            | Most consistent. Rich plans with parameter tables. Honors Galaxy routing more than the Llamas. Sometimes paraphrases instead of formal-block on turn 1, then writes properly on turn 2. Occasional hallucinated Galaxy toolshed URLs (caught in galaxy harness with LLMJudge, not by us). |
-| Llama-3.3-70B    | 1 / 5              | Writes to notebook on turn 1 (skips chat-draft stage). Defaults to `[local]` routing despite Galaxy-first guidance in the prompt. Heading format now correct after the worked-example fix.                                                                                                |
-| Llama-4-Maverick | 1 / 5              | Most fragile on the proxy. Even after the anchor fix, several scenarios end with empty notebooks -- Maverick chats but never invokes the write tool. Possible follow-ups: tool-bias adjustment in the prompt, or treat as a known limitation.                                             |
+|                  | Plan-creation pass | Notable behavior                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Qwen3-32B        | 4-5 / 5            | Most consistent. Rich plans with parameter tables. Honors Galaxy routing more than the Llamas. Sometimes paraphrases instead of formal-block on turn 1, then writes properly on turn 2. Occasional hallucinated Galaxy toolshed URLs (caught in galaxy harness with LLMJudge, not by us).                                                                                                     |
+| Llama-3.3-70B    | 2 / 5              | Writes to notebook on turn 1 (skips chat-draft stage). Defaults to `[local]` routing despite Galaxy-first guidance in the prompt. Heading format now correct after the worked-example fix.                                                                                                                                                                                                    |
+| Llama-4-Maverick | 3 / 5              | Highest variance run-to-run. Mostly correct format when it does write; failures are nondeterministic "drafted in chat, never invoked write tool" -- not a fundamental limit. A direct re-run of one of the eval-runner failures (pharmacogenomics) produced a perfect 5-step plan. n=3 median scoring (Phase 6) will smooth this out; today's single-run snapshot under-represents the model. |
 
 ## What the eval is good at, and what it isn't
 
@@ -150,23 +150,24 @@ Maverick especially shows nondeterminism on tool-call format.)
 
 ## Suggested next iterations
 
-1. **Maverick "chats but never writes" on 4/5.** Look at the chat content for
-   each failing case to characterize what Maverick does instead of writing.
-   If it's a token-budget issue, raise max_tokens on the matrix entry. If
-   it's prompt-following, add a short "use the write tool to save" reminder
-   to the convention block. If it's a Maverick-specific limit, accept and
-   document.
+1. **n=3 median runs (Phase 6 of the plan).** TACC is free; we just need a
+   `--repeat N` flag in the runner that aggregates results per
+   (scenario, model) tuple. Maverick's run-to-run variance is the strongest
+   single argument for this -- single-run scoring under-represents it
+   meaningfully.
 2. **Shell-contract scenarios that don't ride the matrix.** Init-gate
    variants (no plan, weak step), confusables hint (#102), notebook
    discipline (does the agent flip `- [ ]` to `- [x]` after completion).
-   These exercise Loom-the-shell rather than model behavior.
-3. **n=3 median runs (Phase 6 of the plan).** TACC is free; we just need a
-   `--repeat N` flag in the runner that aggregates results per
-   (scenario, model) tuple.
-4. **Markdown report with per-(scenario, model) detail.** Today's stdout
+   These exercise Loom-the-shell rather than model behavior, complement
+   the model leaderboard.
+3. **Markdown report with per-(scenario, model) detail.** Today's stdout
    tells you pass/fail counts but burying the comparative content in
    `LOOM_EVALS_VERBOSE` is fragile. A report file written under
-   `evals/results/` (gitignored or committed-baseline) gives a real
-   artifact to diff between runs.
-5. **Once init-gate.ts (#104) is on main, replace the stub
+   `evals/results/` (gitignored, with a committed `baseline.md`) gives a
+   real artifact to diff between runs.
+4. **Once init-gate.ts (#104) is on main, replace the stub
    evals/lib/notebook-parser.ts with a direct import.** Less duplication.
+5. **Llama-3.3 protocol-following.** It writes to notebook on turn 1
+   (skipping chat-draft) and picks `[local]` routing despite the
+   Galaxy-first prompt. Worth a focused prompt-tightening cycle if we
+   want it to score above 2/5.
