@@ -38,8 +38,7 @@ function loadConfig(): Record<string, unknown> {
   if (existsSync(LOOM_CONFIG_PATH)) {
     try {
       const cfg = JSON.parse(readFileSync(LOOM_CONFIG_PATH, "utf-8"));
-      cfg._mode = "desktop";
-      return cfg;
+      return { ...cfg, _mode: "desktop" };
     } catch {
       /* */
     }
