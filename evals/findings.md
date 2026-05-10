@@ -64,12 +64,18 @@ real error message:
     JSONDecodeError: Expecting property name enclosed in double quotes
     when trying to decode function call string: {#plan-a-step-1}
 
-Fix: drop `{#anchor}` from the worked example and add a sentence
-telling the agent not to write them. The init-gate parser still
-recognizes anchors when present (preserved as an optional extension),
-so notebooks that already carry them keep working. After the fix,
-Maverick passes the RNA-seq scenario for the first time and the
-"Invalid function calling output" error class is gone from the matrix.
+First fix was a blunt drop: remove anchor guidance from the prompt
+entirely. That worked for Maverick but cost Opus/Sonnet some
+step-reference precision they'd been using fine. So the actual fix is
+conditional: `setupContextInjection` reads `ctx.model` at session start
+and passes `omitAnchors: true` to `buildPlanConventionBlock` only when
+the model id matches `/llama-?4|maverick|scout/i`. Anthropic, OpenAI,
+Google, Llama-3 et al. keep full anchor guidance; only the Llama-4
+deployments that trip the proxy bug get the workaround. Init-gate
+parser accepts anchors when present regardless of which prompt path
+ran, so the suppression is fail-soft. Verified on the matrix: zero
+"Invalid function calling" errors, 40+ `{#plan-...}` anchor
+occurrences in Llama-3.3 + Qwen3 output, pass rate stable.
 
 ## Eval-side iterations
 

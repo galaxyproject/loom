@@ -348,7 +348,8 @@ should rotate it.
 `;
 }
 
-function buildPlanConventionBlock(): string {
+function buildPlanConventionBlock(opts: { omitAnchors?: boolean } = {}): string {
+  const omitAnchors = opts.omitAnchors === true;
   return `## Project model and plan sections
 
 The project is the directory you're working in. \`notebook.md\` is its
@@ -412,13 +413,13 @@ the IWC \`bwa-mem-chrM\` workflow. Output: chrM VCF + per-sample QC.
 
 ### Steps
 
-- [ ] 1. **QC FASTQs** — fastp adapter trim + per-base QC
+- [ ] 1. **QC FASTQs**${anchorOrEmpty("plan-a-step-1", omitAnchors)} — fastp adapter trim + per-base QC
   - Routing: galaxy
   - Tool: fastp
-- [ ] 2. **Align to chrM reference** — BWA-MEM, sorted BAM out
+- [ ] 2. **Align to chrM reference**${anchorOrEmpty("plan-a-step-2", omitAnchors)} — BWA-MEM, sorted BAM out
   - Routing: galaxy
   - Tool: bwa_mem
-- [ ] 3. **Call variants** — bcftools call, filter Q>=30
+- [ ] 3. **Call variants**${anchorOrEmpty("plan-a-step-3", omitAnchors)} — bcftools call, filter Q>=30
   - Routing: galaxy
   - Tool: bcftools_call
 
@@ -445,11 +446,7 @@ Conventions (please re-read the heading line above before drafting):
   and some Galaxy; \`[local]\` only for personal-scale or ad-hoc work.
   Tag literal, lowercase, square brackets, no spaces inside the
   brackets so tooling can grep.
-- Step anchors (\`{#plan-X-step-N}\` syntax) are supported by the
-  parser but **do not write them**. The litellm proxy in front of some
-  Llama-4 deployments mistakes the curly-brace anchor for a tool-call
-  marker and rejects the response. Reference steps by their step number
-  + plan letter instead (e.g. "Plan A step 2").
+${anchorGuidance(omitAnchors)}
 - Step routing/tool details go on **sub-bullets**, not on the same line
   as the step heading. Markdown will collapse same-line continuation
   text and the rendered notebook becomes unreadable.
@@ -458,6 +455,35 @@ Conventions (please re-read the heading line above before drafting):
 - Multiple plans coexist; append new plan sections at the bottom of the
   notebook. Don't delete old plans.
 `;
+}
+
+/** Render a step anchor only when anchors are safe for the active provider. */
+function anchorOrEmpty(id: string, omit: boolean): string {
+  return omit ? "" : ` {#${id}}`;
+}
+
+/**
+ * Inline guidance about anchors. Two versions:
+ * - Safe providers (Anthropic, OpenAI, Google, etc.): teach anchors so
+ *   invocation YAML blocks can reference steps unambiguously.
+ * - Llama-4 family on litellm-routed proxies: don't write anchors --
+ *   the proxy mistakes the curly-brace `{...}` for a tool-call boundary
+ *   and rejects the whole response as "Invalid function calling output."
+ *   The parser still accepts anchors when present, so existing notebooks
+ *   keep working; we just don't ask the model to produce them.
+ */
+function anchorGuidance(omit: boolean): string {
+  if (omit) {
+    return `- Step anchors (\`{#plan-X-step-N}\` syntax) are supported by the
+  parser but **do not write them**. The litellm proxy in front of this
+  Llama-4 deployment mistakes the curly-brace anchor for a tool-call
+  marker and rejects the response. Reference steps by their step number
+  + plan letter instead (e.g. "Plan A step 2").`;
+  }
+  return `- Use \`{#plan-X-step-N}\` anchors so invocation YAML blocks can
+  reference individual steps unambiguously. Place the anchor after the
+  bold step title and before the description em-dash:
+  \`- [ ] 1. **Step name** {#plan-a-step-1} — description\`.`;
 }
 
 /**
@@ -727,11 +753,28 @@ asks what was said.
 `;
 }
 
+/**
+ * The litellm Llama-4 adapter (used by the SambaNova-on-TACC proxy and
+ * some other Llama-4 deployments) misinterprets `{...}` patterns in
+ * model output as tool-call boundaries and tries to JSON-parse the
+ * contents. Notebook-anchor syntax (`{#plan-a-step-1}`) trips this, so
+ * we suppress anchor guidance for Llama-4 models. Anthropic / OpenAI /
+ * Google / Llama-3 et al. don't have this issue and keep full anchor
+ * support. The init-gate parser accepts anchors when present regardless,
+ * so suppression is fail-soft.
+ */
+function isLlama4ViaLitellm(model: { id?: string; provider?: string } | undefined): boolean {
+  if (!model) return false;
+  const id = (model.id ?? "").toLowerCase();
+  return /llama-?4|maverick|scout/.test(id);
+}
+
 export function setupContextInjection(pi: ExtensionAPI): void {
   pi.on("before_agent_start", async (_event, ctx) => {
+    const omitAnchors = isLlama4ViaLitellm(ctx.model);
     const systemPrompt = [
       buildOperatingDisciplineBlock(),
-      buildPlanConventionBlock(),
+      buildPlanConventionBlock({ omitAnchors }),
       buildParameterReviewBlock(),
       buildChatFormattingBlock(),
       buildNotebookWriteBlock(),
