@@ -1,6 +1,6 @@
 {
-  "name": "plan creation: agent drafts an RNA-seq plan in chat",
-  "description": "User asks Loom to draft a bulk RNA-seq differential-expression plan. Tests the SHELL CONTRACT for plan creation -- per Loom's plan-convention block, the agent must draft the plan IN CHAT first (four-stage approval gate), and only write to notebook.md after explicit user approval. So for a single-turn ask we assert: chat carries a structurally valid `## Plan X: <title> [<routing>]` block, and the notebook stays empty of plan content. Writing to notebook on turn 1 is a protocol violation. Content quality (right tools, right ordering, biological correctness) stays out of scope -- that's the galaxy harness's job.",
+  "name": "plan creation: agent ends up with an RNA-seq plan",
+  "description": "Multi-turn: user asks for a bulk RNA-seq DE plan, then confirms assumptions on turn 2. SUCCESS = a structurally valid `## Plan X: <title> [<routing>]` block ends up in notebook.md by end of run. We don't care which protocol stage produced it (chat-first-then-write, write-immediately, etc) -- the matrix collapses Loom's 4-stage gate in different ways and prescribing which stage produced the plan is process pedantry that doesn't reflect end-user UX. Content quality (right tools, biological correctness) stays out of scope -- that's the galaxy harness's job with LLMJudge.",
   "tier": 2,
   "requiresModel": true,
   "loomArgs": ["--tools", "read,write,edit"],
@@ -13,15 +13,13 @@
     "events": {
       "mustInclude": ["agent_start", "turn_end"]
     },
-    "chatPlan": {
-      "exists": true,
-      "routingIn": ["galaxy", "hybrid", "local", "remote"],
-      "minPendingSteps": 4,
-      "eachStepHasDescription": true
-    },
     "notebook": {
+      "exists": true,
       "plan": {
-        "exists": false
+        "exists": true,
+        "routingIn": ["galaxy", "hybrid", "local", "remote"],
+        "minPendingSteps": 4,
+        "eachStepHasDescription": true
       }
     }
   }

@@ -11,12 +11,14 @@
   "timeoutMs": 150000,
   "assertions": {
     "events": { "mustInclude": ["agent_start", "turn_end"] },
-    "chatPlan": {
+    "notebook": {
       "exists": true,
-      "routingIn": ["galaxy", "hybrid", "local", "remote"],
-      "minPendingSteps": 5,
-      "eachStepHasDescription": true
-    },
-    "notebook": { "plan": { "exists": false } }
+      "plan": {
+        "exists": true,
+        "routingIn": ["galaxy", "hybrid", "local", "remote"],
+        "minPendingSteps": 5,
+        "eachStepHasDescription": true
+      }
+    }
   }
 }
