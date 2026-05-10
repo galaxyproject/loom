@@ -87,12 +87,27 @@ let cwd = getCwd();
 function startLoom(): void {
   if (loomProcess) stopLoom();
 
-  log("starting loom subprocess", { bin: LOOM_BIN, cwd });
+  const args: string[] = [LOOM_BIN, "--mode", "rpc"];
+  const env: NodeJS.ProcessEnv = { ...process.env };
 
-  loomProcess = spawn("node", [LOOM_BIN, "--mode", "rpc"], {
+  if (IS_REMOTE_MODE) {
+    const gatePath = resolve(__dirname, "extensions/web-mode-gate.ts");
+    args.push("--extension", gatePath);
+    if (process.env.LOOM_LLM_PROVIDER) {
+      args.push("--provider", process.env.LOOM_LLM_PROVIDER);
+    }
+    if (process.env.LOOM_LLM_MODEL) {
+      args.push("--model", process.env.LOOM_LLM_MODEL);
+    }
+    env.LOOM_NOTEBOOK_ALLOWLIST = join(cwd, "notebook.md");
+  }
+
+  log("starting loom subprocess", { bin: LOOM_BIN, cwd, remote: IS_REMOTE_MODE });
+
+  loomProcess = spawn("node", args, {
     stdio: ["pipe", "pipe", "pipe"],
     cwd,
-    env: { ...process.env },
+    env,
   });
 
   const rl = createInterface({ input: loomProcess.stdout!, terminal: false });
