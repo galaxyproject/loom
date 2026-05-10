@@ -393,40 +393,60 @@ honor it and skip the remaining gates.
 
 ### Plan section template (used in the chat draft AND the notebook write)
 
-Each step is a top-level checklist item with its routing and tool(s)
-on **indented sub-bullets**. Markdown collapses continuation-indent
-text into the parent line; sub-bullets render as a real nested list.
+The heading line is rigid: \`## Plan <Letter>: <Title> [<routing>]\`,
+with a literal letter (\`A\`, \`B\`, \`C\` -- pick the next free one),
+a colon, the human-readable title, and a routing tag in literal
+square brackets. Each step is a top-level checklist item with routing
+and tool(s) on **indented sub-bullets**. Markdown collapses
+continuation-indent text into the parent line; sub-bullets render as
+a real nested list.
+
+Worked example -- copy this shape exactly, just substitute domain
+content:
 
 \`\`\`markdown
-## Plan A: <Title> [galaxy|hybrid|local|remote]
+## Plan A: chrM Variant Calling [galaxy]
 
-<one or two sentences of rationale + research question>
+Identify mitochondrial variants from 4 paired-end WGS samples using
+the IWC \`bwa-mem-chrM\` workflow. Output: chrM VCF + per-sample QC.
 
 ### Steps
 
-- [ ] 1. **<Step name>** {#plan-a-step-1} — <one-line purpose>
-  - Routing: local
-  - Tool: <tool-name-or-galaxy-id>
-- [ ] 2. **<Step name>** {#plan-a-step-2} — <one-line purpose>
-  - Routing: Galaxy
-  - Tool: <galaxy-tool-id>
+- [ ] 1. **QC FASTQs** {#plan-a-step-1} — fastp adapter trim + per-base QC
+  - Routing: galaxy
+  - Tool: fastp
+- [ ] 2. **Align to chrM reference** {#plan-a-step-2} — BWA-MEM, sorted BAM out
+  - Routing: galaxy
+  - Tool: bwa_mem
+- [ ] 3. **Call variants** {#plan-a-step-3} — bcftools call, filter Q>=30
+  - Routing: galaxy
+  - Tool: bcftools_call
 
 ### Parameters
 
 | Step | Tool | Parameter | Default | Value | Description |
 | --- | --- | --- | --- | --- | --- |
-| 1   | ... | ...       | ...     | ...   | ...         |
+| 1   | fastp     | --qualified_quality_phred | 15 | 20 | min Phred to keep |
+| 2   | bwa_mem   | --threads                 | 4  | 8  | parallel threads  |
+| 3   | bcftools_call | -p                    | 0.5 | 0.01 | call threshold  |
 \`\`\`
 
-Conventions:
+Conventions (please re-read the heading line above before drafting):
 
-- Use \`{#plan-X-step-N}\` anchors so invocation YAML blocks can reference
-  individual steps unambiguously.
+- Heading **must** be \`## Plan <Letter>: <Title> [<routing>]\`.
+  Examples that pass: \`## Plan A: RNA-seq DE [galaxy]\`,
+  \`## Plan B: Quick local QC [local]\`. Examples that **fail** and
+  must be avoided: \`## Plan: ...\` (missing letter),
+  \`## Plan A: ...\` (missing routing tag),
+  \`## Plan A - Title [galaxy]\` (dash instead of colon).
 - Routing tag in the section header is one of \`[galaxy]\`, \`[hybrid]\`,
   \`[local]\`, or \`[remote]\`. Default to \`[galaxy]\` when the work has a
   matching Galaxy workflow/tool; \`[hybrid]\` when some steps are local
   and some Galaxy; \`[local]\` only for personal-scale or ad-hoc work.
-  Tag literal (lowercase, in square brackets) so tooling can grep.
+  Tag literal, lowercase, square brackets, no spaces inside the
+  brackets so tooling can grep.
+- Use \`{#plan-X-step-N}\` anchors so invocation YAML blocks can reference
+  individual steps unambiguously.
 - Step routing/tool details go on **sub-bullets**, not on the same line
   as the step heading. Markdown will collapse same-line continuation
   text and the rendered notebook becomes unreadable.
