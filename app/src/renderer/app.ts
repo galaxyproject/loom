@@ -13,6 +13,15 @@ declare global {
   }
 }
 
+// Apply remote-mode class as early as possible so CSS rules hit before paint.
+// The web shell's config:get response carries `_mode: "remote" | "desktop"`;
+// Electron's main-process config has no such field, so this is a no-op there.
+void window.orbit.getConfig().then((cfg: Record<string, unknown>) => {
+  if ((cfg as { _mode?: string })?._mode === "remote") {
+    document.body.classList.add("remote-mode");
+  }
+});
+
 // ── Components ────────────────────────────────────────────────────────────────
 
 const messagesEl = document.getElementById("messages")!;

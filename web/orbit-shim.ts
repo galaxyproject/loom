@@ -88,6 +88,15 @@ function connect(): void {
 
 connect();
 
+let cachedMode: "remote" | "desktop" | undefined;
+
+async function fetchMode(): Promise<"remote" | "desktop"> {
+  if (cachedMode) return cachedMode;
+  const cfg = (await invoke("config:get")) as { _mode?: string } | null;
+  cachedMode = cfg?._mode === "remote" ? "remote" : "desktop";
+  return cachedMode;
+}
+
 // Expose the same OrbitAPI shape the renderer expects.
 (window as unknown as Record<string, unknown>).orbit = {
   prompt: (message: string) => invoke("agent:prompt", message),
@@ -95,10 +104,10 @@ connect();
   newSession: () => invoke("agent:new-session"),
   getState: () => invoke("agent:get-state"),
   getCwd: () => invoke("agent:get-cwd"),
-  openFile: (filePath: string) => {
-    // In a browser, open via the server's file-serving endpoint
+  openFile: async (filePath: string) => {
+    if ((await fetchMode()) === "remote") return { opened: false };
     window.open(`/file?path=${encodeURIComponent(filePath)}`, "_blank");
-    return Promise.resolve({ opened: true });
+    return { opened: true };
   },
   getConfig: () => invoke("config:get"),
   saveConfig: (config: unknown) => invoke("config:save", config),
@@ -111,6 +120,7 @@ connect();
   restartAgent: () => invoke("agent:restart"),
   resetSession: () => invoke("agent:reset-session"),
   selectDirectory: async () => {
+    if ((await fetchMode()) === "remote") return null;
     // No native file picker in browsers -- prompt for a path
     const path = window.prompt("Enter working directory path:");
     if (path) {
@@ -119,9 +129,11 @@ connect();
     return path || null;
   },
   browseDirectory: async () => {
+    if ((await fetchMode()) === "remote") return null;
     const path = window.prompt("Enter directory path:");
     return path || null;
   },
+  getMode: () => fetchMode(),
   onAgentEvent: (cb: Callback<[unknown]>) => on("agent:event", cb),
   onUiRequest: (cb: Callback<[unknown]>) => on("agent:ui-request", cb),
   onAgentStatus: (cb: Callback<[string, string | undefined]>) => on("agent:status", cb),
