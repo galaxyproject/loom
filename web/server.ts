@@ -333,9 +333,20 @@ wss.on("connection", (socket) => {
   }
 });
 
+async function setupRenderer(): Promise<void> {
+  if (process.env.NODE_ENV === "production") {
+    const distDir = resolve(__dirname, "dist");
+    log("serving static renderer from", distDir);
+    app.use(express.static(distDir));
+    app.get("/", (_req, res) => res.sendFile(resolve(distDir, "index.html")));
+    return;
+  }
+  await setupVite();
+}
+
 // ── Start ────────────────────────────────────────────────────────────────────
 
-await setupVite();
+await setupRenderer();
 
 httpServer.listen(PORT, () => {
   log(`Orbit Web running at http://localhost:${PORT}`);
