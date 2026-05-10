@@ -5,9 +5,10 @@
   "requiresModel": true,
   "loomArgs": ["--tools", "read,write,edit"],
   "inputs": [
-    "I just got my single-cell RNA-seq count matrix back. Help me draft a plan to figure out what cell types are present. Don't execute anything yet."
+    "I just got my single-cell RNA-seq count matrix back. Help me draft a plan to figure out what cell types are present. Don't execute anything yet.",
+    "Yes, those assumptions are fine. It's 10x Chromium data, human PBMCs, around 8000 cells. Go ahead and draft the formal plan now."
   ],
-  "timeoutMs": 90000,
+  "timeoutMs": 150000,
   "assertions": {
     "events": { "mustInclude": ["agent_start", "turn_end"] },
     "chatPlan": {

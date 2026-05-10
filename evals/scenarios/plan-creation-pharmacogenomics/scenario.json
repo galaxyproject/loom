@@ -5,9 +5,10 @@
   "requiresModel": true,
   "loomArgs": ["--tools", "read,write,edit"],
   "inputs": [
-    "I uploaded my 23andMe raw data file. Help me figure out which medications might affect me differently because of my genetics. Don't run anything yet -- just draft me a plan."
+    "I uploaded my 23andMe raw data file. Help me figure out which medications might affect me differently because of my genetics. Don't run anything yet -- just draft me a plan.",
+    "Yes, that approach sounds fine. The file is the standard 23andMe v5 raw data txt, just on my laptop, no Galaxy needed. Go ahead and draft the formal plan."
   ],
-  "timeoutMs": 90000,
+  "timeoutMs": 150000,
   "assertions": {
     "events": { "mustInclude": ["agent_start", "turn_end"] },
     "chatPlan": {
