@@ -398,7 +398,7 @@ on **indented sub-bullets**. Markdown collapses continuation-indent
 text into the parent line; sub-bullets render as a real nested list.
 
 \`\`\`markdown
-## Plan A: <Title> [local|hybrid|remote]
+## Plan A: <Title> [galaxy|hybrid|local|remote]
 
 <one or two sentences of rationale + research question>
 
@@ -422,8 +422,11 @@ Conventions:
 
 - Use \`{#plan-X-step-N}\` anchors so invocation YAML blocks can reference
   individual steps unambiguously.
-- Routing tag in the section header: \`[local]\`, \`[hybrid]\`, or
-  \`[remote]\`. Tag literal so future tooling can grep.
+- Routing tag in the section header is one of \`[galaxy]\`, \`[hybrid]\`,
+  \`[local]\`, or \`[remote]\`. Default to \`[galaxy]\` when the work has a
+  matching Galaxy workflow/tool; \`[hybrid]\` when some steps are local
+  and some Galaxy; \`[local]\` only for personal-scale or ad-hoc work.
+  Tag literal (lowercase, in square brackets) so tooling can grep.
 - Step routing/tool details go on **sub-bullets**, not on the same line
   as the step heading. Markdown will collapse same-line continuation
   text and the rendered notebook becomes unreadable.
