@@ -38,10 +38,11 @@ export function parseLatestPlan(content: string): ParsedPlan | null {
     if (/^##\s+/.test(lines[i])) break;
     const stepMatch = lines[i].match(/^\s*-\s+\[\s\]\s+(.*)$/);
     if (stepMatch) {
+      const subBullets = collectSubBullets(lines, i + 1);
       pendingSteps.push({
         line: i,
         raw: stepMatch[1],
-        descriptionLength: measureStepDescription(stepMatch[1]),
+        descriptionLength: measureStepDescription(stepMatch[1], subBullets),
       });
     }
   }
@@ -49,11 +50,42 @@ export function parseLatestPlan(content: string): ParsedPlan | null {
   return { title: latestPlanTitle, routing: latestPlanRouting, pendingSteps };
 }
 
-function measureStepDescription(raw: string): number {
-  return raw
+/**
+ * Gather indented sub-bullet lines following the step's main line. Stops at
+ * the next top-level `- [ ]` bullet, the next `##` section, a blank line that
+ * terminates the step block, or end-of-content.
+ */
+function collectSubBullets(lines: string[], startIdx: number): string[] {
+  const out: string[] = [];
+  for (let i = startIdx; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^##\s+/.test(line)) break;
+    if (/^\s*-\s+\[[ x!]\]\s+/.test(line)) break; // next top-level step
+    if (/^\s+-\s+/.test(line)) {
+      out.push(line.replace(/^\s+-\s+/, "").trim());
+      continue;
+    }
+    if (line.trim() === "") break;
+    // any other shape (paragraph continuation) -- stop
+    break;
+  }
+  return out;
+}
+
+/**
+ * Measure the descriptive text attached to a step. Strips numeric prefix,
+ * the bold-wrapped title, optional `{#anchor}`, and leading separators from
+ * the main line; then concatenates indented sub-bullet content. Sub-bullets
+ * count because some models put `Routing: <x>` and `Tool: <y>` there
+ * instead of (or in addition to) a same-line description.
+ */
+function measureStepDescription(raw: string, subBullets: string[]): number {
+  const sameLine = raw
     .replace(/^\d+\.\s*/, "")
     .replace(/\*\*[^*]+\*\*/, "")
     .replace(/\{#[^}]+\}/, "")
     .replace(/^[\s\-:|]+/, "")
-    .trim().length;
+    .trim();
+  const subText = subBullets.join(" ").trim();
+  return [sameLine, subText].filter(Boolean).join(" ").length;
 }
