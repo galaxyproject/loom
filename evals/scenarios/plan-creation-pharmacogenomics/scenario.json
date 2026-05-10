@@ -10,14 +10,12 @@
   "timeoutMs": 90000,
   "assertions": {
     "events": { "mustInclude": ["agent_start", "turn_end"] },
-    "notebook": {
+    "chatPlan": {
       "exists": true,
-      "plan": {
-        "exists": true,
-        "routingIn": ["local", "hybrid"],
-        "minPendingSteps": 3,
-        "eachStepHasDescription": true
-      }
-    }
+      "routingIn": ["local", "hybrid"],
+      "minPendingSteps": 3,
+      "eachStepHasDescription": true
+    },
+    "notebook": { "plan": { "exists": false } }
   }
 }

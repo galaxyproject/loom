@@ -22,6 +22,14 @@ export interface Assertions {
     mustNotInclude?: string[];
   };
   /**
+   * Structural plan checks parsed from the agent's chat text. Use this for
+   * single-turn plan-creation scenarios -- Loom's plan-convention block
+   * tells the agent to draft plans IN CHAT first and only write to
+   * notebook.md after explicit user approval, so for a one-shot eval the
+   * correct plan is in chat, not in the file.
+   */
+  chatPlan?: PlanAssertions;
+  /**
    * Structural assertions on the post-run notebook.md. Reads the file from
    * the scenario's temp cwd after loom exits (or times out -- the runner
    * captures notebook state before cleanup). Content quality (right tools,

@@ -1,6 +1,6 @@
 {
-  "name": "plan creation: agent drafts an RNA-seq plan in notebook.md",
-  "description": "User asks Loom to draft a bulk RNA-seq differential-expression plan. Tests the SHELL CONTRACT for plan creation -- did the agent honor the notebook conventions (`## Plan X: <title> [<routing>]` heading, step list with `- [ ] N. **Title** -- description`, acceptance criteria of reasonable length)? Content quality (right tools, right ordering, biological correctness) is intentionally NOT scored here -- that lives in the galaxy harness with LLMJudge. We're answering 'does Loom-the-shell get a usable plan into the notebook?', not 'is this a *good* RNA-seq plan?'.",
+  "name": "plan creation: agent drafts an RNA-seq plan in chat",
+  "description": "User asks Loom to draft a bulk RNA-seq differential-expression plan. Tests the SHELL CONTRACT for plan creation -- per Loom's plan-convention block, the agent must draft the plan IN CHAT first (four-stage approval gate), and only write to notebook.md after explicit user approval. So for a single-turn ask we assert: chat carries a structurally valid `## Plan X: <title> [<routing>]` block, and the notebook stays empty of plan content. Writing to notebook on turn 1 is a protocol violation. Content quality (right tools, right ordering, biological correctness) stays out of scope -- that's the galaxy harness's job.",
   "tier": 2,
   "requiresModel": true,
   "loomArgs": ["--tools", "read,write,edit"],
@@ -12,13 +12,15 @@
     "events": {
       "mustInclude": ["agent_start", "turn_end"]
     },
-    "notebook": {
+    "chatPlan": {
       "exists": true,
+      "routingIn": ["galaxy", "hybrid", "local", "remote"],
+      "minPendingSteps": 4,
+      "eachStepHasDescription": true
+    },
+    "notebook": {
       "plan": {
-        "exists": true,
-        "routingIn": ["galaxy", "hybrid", "local", "remote"],
-        "minPendingSteps": 4,
-        "eachStepHasDescription": true
+        "exists": false
       }
     }
   }

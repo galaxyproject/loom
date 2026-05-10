@@ -28,9 +28,11 @@ export function evaluate(run: ScenarioRun): ScenarioFailure[] {
     });
   }
 
+  const stripThink = run.model?.stripThinkingTags ?? false;
   evaluateToolCalls(run.events, a, failures);
   evaluateEvents(run.events, a, failures);
-  evaluateChatText(run.events, a, run.model?.stripThinkingTags ?? false, failures);
+  evaluateChatText(run.events, a, stripThink, failures);
+  evaluateChatPlan(run.events, a.chatPlan, stripThink, failures);
   evaluateNotebook(run.notebookContent, a.notebook, failures);
 
   return failures;
@@ -197,31 +199,64 @@ function evaluateNotebook(
     }
   }
 
-  if (a.plan) evaluatePlan(content, a.plan, failures);
+  if (a.plan) evaluatePlan(content, a.plan, failures, "notebook.plan", "notebook");
 }
 
-function evaluatePlan(content: string, a: PlanAssertions, failures: ScenarioFailure[]): void {
+function evaluateChatPlan(
+  events: AnyEvent[],
+  a: PlanAssertions | undefined,
+  stripThinkingTags: boolean,
+  failures: ScenarioFailure[],
+): void {
+  if (!a) return;
+  let text = collectChatText(events);
+  if (stripThinkingTags) text = stripThinking(text);
+  evaluatePlan(text, a, failures, "chatPlan", "chat text");
+}
+
+/**
+ * Apply PlanAssertions to a content string. `prefix` is the assertion-name
+ * prefix used in failure detail (e.g. "notebook.plan", "chatPlan");
+ * `surfaceLabel` names the source for human-readable failure text
+ * ("notebook", "chat text").
+ */
+function evaluatePlan(
+  content: string,
+  a: PlanAssertions,
+  failures: ScenarioFailure[],
+  prefix: string,
+  surfaceLabel: string,
+): void {
   const plan = parseLatestPlan(content);
+
   if (!plan) {
     if (a.exists || a.routingIn || a.minPendingSteps !== undefined || a.eachStepHasDescription) {
       failures.push({
-        assertion: "notebook.plan.exists",
-        detail: "no `## Plan X: <title> [routing]` heading found in notebook",
+        assertion: `${prefix}.exists`,
+        detail: `no \`## Plan X: <title> [routing]\` heading found in ${surfaceLabel}`,
       });
     }
     return;
   }
 
+  if (a.exists === false) {
+    failures.push({
+      assertion: `${prefix}.exists`,
+      detail: `expected no plan heading in ${surfaceLabel} but found "${plan.title}"`,
+    });
+    return;
+  }
+
   if (a.routingIn && !a.routingIn.includes(plan.routing as (typeof a.routingIn)[number])) {
     failures.push({
-      assertion: "notebook.plan.routingIn",
+      assertion: `${prefix}.routingIn`,
       detail: `plan routing '${plan.routing}' not in [${a.routingIn.join(", ")}]`,
     });
   }
 
   if (a.minPendingSteps !== undefined && plan.pendingSteps.length < a.minPendingSteps) {
     failures.push({
-      assertion: "notebook.plan.minPendingSteps",
+      assertion: `${prefix}.minPendingSteps`,
       detail: `expected >= ${a.minPendingSteps} pending steps, got ${plan.pendingSteps.length}`,
     });
   }
@@ -230,7 +265,7 @@ function evaluatePlan(content: string, a: PlanAssertions, failures: ScenarioFail
     const skinny = plan.pendingSteps.filter((s) => s.descriptionLength < 8);
     if (skinny.length > 0) {
       failures.push({
-        assertion: "notebook.plan.eachStepHasDescription",
+        assertion: `${prefix}.eachStepHasDescription`,
         detail: `${skinny.length} step(s) lack a description >= 8 chars (lines ${skinny
           .map((s) => s.line + 1)
           .join(", ")})`,
