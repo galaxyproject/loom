@@ -133,7 +133,6 @@ async function fetchMode(): Promise<"remote" | "desktop"> {
     const path = window.prompt("Enter directory path:");
     return path || null;
   },
-  getMode: () => fetchMode(),
   onAgentEvent: (cb: Callback<[unknown]>) => on("agent:event", cb),
   onUiRequest: (cb: Callback<[unknown]>) => on("agent:ui-request", cb),
   onAgentStatus: (cb: Callback<[string, string | undefined]>) => on("agent:status", cb),
