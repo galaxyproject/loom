@@ -3,9 +3,9 @@
   "description": "Researcher persona, soil shotgun metagenomics. Phrasing adapted from the galaxy harness's bioinformatics_workflows.metagenomics_community_composition case + claw's claw-metagenomics skill. Tests SHELL CONTRACT only -- whether the agent emits a structurally valid plan. Whether it picks Kraken2 vs MetaPhlAn or balances profiling-vs-assembly is content quality (galaxy harness's job).",
   "tier": 2,
   "requiresModel": true,
-  "loomArgs": ["--tools", "read,write,edit", "--no-skills", "--no-context-files"],
+  "loomArgs": ["--tools", "read,write,edit"],
   "inputs": [
-    "I have shotgun metagenomic sequencing data from a soil sample. Help me draft a plan in notebook.md to identify which organisms are present and their relative abundances. Follow Loom conventions: `## Plan A: <title> [<routing>]` heading (routing is one of [local|galaxy|hybrid|remote]), `### Steps` section, steps as `- [ ] 1. **Step title** -- description with acceptance criteria`. At least 4 pending steps. Don't execute -- just draft."
+    "I have shotgun metagenomic sequencing data from a soil sample. Help me draft a plan to identify which organisms are present and their relative abundances. Don't execute anything yet."
   ],
   "timeoutMs": 90000,
   "assertions": {

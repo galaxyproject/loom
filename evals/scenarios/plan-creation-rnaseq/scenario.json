@@ -3,9 +3,9 @@
   "description": "User asks Loom to draft a bulk RNA-seq differential-expression plan. Tests the SHELL CONTRACT for plan creation -- did the agent honor the notebook conventions (`## Plan X: <title> [<routing>]` heading, step list with `- [ ] N. **Title** -- description`, acceptance criteria of reasonable length)? Content quality (right tools, right ordering, biological correctness) is intentionally NOT scored here -- that lives in the galaxy harness with LLMJudge. We're answering 'does Loom-the-shell get a usable plan into the notebook?', not 'is this a *good* RNA-seq plan?'.",
   "tier": 2,
   "requiresModel": true,
-  "loomArgs": ["--tools", "read,write,edit", "--no-skills", "--no-context-files"],
+  "loomArgs": ["--tools", "read,write,edit"],
   "inputs": [
-    "I have paired-end RNA-seq FASTQ files from two conditions (treated vs control, 4 replicates each). Help me draft a plan in notebook.md to identify differentially expressed genes. Use the Loom notebook conventions: a `## Plan A: <title> [<routing>]` heading where routing is one of [local|galaxy|hybrid|remote], followed by a `### Steps` section with steps like `- [ ] 1. **Step title** -- description with acceptance criteria`. At least 4 pending steps. Do NOT execute anything -- just write the plan into notebook.md."
+    "I have paired-end RNA-seq FASTQ files from two conditions (treated vs control, 4 replicates each). Help me draft a plan to identify differentially expressed genes. Don't execute anything yet."
   ],
   "timeoutMs": 90000,
   "assertions": {

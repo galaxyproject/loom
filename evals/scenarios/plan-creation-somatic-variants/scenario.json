@@ -3,9 +3,9 @@
   "description": "Clinical/researcher persona. Phrasing adapted from the galaxy harness's bioinformatics_workflows.somatic_variant_calling case + claw's clinical-variant-reporter skill. Tests SHELL CONTRACT: did the agent draft a properly-shaped plan? The actual pipeline shape (BWA vs Bowtie, MuTect2 vs Strelka, annotation with VEP vs SnpEff) is content quality, deliberately out of scope here.",
   "tier": 2,
   "requiresModel": true,
-  "loomArgs": ["--tools", "read,write,edit", "--no-skills", "--no-context-files"],
+  "loomArgs": ["--tools", "read,write,edit"],
   "inputs": [
-    "I have matched tumor and normal whole-exome sequencing data. Help me draft a plan in notebook.md to call somatic variants. Follow Loom conventions: `## Plan A: <title> [<routing>]` heading where routing is one of [local|galaxy|hybrid|remote], `### Steps` section, steps as `- [ ] 1. **Step title** -- description with acceptance criteria`. At least 5 pending steps (this is a multi-stage pipeline). Don't execute -- just draft."
+    "I have matched tumor and normal whole-exome sequencing data. Help me draft a plan to call somatic variants. Don't execute anything yet."
   ],
   "timeoutMs": 90000,
   "assertions": {

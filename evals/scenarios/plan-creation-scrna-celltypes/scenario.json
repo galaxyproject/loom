@@ -3,9 +3,9 @@
   "description": "Researcher persona, single-cell RNA-seq cell-type ID. Phrasing adapted from the galaxy harness's bioinformatics_workflows.scrna_cell_type_identification case + claw's scrna-orchestrator skill. Tests SHELL CONTRACT: did the agent draft a properly-shaped plan in notebook.md? Content-quality scoring (right normalization choice, right marker DB, etc.) stays in the galaxy harness with LLMJudge.",
   "tier": 2,
   "requiresModel": true,
-  "loomArgs": ["--tools", "read,write,edit", "--no-skills", "--no-context-files"],
+  "loomArgs": ["--tools", "read,write,edit"],
   "inputs": [
-    "I just got my single-cell RNA-seq count matrix back. Help me figure out what cell types are present. Draft a plan in notebook.md following the Loom conventions: a `## Plan A: <title> [<routing>]` heading where routing is one of [local|galaxy|hybrid|remote], followed by a `### Steps` section with steps like `- [ ] 1. **Step title** -- description with acceptance criteria`. At least 4 pending steps. Do NOT execute -- just draft the plan."
+    "I just got my single-cell RNA-seq count matrix back. Help me draft a plan to figure out what cell types are present. Don't execute anything yet."
   ],
   "timeoutMs": 90000,
   "assertions": {
