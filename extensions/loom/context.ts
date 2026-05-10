@@ -412,13 +412,13 @@ the IWC \`bwa-mem-chrM\` workflow. Output: chrM VCF + per-sample QC.
 
 ### Steps
 
-- [ ] 1. **QC FASTQs** {#plan-a-step-1} — fastp adapter trim + per-base QC
+- [ ] 1. **QC FASTQs** — fastp adapter trim + per-base QC
   - Routing: galaxy
   - Tool: fastp
-- [ ] 2. **Align to chrM reference** {#plan-a-step-2} — BWA-MEM, sorted BAM out
+- [ ] 2. **Align to chrM reference** — BWA-MEM, sorted BAM out
   - Routing: galaxy
   - Tool: bwa_mem
-- [ ] 3. **Call variants** {#plan-a-step-3} — bcftools call, filter Q>=30
+- [ ] 3. **Call variants** — bcftools call, filter Q>=30
   - Routing: galaxy
   - Tool: bcftools_call
 
@@ -445,8 +445,11 @@ Conventions (please re-read the heading line above before drafting):
   and some Galaxy; \`[local]\` only for personal-scale or ad-hoc work.
   Tag literal, lowercase, square brackets, no spaces inside the
   brackets so tooling can grep.
-- Use \`{#plan-X-step-N}\` anchors so invocation YAML blocks can reference
-  individual steps unambiguously.
+- Step anchors (\`{#plan-X-step-N}\` syntax) are supported by the
+  parser but **do not write them**. The litellm proxy in front of some
+  Llama-4 deployments mistakes the curly-brace anchor for a tool-call
+  marker and rejects the response. Reference steps by their step number
+  + plan letter instead (e.g. "Plan A step 2").
 - Step routing/tool details go on **sub-bullets**, not on the same line
   as the step heading. Markdown will collapse same-line continuation
   text and the rendered notebook becomes unreadable.
