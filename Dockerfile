@@ -37,4 +37,4 @@ COPY --from=builder /app/web/package.json ./web/package.json
 
 EXPOSE 3000
 
-CMD ["npx", "tsx", "web/server.ts"]
+CMD ["node", "web/node_modules/.bin/tsx", "web/server.ts"]
