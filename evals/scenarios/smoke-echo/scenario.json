@@ -1,6 +1,6 @@
 {
   "name": "smoke: model echoes a fixed token",
-  "description": "Tier 2 sanity check that the matrix runner can spawn loom against each curated model and capture the assistant turn. The prompt asks for a single agreed-upon word; we assert the model says it. No tools, no MCP, no plan -- just verify the model is actually wired in. Cheap and fast on TACC.",
+  "description": "Tier 2 sanity check that the matrix runner can spawn loom against each curated model and capture the assistant turn. The prompt asks for a single agreed-upon word; we assert the model says it. No tools, no MCP, no plan -- just verify the model is actually wired in. Cheap and fast on TACC. The `--no-skills --no-context-files` strip flags are intentional here (they are NOT used on plan-creation scenarios): smoke-echo's job is to verify matrix wiring, so we want the smallest possible system prompt -- removing Loom's hard-constraint block and skills discovery isolates spawn-success from prompt-following. Loom-as-shipped behavior is tested by plan-creation scenarios with the full prompt stack in play.",
   "tier": 2,
   "requiresModel": true,
   "loomArgs": ["--no-tools", "--no-skills", "--no-context-files"],
