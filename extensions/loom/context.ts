@@ -754,16 +754,26 @@ asks what was said.
 }
 
 /**
- * The litellm Llama-4 adapter (used by the SambaNova-on-TACC proxy and
- * some other Llama-4 deployments) misinterprets `{...}` patterns in
- * model output as tool-call boundaries and tries to JSON-parse the
- * contents. Notebook-anchor syntax (`{#plan-a-step-1}`) trips this, so
- * we suppress anchor guidance for Llama-4 models. Anthropic / OpenAI /
- * Google / Llama-3 et al. don't have this issue and keep full anchor
- * support. The init-gate parser accepts anchors when present regardless,
- * so suppression is fail-soft.
+ * Heuristic id-based detector for Llama-4 family models. The actual bug
+ * we're working around lives in the litellm Llama-4 adapter (used by the
+ * SambaNova-on-TACC proxy and some other Llama-4 deployments): it
+ * misinterprets `{...}` patterns in model output as tool-call boundaries
+ * and tries to JSON-parse the contents, so notebook-anchor syntax
+ * (`{#plan-a-step-1}`) trips it and gets rejected as "Invalid function
+ * calling output." We don't have a clean signal for "is this model
+ * behind a buggy litellm adapter," so we approximate it by detecting
+ * Llama-4 in the model id and suppressing anchor guidance for the whole
+ * family. Trade-offs:
+ *   - False positive (Llama-4 on a non-buggy adapter): the model loses
+ *     anchor guidance and references steps by "Plan A step 2" instead;
+ *     no functional regression.
+ *   - False negative (some other model behind the same buggy proxy):
+ *     would re-surface "Invalid function calling output" -- not seen in
+ *     the matrix today.
+ *   - Init-gate parser accepts anchors when present regardless of which
+ *     prompt path ran, so swapping providers mid-project is fail-soft.
  */
-function isLlama4ViaLitellm(model: { id?: string; provider?: string } | undefined): boolean {
+function isLlama4Family(model: { id?: string; provider?: string } | undefined): boolean {
   if (!model) return false;
   const id = (model.id ?? "").toLowerCase();
   return /llama-?4|maverick|scout/.test(id);
@@ -771,7 +781,7 @@ function isLlama4ViaLitellm(model: { id?: string; provider?: string } | undefine
 
 export function setupContextInjection(pi: ExtensionAPI): void {
   pi.on("before_agent_start", async (_event, ctx) => {
-    const omitAnchors = isLlama4ViaLitellm(ctx.model);
+    const omitAnchors = isLlama4Family(ctx.model);
     const systemPrompt = [
       buildOperatingDisciplineBlock(),
       buildPlanConventionBlock({ omitAnchors }),
