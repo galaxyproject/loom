@@ -12,6 +12,7 @@ import { resolve } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 const PATH_GATED_TOOLS = new Set(["edit", "write", "read"]);
+const BLOCKED_TOOLS = new Set(["bash", "grep", "find", "ls"]);
 
 export function isPathAllowed(
   rawPath: string,
@@ -33,8 +34,8 @@ export function shouldBlockTool(
   allowlist: string[],
   cwd: string,
 ): BlockDecision | undefined {
-  if (toolName === "bash") {
-    return { block: true, reason: "bash is disabled in remote mode" };
+  if (BLOCKED_TOOLS.has(toolName)) {
+    return { block: true, reason: `${toolName} is disabled in remote mode` };
   }
   if (!PATH_GATED_TOOLS.has(toolName)) return undefined;
   const path = input.path;

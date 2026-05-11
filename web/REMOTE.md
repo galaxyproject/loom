@@ -33,7 +33,7 @@ The same image is launchable as a Galaxy IT. The IT wrapper sets the env vars fr
 
 ## What's curated
 
-- `bash` -- blocked outright
+- `bash`, `grep`, `find`, `ls` -- blocked outright (no filesystem enumeration)
 - `edit` / `write` / `read` -- restricted to `<cwd>/notebook.md` only
 - `executionMode: local` -- forced to `cloud`
 - `/connect` flow -- bypassed (creds env-injected)

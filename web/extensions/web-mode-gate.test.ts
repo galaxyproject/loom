@@ -65,4 +65,34 @@ describe("shouldBlockTool", () => {
     );
     expect(result).toBeUndefined();
   });
+
+  it("blocks grep unconditionally", () => {
+    const result = shouldBlockTool(
+      "grep",
+      { pattern: "API_KEY", path: "/proc/self/environ" },
+      ["/tmp/loom-session/notebook.md"],
+      "/tmp/loom-session",
+    );
+    expect(result).toEqual({ block: true, reason: expect.stringContaining("grep") });
+  });
+
+  it("blocks find unconditionally", () => {
+    const result = shouldBlockTool(
+      "find",
+      { path: "/", name: "*.env" },
+      ["/tmp/loom-session/notebook.md"],
+      "/tmp/loom-session",
+    );
+    expect(result).toEqual({ block: true, reason: expect.stringContaining("find") });
+  });
+
+  it("blocks ls unconditionally", () => {
+    const result = shouldBlockTool(
+      "ls",
+      { path: "/etc" },
+      ["/tmp/loom-session/notebook.md"],
+      "/tmp/loom-session",
+    );
+    expect(result).toEqual({ block: true, reason: expect.stringContaining("ls") });
+  });
 });
