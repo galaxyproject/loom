@@ -93,14 +93,14 @@ The CLI never owns analysis semantics. Slash commands behave the same as in Orbi
 - decrypts Galaxy API keys via Electron `safeStorage` and injects `GALAXY_API_KEY` into the brain at spawn time (`buildSecretEnv` in `app/src/main/agent.ts`)
 - watches `~/.loom/config.json` and re-encrypts plaintext keys the brain wrote during `/connect`
 
-### Future web shell
+### Web shell (`web/`)
 
-Two materially different possibilities:
+The web shell shares the Orbit renderer over a WebSocket bridge to a brain subprocess (`web/server.ts`). Two run modes:
 
-- **thin local shell** -- talks to a local Loom runtime over the same shell contract Orbit uses
-- **hosted service** -- multi-user tenancy, remote session ownership, remote notebook storage, Galaxy account linking
+- **Desktop-equivalent** (default) -- single user on localhost, reads `~/.loom/config.json`, behaves like Orbit minus Electron.
+- **Remote** (`LOOM_MODE=remote`) -- env-injected credentials, ephemeral `/tmp/loom-session/` cwd, brain spawned with the `web/extensions/web-mode-gate` Pi extension that blocks `bash` and confines `edit`/`write`/`read` to `notebook.md`. No `~/.loom/config.json`, no `/connect` flow, no local-filesystem UI. Same image runs as `docker run`, behind a reverse proxy, or as a Galaxy interactive tool. See [`web/REMOTE.md`](../web/REMOTE.md) for the env contract.
 
-These are not small variations of the same architecture. The choice has to be made before the web shell grows further.
+The hosted multi-user shape is deferred -- the IT pathway gives per-user isolation for free without a multi-tenant server.
 
 ## Shared contracts
 
