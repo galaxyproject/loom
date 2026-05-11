@@ -12,8 +12,9 @@ npm run evals -- <scenario> --model <id>
 ```
 
 Scenarios live under `evals/scenarios/<name>/`. The model matrix lives in
-`evals/models.json`. See the `loom-evals` plan in your brain vault for the
-full design.
+`evals/models.json`. `evals/findings.md` records what the suite has
+turned up so far -- both Loom-side bugs the matrix surfaced and
+per-model behavioral observations.
 
 ## Models
 
