@@ -35,22 +35,30 @@ function on<T extends unknown[]>(event: string, cb: Callback<T>): () => void {
   return () => listeners[event].delete(listener);
 }
 
-function send(msg: Record<string, unknown>): void {
+function send(msg: Record<string, unknown>): boolean {
   const serialized = JSON.stringify(msg);
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(serialized);
-  } else if (ws.readyState === WebSocket.CONNECTING) {
-    outbox.push(serialized);
+    return true;
   }
-  // CLOSING / CLOSED: drop. Pending invokes are rejected via onclose so the
-  // caller learns to retry rather than waiting on a dead socket.
+  if (ws.readyState === WebSocket.CONNECTING) {
+    outbox.push(serialized);
+    return true;
+  }
+  // CLOSING / CLOSED: caller (invoke) rejects the promise so a call made
+  // during the reconnect window doesn't hang waiting for a response that
+  // will never come.
+  return false;
 }
 
 function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
   const id = `web_${++idCounter}`;
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject });
-    send({ id, channel, args });
+    if (!send({ id, channel, args })) {
+      pending.delete(id);
+      reject(new Error("WebSocket disconnected"));
+    }
   });
 }
 
