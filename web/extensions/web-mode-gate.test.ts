@@ -1,4 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, writeFileSync, symlinkSync, rmSync, realpathSync, mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { isPathAllowed, shouldBlockTool } from "./web-mode-gate.js";
 
 describe("isPathAllowed", () => {
@@ -22,6 +25,53 @@ describe("isPathAllowed", () => {
 
   it("allows relative path to notebook.md when cwd is the session dir", () => {
     expect(isPathAllowed("notebook.md", allowlist, "/tmp/loom-session")).toBe(true);
+  });
+});
+
+describe("isPathAllowed with real symlinks", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = realpathSync(mkdtempSync(join(tmpdir(), "gate-test-")));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("treats a symlink that points at the allowed target as allowed", () => {
+    const real = join(tmpDir, "notebook.md");
+    writeFileSync(real, "");
+    const link = join(tmpDir, "alias.md");
+    symlinkSync(real, link);
+    expect(isPathAllowed(link, [real])).toBe(true);
+  });
+
+  it("rejects a symlink that resolves outside the allowed target", () => {
+    writeFileSync(join(tmpDir, "notebook.md"), "");
+    writeFileSync(join(tmpDir, "secret.txt"), "");
+    const link = join(tmpDir, "alias.md");
+    symlinkSync(join(tmpDir, "secret.txt"), link);
+    expect(isPathAllowed(link, [join(tmpDir, "notebook.md")])).toBe(false);
+  });
+
+  it("rejects access to a sibling reached through a symlinked parent dir", () => {
+    const realDir = join(tmpDir, "real-session");
+    mkdirSync(realDir);
+    writeFileSync(join(realDir, "notebook.md"), "");
+    writeFileSync(join(realDir, "secret.txt"), "");
+    const linkDir = join(tmpDir, "session");
+    symlinkSync(realDir, linkDir);
+    // Allowlist points at notebook.md via the symlinked dir; secret.txt
+    // is in the same real dir but must still be rejected.
+    expect(isPathAllowed(join(linkDir, "secret.txt"), [join(linkDir, "notebook.md")])).toBe(false);
+  });
+
+  it("allows a not-yet-existing notebook.md when the parent dir exists", () => {
+    // First write to notebook.md: target doesn't exist yet but the cwd does.
+    // realResolve should walk up to the (existing) parent and rejoin.
+    const target = join(tmpDir, "notebook.md");
+    expect(isPathAllowed(target, [target])).toBe(true);
   });
 });
 

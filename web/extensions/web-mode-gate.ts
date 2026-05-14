@@ -4,23 +4,47 @@
  * Blocks `bash` outright. Confines `edit`/`write`/`read` to a path allowlist
  * (the brain's notebook.md, in practice). Other tools pass through.
  *
- * Path comparisons use absolute resolution so symlinks and `..` can't bypass
- * the allowlist. The pure helpers are exported for unit tests.
+ * Path comparisons walk the deepest existing prefix through realpath so a
+ * pre-existing symlink in `/tmp/loom-session/` can't redirect a gated tool
+ * to a file outside the allowlist. The pure helpers are exported for unit
+ * tests.
  */
 
-import { resolve } from "node:path";
+import { resolve, dirname, basename, join } from "node:path";
+import { realpathSync } from "node:fs";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 const PATH_GATED_TOOLS = new Set(["edit", "write", "read"]);
 const BLOCKED_TOOLS = new Set(["bash", "grep", "find", "ls"]);
+
+/**
+ * Resolve an absolute path with symlink collapsing. Walks up until it finds
+ * a component that exists, realpaths it, then rejoins the non-existent
+ * suffix. This way notebook.md's first write (target doesn't exist yet) is
+ * still compared against the same realpath'd parent as later reads.
+ */
+function realResolve(absPath: string): string {
+  let current = resolve(absPath);
+  const suffix: string[] = [];
+  while (current !== dirname(current)) {
+    try {
+      const real = realpathSync(current);
+      return suffix.length === 0 ? real : join(real, ...suffix.reverse());
+    } catch {
+      suffix.push(basename(current));
+      current = dirname(current);
+    }
+  }
+  return resolve(absPath);
+}
 
 export function isPathAllowed(
   rawPath: string,
   allowlist: string[],
   cwd: string = process.cwd(),
 ): boolean {
-  const absolute = resolve(cwd, rawPath);
-  return allowlist.some((entry) => resolve(entry) === absolute);
+  const resolved = realResolve(resolve(cwd, rawPath));
+  return allowlist.some((entry) => realResolve(resolve(entry)) === resolved);
 }
 
 export interface BlockDecision {
