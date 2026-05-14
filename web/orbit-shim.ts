@@ -18,6 +18,11 @@ let ws: WebSocket;
 let idCounter = 0;
 const pending = new Map<string, PendingRequest>();
 const listeners: Record<string, Set<Callback<unknown[]>>> = {};
+// Buffer for messages produced before the WS reaches OPEN. The renderer issues
+// `window.orbit.getConfig()` synchronously at startup, before this socket's
+// async handshake completes -- dropping that message would hang the promise
+// forever and leave `body.remote-mode` unset.
+const outbox: string[] = [];
 
 function emit(event: string, ...args: unknown[]): void {
   listeners[event]?.forEach((cb) => cb(...args));
@@ -31,9 +36,14 @@ function on<T extends unknown[]>(event: string, cb: Callback<T>): () => void {
 }
 
 function send(msg: Record<string, unknown>): void {
+  const serialized = JSON.stringify(msg);
   if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(msg));
+    ws.send(serialized);
+  } else if (ws.readyState === WebSocket.CONNECTING) {
+    outbox.push(serialized);
   }
+  // CLOSING / CLOSED: drop. Pending invokes are rejected via onclose so the
+  // caller learns to retry rather than waiting on a dead socket.
 }
 
 function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
@@ -49,11 +59,19 @@ function connect(): void {
 
   ws.onopen = () => {
     console.log("[orbit-web] connected");
+    while (outbox.length) ws.send(outbox.shift()!);
     emit("ws:open");
   };
 
   ws.onclose = () => {
     console.log("[orbit-web] disconnected, reconnecting in 2s...");
+    // Anything queued during CONNECTING was tied to the now-dead brain; drop
+    // it. Reject every in-flight invoke so callers don't hang on a response
+    // that will never arrive.
+    outbox.length = 0;
+    const err = new Error("WebSocket disconnected");
+    for (const req of pending.values()) req.reject(err);
+    pending.clear();
     emit("ws:close");
     setTimeout(connect, 2000);
   };
