@@ -90,13 +90,13 @@ function startLoom(): void {
   if (loomProcess) stopLoom();
 
   const args: string[] = [LOOM_BIN, "--mode", "rpc"];
-  // Curated env via shared/brain-env. Remote mode forwards provider keys
-  // from the shell since the operator injects them at container launch;
-  // desktop-style sessions still go through the same allowlist so a stray
-  // `npx tsx web/server.ts` doesn't leak AWS / Git credentials to MCP
-  // subprocesses either.
+  // Curated env via shared/brain-env. Web mode -- remote or local dev --
+  // is env-authenticated by default (remote: operator injects at container
+  // launch; local: dev exports keys in their shell), so provider keys are
+  // forwarded unconditionally. The helper only forwards named provider
+  // keys, so AWS / Git / etc. still drop at this boundary.
   const env: NodeJS.ProcessEnv = buildBrainEnv(process.env, {
-    includeProviderKeys: IS_REMOTE_MODE,
+    includeProviderKeys: true,
   });
 
   if (IS_REMOTE_MODE) {
