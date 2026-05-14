@@ -17,6 +17,8 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import { WebSocketServer, WebSocket } from "ws";
 
+import { buildBrainEnv } from "../shared/brain-env.js";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOOM_BIN = resolve(__dirname, "../bin/loom.js");
 const LOOM_CONFIG_DIR = join(homedir(), ".loom");
@@ -88,7 +90,14 @@ function startLoom(): void {
   if (loomProcess) stopLoom();
 
   const args: string[] = [LOOM_BIN, "--mode", "rpc"];
-  const env: NodeJS.ProcessEnv = { ...process.env };
+  // Curated env via shared/brain-env. Remote mode forwards provider keys
+  // from the shell since the operator injects them at container launch;
+  // desktop-style sessions still go through the same allowlist so a stray
+  // `npx tsx web/server.ts` doesn't leak AWS / Git credentials to MCP
+  // subprocesses either.
+  const env: NodeJS.ProcessEnv = buildBrainEnv(process.env, {
+    includeProviderKeys: IS_REMOTE_MODE,
+  });
 
   if (IS_REMOTE_MODE) {
     const gatePath = resolve(__dirname, "extensions/web-mode-gate.ts");
