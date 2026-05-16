@@ -1,0 +1,26 @@
+{
+  "name": "plan creation: agent ends up with an RNA-seq plan",
+  "description": "Multi-turn: user asks for a bulk RNA-seq DE plan, then confirms assumptions on turn 2. SUCCESS = a structurally valid `## Plan X: <title> [<routing>]` block ends up in notebook.md by end of run. We don't care which protocol stage produced it (chat-first-then-write, write-immediately, etc) -- the matrix collapses Loom's 4-stage gate in different ways and prescribing which stage produced the plan is process pedantry that doesn't reflect end-user UX. Content quality (right tools, biological correctness) stays out of scope -- that's the galaxy harness's job with LLMJudge.",
+  "tier": 2,
+  "requiresModel": true,
+  "loomArgs": ["--tools", "read,write,edit"],
+  "inputs": [
+    "I have paired-end RNA-seq FASTQ files from two conditions (treated vs control, 4 replicates each). Help me draft a plan to identify differentially expressed genes. Don't execute anything yet.",
+    "Yes, those assumptions all look right. Use hg38 as the reference. Go ahead and draft the formal plan now."
+  ],
+  "timeoutMs": 150000,
+  "assertions": {
+    "events": {
+      "mustInclude": ["agent_start", "turn_end"]
+    },
+    "notebook": {
+      "exists": true,
+      "plan": {
+        "exists": true,
+        "routingIn": ["galaxy", "hybrid", "local", "remote"],
+        "minPendingSteps": 4,
+        "eachStepHasDescription": true
+      }
+    }
+  }
+}

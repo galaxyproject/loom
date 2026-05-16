@@ -8,3 +8,9 @@ session.jsonl
 # Agent worktrees
 .worktrees/
 .claude/
+
+# Eval run artifacts (Phase 5+; not committed)
+evals/results/
+
+# Eval credentials (TACC proxy etc; per-machine)
+evals/.env
