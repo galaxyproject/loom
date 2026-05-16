@@ -95,6 +95,10 @@ export class FilesPanel {
     row.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      // Right-click on a file selects it, matching the convention of every
+      // editor file tree. Directories have no selection visual (setSelected
+      // only applies the class to type=file rows), so they're a no-op.
+      if (node.type === "file") this.setSelected(node.relPath);
       showFilePathContextMenu(e.clientX, e.clientY, node.relPath);
     });
 
@@ -190,7 +194,12 @@ function showFilePathContextMenu(x: number, y: number, relPath: string): void {
     item.textContent = label;
     item.addEventListener("click", (e) => {
       e.stopPropagation();
-      void Promise.resolve(onClick()).finally(close);
+      // Surface clipboard rejections (no secure context, permission
+      // denied, etc.) instead of swallowing them — a silent copy menu is
+      // the worst kind of broken.
+      Promise.resolve(onClick())
+        .catch((err) => console.warn(`[files-ctx-menu] "${label}" failed:`, err))
+        .finally(close);
     });
     menu.appendChild(item);
   };
