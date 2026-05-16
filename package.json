@@ -16,7 +16,7 @@
     "url": "https://github.com/galaxyproject/loom"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22"
   },
   "files": [
     "bin/",
