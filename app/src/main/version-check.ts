@@ -30,7 +30,7 @@ interface SemverParts {
 }
 
 function parseSemver(v: string): SemverParts | null {
-  const m = v.replace(/^v/, "").match(/^(\d+)\.(\d+)\.(\d+)(?:-(.+))?/);
+  const m = v.replace(/^v/, "").match(/^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/);
   if (!m) return null;
   return {
     major: parseInt(m[1], 10),

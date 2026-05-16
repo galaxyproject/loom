@@ -35,6 +35,12 @@ The arm64 build runs on Apple Silicon GitHub runners; the x64 build runs on
 the last generation of Intel Mac runners (`macos-13`). Both are native — no
 cross-compilation, no universal binary.
 
+> **Heads-up:** `macos-13` is the only remaining x64-native runner in GitHub's
+> fleet and is on the deprecation track. When it sunsets, the x64 row above
+> stops working. Options at that point: drop x64 native builds, cross-compile
+> from arm64, or build x64 on a self-hosted Intel runner. Worth re-evaluating
+> based on x64 download share once we have release telemetry.
+
 ## Code signing
 
 **Current state: unsigned.** Both DMGs ship without an Apple Developer ID
