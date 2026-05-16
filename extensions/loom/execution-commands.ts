@@ -1,16 +1,36 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getNotebookPath } from "./state.js";
+import { checkPreconditions, renderFailures } from "./init-gate.js";
 
 /**
  * Plan/execution commands. Plans live as markdown sections in `notebook.md`;
  * these commands send the agent an instruction to read the notebook and act.
+ *
+ * Before sending the agent off, run a precondition check (see init-gate.ts):
+ * - hard failures (no notebook; plan needs Galaxy but disconnected) refuse
+ *   to send the agent prompt at all
+ * - soft failures (no plan; weak acceptance criteria; no history selected
+ *   for a Galaxy plan) still prompt, but the prompt carries the failure
+ *   list so the agent resolves with the user before invoking anything
  */
 
 export function registerExecutionCommands(pi: ExtensionAPI): void {
   const executeHandler = async (_args: string | undefined, ctx: ExtensionContext) => {
     const nbPath = getNotebookPath();
-    if (!nbPath) {
-      ctx.ui.notify("No notebook open in this directory.", "warning");
+    const gate = checkPreconditions();
+
+    if (gate.hardFailed) {
+      ctx.ui.notify(renderFailures(gate.failures), "warning");
+      return;
+    }
+
+    if (!gate.ok) {
+      ctx.ui.notify(renderFailures(gate.failures), "info");
+      pi.sendUserMessage(
+        `The user typed /execute (or /run) but the precondition check did not pass:\n\n${renderFailures(
+          gate.failures,
+        )}\n\nResolve these with the user first. Do NOT invoke Galaxy workflows or run local pipeline steps until the gate passes.`,
+      );
       return;
     }
 
