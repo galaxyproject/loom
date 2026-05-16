@@ -66,7 +66,8 @@ describe("getPage", () => {
       edit_source: "agent",
       create_time: "2026-04-01T00:00:00Z",
       update_time: "2026-05-14T00:00:00Z",
-      revision_count: 3,
+      latest_revision_id: "rev-3",
+      revision_ids: ["rev-1", "rev-2", "rev-3"],
     };
     vi.spyOn(galaxyApi, "galaxyGet").mockResolvedValue(fixture);
     const got = await getPage("page-abc");
@@ -81,6 +82,7 @@ describe("createPage", () => {
       title: "T",
       slug: "t",
       history_id: "h",
+      latest_revision_id: "rev-1",
       create_time: "2026-05-14T00:00:00Z",
       update_time: "2026-05-14T00:00:00Z",
     } as GalaxyPageSummary);
@@ -112,6 +114,7 @@ describe("createPage", () => {
       title: "T",
       slug: "custom",
       history_id: "h",
+      latest_revision_id: "rev-1",
       create_time: "x",
       update_time: "x",
     } as GalaxyPageSummary);
@@ -132,16 +135,20 @@ describe("createPage", () => {
 });
 
 describe("updatePage", () => {
-  it("puts /pages/{id} with content + content_format and edit_source when given", async () => {
-    const put = vi.spyOn(galaxyApi, "galaxyPut").mockResolvedValue({
+  function mockPutOk() {
+    return vi.spyOn(galaxyApi, "galaxyPut").mockResolvedValue({
       id: "page-1",
       title: "T",
       slug: "t",
       history_id: "h",
+      latest_revision_id: "rev-2",
       create_time: "x",
       update_time: "y",
     } as GalaxyPageSummary);
+  }
 
+  it("puts /pages/{id} with markdown content_format and the given edit_source", async () => {
+    const put = mockPutOk();
     await updatePage("page-1", {
       content: "new body",
       title: "Updated Title",
@@ -153,29 +160,41 @@ describe("updatePage", () => {
       {
         content: "new body",
         content_format: "markdown",
-        title: "Updated Title",
         edit_source: "agent",
+        title: "Updated Title",
       },
       undefined,
     );
   });
 
-  it("omits title/annotation/edit_source when unset", async () => {
-    const put = vi.spyOn(galaxyApi, "galaxyPut").mockResolvedValue({
-      id: "page-1",
-      title: "T",
-      slug: "t",
-      history_id: "h",
-      create_time: "x",
-      update_time: "y",
-    } as GalaxyPageSummary);
-
+  it("defaults edit_source to \"agent\" when the caller doesn't supply one", async () => {
+    // This client only sees Loom-authored sync writes, so making each
+    // call site remember `edit_source: "agent"` is a footgun. Default it
+    // here; callers can override with an explicit value if needed.
+    const put = mockPutOk();
     await updatePage("page-1", { content: "x" });
 
     expect(put.mock.calls[0][1]).toEqual({
       content: "x",
       content_format: "markdown",
+      edit_source: "agent",
     });
+  });
+
+  it("honors an explicit edit_source override", async () => {
+    const put = mockPutOk();
+    await updatePage("page-1", { content: "x", edit_source: "user" });
+
+    expect(put.mock.calls[0][1]).toMatchObject({ edit_source: "user" });
+  });
+
+  it("omits title and annotation when unset", async () => {
+    const put = mockPutOk();
+    await updatePage("page-1", { content: "x" });
+
+    const body = put.mock.calls[0][1];
+    expect(body).not.toHaveProperty("title");
+    expect(body).not.toHaveProperty("annotation");
   });
 });
 

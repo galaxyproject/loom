@@ -31,14 +31,22 @@ import { galaxyGet, galaxyPost, galaxyPut } from "./galaxy-api";
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Typed subset of upstream `PageSummary` (galaxyproject/galaxy schema.py).
+ * Includes only the fields the sync layer consumes; other required fields
+ * (username, email_hash, published, deleted, etc.) are returned by the API
+ * but unused here. `latest_revision_id` is the field push/pull stores into
+ * the binding's `last_synced_revision` after every successful sync.
+ */
 export interface GalaxyPageSummary {
   id: string;
   title: string;
   slug: string | null;
   history_id?: string | null;
+  latest_revision_id: string;
+  revision_ids?: string[];
   create_time: string;
   update_time: string;
-  revision_count?: number;
 }
 
 export interface GalaxyPage extends GalaxyPageSummary {
@@ -119,13 +127,17 @@ export async function updatePage(
   params: UpdatePageParams,
   signal?: AbortSignal,
 ): Promise<GalaxyPageSummary> {
+  // Every update flowing through this client is Loom-authored sync, so
+  // default `edit_source` to "agent" rather than making each call site
+  // remember to set it. Callers can still pass an explicit value to
+  // override (e.g. a future "manual revert" path setting "user").
   const body: Record<string, unknown> = {
     content: params.content,
     content_format: params.content_format ?? "markdown",
+    edit_source: params.edit_source ?? "agent",
   };
   if (params.title !== undefined) body.title = params.title;
   if (params.annotation !== undefined) body.annotation = params.annotation;
-  if (params.edit_source !== undefined) body.edit_source = params.edit_source;
   return galaxyPut<GalaxyPageSummary>(`/pages/${encodeURIComponent(pageId)}`, body, signal);
 }
 
