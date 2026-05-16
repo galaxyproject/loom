@@ -3021,5 +3021,52 @@ window.orbit.onProcUpdate((procs) => {
   renderProcs(procs as ProcInfo[]);
 });
 
+// ── Update-available banner ──────────────────────────────────────────────────
+//
+// One non-blocking check per session against the GitHub Releases API; main
+// caches the response for 24h. No auto-install (unsigned macOS DMGs can't
+// be updated by Squirrel.Mac), so the link just opens the Releases page in
+// the user's default browser.
+{
+  const updateBanner = document.getElementById("update-banner");
+  const updateVersionEl = document.getElementById("update-banner-version");
+  const updateLinkBtn = document.getElementById("update-banner-link");
+  const updateDismissBtn = document.getElementById("update-banner-dismiss");
+
+  const DISMISSED_KEY = "orbit:update-dismissed-version";
+  let currentReleaseUrl: string | null = null;
+
+  if (updateBanner && updateVersionEl && updateLinkBtn && updateDismissBtn) {
+    updateLinkBtn.addEventListener("click", () => {
+      if (currentReleaseUrl) void window.orbit.openReleasePage(currentReleaseUrl);
+    });
+    updateDismissBtn.addEventListener("click", () => {
+      updateBanner.classList.add("hidden");
+      if (updateVersionEl.textContent) {
+        try {
+          localStorage.setItem(DISMISSED_KEY, updateVersionEl.textContent);
+        } catch {}
+      }
+    });
+
+    void (async () => {
+      try {
+        const info = await window.orbit.checkVersion();
+        if (!info || !info.hasUpdate) return;
+        let dismissed: string | null = null;
+        try {
+          dismissed = localStorage.getItem(DISMISSED_KEY);
+        } catch {}
+        // Dismissal is per-version: once a newer release lands, the banner
+        // reappears.
+        if (dismissed === info.latest) return;
+        updateVersionEl.textContent = info.latest;
+        currentReleaseUrl = info.releaseUrl;
+        updateBanner.classList.remove("hidden");
+      } catch {}
+    })();
+  }
+}
+
 // ── Focus input on load ───────────────────────────────────────────────────────
 inputEl.focus();

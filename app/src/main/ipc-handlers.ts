@@ -8,6 +8,7 @@ import { execSync } from "node:child_process";
 import { loadConfig, saveConfig, type LoomConfig } from "./config.js";
 import { encryptSecret, isAvailable as safeStorageAvailable } from "./secure-config.js";
 import { getProviders, getModels } from "@mariozechner/pi-ai";
+import { checkLatestVersion } from "./version-check.js";
 
 /**
  * Sentinel the renderer sends back in a secret field when the user did NOT
@@ -385,6 +386,28 @@ export function registerIpcHandlers(agent: AgentManager): void {
     platform: process.platform,
     arch: process.arch,
   }));
+
+  // Version checker: surfaces a "new release available" banner in the
+  // renderer. No auto-install (unsigned macOS builds can't be patched by
+  // Squirrel.Mac); a packaged build user manually downloads the new DMG.
+  // Renderer is rate-limited to one call per session — checkLatestVersion
+  // itself caches the GitHub response for 24h on disk.
+  ipcMain.handle("version:check", async () => {
+    return await checkLatestVersion();
+  });
+
+  // Opens the GitHub releases page in the user's default browser when they
+  // click the "update available" banner. Hard-coded URL — renderer never
+  // gets a generic openExternal capability.
+  ipcMain.handle("version:open-release", async (_e, url: unknown) => {
+    const releasesPage = "https://github.com/galaxyproject/loom/releases/latest";
+    const target =
+      typeof url === "string" && /^https:\/\/github\.com\/galaxyproject\/loom\/releases\//.test(url)
+        ? url
+        : releasesPage;
+    await shell.openExternal(target);
+    return { opened: true };
+  });
 
   // Issue reporter: opens a pre-filled GitHub "new issue" URL in the user's
   // browser. The renderer never gets a generic openExternal capability —

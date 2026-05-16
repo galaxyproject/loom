@@ -218,7 +218,7 @@ Three paths, depending on what you want.
 
 ### Desktop app (Orbit)
 
-Orbit ships as a native installer (signed DMG on macOS, AppImage/deb on Linux, installer on Windows) and bundles its own Node runtime, `uv`, and Loom -- so there are no separate prerequisites. Once a build is signed and published, install it from the [Releases page](https://github.com/galaxyproject/loom/releases). Until then, use the developer install below.
+Orbit ships as a native installer that bundles its own Node runtime, `uv`, and Loom -- no separate prerequisites. macOS DMGs (arm64 + x64) are built and attached to a draft Release on every `v*` tag push; Linux and Windows installers are next. See [INSTALL.md](INSTALL.md) for the macOS install steps and the Gatekeeper workaround (alpha builds are unsigned). See [RELEASING.md](RELEASING.md) for how a release is cut. If your platform isn't packaged yet, use the developer install below.
 
 ### Loom CLI from npm
 

@@ -120,6 +120,54 @@ a:visited {
   width: 100%;
 }
 
+#update-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--accent-bg);
+  color: var(--text-bright);
+  border-bottom: 1px solid var(--border-strong);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+#update-banner.hidden {
+  display: none;
+}
+#update-banner .update-banner-text {
+  flex: 1;
+}
+#update-banner-version {
+  font-weight: 600;
+  color: var(--accent);
+}
+#update-banner .update-banner-link {
+  background: none;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  padding: 2px 8px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font: inherit;
+}
+#update-banner .update-banner-link:hover {
+  background: var(--accent);
+  color: var(--bg-deep);
+}
+#update-banner .update-banner-dismiss {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+}
+#update-banner .update-banner-dismiss:hover {
+  color: var(--text-bright);
+}
+
 .pane {
   display: flex;
   flex-direction: column;

@@ -265,7 +265,27 @@ function createWindow(cwd: string): void {
   procMonitor = new ProcMonitor(mainWindow, () => agentManager?.getPid() ?? null);
 
   mainWindow.webContents.once("did-finish-load", () => {
-    log("renderer loaded, starting agent");
+    log("renderer loaded");
+
+    // Probe + migrate secrets here (not in whenReady) so the window is on
+    // screen first. On a fresh unsigned macOS install,
+    // safeStorage.isEncryptionAvailable() blocks on a Keychain auth prompt;
+    // running it before createWindow leaves the user staring at a blank
+    // dock + invisible system dialog. Brain spawn still gates on
+    // migration finishing, so env-injected keys are post-migration.
+    if (safeStorageAvailable()) {
+      try {
+        const result = migratePlaintextSecrets();
+        if (result.migrated) log("migrated plaintext secrets → safeStorage");
+      } catch (err) {
+        log("secret migration failed:", err);
+      }
+      startConfigWatcher();
+    } else {
+      log("safeStorage unavailable — keys remain plaintext on disk");
+    }
+
+    log("starting agent");
     agentManager!.start();
     procMonitor!.start();
   });
@@ -455,25 +475,6 @@ app.whenReady().then(() => {
   });
 
   buildMenu();
-
-  // Migrate any plaintext API keys in ~/.loom/config.json to ciphertext. Must
-  // run before the agent spawns so the brain sees env-injected decrypted keys
-  // rather than the old plaintext.
-  if (safeStorageAvailable()) {
-    try {
-      const result = migratePlaintextSecrets();
-      if (result.migrated) log("migrated plaintext secrets → safeStorage");
-    } catch (err) {
-      log("secret migration failed:", err);
-    }
-    // Close the plaintext-write window from /connect mid-session: the brain
-    // process can't encrypt (no safeStorage), so it persists keys plaintext
-    // and we re-encrypt as soon as the file changes. fs.watch on the
-    // directory survives the atomic tmp+rename pattern in saveConfig().
-    startConfigWatcher();
-  } else {
-    log("safeStorage unavailable — keys remain plaintext on disk");
-  }
 
   const cwd = getDefaultCwd();
   log("cwd:", cwd);

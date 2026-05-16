@@ -110,6 +110,13 @@ export interface OrbitAPI {
       }
     | { ok: false; error: string }
   >;
+  checkVersion(): Promise<{
+    current: string;
+    latest: string;
+    hasUpdate: boolean;
+    releaseUrl: string;
+  } | null>;
+  openReleasePage(url?: string): Promise<{ opened: boolean }>;
 }
 
 const api: OrbitAPI = {
@@ -197,6 +204,8 @@ const api: OrbitAPI = {
   openIssueReport: (payload) => ipcRenderer.invoke("report:open-issue", payload),
 
   listAllModels: () => ipcRenderer.invoke("models:list-all"),
+  checkVersion: () => ipcRenderer.invoke("version:check"),
+  openReleasePage: (url) => ipcRenderer.invoke("version:open-release", url),
   onSessionHistory: (callback) => {
     const handler = (_e: unknown, history: ReplaySegment[]) => callback(history);
     ipcRenderer.on("agent:session-history", handler);

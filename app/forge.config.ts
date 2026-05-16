@@ -36,7 +36,7 @@ const LOOM_BUNDLE_FILES = [
   "LICENSE",
 ];
 
-function stageLoomBundle(): void {
+function stageLoomBundle(platform: string, arch: string): void {
   fs.rmSync(LOOM_STAGE_DIR, { recursive: true, force: true });
   fs.mkdirSync(LOOM_STAGE_DIR, { recursive: true });
 
@@ -46,6 +46,13 @@ function stageLoomBundle(): void {
     fs.cpSync(src, path.join(LOOM_STAGE_DIR, item), { recursive: true });
   }
 
+  // Loom's root prepare script runs `husky`, which is a devDependency.
+  // `npm ci --omit=dev` skips installing husky but still fires the prepare
+  // lifecycle → `sh -c husky` → exit 127. Strip prepare from the staged
+  // copy before installing. Other install/postinstall hooks (native module
+  // prebuild downloads) stay intact.
+  execSync("npm pkg delete scripts.prepare", { cwd: LOOM_STAGE_DIR, stdio: "inherit" });
+
   // Install runtime deps only (no devDependencies) into the staged bundle.
   // npm ci is faster + deterministic when the lockfile is present.
   const installCmd = fs.existsSync(path.join(LOOM_STAGE_DIR, "package-lock.json"))
@@ -53,18 +60,18 @@ function stageLoomBundle(): void {
     : "npm install --omit=dev --omit=optional --no-audit --no-fund";
   execSync(installCmd, { cwd: LOOM_STAGE_DIR, stdio: "inherit" });
 
-  pruneLoomNodeModules();
+  pruneLoomNodeModules(platform, arch);
 }
 
 // Trim runtime-irrelevant chunks from the staged Loom node_modules. Targets
 // only known-safe heavy directories; keeps everything that might be loaded.
-function pruneLoomNodeModules(): void {
+function pruneLoomNodeModules(platform: string, arch: string): void {
   // koffi ships prebuilt .node binaries for ~18 platforms (darwin/linux/
   // win32/freebsd/openbsd/musl x ia32/x64/arm64/...). We only need the
-  // build platform's. Keeping just `<platform>_<arch>` saves ~30MB.
+  // target platform's. Keeping just `<platform>_<arch>` saves ~30MB.
   const koffiBuild = path.join(LOOM_STAGE_DIR, "node_modules", "koffi", "build", "koffi");
   if (fs.existsSync(koffiBuild)) {
-    const keepDir = `${process.platform}_${process.arch}`;
+    const keepDir = `${platform}_${arch}`;
     for (const entry of fs.readdirSync(koffiBuild)) {
       if (entry !== keepDir) {
         fs.rmSync(path.join(koffiBuild, entry), { recursive: true, force: true });
@@ -99,15 +106,14 @@ function downloadFile(url: string, dest: string): Promise<void> {
   });
 }
 
-// Bundle the Node runtime that ran `npm ci` so native module ABI stays
-// aligned with what we just built. Targeting the build platform/arch only;
-// cross-platform packaging will need a per-target hook or download matrix.
-async function stageNodeBundle(): Promise<void> {
+// Bundle the Node runtime so native module ABI stays aligned at runtime.
+// Targets the package platform/arch (passed by electron-forge's prePackage
+// hook), which lets a single host produce arch-specific artifacts.
+async function stageNodeBundle(platform: string, arch: string): Promise<void> {
   const nodeVersion = process.versions.node;
-  const platform = process.platform === "win32" ? "win" : process.platform;
-  const arch = process.arch;
-  const ext = process.platform === "win32" ? "zip" : "tar.xz";
-  const distName = `node-v${nodeVersion}-${platform}-${arch}`;
+  const nodePlatform = platform === "win32" ? "win" : platform;
+  const ext = platform === "win32" ? "zip" : "tar.xz";
+  const distName = `node-v${nodeVersion}-${nodePlatform}-${arch}`;
   const filename = `${distName}.${ext}`;
   const url = `https://nodejs.org/dist/v${nodeVersion}/${filename}`;
 
@@ -124,7 +130,7 @@ async function stageNodeBundle(): Promise<void> {
   }
 
   console.log(`[loom-stage] extracting ${filename}`);
-  if (process.platform === "win32") {
+  if (platform === "win32") {
     execSync(
       `powershell -Command "Expand-Archive -Path '${tarballPath}' -DestinationPath '${LOOM_STAGE_PARENT}'"`,
       { stdio: "inherit" },
@@ -156,13 +162,13 @@ function pruneNodeBundle(): void {
 // system-installed uv. Pulls the latest release tarball from astral-sh/uv.
 // "latest" resolves to a specific tag at fetch time -- the cached tarball
 // won't auto-refresh; remove `.loom-stage/cache/` to pick up newer uv.
-async function stageUvBundle(): Promise<void> {
-  const key = `${process.platform}-${process.arch}`;
+async function stageUvBundle(platform: string, arch: string): Promise<void> {
+  const key = `${platform}-${arch}`;
   const target = UV_TARGETS[key];
   if (!target) {
     throw new Error(`[loom-stage] no uv target mapping for ${key}; add it to UV_TARGETS.`);
   }
-  const isWin = process.platform === "win32";
+  const isWin = platform === "win32";
   const ext = isWin ? "zip" : "tar.gz";
   const filename = `uv-${target}.${ext}`;
   const url = `https://github.com/astral-sh/uv/releases/latest/download/${filename}`;
@@ -200,16 +206,21 @@ const config: ForgeConfig = {
     name: "Orbit",
     executableName: "orbit",
     icon: "resources/icon",
+    appBundleId: "org.galaxyproject.orbit",
+    appCategoryType: "public.app-category.developer-tools",
     // Copies the staged Loom bundle, Node runtime, and uv binary to
     // Contents/Resources/ in the packaged app. agent.ts resolves
     // process.resourcesPath/{loom,node,uv}/... at brain spawn time.
     extraResource: [LOOM_STAGE_DIR, NODE_STAGE_DIR, UV_STAGE_DIR],
   },
   hooks: {
-    prePackage: async () => {
-      stageLoomBundle();
-      await stageNodeBundle();
-      await stageUvBundle();
+    // electron-forge passes (config, platform, arch) so cross-arch
+    // packaging (e.g. `make --arch=x64` on an arm64 host) stages the
+    // matching Node + uv binaries.
+    prePackage: async (_forgeConfig, platform, arch) => {
+      stageLoomBundle(platform, arch);
+      await stageNodeBundle(platform, arch);
+      await stageUvBundle(platform, arch);
     },
   },
   makers: [

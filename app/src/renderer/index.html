@@ -22,6 +22,26 @@
   </head>
   <body>
     <div id="app">
+      <!-- Update-available banner. Hidden until renderer fetches release info
+           and finds a newer tag than app.getVersion(). No auto-install for
+           unsigned macOS builds; clicking the link opens the Releases page. -->
+      <div id="update-banner" class="hidden" role="status" aria-live="polite">
+        <span class="update-banner-text">
+          A new Orbit release is available (<span id="update-banner-version"></span>).
+        </span>
+        <button id="update-banner-link" class="update-banner-link" type="button">
+          Open release page
+        </button>
+        <button
+          id="update-banner-dismiss"
+          class="update-banner-dismiss"
+          type="button"
+          title="Dismiss"
+          aria-label="Dismiss update notice"
+        >
+          ×
+        </button>
+      </div>
       <div id="app-main">
         <!-- Left pane: File tree sidebar -->
         <div id="files-pane" class="pane">
