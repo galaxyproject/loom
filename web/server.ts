@@ -17,6 +17,8 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import { WebSocketServer, WebSocket } from "ws";
 
+import { buildBrainEnv } from "../shared/brain-env.js";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOOM_BIN = resolve(__dirname, "../bin/loom.js");
 const LOOM_CONFIG_DIR = join(homedir(), ".loom");
@@ -24,6 +26,9 @@ const LOOM_CONFIG_PATH = join(LOOM_CONFIG_DIR, "config.json");
 const DEFAULT_CWD = join(LOOM_CONFIG_DIR, "analyses");
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
+
+const IS_REMOTE_MODE = process.env.LOOM_MODE === "remote";
+const REMOTE_SESSION_CWD = "/tmp/loom-session";
 
 function log(...args: unknown[]): void {
   console.log("[server]", ...args);
@@ -34,12 +39,13 @@ function log(...args: unknown[]): void {
 function loadConfig(): Record<string, unknown> {
   if (existsSync(LOOM_CONFIG_PATH)) {
     try {
-      return JSON.parse(readFileSync(LOOM_CONFIG_PATH, "utf-8"));
+      const cfg = JSON.parse(readFileSync(LOOM_CONFIG_PATH, "utf-8"));
+      return { ...cfg, _mode: "desktop" };
     } catch {
       /* */
     }
   }
-  return {};
+  return { _mode: "desktop" };
 }
 
 function saveConfig(config: Record<string, unknown>): void {
@@ -47,7 +53,26 @@ function saveConfig(config: Record<string, unknown>): void {
   writeFileSync(LOOM_CONFIG_PATH, JSON.stringify(config, null, 2) + "\n");
 }
 
+function synthesizedRemoteConfig(): Record<string, unknown> {
+  return {
+    _mode: "remote",
+    executionMode: "cloud",
+    galaxy: {
+      url: process.env.GALAXY_URL ?? null,
+      // apiKey deliberately omitted -- never serialize to renderer
+    },
+    llm: {
+      provider: process.env.LOOM_LLM_PROVIDER ?? "anthropic",
+      model: process.env.LOOM_LLM_MODEL ?? null,
+    },
+  };
+}
+
 function getCwd(): string {
+  if (IS_REMOTE_MODE) {
+    mkdirSync(REMOTE_SESSION_CWD, { recursive: true });
+    return REMOTE_SESSION_CWD;
+  }
   const cfg = loadConfig();
   let cwd = (cfg.defaultCwd as string) || DEFAULT_CWD;
   if (cwd.startsWith("~")) cwd = join(homedir(), cwd.slice(1));
@@ -64,12 +89,34 @@ let cwd = getCwd();
 function startLoom(): void {
   if (loomProcess) stopLoom();
 
-  log("starting loom subprocess", { bin: LOOM_BIN, cwd });
+  const args: string[] = [LOOM_BIN, "--mode", "rpc"];
+  // Curated env via shared/brain-env. Web mode -- remote or local dev --
+  // is env-authenticated by default (remote: operator injects at container
+  // launch; local: dev exports keys in their shell), so provider keys are
+  // forwarded unconditionally. The helper only forwards named provider
+  // keys, so AWS / Git / etc. still drop at this boundary.
+  const env: NodeJS.ProcessEnv = buildBrainEnv(process.env, {
+    includeProviderKeys: true,
+  });
 
-  loomProcess = spawn("node", [LOOM_BIN, "--mode", "rpc"], {
+  if (IS_REMOTE_MODE) {
+    const gatePath = resolve(__dirname, "extensions/web-mode-gate.ts");
+    args.push("--extension", gatePath);
+    if (process.env.LOOM_LLM_PROVIDER) {
+      args.push("--provider", process.env.LOOM_LLM_PROVIDER);
+    }
+    if (process.env.LOOM_LLM_MODEL) {
+      args.push("--model", process.env.LOOM_LLM_MODEL);
+    }
+    env.LOOM_NOTEBOOK_ALLOWLIST = join(cwd, "notebook.md");
+  }
+
+  log("starting loom subprocess", { bin: LOOM_BIN, cwd, remote: IS_REMOTE_MODE });
+
+  loomProcess = spawn("node", args, {
     stdio: ["pipe", "pipe", "pipe"],
     cwd,
-    env: { ...process.env },
+    env,
   });
 
   const rl = createInterface({ input: loomProcess.stdout!, terminal: false });
@@ -207,10 +254,14 @@ wss.on("connection", (socket) => {
 
     // Channels that the server handles directly (not forwarded to loom)
     if (channel === "config:get") {
-      respond(id, loadConfig());
+      respond(id, IS_REMOTE_MODE ? synthesizedRemoteConfig() : loadConfig());
       return;
     }
     if (channel === "config:save") {
+      if (IS_REMOTE_MODE) {
+        respond(id, { success: false, error: "config is read-only in remote mode" });
+        return;
+      }
       saveConfig(args[0] as Record<string, unknown>);
       stopLoom();
       startLoom();
@@ -222,6 +273,10 @@ wss.on("connection", (socket) => {
       return;
     }
     if (channel === "agent:set-cwd") {
+      if (IS_REMOTE_MODE) {
+        respond(id, { error: "cwd is fixed in remote mode" });
+        return;
+      }
       cwd = args[0] as string;
       mkdirSync(cwd, { recursive: true });
       stopLoom();
@@ -287,9 +342,20 @@ wss.on("connection", (socket) => {
   }
 });
 
+async function setupRenderer(): Promise<void> {
+  if (process.env.NODE_ENV === "production") {
+    const distDir = resolve(__dirname, "dist");
+    log("serving static renderer from", distDir);
+    app.use(express.static(distDir));
+    app.get("/", (_req, res) => res.sendFile(resolve(distDir, "index.html")));
+    return;
+  }
+  await setupVite();
+}
+
 // ── Start ────────────────────────────────────────────────────────────────────
 
-await setupVite();
+await setupRenderer();
 
 httpServer.listen(PORT, () => {
   log(`Orbit Web running at http://localhost:${PORT}`);

@@ -18,6 +18,11 @@ let ws: WebSocket;
 let idCounter = 0;
 const pending = new Map<string, PendingRequest>();
 const listeners: Record<string, Set<Callback<unknown[]>>> = {};
+// Buffer for messages produced before the WS reaches OPEN. The renderer issues
+// `window.orbit.getConfig()` synchronously at startup, before this socket's
+// async handshake completes -- dropping that message would hang the promise
+// forever and leave `body.remote-mode` unset.
+const outbox: string[] = [];
 
 function emit(event: string, ...args: unknown[]): void {
   listeners[event]?.forEach((cb) => cb(...args));
@@ -30,17 +35,30 @@ function on<T extends unknown[]>(event: string, cb: Callback<T>): () => void {
   return () => listeners[event].delete(listener);
 }
 
-function send(msg: Record<string, unknown>): void {
+function send(msg: Record<string, unknown>): boolean {
+  const serialized = JSON.stringify(msg);
   if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(msg));
+    ws.send(serialized);
+    return true;
   }
+  if (ws.readyState === WebSocket.CONNECTING) {
+    outbox.push(serialized);
+    return true;
+  }
+  // CLOSING / CLOSED: caller (invoke) rejects the promise so a call made
+  // during the reconnect window doesn't hang waiting for a response that
+  // will never come.
+  return false;
 }
 
 function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
   const id = `web_${++idCounter}`;
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject });
-    send({ id, channel, args });
+    if (!send({ id, channel, args })) {
+      pending.delete(id);
+      reject(new Error("WebSocket disconnected"));
+    }
   });
 }
 
@@ -49,11 +67,19 @@ function connect(): void {
 
   ws.onopen = () => {
     console.log("[orbit-web] connected");
+    while (outbox.length) ws.send(outbox.shift()!);
     emit("ws:open");
   };
 
   ws.onclose = () => {
     console.log("[orbit-web] disconnected, reconnecting in 2s...");
+    // Anything queued during CONNECTING was tied to the now-dead brain; drop
+    // it. Reject every in-flight invoke so callers don't hang on a response
+    // that will never arrive.
+    outbox.length = 0;
+    const err = new Error("WebSocket disconnected");
+    for (const req of pending.values()) req.reject(err);
+    pending.clear();
     emit("ws:close");
     setTimeout(connect, 2000);
   };
@@ -88,6 +114,15 @@ function connect(): void {
 
 connect();
 
+let cachedMode: "remote" | "desktop" | undefined;
+
+async function fetchMode(): Promise<"remote" | "desktop"> {
+  if (cachedMode) return cachedMode;
+  const cfg = (await invoke("config:get")) as { _mode?: string } | null;
+  cachedMode = cfg?._mode === "remote" ? "remote" : "desktop";
+  return cachedMode;
+}
+
 // Expose the same OrbitAPI shape the renderer expects.
 (window as unknown as Record<string, unknown>).orbit = {
   prompt: (message: string) => invoke("agent:prompt", message),
@@ -95,10 +130,10 @@ connect();
   newSession: () => invoke("agent:new-session"),
   getState: () => invoke("agent:get-state"),
   getCwd: () => invoke("agent:get-cwd"),
-  openFile: (filePath: string) => {
-    // In a browser, open via the server's file-serving endpoint
+  openFile: async (filePath: string) => {
+    if ((await fetchMode()) === "remote") return { opened: false };
     window.open(`/file?path=${encodeURIComponent(filePath)}`, "_blank");
-    return Promise.resolve({ opened: true });
+    return { opened: true };
   },
   getConfig: () => invoke("config:get"),
   saveConfig: (config: unknown) => invoke("config:save", config),
@@ -111,6 +146,7 @@ connect();
   restartAgent: () => invoke("agent:restart"),
   resetSession: () => invoke("agent:reset-session"),
   selectDirectory: async () => {
+    if ((await fetchMode()) === "remote") return null;
     // No native file picker in browsers -- prompt for a path
     const path = window.prompt("Enter working directory path:");
     if (path) {
@@ -119,6 +155,7 @@ connect();
     return path || null;
   },
   browseDirectory: async () => {
+    if ((await fetchMode()) === "remote") return null;
     const path = window.prompt("Enter directory path:");
     return path || null;
   },

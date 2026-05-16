@@ -2728,3 +2728,18 @@ body:not(.artifact-collapsed) #artifact-toggle {
   font-size: 10px;
   padding: 2px 8px;
 }
+
+/* Remote mode: hide local-filesystem affordances */
+body.remote-mode #files-pane,
+body.remote-mode #files-divider,
+body.remote-mode #files-toggle,
+body.remote-mode #files-show-hidden,
+body.remote-mode #files-refresh {
+  display: none !important;
+}
+
+/* Galaxy creds are server-injected; no local cwd in remote mode */
+body.remote-mode #prefs-section-galaxy,
+body.remote-mode #prefs-section-analysis {
+  display: none;
+}

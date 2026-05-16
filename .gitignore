@@ -1,5 +1,8 @@
 node_modules/
 
+# Production Vite build output for the web shell
+web/dist/
+
 # Test-generated notebook files
 *-notebook.md
 activity.jsonl
