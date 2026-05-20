@@ -11,7 +11,7 @@ describe("buildVerificationDisciplineBlock", () => {
     expect(ctx).toContain("Evidence comes before assertion");
     expect(ctx).toContain('do **not** say "done"');
     expect(ctx).toContain("created but not verified");
-    expect(ctx).toContain("Verification is not limited to workflows");
+    expect(ctx).toContain("Match the verification check to the artifact or action");
     expect(ctx).toContain("Authored workflow artifact");
     expect(ctx).toContain("upload/import it to Galaxy");
     expect(ctx).toContain("Galaxy dataset or collection output");

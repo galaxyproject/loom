@@ -364,8 +364,7 @@ or telling the user the work is done.
 
 ### What counts as verification
 
-Verification is not limited to workflows. Match the check to the
-artifact or action:
+Match the verification check to the artifact or action being completed:
 
 - **Galaxy workflow or tool run** — poll the invocation/job to a terminal
   state with \`galaxy_invocation_check_all\` or the relevant Galaxy MCP
