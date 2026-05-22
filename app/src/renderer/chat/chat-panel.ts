@@ -322,7 +322,7 @@ export class ChatPanel {
   addErrorMessage(text: string): void {
     if (this.lastErrorEl && this.lastErrorText === text) {
       this.lastErrorCount += 1;
-      this.lastErrorEl.textContent = `${text}  (×${this.lastErrorCount})`;
+      this.lastErrorEl.textContent = `${text}  (x${this.lastErrorCount})`;
       this.scrollToBottom();
       return;
     }
