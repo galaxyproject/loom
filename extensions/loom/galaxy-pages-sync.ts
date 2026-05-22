@@ -49,6 +49,42 @@ function requireGalaxyConfig(): GalaxyConfig {
     return c;
 }
 
+export interface PullResult {
+    pageId: string;
+    latestRevisionId: string;
+}
+
+export async function pullNotebookFromGalaxy(): Promise<PullResult> {
+    const nbPath = requireNotebookPath();
+    const config = requireGalaxyConfig();
+
+    return withNotebookLock(nbPath, async () => {
+        const content = await readNotebook(nbPath);
+        const existing = findGalaxyPageBlocks(content)[0];
+        if (!existing) {
+            throw new Error(
+                "notebook is not bound to a Galaxy page. Use notebook_link_galaxy_page " +
+                    "to link to an existing page, or notebook_push_to_galaxy to create one.",
+            );
+        }
+        if (existing.galaxyServerUrl !== config.url) {
+            throw new Error(
+                `Notebook is bound to a Galaxy page on ${existing.galaxyServerUrl}, ` +
+                    `but you are connected to ${config.url}. Use /connect to switch first.`,
+            );
+        }
+        const page = await getPage(existing.pageId);
+        const remoteBody = page.content ?? "";
+        const refreshed: GalaxyPageBindingYaml = {
+            ...existing,
+            pageSlug: page.slug ?? existing.pageSlug,
+            lastSyncedRevision: page.latest_revision_id,
+        };
+        await writeNotebook(nbPath, upsertGalaxyPageBlock(remoteBody, refreshed));
+        return { pageId: existing.pageId, latestRevisionId: page.latest_revision_id };
+    });
+}
+
 export async function pushNotebookToGalaxy(
     opts: PushOptions = {},
 ): Promise<PushResult> {
