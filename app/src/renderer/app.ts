@@ -1,4 +1,5 @@
 import { ChatPanel } from "./chat/chat-panel.js";
+import { humanizeAgentError } from "./chat/error-humanizer.js";
 import { ShellPanel } from "./chat/shell-panel.js";
 import { ArtifactPanel } from "./artifacts/artifact-panel.js";
 import { FilesPanel } from "./files/files-panel.js";
@@ -1789,7 +1790,7 @@ window.orbit.onAgentEvent((event) => {
         // isn't staring at a silent UI after a failed call.
         if (msg.stopReason === "error" && msg.errorMessage) {
           chat.hideThinking();
-          chat.addErrorMessage(msg.errorMessage);
+          chat.addErrorMessage(humanizeAgentError(msg.errorMessage).text);
           setStatusBadge("error");
         }
       }
@@ -1853,9 +1854,9 @@ window.orbit.onAgentEvent((event) => {
       break;
 
     case "error": {
-      const msg = (event as { message?: string }).message || "Unknown error";
+      const rawMsg = (event as { message?: string }).message || "Unknown error";
       chat.hideThinking();
-      chat.addErrorMessage(msg);
+      chat.addErrorMessage(humanizeAgentError(rawMsg).text);
       streaming = false;
       stopTurnTimer();
       setStatusBadge("error");
