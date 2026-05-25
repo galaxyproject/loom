@@ -20,14 +20,12 @@ export interface VersionCheckResult {
   releaseUrl: string;
 }
 
-interface CacheShape {
-  fetchedAt: number;
-  latest?: string;
-  releaseUrl?: string;
-  // When true, fetchedAt records a failed fetch attempt; checkLatestVersion
-  // short-circuits to null until FAILURE_TTL_MS elapses.
-  failed?: boolean;
-}
+// Discriminated union: a success entry carries latest/releaseUrl; a failure
+// entry just records when the attempt failed so checkLatestVersion can
+// short-circuit until FAILURE_TTL_MS elapses.
+type CacheShape =
+  | { fetchedAt: number; failed: true }
+  | { fetchedAt: number; failed?: false; latest: string; releaseUrl: string };
 
 interface SemverParts {
   major: number;
@@ -92,34 +90,24 @@ function isNewer(current: string, candidate: string): boolean {
 function readCache(): CacheShape | null {
   try {
     const raw = fs.readFileSync(CACHE_FILE, "utf-8");
-    const parsed = JSON.parse(raw) as CacheShape;
-    if (typeof parsed.fetchedAt !== "number") return null;
-    const ttl = parsed.failed ? FAILURE_TTL_MS : CACHE_TTL_MS;
-    if (Date.now() - parsed.fetchedAt > ttl) return null;
-    if (!parsed.failed && typeof parsed.latest !== "string") return null;
-    return parsed;
+    const parsed: Record<string, unknown> = JSON.parse(raw);
+    const fetchedAt = parsed.fetchedAt;
+    if (typeof fetchedAt !== "number") return null;
+    const failed = parsed.failed === true;
+    if (Date.now() - fetchedAt > (failed ? FAILURE_TTL_MS : CACHE_TTL_MS)) return null;
+    if (failed) return { fetchedAt, failed: true };
+    const { latest, releaseUrl } = parsed;
+    if (typeof latest !== "string" || typeof releaseUrl !== "string") return null;
+    return { fetchedAt, latest, releaseUrl };
   } catch {
     return null;
   }
 }
 
-function writeCache(latest: string, releaseUrl: string): void {
+function writeCacheEntry(entry: CacheShape): void {
   try {
     fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
-    fs.writeFileSync(
-      CACHE_FILE,
-      JSON.stringify({ fetchedAt: Date.now(), latest, releaseUrl } satisfies CacheShape),
-    );
-  } catch {}
-}
-
-function writeFailureCache(): void {
-  try {
-    fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
-    fs.writeFileSync(
-      CACHE_FILE,
-      JSON.stringify({ fetchedAt: Date.now(), failed: true } satisfies CacheShape),
-    );
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(entry));
   } catch {}
 }
 
@@ -153,18 +141,18 @@ export async function checkLatestVersion(): Promise<VersionCheckResult | null> {
   if (cached?.failed) return null;
   let latest: string;
   let releaseUrl: string;
-  if (cached && cached.latest && cached.releaseUrl) {
+  if (cached) {
     latest = cached.latest;
     releaseUrl = cached.releaseUrl;
   } else {
     const fetched = await fetchLatestFromGitHub();
     if (!fetched) {
-      writeFailureCache();
+      writeCacheEntry({ fetchedAt: Date.now(), failed: true });
       return null;
     }
     latest = fetched.latest;
     releaseUrl = fetched.releaseUrl;
-    writeCache(latest, releaseUrl);
+    writeCacheEntry({ fetchedAt: Date.now(), latest, releaseUrl });
   }
   return {
     current,
