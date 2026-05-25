@@ -2032,6 +2032,17 @@ body.platform-darwin #files-title {
   color: #f85149;
 }
 
+.prefs-oauth-status {
+  font-size: 12px;
+  color: var(--text-dim);
+  display: inline-flex;
+  align-items: center;
+  margin-right: 8px;
+}
+.prefs-oauth-status.signed-in {
+  color: #2ea043;
+}
+
 .modal-footer {
   display: flex;
   align-items: center;

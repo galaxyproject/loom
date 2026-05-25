@@ -18,14 +18,21 @@ const PROVIDER_ENV_MAP: Record<string, string> = {
   xai: "XAI_API_KEY",
 };
 
+/** Providers that authenticate via OAuth (~/.pi/agent/auth.json), not env vars. */
+const OAUTH_PROVIDERS: ReadonlySet<string> = new Set(["openai-codex"]);
+
 /** Build the secret env vars injected into the brain subprocess. */
 function buildSecretEnv(): Record<string, string> {
   const env: Record<string, string> = {};
   const cfg = loadConfig();
 
+  const provider = cfg.llm?.active || "anthropic";
   const llmKey = resolveLlmApiKey(cfg);
-  if (llmKey) {
-    const provider = cfg.llm?.active || "anthropic";
+  // OAuth providers ignore env-var keys -- the brain reads ~/.pi/agent/auth.json.
+  // If the user switched away from an API-key provider the old key is still in
+  // config.json (preserved on purpose so they can switch back); don't leak it
+  // into the env under a misrouted variable name.
+  if (llmKey && !OAUTH_PROVIDERS.has(provider)) {
     const envVar = PROVIDER_ENV_MAP[provider] || "AI_GATEWAY_API_KEY";
     env[envVar] = llmKey;
   }

@@ -356,6 +356,7 @@
               <select id="prefs-provider">
                 <option value="anthropic">Anthropic</option>
                 <option value="openai">OpenAI</option>
+                <option value="openai-codex">OpenAI Codex (ChatGPT subscription)</option>
                 <option value="google">Google (Gemini)</option>
                 <option value="mistral">Mistral</option>
                 <option value="groq">Groq</option>
@@ -376,13 +377,32 @@
                 Prices in the dropdown are per 1M tokens (input/output).
               </span>
             </div>
-            <div class="prefs-row">
+            <div class="prefs-row" id="prefs-api-key-row">
               <label for="prefs-api-key">API Key</label>
               <input id="prefs-api-key" type="password" placeholder="sk-..." />
             </div>
-            <div class="prefs-row prefs-hint">
+            <div class="prefs-row prefs-hint" id="prefs-api-key-hint-row">
               <span></span>
               <span id="prefs-api-key-status" class="api-key-status"></span>
+            </div>
+            <div class="prefs-row hidden" id="prefs-oauth-row">
+              <label>Sign in</label>
+              <div class="prefs-row-with-btn">
+                <span id="prefs-oauth-status" class="prefs-oauth-status">Not signed in</span>
+                <button id="prefs-oauth-signin" class="plan-btn" type="button">
+                  Sign in with ChatGPT
+                </button>
+                <button id="prefs-oauth-signout" class="plan-btn danger hidden" type="button">
+                  Sign out
+                </button>
+              </div>
+            </div>
+            <div class="prefs-row prefs-hint hidden" id="prefs-oauth-hint-row">
+              <span></span>
+              <span class="prefs-hint-text">
+                Opens your browser to OpenAI. Requires a ChatGPT Plus, Pro, Business, Edu, or
+                Enterprise subscription. Token refresh is handled automatically.
+              </span>
             </div>
           </section>
 
@@ -482,6 +502,7 @@
               <select id="welcome-provider">
                 <option value="anthropic">Anthropic</option>
                 <option value="openai">OpenAI</option>
+                <option value="openai-codex">OpenAI Codex (ChatGPT subscription)</option>
                 <option value="google">Google (Gemini)</option>
                 <option value="mistral">Mistral</option>
                 <option value="groq">Groq</option>
@@ -493,13 +514,29 @@
               <label for="welcome-model">Model</label>
               <select id="welcome-model"></select>
             </div>
-            <div class="prefs-row">
+            <div class="prefs-row" id="welcome-api-key-row">
               <label for="welcome-api-key">API Key</label>
               <input id="welcome-api-key" type="password" placeholder="sk-..." />
             </div>
-            <div class="prefs-row prefs-hint">
+            <div class="prefs-row prefs-hint" id="welcome-api-key-hint-row">
               <span></span>
               <span id="welcome-api-key-status" class="api-key-status"></span>
+            </div>
+            <div class="prefs-row hidden" id="welcome-oauth-row">
+              <label>Sign in</label>
+              <div class="prefs-row-with-btn">
+                <span id="welcome-oauth-status" class="prefs-oauth-status">Not signed in</span>
+                <button id="welcome-oauth-signin" class="plan-btn" type="button">
+                  Sign in with ChatGPT
+                </button>
+              </div>
+            </div>
+            <div class="prefs-row prefs-hint hidden" id="welcome-oauth-hint-row">
+              <span></span>
+              <span class="prefs-hint-text">
+                Opens your browser to OpenAI. Requires a ChatGPT Plus, Pro, Business, Edu, or
+                Enterprise subscription.
+              </span>
             </div>
           </section>
 

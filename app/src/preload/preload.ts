@@ -68,6 +68,17 @@ export interface OrbitAPI {
   getConfig(): Promise<Record<string, unknown>>;
   saveConfig(config: Record<string, unknown>): Promise<{ success: boolean; error?: string }>;
   validateApiKey(provider: string, key: string): Promise<{ valid: boolean; error?: string }>;
+  oauthStatus(
+    provider: string,
+  ): Promise<{ signedIn: boolean; expiresInSeconds?: number; accountId?: string }>;
+  oauthSignIn(provider: string): Promise<
+    | {
+        ok: true;
+        status: { signedIn: boolean; expiresInSeconds?: number; accountId?: string };
+      }
+    | { ok: false; error: string }
+  >;
+  oauthSignOut(provider: string): Promise<{ ok: true } | { ok: false; error: string }>;
   respondToUiRequest(id: string, response: Record<string, unknown>): void;
   restartAgent(): Promise<void>;
   resetSession(): Promise<void>;
@@ -139,6 +150,9 @@ const api: OrbitAPI = {
   getConfig: () => ipcRenderer.invoke("config:get"),
   saveConfig: (config) => ipcRenderer.invoke("config:save", config),
   validateApiKey: (provider, key) => ipcRenderer.invoke("apiKey:validate", provider, key),
+  oauthStatus: (provider) => ipcRenderer.invoke("oauth:status", provider),
+  oauthSignIn: (provider) => ipcRenderer.invoke("oauth:sign-in", provider),
+  oauthSignOut: (provider) => ipcRenderer.invoke("oauth:sign-out", provider),
 
   respondToUiRequest: (id, response) => {
     ipcRenderer.send("agent:ui-response", {

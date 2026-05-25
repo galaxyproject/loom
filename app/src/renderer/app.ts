@@ -488,12 +488,41 @@ const welcomeProvider = document.getElementById("welcome-provider") as HTMLSelec
 const welcomeModel = document.getElementById("welcome-model") as HTMLSelectElement;
 const welcomeApiKey = document.getElementById("welcome-api-key") as HTMLInputElement;
 const welcomeApiKeyStatus = document.getElementById("welcome-api-key-status")!;
+const welcomeApiKeyRow = document.getElementById("welcome-api-key-row")!;
+const welcomeApiKeyHintRow = document.getElementById("welcome-api-key-hint-row")!;
+const welcomeOauthRow = document.getElementById("welcome-oauth-row")!;
+const welcomeOauthHintRow = document.getElementById("welcome-oauth-hint-row")!;
+const welcomeOauthStatus = document.getElementById("welcome-oauth-status")!;
+const welcomeOauthSignIn = document.getElementById("welcome-oauth-signin") as HTMLButtonElement;
 const welcomeGalaxyUrl = document.getElementById("welcome-galaxy-url") as HTMLInputElement;
 const welcomeGalaxyKey = document.getElementById("welcome-galaxy-key") as HTMLInputElement;
 const welcomeCwd = document.getElementById("welcome-cwd") as HTMLInputElement;
 const welcomeBrowseCwd = document.getElementById("welcome-browse-cwd")!;
 const welcomeSave = document.getElementById("welcome-save")!;
 const welcomeError = document.getElementById("welcome-error")!;
+
+/** Provider IDs that authenticate via OAuth rather than an API key. */
+const OAUTH_PROVIDERS = new Set<string>(["openai-codex"]);
+function isOAuthProvider(provider: string): boolean {
+  return OAUTH_PROVIDERS.has(provider);
+}
+
+function formatOAuthStatus(s: {
+  signedIn: boolean;
+  expiresInSeconds?: number;
+  accountId?: string;
+}): string {
+  if (!s.signedIn) return "Not signed in";
+  const who = s.accountId ? `Signed in (${s.accountId.slice(0, 8)}…)` : "Signed in";
+  // Don't expose the raw expiry -- pi-coding-agent refreshes silently. Only
+  // surface a hint if the token is already expired so users know a refresh
+  // will happen on next call (and so a stale auth.json isn't mistaken for
+  // a working credential).
+  if (typeof s.expiresInSeconds === "number" && s.expiresInSeconds < 0) {
+    return `${who} · token expired, will refresh on next use`;
+  }
+  return who;
+}
 
 // Wire a provider-dropdown / API-key-input / status-label triple to do
 // debounced live validation (see main/ipc-handlers.ts validateApiKey).
@@ -546,8 +575,44 @@ function populateWelcomeModels(provider: string): void {
     welcomeModel.appendChild(opt);
   }
 }
-welcomeProvider.addEventListener("change", () => populateWelcomeModels(welcomeProvider.value));
+welcomeProvider.addEventListener("change", () => {
+  populateWelcomeModels(welcomeProvider.value);
+  void updateWelcomeAuthUi();
+});
 wireApiKeyValidation(welcomeProvider, welcomeApiKey, welcomeApiKeyStatus);
+
+async function updateWelcomeAuthUi(): Promise<void> {
+  const oauth = isOAuthProvider(welcomeProvider.value);
+  welcomeApiKeyRow.classList.toggle("hidden", oauth);
+  welcomeApiKeyHintRow.classList.toggle("hidden", oauth);
+  welcomeOauthRow.classList.toggle("hidden", !oauth);
+  welcomeOauthHintRow.classList.toggle("hidden", !oauth);
+  if (oauth) {
+    const status = await window.orbit.oauthStatus(welcomeProvider.value);
+    welcomeOauthStatus.textContent = formatOAuthStatus(status);
+    welcomeOauthStatus.classList.toggle("signed-in", status.signedIn);
+    welcomeOauthSignIn.textContent = status.signedIn ? "Sign in again" : "Sign in with ChatGPT";
+  }
+}
+
+welcomeOauthSignIn.addEventListener("click", async () => {
+  welcomeError.textContent = "";
+  welcomeOauthSignIn.disabled = true;
+  welcomeOauthStatus.textContent = "Opening browser…";
+  try {
+    const res = await window.orbit.oauthSignIn(welcomeProvider.value);
+    if (res.ok) {
+      welcomeOauthStatus.textContent = formatOAuthStatus(res.status);
+      welcomeOauthStatus.classList.toggle("signed-in", res.status.signedIn);
+      welcomeOauthSignIn.textContent = "Sign in again";
+    } else {
+      welcomeError.textContent = `Sign-in failed: ${res.error}`;
+      welcomeOauthStatus.textContent = "Not signed in";
+    }
+  } finally {
+    welcomeOauthSignIn.disabled = false;
+  }
+});
 
 welcomeBrowseCwd.addEventListener("click", async () => {
   const dir = await window.orbit.selectDirectory();
@@ -556,10 +621,18 @@ welcomeBrowseCwd.addEventListener("click", async () => {
 
 welcomeSave.addEventListener("click", async () => {
   welcomeError.textContent = "";
+  const oauth = isOAuthProvider(welcomeProvider.value);
   const apiKey = welcomeApiKey.value.trim();
-  if (!apiKey) {
+  if (!oauth && !apiKey) {
     welcomeError.textContent = "API key is required";
     return;
+  }
+  if (oauth) {
+    const status = await window.orbit.oauthStatus(welcomeProvider.value);
+    if (!status.signedIn) {
+      welcomeError.textContent = "Sign in with ChatGPT before continuing.";
+      return;
+    }
   }
 
   // Galaxy: both-or-neither. The Preferences modal enforces the same
@@ -573,11 +646,16 @@ welcomeSave.addEventListener("click", async () => {
     return;
   }
 
+  // OAuth providers persist their credential in ~/.pi/agent/auth.json (written
+  // by the sign-in flow above), not in config.json. Skip writing apiKey for
+  // those so a leftover plaintext field doesn't shadow the real auth path.
+  const providerEntry: Record<string, unknown> = { model: welcomeModel.value };
+  if (!oauth) providerEntry.apiKey = apiKey;
   const cfg: Record<string, unknown> = {
     llm: {
       active: welcomeProvider.value,
       providers: {
-        [welcomeProvider.value]: { model: welcomeModel.value, apiKey },
+        [welcomeProvider.value]: providerEntry,
       },
     },
   };
@@ -621,9 +699,16 @@ async function checkFirstRun(): Promise<void> {
     llm?: { active?: string; providers?: Record<string, { hasApiKey?: boolean }> };
   };
   const active = cfg.llm?.active;
+  // Treat an OAuth-only setup (no API key, but provider has a stored token)
+  // as fully configured -- skip the welcome screen.
+  if (active && isOAuthProvider(active)) {
+    const status = await window.orbit.oauthStatus(active);
+    if (status.signedIn) return;
+  }
   const hasKey = active ? Boolean(cfg.llm?.providers?.[active]?.hasApiKey) : false;
   if (!hasKey) {
     populateWelcomeModels(welcomeProvider.value);
+    void updateWelcomeAuthUi();
     welcomeOverlay.classList.remove("hidden");
   }
 }
@@ -2299,6 +2384,13 @@ const prefsProvider = document.getElementById("prefs-provider") as HTMLSelectEle
 const prefsModel = document.getElementById("prefs-model") as HTMLSelectElement;
 const prefsApiKey = document.getElementById("prefs-api-key") as HTMLInputElement;
 const prefsApiKeyStatus = document.getElementById("prefs-api-key-status")!;
+const prefsApiKeyRow = document.getElementById("prefs-api-key-row")!;
+const prefsApiKeyHintRow = document.getElementById("prefs-api-key-hint-row")!;
+const prefsOauthRow = document.getElementById("prefs-oauth-row")!;
+const prefsOauthHintRow = document.getElementById("prefs-oauth-hint-row")!;
+const prefsOauthStatus = document.getElementById("prefs-oauth-status")!;
+const prefsOauthSignIn = document.getElementById("prefs-oauth-signin") as HTMLButtonElement;
+const prefsOauthSignOut = document.getElementById("prefs-oauth-signout") as HTMLButtonElement;
 
 // Model catalog by provider — labels include cost guidance
 // (in/out price per 1M tokens). Fallback only — populateDynamicModelData()
@@ -2364,11 +2456,12 @@ function populateModels(provider: string, selected?: string): void {
   }
 }
 
-// Switching provider: save current fields, load new provider's state.
+// Switching provider: save current fields, load new provider's state, refresh OAuth UI.
 prefsProvider.addEventListener("change", () => {
   snapshotCurrentProvider();
   prefsActiveProvider = prefsProvider.value;
   loadProviderFields(prefsActiveProvider);
+  void updatePrefsAuthUi();
 });
 wireApiKeyValidation(prefsProvider, prefsApiKey, prefsApiKeyStatus);
 // Clear the "✓ Key stored" indicator as soon as the user starts typing.
@@ -2376,6 +2469,54 @@ prefsApiKey.addEventListener("input", () => {
   if (prefsApiKeyStatus.classList.contains("stored")) {
     prefsApiKeyStatus.className = "api-key-status";
     prefsApiKeyStatus.textContent = "";
+  }
+});
+
+async function updatePrefsAuthUi(): Promise<void> {
+  const oauth = isOAuthProvider(prefsProvider.value);
+  prefsApiKeyRow.classList.toggle("hidden", oauth);
+  prefsApiKeyHintRow.classList.toggle("hidden", oauth);
+  prefsOauthRow.classList.toggle("hidden", !oauth);
+  prefsOauthHintRow.classList.toggle("hidden", !oauth);
+  if (oauth) {
+    const status = await window.orbit.oauthStatus(prefsProvider.value);
+    prefsOauthStatus.textContent = formatOAuthStatus(status);
+    prefsOauthStatus.classList.toggle("signed-in", status.signedIn);
+    prefsOauthSignIn.textContent = status.signedIn ? "Sign in again" : "Sign in with ChatGPT";
+    prefsOauthSignOut.classList.toggle("hidden", !status.signedIn);
+  }
+}
+
+prefsOauthSignIn.addEventListener("click", async () => {
+  prefsOauthSignIn.disabled = true;
+  prefsOauthStatus.textContent = "Opening browser…";
+  prefsOauthStatus.classList.remove("signed-in");
+  try {
+    const res = await window.orbit.oauthSignIn(prefsProvider.value);
+    if (res.ok) {
+      prefsOauthStatus.textContent = formatOAuthStatus(res.status);
+      prefsOauthStatus.classList.toggle("signed-in", res.status.signedIn);
+      prefsOauthSignIn.textContent = "Sign in again";
+      prefsOauthSignOut.classList.toggle("hidden", !res.status.signedIn);
+    } else {
+      prefsOauthStatus.textContent = `Sign-in failed: ${res.error}`;
+    }
+  } finally {
+    prefsOauthSignIn.disabled = false;
+  }
+});
+
+prefsOauthSignOut.addEventListener("click", async () => {
+  if (!confirm("Sign out of ChatGPT? You'll need to sign in again to use Codex models.")) return;
+  prefsOauthSignOut.disabled = true;
+  try {
+    await window.orbit.oauthSignOut(prefsProvider.value);
+    prefsOauthStatus.textContent = "Not signed in";
+    prefsOauthStatus.classList.remove("signed-in");
+    prefsOauthSignIn.textContent = "Sign in with ChatGPT";
+    prefsOauthSignOut.classList.add("hidden");
+  } finally {
+    prefsOauthSignOut.disabled = false;
   }
 });
 const prefsGalaxyUrl = document.getElementById("prefs-galaxy-url") as HTMLInputElement;
@@ -2551,6 +2692,7 @@ async function openPreferences(): Promise<void> {
   prefsActiveProvider = config.llm?.active || "anthropic";
   prefsProvider.value = prefsActiveProvider;
   loadProviderFields(prefsActiveProvider);
+  await updatePrefsAuthUi();
 
   // Galaxy: use active profile
   const activeProfile = config.galaxy?.active
@@ -2629,24 +2771,27 @@ async function savePreferences(): Promise<void> {
   const activeProvider = prefsProvider.value;
   const selectedModel = prefsProviderStates[activeProvider]?.model || prefsModel.value || undefined;
 
-  // Build the full providers map from in-memory state.
-  const providers: Record<string, { apiKey: string; model?: string }> = {};
+  // Build the full providers map from in-memory state. OAuth providers persist
+  // credentials in ~/.pi/agent/auth.json -- don't ship an apiKey field (sentinel
+  // or "") for them, or the reconciler would try to preserve/clear a
+  // config.json key that was never there.
+  const providers: Record<string, { apiKey?: string; model?: string }> = {};
   for (const [name, state] of Object.entries(prefsProviderStates)) {
-    const key = state.typedKey.trim()
-      ? state.typedKey.trim()
-      : state.hadKey
-        ? UNCHANGED_SECRET
-        : "";
-    providers[name] = { apiKey: key, model: state.model || undefined };
+    const entry: { apiKey?: string; model?: string } = { model: state.model || undefined };
+    if (!isOAuthProvider(name)) {
+      entry.apiKey = state.typedKey.trim()
+        ? state.typedKey.trim()
+        : state.hadKey
+          ? UNCHANGED_SECRET
+          : "";
+    }
+    providers[name] = entry;
   }
-  // Ensure the active provider is always in the map even if brand-new.
-  if (!providers[activeProvider]) {
-    providers[activeProvider] = { apiKey: llmApiKey, model: selectedModel };
-  } else {
-    // llmApiKey is the resolved key for the active provider — use it as override.
-    providers[activeProvider].apiKey = llmApiKey;
-    providers[activeProvider].model = selectedModel;
-  }
+  // Override the active provider with the resolved current-screen values
+  // (covers the brand-new-provider case too).
+  const activeEntry: { apiKey?: string; model?: string } = { model: selectedModel };
+  if (!isOAuthProvider(activeProvider)) activeEntry.apiKey = llmApiKey;
+  providers[activeProvider] = activeEntry;
 
   const config: Record<string, unknown> = {
     llm: { active: activeProvider, providers },

@@ -100,12 +100,18 @@ const PROVIDER_ENV_MAP = {
   xai: "XAI_API_KEY",
 };
 
+// Providers that authenticate via OAuth (~/.pi/agent/auth.json) instead of env vars.
+const OAUTH_PROVIDERS = new Set(["openai-codex"]);
+
 // apiKeyEncrypted isn't readable here -- no Electron safeStorage in the
 // brain process. Orbit decrypts and passes via env when it spawns us;
-// standalone CLI usage only works with plaintext keys.
+// standalone CLI usage only works with plaintext keys. OAuth providers
+// skip env injection entirely: a stale apiKey on the entry shouldn't leak
+// under a misrouted env variable when the brain will authenticate via
+// ~/.pi/agent/auth.json anyway.
 const activeLlmProvider = loomConfig.llm?.active;
 const activeLlmConfig = activeLlmProvider ? loomConfig.llm?.providers?.[activeLlmProvider] : null;
-if (activeLlmConfig?.apiKey) {
+if (activeLlmConfig?.apiKey && !OAUTH_PROVIDERS.has(activeLlmProvider)) {
   const envVar = PROVIDER_ENV_MAP[activeLlmProvider] || "AI_GATEWAY_API_KEY";
   if (!process.env[envVar]) {
     process.env[envVar] = activeLlmConfig.apiKey;
