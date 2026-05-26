@@ -44,3 +44,21 @@ describe("findOrbit -- darwin", () => {
     expect(findOrbit(d)).toBeNull();
   });
 });
+
+describe("findOrbit -- linux", () => {
+  it("finds an AppImage at ~/.local/bin/Orbit.AppImage", () => {
+    const p = "/home/me/.local/bin/Orbit.AppImage";
+    const d = deps({ platform: "linux", existsSync: (q) => q === p });
+    expect(findOrbit(d)).toBe(p);
+  });
+
+  it("finds a deb/rpm install at /usr/bin/orbit", () => {
+    const d = deps({ platform: "linux", existsSync: (q) => q === "/usr/bin/orbit" });
+    expect(findOrbit(d)).toBe("/usr/bin/orbit");
+  });
+
+  it("returns null when no candidate exists", () => {
+    const d = deps({ platform: "linux", existsSync: () => false });
+    expect(findOrbit(d)).toBeNull();
+  });
+});

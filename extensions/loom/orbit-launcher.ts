@@ -45,5 +45,15 @@ export function findOrbit(deps: FindOrbitDeps = realDeps()): string | null {
     for (const c of candidates) if (deps.existsSync(c)) return c;
     return null;
   }
+  if (deps.platform === "linux") {
+    const candidates = [
+      `${deps.homedir}/.local/bin/Orbit.AppImage`,
+      "/usr/bin/orbit",
+      "/usr/local/bin/orbit",
+      `${deps.homedir}/Applications/Orbit.AppImage`,
+    ];
+    for (const c of candidates) if (deps.existsSync(c)) return c;
+    return null;
+  }
   return null;
 }
