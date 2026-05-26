@@ -37,5 +37,13 @@ export function findOrbit(deps: FindOrbitDeps = realDeps()): string | null {
   if (override) {
     return deps.existsSync(override) ? override : null;
   }
+  if (deps.platform === "darwin") {
+    const candidates = [
+      "/Applications/Orbit.app/Contents/MacOS/Orbit",
+      `${deps.homedir}/Applications/Orbit.app/Contents/MacOS/Orbit`,
+    ];
+    for (const c of candidates) if (deps.existsSync(c)) return c;
+    return null;
+  }
   return null;
 }
