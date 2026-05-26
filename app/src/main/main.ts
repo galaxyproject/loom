@@ -29,6 +29,15 @@ app.commandLine.appendSwitch("no-sandbox");
 // (Ubuntu 24.04+) and breaks DevTools and the PDF viewer.
 app.commandLine.appendSwitch("no-zygote");
 
+// Only one Orbit per machine. A second `Orbit --cwd X` invocation hands its
+// argv to the running instance via the `second-instance` event; if we can't
+// get the lock, quit immediately so the running instance handles the request.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+  process.exit(0);
+}
+
 // Custom scheme for serving files out of the current analysis cwd. The renderer
 // rewrites relative <img src> in notebook.md to orbit-artifact://cwd/<path>, and
 // the handler below resolves that against agentManager.getCwd() at request time.
@@ -514,6 +523,38 @@ app.whenReady().then(() => {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow(cwd);
+    }
+  });
+
+  app.on("second-instance", async (_event, argv) => {
+    log("second-instance argv:", argv);
+    // argv on second-instance is the FULL argv of the second invocation
+    // including the executable path; slice past it the way we do for the
+    // first instance.
+    const args = parseCliArgs(argv.slice(1));
+    if (!args.cwd) {
+      // Bare second launch -- just surface the window.
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+      }
+      return;
+    }
+    const resolvedCwd = args.cwd.startsWith("~")
+      ? path.join(os.homedir(), args.cwd.slice(1))
+      : args.cwd;
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+    if (!agentManager) return;
+    if (resolvedCwd === agentManager.getCwd()) return;
+    const ok = await confirmCwdChange(mainWindow ?? undefined);
+    if (!ok) return;
+    if (agentManager.switchCwd(resolvedCwd)) {
+      log("switched cwd from second instance to:", resolvedCwd);
+      mainWindow?.webContents.send("agent:cwd-changed", resolvedCwd);
+      if (mainWindow) startFilesWatcher(mainWindow, resolvedCwd);
     }
   });
 });
