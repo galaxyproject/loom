@@ -529,7 +529,7 @@ Galaxy MCP (registered separately when credentials are present) provides `galaxy
 
 | Component  | Technology                                            |
 | ---------- | ----------------------------------------------------- |
-| Agent      | Pi.dev (`@mariozechner/pi-coding-agent`)              |
+| Agent      | Pi.dev (`@earendil-works/pi-coding-agent`)            |
 | MCP bridge | `pi-mcp-adapter`, `uvx galaxy-mcp`                    |
 | Language   | TypeScript (strict)                                   |
 | Tests      | Vitest                                                |

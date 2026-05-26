@@ -7,7 +7,7 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import { loadConfig, saveConfig, type LoomConfig } from "./config.js";
 import { encryptSecret, isAvailable as safeStorageAvailable } from "./secure-config.js";
-import { getProviders, getModels } from "@mariozechner/pi-ai";
+import { getProviders, getModels } from "@earendil-works/pi-ai";
 import { checkLatestVersion } from "./version-check.js";
 
 /**

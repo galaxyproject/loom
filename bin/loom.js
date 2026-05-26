@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { main } from "@mariozechner/pi-coding-agent";
+import { main } from "@earendil-works/pi-coding-agent";
 import { resolve, dirname, join } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from "fs";
@@ -22,7 +22,7 @@ import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const mcpAdapterPath = dirname(require.resolve("pi-mcp-adapter/index.ts"));
 const webAccessPath = dirname(require.resolve("pi-web-access/index.ts"));
-const piEntryPointPath = fileURLToPath(import.meta.resolve("@mariozechner/pi-coding-agent"));
+const piEntryPointPath = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
 const piPackageDir = dirname(dirname(piEntryPointPath));
 const piArgsModulePath = join(piPackageDir, "dist/cli/args.js");
 const piListModelsModulePath = join(piPackageDir, "dist/cli/list-models.js");

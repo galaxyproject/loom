@@ -7,7 +7,7 @@
  * written on disk by the activity-hooks module for debug.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { onNotebookChange, getNotebookPath } from "./state.js";
 import { LoomWidgetKey, encodeMarkdownWidget } from "../../shared/loom-shell-contract.js";
 

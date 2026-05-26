@@ -7,7 +7,7 @@
  * `initSessionArtifacts()` has set up the session dir.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as path from "path";
 import { getNotebookPath } from "./state";
 import { appendActivityEvent } from "./activity";

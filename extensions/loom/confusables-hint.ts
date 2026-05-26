@@ -9,7 +9,7 @@
  * "Did you mean X?" hint so the agent recovers in one turn.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { findConfusablesMatch } from "./confusables";
 
 const NOT_FOUND_RE = /^Tool\s+(\S+)\s+not found\b/;

@@ -638,6 +638,21 @@ body:not(.artifact-collapsed) #artifact-toggle {
   font-size: 13px;
   letter-spacing: 0.5px;
   text-transform: uppercase;
+  -webkit-app-region: drag;
+}
+.pane-title button,
+.pane-title input,
+.pane-title select,
+.pane-title a,
+.pane-title .pane-title-label,
+.pane-title .files-title-label,
+.pane-title .pane-title-actions,
+.pane-title .files-title-actions {
+  -webkit-app-region: no-drag;
+}
+
+body.platform-darwin #files-title {
+  padding-left: 78px;
 }
 
 /* Chat pane title hosts the files-toggle (left) and artifact-toggle (right)

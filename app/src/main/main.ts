@@ -481,7 +481,12 @@ app.whenReady().then(() => {
   createWindow(cwd);
 
   powerMonitor.on("suspend", () => log("[diag] powerMonitor suspend"));
-  powerMonitor.on("resume", () => log("[diag] powerMonitor resume"));
+  powerMonitor.on("resume", () => {
+    log("[diag] powerMonitor resume");
+    // macOS GPU process resets on wake-from-sleep, blanking Electron's paint
+    // layers. invalidate() forces a full compositor repaint without reloading.
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.invalidate();
+  });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

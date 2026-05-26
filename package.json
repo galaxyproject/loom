@@ -16,7 +16,7 @@
     "url": "https://github.com/galaxyproject/loom"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.19"
   },
   "files": [
     "bin/",
@@ -34,7 +34,8 @@
     ]
   },
   "dependencies": {
-    "@mariozechner/pi-coding-agent": "^0.73.0",
+    "@earendil-works/pi-coding-agent": "^0.75.4",
+    "@earendil-works/pi-tui": "^0.75.4",
     "@sinclair/typebox": "^0.34.49",
     "better-sqlite3": "^12.9.0",
     "chokidar": "^4.0.3",
@@ -66,7 +67,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@mariozechner/pi-ai": "^0.73.0",
+    "@earendil-works/pi-ai": "^0.75.4",
     "@types/better-sqlite3": "^7.6.13",
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",

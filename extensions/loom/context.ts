@@ -7,7 +7,7 @@
  * guidance for the new markdown-and-invocation-block model.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import * as fs from "fs";
 import { getState, getNotebookPath } from "./state";
 import { isTeamDispatchEnabled } from "./teams/is-enabled";

@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getNotebookPath } from "./state.js";
 import { checkPreconditions, renderFailures } from "./init-gate.js";
 

@@ -27,7 +27,7 @@ type ContentBlock = {
 
 // Mirror pi-coding-agent's on-disk encoding: strip leading slash, then replace
 // remaining path separators / drive colons with `-`, wrap in `--`.
-// See session-manager.js:213 in @mariozechner/pi-coding-agent.
+// See session-manager.js:213 in @earendil-works/pi-coding-agent.
 function sessionsDir(cwd: string): string {
   const encoded = `--${cwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
   return path.join(os.homedir(), ".pi", "agent", "sessions", encoded);
