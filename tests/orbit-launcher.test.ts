@@ -1,5 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { findOrbit, type FindOrbitDeps } from "../extensions/loom/orbit-launcher";
+import { spawn } from "node:child_process";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { findOrbit, launchOrbit, type FindOrbitDeps } from "../extensions/loom/orbit-launcher";
+
+vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 
 function deps(over: Partial<FindOrbitDeps> = {}): FindOrbitDeps {
   return {
@@ -10,6 +13,10 @@ function deps(over: Partial<FindOrbitDeps> = {}): FindOrbitDeps {
     ...over,
   };
 }
+
+beforeEach(() => {
+  vi.mocked(spawn).mockReset();
+});
 
 describe("findOrbit -- env override", () => {
   it("returns ORBIT_BIN when set and the file exists", () => {
@@ -78,5 +85,20 @@ describe("findOrbit -- win32", () => {
   it("returns null when LOCALAPPDATA is unset", () => {
     const d = deps({ platform: "win32", env: {}, existsSync: () => false });
     expect(findOrbit(d)).toBeNull();
+  });
+});
+
+describe("launchOrbit", () => {
+  it("spawns the orbit binary with --cwd and detaches", () => {
+    const fakeChild = { unref: vi.fn(), pid: 12345 };
+    vi.mocked(spawn).mockReturnValue(fakeChild as any);
+    const result = launchOrbit("/path/to/Orbit", "/Users/me/analysis");
+    expect(spawn).toHaveBeenCalledWith(
+      "/path/to/Orbit",
+      ["--cwd", "/Users/me/analysis"],
+      expect.objectContaining({ detached: true, stdio: "ignore" }),
+    );
+    expect(fakeChild.unref).toHaveBeenCalled();
+    expect(result.pid).toBe(12345);
   });
 });

@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 
@@ -66,4 +67,22 @@ export function findOrbit(deps: FindOrbitDeps = realDeps()): string | null {
     return null;
   }
   return null;
+}
+
+export interface LaunchResult {
+  pid: number | undefined;
+}
+
+/**
+ * Launch Orbit detached with --cwd <cwd>. Returns immediately. The caller
+ * is responsible for the rest of session-shutdown -- launchOrbit does not
+ * wait for Orbit to start.
+ */
+export function launchOrbit(orbitPath: string, cwd: string): LaunchResult {
+  const child = spawn(orbitPath, ["--cwd", cwd], {
+    detached: true,
+    stdio: "ignore",
+  });
+  child.unref();
+  return { pid: child.pid };
 }
