@@ -17,7 +17,12 @@ declare global {
 // macOS uses titleBarStyle: 'hiddenInset', which insets the traffic lights
 // over the top-left of the content. Toggle a body class so we can pad the
 // leftmost masthead away from them and skip the padding on other platforms.
-if (navigator.platform.startsWith("Mac")) document.body.classList.add("platform-darwin");
+// navigator.platform is deprecated; prefer userAgentData and fall back for
+// older Chromium / non-Chromium runtimes that may host the renderer.
+const platformString =
+  (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ??
+  navigator.platform;
+if (/mac/i.test(platformString)) document.body.classList.add("platform-darwin");
 
 // ── Components ────────────────────────────────────────────────────────────────
 
@@ -2233,7 +2238,11 @@ divider.addEventListener("mousedown", (e) => {
 
 document.addEventListener("mousemove", (e) => {
   if (!dragging) return;
-  const containerWidth = document.getElementById("app")!.getBoundingClientRect().width;
+  // chatPane is a flex child of #app-main, so its flex-basis percentage
+  // resolves against #app-main's width (not #app's). These are equal today
+  // because #app-main is the only row in #app, but using #app-main keeps the
+  // math correct if the column-flex parent ever grows a sibling.
+  const containerWidth = document.getElementById("app-main")!.getBoundingClientRect().width;
   const chatLeft = chatPane.getBoundingClientRect().left;
   const pct = ((e.clientX - chatLeft) / containerWidth) * 100;
   const clamped = Math.max(25, Math.min(75, pct));

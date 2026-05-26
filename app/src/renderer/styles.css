@@ -640,6 +640,10 @@ body:not(.artifact-collapsed) #artifact-toggle {
   text-transform: uppercase;
   -webkit-app-region: drag;
 }
+/* Children of .pane-title default to "drag" (titlebar drag region on macOS).
+   Re-enable clicks on interactive children. If you add a new interactive
+   element (textarea, [role=button], a custom clickable container, etc.) inside
+   any .pane-title, add it here or it will swallow clicks on macOS. */
 .pane-title button,
 .pane-title input,
 .pane-title select,
