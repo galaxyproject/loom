@@ -120,9 +120,31 @@ function startConfigWatcher(): void {
   }
 }
 
-function getDefaultCwd(): string {
-  // Priority: env var > brain config.defaultCwd > hardcoded default
-  let cwd = process.env.LOOM_CWD;
+interface CliArgs {
+  cwd?: string;
+}
+
+/**
+ * Parse argv for the small set of switches Orbit accepts. Called from the
+ * initial whenReady block and again from the second-instance handler.
+ *
+ * Recognized: --cwd <path>. Anything else (including Electron's own flags
+ * like --no-sandbox we set earlier) is ignored.
+ */
+function parseCliArgs(argv: string[]): CliArgs {
+  const out: CliArgs = {};
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--cwd" && i + 1 < argv.length) {
+      out.cwd = argv[i + 1];
+      i++;
+    }
+  }
+  return out;
+}
+
+function getDefaultCwd(cliArgs?: CliArgs): string {
+  // Priority: --cwd CLI arg > LOOM_CWD env > brain config.defaultCwd > hardcoded.
+  let cwd = cliArgs?.cwd || process.env.LOOM_CWD;
   if (!cwd) {
     try {
       const configPath = path.join(LOOM_DIR, "config.json");
@@ -476,7 +498,8 @@ app.whenReady().then(() => {
 
   buildMenu();
 
-  const cwd = getDefaultCwd();
+  const cliArgs = parseCliArgs(process.argv.slice(2));
+  const cwd = getDefaultCwd(cliArgs);
   log("cwd:", cwd);
   createWindow(cwd);
 
