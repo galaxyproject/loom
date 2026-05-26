@@ -808,6 +808,18 @@ window.orbit.onCwdChanged((dir) => {
 // is restored, but the chat panel is empty because it's renderer-only state.
 // Replay prior turns only if the chat is currently blank — otherwise the user
 // is mid-flow (e.g. prefs-save restart) and replay would clobber live UI.
+// On wake-from-sleep, auto-restore blank chat and notebook without user action.
+window.orbit.onDisplayResume(() => {
+  if (!chat.hasContent()) {
+    void window.orbit.replayChat().then((r) => {
+      if (r.ok && r.segments > 0) {
+        chat.addInfoMessage("<i>— Session restored after display sleep —</i>");
+      }
+    });
+  }
+  artifacts.reRenderNotebook();
+});
+
 window.orbit.onSessionHistory((history) => {
   if (history.length === 0) return;
   if (chat.hasContent()) return;

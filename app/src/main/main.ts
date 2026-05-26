@@ -483,9 +483,11 @@ app.whenReady().then(() => {
   powerMonitor.on("suspend", () => log("[diag] powerMonitor suspend"));
   powerMonitor.on("resume", () => {
     log("[diag] powerMonitor resume");
-    // macOS GPU process resets on wake-from-sleep, blanking Electron's paint
-    // layers. invalidate() forces a full compositor repaint without reloading.
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.invalidate();
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    // Force GPU compositor repaint — macOS resets the GPU process on wake.
+    mainWindow.webContents.invalidate();
+    // Notify the renderer so it can auto-restore blank chat/notebook views.
+    mainWindow.webContents.send("display:resume");
   });
 
   app.on("activate", () => {

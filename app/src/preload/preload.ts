@@ -82,6 +82,7 @@ export interface OrbitAPI {
   ): () => void;
   getAgentStatus(): Promise<{ status: "running" | "stopped" | "error"; message?: string }>;
   onCwdChanged(callback: (dir: string) => void): () => void;
+  onDisplayResume(callback: () => void): () => void;
   onOpenPreferences(callback: () => void): () => void;
   onShowSlashCommands(callback: () => void): () => void;
   onProcUpdate(callback: (procs: ProcInfo[]) => void): () => void;
@@ -178,6 +179,12 @@ const api: OrbitAPI = {
     const handler = (_e: unknown, dir: string) => callback(dir);
     ipcRenderer.on("agent:cwd-changed", handler);
     return () => ipcRenderer.removeListener("agent:cwd-changed", handler);
+  },
+
+  onDisplayResume: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("display:resume", handler);
+    return () => ipcRenderer.removeListener("display:resume", handler);
   },
 
   onOpenPreferences: (callback) => {

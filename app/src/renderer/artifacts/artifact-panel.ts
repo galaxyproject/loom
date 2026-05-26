@@ -64,6 +64,7 @@ export class ArtifactPanel {
   private fileTabBtn: HTMLButtonElement;
   private tabButtons: HTMLButtonElement[];
   private activeTab: TabKey = "notebook";
+  private lastNotebookMarkdown: string | null = null;
 
   /** Optional callback fired when the user clicks the File-tab close (×). */
   onFileTabClose: (() => void) | null = null;
@@ -121,6 +122,7 @@ export class ArtifactPanel {
 
   /** Replace the notebook view with rendered markdown. */
   setNotebookMarkdown(markdown: string): void {
+    this.lastNotebookMarkdown = markdown;
     this.notebookEl.innerHTML = "";
     const wrapper = document.createElement("div");
     wrapper.className = "result-block notebook-dump";
@@ -129,6 +131,15 @@ export class ArtifactPanel {
     content.innerHTML = renderMarkdown(markdown || "", notebookMarked);
     wrapper.appendChild(content);
     this.notebookEl.appendChild(wrapper);
+  }
+
+  /** Re-render the last known notebook content. No-op if never set. */
+  reRenderNotebook(): void {
+    if (this.lastNotebookMarkdown !== null) this.setNotebookMarkdown(this.lastNotebookMarkdown);
+  }
+
+  hasNotebookContent(): boolean {
+    return this.lastNotebookMarkdown !== null;
   }
 
   /** Switch the visible tab without touching the stored content. */
