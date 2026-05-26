@@ -16,11 +16,10 @@ export function registerOrbitCommand(pi: ExtensionAPI): void {
       return;
     }
 
-    const cwd = process.cwd();
     try {
-      const result = launchOrbit(orbitPath, cwd);
+      const result = launchOrbit(orbitPath, ctx.cwd);
       ctx.ui.notify(
-        `Launching Orbit (pid ${result.pid ?? "?"}) on ${cwd}. ` +
+        `Launching Orbit (pid ${result.pid ?? "?"}) on ${ctx.cwd}. ` +
           `Closing this CLI session -- your work continues in Orbit.`,
         "info",
       );
