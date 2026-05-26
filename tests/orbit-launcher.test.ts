@@ -62,3 +62,21 @@ describe("findOrbit -- linux", () => {
     expect(findOrbit(d)).toBeNull();
   });
 });
+
+describe("findOrbit -- win32", () => {
+  it("finds Orbit.exe in the Squirrel default install dir", () => {
+    const localAppData = "C:\\Users\\u\\AppData\\Local";
+    const p = `${localAppData}\\orbit\\Orbit.exe`;
+    const d = deps({
+      platform: "win32",
+      env: { LOCALAPPDATA: localAppData },
+      existsSync: (q) => q === p,
+    });
+    expect(findOrbit(d)).toBe(p);
+  });
+
+  it("returns null when LOCALAPPDATA is unset", () => {
+    const d = deps({ platform: "win32", env: {}, existsSync: () => false });
+    expect(findOrbit(d)).toBeNull();
+  });
+});

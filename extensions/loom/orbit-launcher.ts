@@ -55,5 +55,15 @@ export function findOrbit(deps: FindOrbitDeps = realDeps()): string | null {
     for (const c of candidates) if (deps.existsSync(c)) return c;
     return null;
   }
+  if (deps.platform === "win32") {
+    const localAppData = deps.env.LOCALAPPDATA;
+    if (!localAppData) return null;
+    const candidates = [
+      `${localAppData}\\orbit\\Orbit.exe`,
+      `${localAppData}\\Programs\\orbit\\Orbit.exe`,
+    ];
+    for (const c of candidates) if (deps.existsSync(c)) return c;
+    return null;
+  }
   return null;
 }
