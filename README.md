@@ -242,6 +242,12 @@ Or run without installing:
 npx @galaxyproject/loom
 ```
 
+**Pop into Orbit any time.** Once Orbit is installed, type `/orbit` inside
+the Loom CLI to hand the current session off to the desktop app -- same
+analysis directory, same notebook, just a richer view. The CLI exits and
+Orbit picks up where it left off. If Orbit isn't installed, `/orbit` will
+point you at the release page.
+
 Install `uv` if you don't already have it:
 
 ```bash
