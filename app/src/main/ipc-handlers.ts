@@ -43,7 +43,15 @@ function maskConfig(cfg: LoomConfig): MaskedLoomConfig {
       providers: Object.fromEntries(
         Object.entries(cfg.llm.providers ?? {}).map(([k, v]) => [
           k,
-          { model: v.model, hasApiKey: Boolean(v.apiKey || v.apiKeyEncrypted) },
+          {
+            model: v.model,
+            // OAuth providers authenticate via ~/.pi/agent/auth.json -- an
+            // orphan apiKey on the entry (manual edit, or the legacy-shape
+            // migrator) is dead weight, not a real credential. Don't surface
+            // it to the renderer or it'll mis-render "Key stored" UI for
+            // an account that actually authenticates by sign-in.
+            hasApiKey: isOAuthProvider(k) ? false : Boolean(v.apiKey || v.apiKeyEncrypted),
+          },
         ]),
       ),
     };
@@ -340,7 +348,11 @@ export function registerIpcHandlers(agent: AgentManager): void {
     if (!isOAuthProvider(provider)) {
       return { ok: false as const, error: `Unknown OAuth provider: ${provider}` };
     }
-    signOutOAuth(provider);
+    try {
+      signOutOAuth(provider);
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+    }
     agent.stop();
     agent.start();
     return { ok: true as const };

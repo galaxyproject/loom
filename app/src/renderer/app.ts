@@ -2416,6 +2416,11 @@ let MODELS_BY_PROVIDER: Record<string, ModelChoice[]> = {
     { id: "o1-mini", label: "o1-mini — $3/$12" },
     { id: "o1", label: "o1 — $15/$60" },
   ],
+  "openai-codex": [
+    { id: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
+    { id: "gpt-5.4", label: "GPT-5.4" },
+    { id: "gpt-5.4-mini", label: "GPT-5.4 mini" },
+  ],
   google: [
     { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash — $0.15/$0.60 (cheapest)" },
     { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro — $1.25/$10" },

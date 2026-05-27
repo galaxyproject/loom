@@ -207,7 +207,27 @@ function checkLLMProvider() {
   if (userArgs.some((a) => skipFlags.some((f) => a.startsWith(f)))) return;
   if (hasArg("--provider")) return;
 
-  // Consolidated config has an API key
+  // OAuth providers authenticate via ~/.pi/agent/auth.json, not config keys.
+  // Short-circuit on a present credential for the active provider; stale
+  // plaintext / encrypted fields on the entry are ignored entirely so they
+  // can't mask a missing OAuth login or falsely trigger the encrypted-key
+  // exit below.
+  if (activeLlmProvider && OAUTH_PROVIDERS.has(activeLlmProvider)) {
+    const authPath = join(agentDir, "auth.json");
+    if (existsSync(authPath)) {
+      try {
+        const auth = JSON.parse(readFileSync(authPath, "utf-8"));
+        if (auth && auth[activeLlmProvider]) return;
+      } catch {}
+    }
+    console.error(`loom: provider "${activeLlmProvider}" requires an OAuth sign-in.
+Launch via Orbit (\`cd app && npm start\`) and sign in from Preferences,
+or unset the active provider in ~/.loom/config.json.
+`);
+    process.exit(1);
+  }
+
+  // Consolidated config has an API key (non-OAuth providers only)
   if (activeLlmConfig?.apiKey) return;
 
   const providerEnvVars = [
