@@ -15,6 +15,7 @@ import { isSessionIndexEnabled } from "./session-index/is-enabled";
 import { getRecentActivityEvents } from "./activity";
 import { loadConfig } from "./config";
 import { listEnabledSkillRepos } from "./skills";
+import { findGalaxyPageBlocks } from "./galaxy-page-binding";
 
 const NOTEBOOK_HEAD_MAX_CHARS = 2000;
 const NOTEBOOK_TAIL_MAX_CHARS = 4000;
@@ -73,6 +74,38 @@ operating policies above.
 ${truncated ? "_(showing head + tail; middle elided)_\n\n" : ""}\`\`\`markdown
 ${excerpt}
 \`\`\`
+`;
+}
+
+/**
+ * Surface the loom-galaxy-page binding to the agent at session start so it
+ * knows which page push/pull would touch and which tool fits which direction.
+ */
+export function buildGalaxyPageBindingBlock(): string {
+  const nbPath = getNotebookPath();
+  if (!nbPath) return "";
+  let content: string;
+  try {
+    content = fs.readFileSync(nbPath, "utf-8");
+  } catch {
+    return "";
+  }
+  const binding = findGalaxyPageBlocks(content)[0];
+  if (!binding) return "";
+  return `
+## Galaxy page binding
+
+This notebook is linked to a Galaxy page on \`${binding.galaxyServerUrl}\`:
+
+- page_id: \`${binding.pageId}\`
+- page_slug: \`${binding.pageSlug ?? "<none>"}\`
+- history_id: \`${binding.historyId}\`
+- last_synced_revision: \`${binding.lastSyncedRevision ?? "<none>"}\`
+
+Use \`notebook_push_to_galaxy\` to share progress with the user (creates a new
+revision of the Galaxy page). Use \`notebook_pull_from_galaxy\` to fetch
+updates the user made on the Galaxy side -- only when the user explicitly
+asks for it, since pull discards local edits since the last sync.
 `;
 }
 
@@ -451,7 +484,8 @@ otherwise leave it pending and record the blocker.
 `;
 }
 
-function buildPlanConventionBlock(): string {
+function buildPlanConventionBlock(opts: { omitAnchors?: boolean } = {}): string {
+  const omitAnchors = opts.omitAnchors === true;
   return `## Project model and plan sections
 
 The project is the directory you're working in. \`notebook.md\` is its
@@ -496,39 +530,62 @@ honor it and skip the remaining gates.
 
 ### Plan section template (used in the chat draft AND the notebook write)
 
-Each step is a top-level checklist item with its routing and tool(s)
-on **indented sub-bullets**. Markdown collapses continuation-indent
-text into the parent line; sub-bullets render as a real nested list.
+The heading line is rigid: \`## Plan <Letter>: <Title> [<routing>]\`,
+with a literal letter (\`A\`, \`B\`, \`C\` -- pick the next free one),
+a colon, the human-readable title, and a routing tag in literal
+square brackets. Each step is a top-level checklist item with routing
+and tool(s) on **indented sub-bullets**. Markdown collapses
+continuation-indent text into the parent line; sub-bullets render as
+a real nested list.
+
+Worked example -- copy this shape exactly, just substitute domain
+content:
 
 \`\`\`markdown
-## Plan A: <Title> [local|hybrid|remote]
+## Plan A: chrM Variant Calling [galaxy]
 
-<one or two sentences of rationale + research question>
+Identify mitochondrial variants from 4 paired-end WGS samples using
+the IWC \`bwa-mem-chrM\` workflow. Output: chrM VCF + per-sample QC.
 
 ### Steps
 
-- [ ] 1. **<Step name>** {#plan-a-step-1} — <one-line purpose>
-  - Routing: local
-  - Tool: <tool-name-or-galaxy-id>
-  - Verification: <concrete check before this step can be marked complete>
-- [ ] 2. **<Step name>** {#plan-a-step-2} — <one-line purpose>
-  - Routing: Galaxy
-  - Tool: <galaxy-tool-id>
-  - Verification: <Galaxy status/output inspection that proves it worked>
+- [ ] 1. **QC FASTQs**${anchorOrEmpty("plan-a-step-1", omitAnchors)} — fastp adapter trim + per-base QC
+  - Routing: galaxy
+  - Tool: fastp
+  - Verification: confirm fastp HTML/JSON report exists and includes per-base quality metrics
+- [ ] 2. **Align to chrM reference**${anchorOrEmpty("plan-a-step-2", omitAnchors)} — BWA-MEM, sorted BAM out
+  - Routing: galaxy
+  - Tool: bwa_mem
+  - Verification: poll Galaxy invocation to \`ok\` and inspect BAM outputs
+- [ ] 3. **Call variants**${anchorOrEmpty("plan-a-step-3", omitAnchors)} — bcftools call, filter Q>=30
+  - Routing: galaxy
+  - Tool: bcftools_call
+  - Verification: confirm VCF exists and has variants passing the Q>=30 filter
 
 ### Parameters
 
 | Step | Tool | Parameter | Default | Value | Description |
 | --- | --- | --- | --- | --- | --- |
-| 1   | ... | ...       | ...     | ...   | ...         |
+| 1   | fastp     | --qualified_quality_phred | 15 | 20 | min Phred to keep |
+| 2   | bwa_mem   | --threads                 | 4  | 8  | parallel threads  |
+| 3   | bcftools_call | -p                    | 0.5 | 0.01 | call threshold  |
 \`\`\`
 
-Conventions:
+Conventions (please re-read the heading line above before drafting):
 
-- Use \`{#plan-X-step-N}\` anchors so invocation YAML blocks can reference
-  individual steps unambiguously.
-- Routing tag in the section header: \`[local]\`, \`[hybrid]\`, or
-  \`[remote]\`. Tag literal so future tooling can grep.
+- Heading **must** be \`## Plan <Letter>: <Title> [<routing>]\`.
+  Examples that pass: \`## Plan A: RNA-seq DE [galaxy]\`,
+  \`## Plan B: Quick local QC [local]\`. Examples that **fail** and
+  must be avoided: \`## Plan: ...\` (missing letter),
+  \`## Plan A: ...\` (missing routing tag),
+  \`## Plan A - Title [galaxy]\` (dash instead of colon).
+- Routing tag in the section header is one of \`[galaxy]\`, \`[hybrid]\`,
+  \`[local]\`, or \`[remote]\`. Default to \`[galaxy]\` when the work has a
+  matching Galaxy workflow/tool; \`[hybrid]\` when some steps are local
+  and some Galaxy; \`[local]\` only for personal-scale or ad-hoc work.
+  Tag literal, lowercase, square brackets, no spaces inside the
+  brackets so tooling can grep.
+${anchorGuidance(omitAnchors)}
 - Step routing/tool details go on **sub-bullets**, not on the same line
   as the step heading. Markdown will collapse same-line continuation
   text and the rendered notebook becomes unreadable.
@@ -541,6 +598,35 @@ Conventions:
 - Multiple plans coexist; append new plan sections at the bottom of the
   notebook. Don't delete old plans.
 `;
+}
+
+/** Render a step anchor only when anchors are safe for the active provider. */
+function anchorOrEmpty(id: string, omit: boolean): string {
+  return omit ? "" : ` {#${id}}`;
+}
+
+/**
+ * Inline guidance about anchors. Two versions:
+ * - Safe providers (Anthropic, OpenAI, Google, etc.): teach anchors so
+ *   invocation YAML blocks can reference steps unambiguously.
+ * - Llama-4 family on litellm-routed proxies: don't write anchors --
+ *   the proxy mistakes the curly-brace `{...}` for a tool-call boundary
+ *   and rejects the whole response as "Invalid function calling output."
+ *   The parser still accepts anchors when present, so existing notebooks
+ *   keep working; we just don't ask the model to produce them.
+ */
+function anchorGuidance(omit: boolean): string {
+  if (omit) {
+    return `- Step anchors (\`{#plan-X-step-N}\` syntax) are supported by the
+  parser but **do not write them**. The litellm proxy in front of this
+  Llama-4 deployment mistakes the curly-brace anchor for a tool-call
+  marker and rejects the response. Reference steps by their step number
+  + plan letter instead (e.g. "Plan A step 2").`;
+  }
+  return `- Use \`{#plan-X-step-N}\` anchors so invocation YAML blocks can
+  reference individual steps unambiguously. Place the anchor after the
+  bold step title and before the description em-dash:
+  \`- [ ] 1. **Step name** {#plan-a-step-1} — description\`.`;
 }
 
 /**
@@ -810,12 +896,39 @@ asks what was said.
 `;
 }
 
+/**
+ * Heuristic id-based detector for Llama-4 family models. The actual bug
+ * we're working around lives in the litellm Llama-4 adapter (used by the
+ * SambaNova-on-TACC proxy and some other Llama-4 deployments): it
+ * misinterprets `{...}` patterns in model output as tool-call boundaries
+ * and tries to JSON-parse the contents, so notebook-anchor syntax
+ * (`{#plan-a-step-1}`) trips it and gets rejected as "Invalid function
+ * calling output." We don't have a clean signal for "is this model
+ * behind a buggy litellm adapter," so we approximate it by detecting
+ * Llama-4 in the model id and suppressing anchor guidance for the whole
+ * family. Trade-offs:
+ *   - False positive (Llama-4 on a non-buggy adapter): the model loses
+ *     anchor guidance and references steps by "Plan A step 2" instead;
+ *     no functional regression.
+ *   - False negative (some other model behind the same buggy proxy):
+ *     would re-surface "Invalid function calling output" -- not seen in
+ *     the matrix today.
+ *   - Init-gate parser accepts anchors when present regardless of which
+ *     prompt path ran, so swapping providers mid-project is fail-soft.
+ */
+function isLlama4Family(model: { id?: string; provider?: string } | undefined): boolean {
+  if (!model) return false;
+  const id = (model.id ?? "").toLowerCase();
+  return /llama-?4|maverick|scout/.test(id);
+}
+
 export function setupContextInjection(pi: ExtensionAPI): void {
   pi.on("before_agent_start", async (_event, ctx) => {
+    const omitAnchors = isLlama4Family(ctx.model);
     const systemPrompt = [
       buildOperatingDisciplineBlock(),
       buildVerificationDisciplineBlock(),
-      buildPlanConventionBlock(),
+      buildPlanConventionBlock({ omitAnchors }),
       buildParameterReviewBlock(),
       buildChatFormattingBlock(),
       buildNotebookWriteBlock(),
@@ -824,6 +937,7 @@ export function setupContextInjection(pi: ExtensionAPI): void {
       buildSkillsContext(),
       buildLocalEnvContext(),
       buildNotebookExcerptBlock(),
+      buildGalaxyPageBindingBlock(),
       buildRecentActivityBlock(),
       buildTeamDispatchContext(),
       buildSessionIndexContext(),

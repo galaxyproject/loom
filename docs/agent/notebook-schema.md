@@ -74,6 +74,45 @@ explorations, summaries, ad-hoc edits — answer those directly. A plan
 is for multi-step pipeline orchestration the user explicitly wants
 driven (e.g. "draft a plan for variant calling on this data").
 
+## `loom-galaxy-page` binding block
+
+Records the binding between this notebook and a Galaxy page (see
+galaxyproject/galaxy#22361, Galaxy Notebooks). One block per notebook for
+now -- the upsert grammar is keyed on `page_id` so future per-plan
+bindings are forward-compatible.
+
+```loom-galaxy-page
+page_id: <encoded page id>
+page_slug: <optional slug>
+galaxy_server_url: "<scheme://host>"
+history_id: <encoded history id>
+last_synced_revision: <encoded revision id or empty>
+bound_at: <ISO 8601 timestamp>
+```
+
+This block is **stripped from the body** when pushing to Galaxy and
+**re-applied on top** of the remote body when pulling. It is the durable
+record of where this notebook lives on Galaxy. Don't edit it by hand --
+use the `notebook_link_galaxy_page` tool to create or change a binding.
+
+Sync semantics:
+
+- `notebook_push_to_galaxy` -- unconditional local-wins. Overwrites the
+  Galaxy page body. Bumps `last_synced_revision` to the new revision id.
+- `notebook_pull_from_galaxy` -- unconditional remote-wins. Replaces local
+  notebook content with the Galaxy page body. Bumps `last_synced_revision`
+  to the latest revision id.
+- `notebook_resume_from_galaxy` -- one-shot link + pull for picking up a
+  page that was started or last edited in the Galaxy UI. On a fresh
+  (unbound) notebook it writes the binding block and replaces the body
+  with the remote page content in a single locked op. If the notebook is
+  already bound to the same page it just refreshes (preserving
+  `bound_at`). If it's bound to a different page on the same server the
+  tool refuses -- use `notebook_link_galaxy_page` to switch explicitly.
+- Server URL mismatch fails closed: if `galaxy_server_url` does not match
+  the currently connected Galaxy, push / pull / resume all error out
+  before any network call. Use `/connect` to switch.
+
 ## Notebook persistence and git
 
 When `notebook.md` is created in a directory that isn't a git repo,

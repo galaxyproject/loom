@@ -80,6 +80,50 @@ export async function galaxyGet<T = unknown>(path: string, signal?: AbortSignal)
   return resp.json() as Promise<T>;
 }
 
+async function galaxyMutate<T>(
+  method: "POST" | "PUT",
+  path: string,
+  body: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<T> {
+  const config = getGalaxyConfig();
+  if (!config) throw new Error("Galaxy credentials not configured (GALAXY_URL, GALAXY_API_KEY)");
+
+  const url = `${config.url}/api${path}`;
+  const resp = await fetch(url, {
+    method,
+    headers: {
+      "x-api-key": config.apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`Galaxy API ${resp.status}: ${text || resp.statusText}`);
+  }
+
+  return resp.json() as Promise<T>;
+}
+
+export async function galaxyPost<T = unknown>(
+  path: string,
+  body: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<T> {
+  return galaxyMutate<T>("POST", path, body, signal);
+}
+
+export async function galaxyPut<T = unknown>(
+  path: string,
+  body: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<T> {
+  return galaxyMutate<T>("PUT", path, body, signal);
+}
+
 /**
  * Fetch job details from Galaxy. Returns the full response; callers typically
  * only need `tool_version`.
