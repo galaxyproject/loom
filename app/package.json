@@ -3,6 +3,7 @@
   "productName": "Orbit",
   "version": "0.1.0-alpha.1",
   "description": "Electron desktop shell for the Loom agent runtime (Galaxy bioinformatics)",
+  "license": "MIT",
   "main": ".vite/build/main.js",
   "scripts": {
     "prestart": "./scripts/rename-electron-dev.sh",
