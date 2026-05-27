@@ -102,6 +102,28 @@ export function loadConfig() {
   return raw;
 }
 
+/**
+ * Resolve the active Galaxy MCP discovery mode. Default "code" -- the
+ * three-meta-tool surface that drops ~10-15k tokens per turn. Anything
+ * other than the two valid literals falls through to the default so a
+ * malformed config can't silently disable the optimization.
+ */
+export function getDiscoveryMode() {
+  const cfg = loadConfig();
+  const mode = cfg.galaxy?.discoveryMode;
+  return mode === "full" ? "full" : "code";
+}
+
+/**
+ * uvx package spec for galaxy-mcp at the given discovery mode. Centralized
+ * here so version bumps land in one place instead of drifting between the
+ * initial mcp.json template (bin/loom.js) and the re-sync path
+ * (extensions/loom/profiles.ts).
+ */
+export function galaxyMcpUvxSpec(mode) {
+  return mode === "code" ? "galaxy-mcp[code-mode]>=1.4.0" : "galaxy-mcp>=1.4.0";
+}
+
 export function saveConfig(config) {
   const dir = getConfigDir();
   fs.mkdirSync(dir, { recursive: true });

@@ -26,6 +26,17 @@ export interface LoomConfig {
         apiKeyEncrypted?: string;
       }
     >;
+    /**
+     * Galaxy MCP discovery mode. Controls the tool surface exposed by
+     * \`galaxy-mcp\`:
+     * - \`code\` (default): three meta-tools (\`search\`, \`get_schema\`,
+     *   \`run_galaxy_tool\`) — ~10-15k fewer tokens per turn vs the full
+     *   catalog. Requires the \`code-mode\` extra to be installed.
+     * - \`full\`: the legacy catalog (~40+ named tools). Useful if the
+     *   search index doesn't rank a needed tool well, or when scripting
+     *   against specific tool names.
+     */
+    discoveryMode?: "code" | "full";
   };
   defaultCwd?: string;
   /**
@@ -81,3 +92,16 @@ export function loadConfig(): LoomConfig;
 export function saveConfig(config: LoomConfig): void;
 export const ALLOWED_SKILLS_PREFIX: string;
 export function isAllowedSkillUrl(url: string): boolean;
+/**
+ * Resolved Galaxy MCP discovery mode. Reads \`galaxy.discoveryMode\` from
+ * \`~/.loom/config.json\` and defaults to \`"code"\` for new installs.
+ * Anything other than the two valid literals is treated as the default
+ * so a malformed config can't disable the optimization silently.
+ */
+export function getDiscoveryMode(): "code" | "full";
+/**
+ * uvx package spec for galaxy-mcp at the given discovery mode. Centralized
+ * so version bumps land in one place instead of drifting between the
+ * initial mcp.json template and the profile re-sync path.
+ */
+export function galaxyMcpUvxSpec(mode: "code" | "full"): string;

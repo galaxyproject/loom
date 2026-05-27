@@ -13,18 +13,27 @@ decisions.
 
 ## When Galaxy is connected
 
+Galaxy MCP runs in **code-mode**: three meta-tools (`search`,
+`get_schema`, `run_galaxy_tool`) replace the ~40 named tools. Underlying
+tool names (e.g. `get_histories`, `run_tool`, `invoke_workflow`,
+`search_iwc_workflows`, `create_user_tool`) are dispatched by name
+through `run_galaxy_tool`.
+
 Before drafting a plan, consult Galaxy resources:
 
-1. **Search the IWC workflow registry** for matching workflows. If a
-   full match exists, propose running the plan as a single Galaxy
-   workflow invocation (mode: **remote**).
-2. **Search the Galaxy tool catalog** per step
-   (`galaxy_search_tools_by_name`). For each step:
+1. **Search the IWC workflow registry** with `search("iwc <topic>")`.
+   If a full match exists, propose running the plan as a single Galaxy
+   workflow invocation (mode: **remote**) -- import via
+   `run_galaxy_tool({ name: "import_workflow_from_iwc", ... })` and
+   invoke via `run_galaxy_tool({ name: "invoke_workflow", ... })`.
+2. **Search the Galaxy tool catalog** per step with `search("<tool>")`.
+   Fetch schemas with `get_schema(["<tool_name>"])` before the first
+   call -- don't guess parameter names or versions. For each step:
    - Heavy compute (alignment, large variant calling, big assemblies,
-     long-running BLAST) — if the Galaxy server has the tool, mark it
+     long-running BLAST) -- if the Galaxy server has the tool, mark it
      Galaxy.
    - Light/exploratory (parsing, summarization, awk/sed/jq, small
-     scripts) — mark it local.
+     scripts) -- mark it local.
 3. Document each routing decision inline in the markdown plan section.
 
 ## When Galaxy is not connected

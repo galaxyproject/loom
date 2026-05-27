@@ -184,25 +184,45 @@ once — don't badger.
   return `
 ## Galaxy connection: ${galaxyUrl}
 
-Galaxy is connected. When drafting a plan, **first** consult Galaxy
-resources before deciding what runs where:
+Galaxy is connected. The Galaxy MCP server runs in **code-mode**: instead
+of ~40 named tools, it exposes three meta-tools — \`search\`, \`get_schema\`,
+\`run_galaxy_tool\` — that dispatch by name internally. Use them like this:
 
-1. Search the IWC workflow registry for matching workflows
-   (\`galaxy_search_iwc\` / similar Galaxy MCP tool). If a full match
+- \`search("...")\` — find Galaxy tools, workflows (IWC), or user-tools by
+  keyword. Returns ranked hits with the underlying tool name. Use
+  topic-tagged queries for IWC (e.g. \`search("iwc rnaseq")\`) and
+  tool-style queries for the catalog (e.g. \`search("bwa mem alignment")\`).
+- \`get_schema(["<tool_name>", ...])\` — load the full input/output schema
+  for a chosen tool before calling it. **Always fetch the schema before
+  the first call.** Don't guess parameters from training data; tool
+  versions and parameter names drift.
+- \`run_galaxy_tool({ name, args })\` — invoke. Same semantics as the
+  prior named tools (\`get_histories\`, \`run_tool\`, \`invoke_workflow\`,
+  \`create_user_tool\`, \`search_iwc_workflows\`, etc.); they're now
+  dispatched by name through this meta-tool.
+
+When drafting a plan, **first** consult Galaxy resources before deciding
+what runs where:
+
+1. \`search("iwc <topic>")\` for matching IWC workflows. If a full match
    exists, propose running the plan as a single Galaxy invocation
-   (mode: **remote**).
+   (mode: **remote**) — fetch its schema and invoke via
+   \`run_galaxy_tool({ name: "import_workflow_from_iwc", ... })\` then
+   \`run_galaxy_tool({ name: "invoke_workflow", ... })\`.
 2. Otherwise, draft step-by-step. Per step:
    - Heavy compute (alignment, large variant calling, big assemblies,
-     long-running BLAST, etc.) → check Galaxy tool availability
-     (\`galaxy_search_tools_by_name\`); if installed, mark step Galaxy.
+     long-running BLAST, etc.) → \`search("<tool>")\` against the catalog;
+     if installed, mark step Galaxy.
    - **Gap-filling glue** between Galaxy steps (a small filter,
      reformatter, joiner, column-trimmer, etc. that isn't in the
      public tool panel) → **prefer a user-defined tool** over a local
-     script. Create it once with \`galaxy_create_user_tool\` and run it
-     with \`galaxy_run_user_tool\`. Keeps the analysis on Galaxy,
-     preserves provenance, stays reusable across histories. Default to
-     this whenever the glue is something a future user might want to
-     run again.
+     script. Create it once with
+     \`run_galaxy_tool({ name: "create_user_tool", args: { ... } })\`
+     and run with
+     \`run_galaxy_tool({ name: "run_user_tool", args: { ... } })\`.
+     Keeps the analysis on Galaxy, preserves provenance, stays reusable
+     across histories. Default to this whenever the glue is something a
+     future user might want to run again.
    - Light/exploratory (parsing, summarization, awk/sed/jq one-offs,
      truly throwaway probes) → mark step local. Reserve for work that
      doesn't belong in the durable record.
@@ -215,17 +235,16 @@ resources before deciding what runs where:
 ### Galaxy terminology
 
 - **User-defined tool** ("UDT"): a server-side custom tool the user
-  registers in their Galaxy account, runs unprivileged. The connected
-  Galaxy MCP exposes the full lifecycle: \`galaxy_create_user_tool\`,
-  \`galaxy_list_user_tools\`, \`galaxy_run_user_tool\`,
-  \`galaxy_delete_user_tool\`. **Do not generate old-style XML tool
-  wrappers locally when the user asks for a UDT** — that's a different
-  concept (legacy ToolShed tools). Reach for the MCP tools rather than
-  inventing a local workaround.
+  registers in their Galaxy account, runs unprivileged. The full
+  lifecycle (\`create_user_tool\`, \`list_user_tools\`, \`run_user_tool\`,
+  \`delete_user_tool\`) lives behind \`run_galaxy_tool\`. **Do not generate
+  old-style XML tool wrappers locally when the user asks for a UDT** —
+  that's a different concept (legacy ToolShed tools). Reach for the
+  Galaxy MCP path rather than inventing a local workaround.
 - **Workflow invocation**: a single run of a Galaxy workflow on a
   history. Tracked in the notebook via \`loom-invocation\` blocks.
 - **IWC**: Intergalactic Workflow Commission — registry of curated
-  workflows. \`galaxy_search_iwc\` queries it.
+  workflows. \`search("iwc <topic>")\` queries it.
 
 The three operating modes are an *outcome* of the plan you draft, not a
 mode setting:
@@ -235,7 +254,7 @@ mode setting:
 
 ### Executing a Galaxy step
 
-After invoking via Galaxy MCP and getting an \`invocationId\` back:
+After invoking via \`run_galaxy_tool\` and getting an \`invocationId\` back:
 1. Call \`galaxy_invocation_record({ invocationId, notebookAnchor, label })\`.
    The \`notebookAnchor\` is a stable id like \`plan-1-step-3\` that
    matches an anchor you wrote in the markdown plan section.

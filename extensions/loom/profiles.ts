@@ -11,7 +11,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { loadConfig, saveConfig } from "./config";
+import { loadConfig, saveConfig, getDiscoveryMode, galaxyMcpUvxSpec } from "./config";
 
 export interface GalaxyProfile {
   url: string;
@@ -266,10 +266,19 @@ export function syncMcpConfig(url: string): void {
 
     const config = JSON.parse(fs.readFileSync(mcpPath, "utf-8"));
     if (config.mcpServers?.galaxy) {
+      const discoveryMode = getDiscoveryMode();
       config.mcpServers.galaxy.env = {
         GALAXY_URL: url,
         GALAXY_API_KEY: "${GALAXY_API_KEY}",
+        GALAXY_MCP_DISCOVERY_MODE: discoveryMode,
       };
+      // Bring args up to spec. Code-mode needs the [code-mode] extra or
+      // galaxy-mcp throws RuntimeError at import. Rewriting args every
+      // sync also silently upgrades older installs that landed before
+      // discovery mode existed.
+      if (config.mcpServers.galaxy.command === "uvx") {
+        config.mcpServers.galaxy.args = [galaxyMcpUvxSpec(discoveryMode)];
+      }
       // 0600 first so a concurrent reader can't catch the file with a
       // wider mode between writeFile and chmod.
       fs.writeFileSync(mcpPath, JSON.stringify(config, null, 2), { mode: 0o600 });

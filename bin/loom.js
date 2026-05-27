@@ -5,7 +5,11 @@ import { resolve, dirname, join } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from "fs";
 import { homedir } from "os";
-import { loadConfig as loadLoomConfig } from "../shared/loom-config.js";
+import {
+  loadConfig as loadLoomConfig,
+  getDiscoveryMode,
+  galaxyMcpUvxSpec,
+} from "../shared/loom-config.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -163,13 +167,19 @@ if (!isInformationalCommand) {
   const hasGalaxyCredentials = galaxyUrl && galaxyApiKey;
 
   if (hasGalaxyCredentials) {
+    // Code-mode collapses galaxy-mcp's ~40 named tools into 3 meta-tools
+    // (search/get_schema/run_galaxy_tool), saving ~10-15k tokens per turn.
+    // The [code-mode] extra pulls in fastmcp's transform; the env var
+    // toggles the server into that surface at import time.
+    const discoveryMode = getDiscoveryMode();
     mcpConfig.mcpServers.galaxy = {
       command: "uvx",
-      args: ["galaxy-mcp>=1.4.0"],
+      args: [galaxyMcpUvxSpec(discoveryMode)],
       directTools: true,
       env: {
         GALAXY_URL: galaxyUrl,
         GALAXY_API_KEY: galaxyApiKey,
+        GALAXY_MCP_DISCOVERY_MODE: discoveryMode,
       },
     };
   } else {

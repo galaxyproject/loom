@@ -50,6 +50,31 @@ gtn_search(topic: "transcriptomics", query: "rna-seq")  → filter
 gtn_fetch(url: "<url from search>")       → read the tutorial content
 ```
 
+## Galaxy MCP discovery mode
+
+Loom registers Galaxy MCP in code-mode by default: three meta-tools
+(`search`, `get_schema`, `run_galaxy_tool`) dispatch the underlying ~40
+named tools. That trims ~10-15k tokens per turn off the request, which
+adds up fast across long sessions.
+
+The trade-off is search quality: if the agent can't surface a tool you
+know exists (BM25 over docstrings can miss when the query and the
+docstring don't share vocabulary), or you want to script directly
+against specific tool names, you can opt back into the full named-tool
+catalog. Edit `~/.loom/config.json` and add:
+
+```json
+{
+  "galaxy": {
+    "discoveryMode": "full"
+  }
+}
+```
+
+The change takes effect on the next reconnect (e.g. `/connect` or
+restart). To return to the default, set the value back to `"code"` or
+remove the field.
+
 ## Common gotchas
 
 - **Empty results from Galaxy queries**: Check `visible: true` filter,
