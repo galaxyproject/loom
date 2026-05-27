@@ -7,7 +7,7 @@
   "main": ".vite/build/main.js",
   "scripts": {
     "prestart": "./scripts/rename-electron-dev.sh",
-    "start": "electron-forge start",
+    "start": "electron-forge start -- --no-sandbox --no-zygote",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "test:e2e": "playwright test"
