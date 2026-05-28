@@ -408,8 +408,30 @@ if (await handleInformationalCommand()) {
 
 checkLLMProvider();
 
-// Suppress Pi's keybinding banner and resource listing. Loom is the product
-// identity -- users shouldn't see Pi internals unless they pass --verbose.
+// Resolve pi-coding-agent's own version by walking up from its entry point to
+// the package root. Used to pin the changelog watermark below.
+function resolvePiVersion() {
+  let dir = dirname(piEntryPointPath);
+  for (let i = 0; i < 6; i++) {
+    const pkgPath = join(dir, "package.json");
+    if (existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+        if (pkg.name === "@earendil-works/pi-coding-agent") return pkg.version;
+      } catch {}
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+// Suppress Pi's keybinding banner, resource listing, and "What's New"
+// changelog. Loom is the product identity -- users shouldn't see Pi internals
+// unless they pass --verbose. The changelog draws from pi-coding-agent's own
+// CHANGELOG.md and is gated on lastChangelogVersion; pinning that to Pi's
+// current version means getNewEntries() never finds anything newer to show.
 if (!hasArg("--verbose")) {
   const piSettingsPath = join(agentDir, "settings.json");
   try {
@@ -417,8 +439,17 @@ if (!hasArg("--verbose")) {
     if (existsSync(piSettingsPath)) {
       piSettings = JSON.parse(readFileSync(piSettingsPath, "utf-8"));
     }
+    let changed = false;
     if (!piSettings.quietStartup) {
       piSettings.quietStartup = true;
+      changed = true;
+    }
+    const piVersion = resolvePiVersion();
+    if (piVersion && piSettings.lastChangelogVersion !== piVersion) {
+      piSettings.lastChangelogVersion = piVersion;
+      changed = true;
+    }
+    if (changed) {
       mkdirSync(dirname(piSettingsPath), { recursive: true });
       writeFileSync(piSettingsPath, JSON.stringify(piSettings, null, 2));
     }
