@@ -290,7 +290,7 @@ cd ~/pi-galaxy-analyst/app && npm start
 > **If the script fails with `Could not get lock /var/lib/dpkg/lock-frontend`**, Ubuntu's automatic updater is running in the background. Stop it first, then re-run:
 > ```bash
 > sudo systemctl stop unattended-upgrades
-> curl -fsSL https://raw.githubusercontent.com/galaxyproject/pi-galaxy-analyst/main/scripts/setup-wsl.sh | bash
+> curl -fsSL https://raw.githubusercontent.com/galaxyproject/loom/main/scripts/setup-wsl.sh | bash
 > ```
 
 Keep your analysis data inside `~/` (the Linux filesystem) — `/mnt/c/` paths are significantly slower across the filesystem boundary.
