@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    Hardened Runtime entitlements required to notarize an Electron app that
+    also ships its own native binaries (the staged node + uv, plus native
+    modules like koffi and better-sqlite3).
+
+    allow-jit / allow-unsigned-executable-memory: V8 compiles JS to machine
+    code at runtime and needs writable+executable memory.
+
+    disable-library-validation: lets the app load Mach-O binaries that aren't
+    signed by our own Team ID at the same time -- here, the bundled node/uv
+    executables and the .node native modules. Without it the brain subprocess
+    and native deps fail to load under Hardened Runtime.
+
+    allow-dyld-environment-variables: Electron relies on DYLD_* in some launch
+    paths; harmless to grant and avoids intermittent launch failures.
+  -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+</dict>
+</plist>

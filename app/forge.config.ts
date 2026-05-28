@@ -238,6 +238,44 @@ async function stageUvBundle(platform: string, arch: string): Promise<void> {
   }
 }
 
+type PackagerOptions = NonNullable<ForgeConfig["packagerConfig"]>;
+
+// macOS code signing + notarization, gated entirely on the CI secrets being
+// present so local builds -- and any CI run before the secrets are added --
+// stay unsigned and keep working exactly as before. APPLE_SIGNING_IDENTITY
+// turns on Developer ID signing; the App Store Connect API key trio
+// (APPLE_API_KEY_PATH/_ID/_ISSUER) additionally turns on notarization. The
+// CI workflow imports the cert into a keychain and stages the .p8 before the
+// make step. See docs/macos-codesigning.md for the exact secrets + one-time
+// Apple-side setup.
+const ENTITLEMENTS_PLIST = path.join(APP_DIR, "build", "entitlements.mac.plist");
+
+const macCodesign: Partial<Pick<PackagerOptions, "osxSign" | "osxNotarize">> =
+  process.platform === "darwin" && process.env.APPLE_SIGNING_IDENTITY
+    ? {
+        osxSign: {
+          identity: process.env.APPLE_SIGNING_IDENTITY,
+          // Same Hardened Runtime entitlements for every Mach-O in the bundle
+          // (app + helpers + bundled node/uv + native modules).
+          optionsForFile: () => ({
+            entitlements: ENTITLEMENTS_PLIST,
+            hardenedRuntime: true,
+          }),
+        },
+        ...(process.env.APPLE_API_KEY_PATH &&
+        process.env.APPLE_API_KEY_ID &&
+        process.env.APPLE_API_ISSUER
+          ? {
+              osxNotarize: {
+                appleApiKey: process.env.APPLE_API_KEY_PATH,
+                appleApiKeyId: process.env.APPLE_API_KEY_ID,
+                appleApiIssuer: process.env.APPLE_API_ISSUER,
+              },
+            }
+          : {}),
+      }
+    : {};
+
 const config: ForgeConfig = {
   packagerConfig: {
     name: "Orbit",
@@ -249,6 +287,7 @@ const config: ForgeConfig = {
     // Contents/Resources/ in the packaged app. agent.ts resolves
     // process.resourcesPath/{loom,node,uv}/... at brain spawn time.
     extraResource: [LOOM_STAGE_DIR, NODE_STAGE_DIR, UV_STAGE_DIR],
+    ...macCodesign,
   },
   hooks: {
     // electron-forge passes (config, platform, arch) so cross-arch
