@@ -354,11 +354,13 @@ the activity stream.
 
 \`\`\`bash
 # 1. Launch in background. \`disown\` detaches from the tool shell so the
-# job survives this tool invocation. The \`&& touch ... .done\` sentinel
-# is more reliable than \`kill -0 $PID\` (PID reuse over hour-scale jobs).
+# job survives this tool invocation. Drop \`.done\` on success or \`.failed\`
+# on error so polling can distinguish "still running" from "finished badly"
+# — without the \`.failed\` branch a quick crash gets reported as
+# "still running" indefinitely.
 mkdir -p foldseek_work
 nohup sh -c '.loom/env/bin/foldseek easy-cluster ... > foldseek_work/run.log 2>&1 \\
-  && touch foldseek_work/.done' > /dev/null 2>&1 &
+  && touch foldseek_work/.done || touch foldseek_work/.failed' > /dev/null 2>&1 &
 disown
 echo "Launched foldseek — tail foldseek_work/run.log to monitor"
 \`\`\`
@@ -369,6 +371,9 @@ if [ -f foldseek_work/.done ]; then
   echo "Finished"
   ls -lh foldseek_work/vir_struct_cluster_cluster.tsv 2>/dev/null \\
     || echo "output missing — check log for errors"
+  tail -20 foldseek_work/run.log
+elif [ -f foldseek_work/.failed ]; then
+  echo "Failed — check log"
   tail -20 foldseek_work/run.log
 else
   echo "Still running"
