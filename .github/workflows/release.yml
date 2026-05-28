@@ -72,7 +72,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: orbit-${{ matrix.platform }}-${{ matrix.arch }}
+          name: Orbit-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
             app/out/make/**/*.dmg
             app/out/make/**/*.zip
