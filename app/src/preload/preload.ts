@@ -74,7 +74,11 @@ export interface OrbitAPI {
   setBypassPermissions(
     enabled: boolean,
   ): Promise<{ ok: boolean; enabled: boolean; cancelled?: boolean }>;
-  validateApiKey(provider: string, key: string): Promise<{ valid: boolean; error?: string }>;
+  validateApiKey(
+    provider: string,
+    key: string,
+    baseUrl?: string,
+  ): Promise<{ valid: boolean; error?: string; models?: string[] }>;
   oauthStatus(
     provider: string,
   ): Promise<{ signedIn: boolean; expiresInSeconds?: number; accountId?: string }>;
@@ -168,7 +172,8 @@ const api: OrbitAPI = {
   getConfig: () => ipcRenderer.invoke("config:get"),
   saveConfig: (config) => ipcRenderer.invoke("config:save", config),
   setBypassPermissions: (enabled) => ipcRenderer.invoke("guardian:set-bypass", enabled),
-  validateApiKey: (provider, key) => ipcRenderer.invoke("apiKey:validate", provider, key),
+  validateApiKey: (provider, key, baseUrl) =>
+    ipcRenderer.invoke("apiKey:validate", provider, key, baseUrl),
   oauthStatus: (provider) => ipcRenderer.invoke("oauth:status", provider),
   oauthSignIn: (provider) => ipcRenderer.invoke("oauth:sign-in", provider),
   oauthSignOut: (provider) => ipcRenderer.invoke("oauth:sign-out", provider),

@@ -298,8 +298,13 @@ export function registerIpcHandlers(agent: AgentManager): void {
 
   ipcMain.handle(
     "apiKey:validate",
-    async (_e, provider: string, key: string): Promise<{ valid: boolean; error?: string }> => {
-      return validateApiKey(provider, key);
+    async (
+      _e,
+      provider: string,
+      key: string,
+      baseUrl?: string,
+    ): Promise<{ valid: boolean; error?: string; models?: string[] }> => {
+      return validateApiKey(provider, key, baseUrl);
     },
   );
 
@@ -656,12 +661,37 @@ export function registerIpcHandlers(agent: AgentManager): void {
 async function validateApiKey(
   provider: string,
   key: string,
-): Promise<{ valid: boolean; error?: string }> {
+  baseUrl?: string,
+): Promise<{ valid: boolean; error?: string; models?: string[] }> {
   const trimmed = key.trim();
   if (!trimmed) return { valid: false, error: "Key is empty" };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
   try {
+    if (baseUrl) {
+      const trimmedBase = baseUrl.trim().replace(/\/+$/, "");
+      if (!/^https?:\/\//.test(trimmedBase)) {
+        return { valid: false, error: "Base URL must start with http(s)://" };
+      }
+      const res = await fetch(`${trimmedBase}/models`, {
+        headers: { authorization: `Bearer ${trimmed}` },
+        signal: controller.signal,
+      });
+      if (res.status === 401) return { valid: false, error: "Invalid API key (401)" };
+      if (!res.ok) return { valid: false, error: `Unexpected response: HTTP ${res.status}` };
+      try {
+        const body = (await res.json()) as { data?: unknown };
+        const raw = body.data;
+        const models = Array.isArray(raw)
+          ? raw
+              .map((m) => (m && typeof m === "object" ? (m as { id?: unknown }).id : undefined))
+              .filter((id): id is string => typeof id === "string")
+          : [];
+        return { valid: true, models };
+      } catch {
+        return { valid: true };
+      }
+    }
     if (provider === "anthropic") {
       if (!trimmed.startsWith("sk-ant-")) {
         return { valid: false, error: "Anthropic keys start with sk-ant-" };
