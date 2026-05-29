@@ -1,0 +1,22 @@
+import * as path from "path";
+
+// Directories under $HOME that hold credentials/secrets.
+const SENSITIVE_HOME_DIRS = [".ssh", ".aws", ".gnupg", ".config/gcloud", ".kube", ".docker"];
+// Exact files under $HOME.
+const SENSITIVE_HOME_FILES = [".netrc", ".loom/config.json", ".pgpass", ".npmrc"];
+// Basename / extension patterns sensitive anywhere.
+const SENSITIVE_BASENAME =
+  /^(\.env(\..+)?|id_rsa|id_ed25519|id_ecdsa|.*\.pem|.*\.key|credentials)$/i;
+
+function within(abs: string, dir: string): boolean {
+  const rel = path.relative(dir, abs);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+export function isSensitivePath(absPath: string, home: string): boolean {
+  const norm = path.normalize(absPath);
+  for (const d of SENSITIVE_HOME_DIRS) if (within(norm, path.join(home, d))) return true;
+  for (const f of SENSITIVE_HOME_FILES) if (norm === path.join(home, f)) return true;
+  if (SENSITIVE_BASENAME.test(path.basename(norm))) return true;
+  return false;
+}
