@@ -1,24 +1,24 @@
 # Installing Orbit
 
-Orbit is in alpha. Installers ship from the
+Installers ship from the
 [Releases page](https://github.com/galaxyproject/loom/releases) — pick the
-latest tag and download the artifact for your machine.
+latest release and download the artifact for your machine.
 
-Linux installers (`.deb` / `.rpm`) are included starting with the first
-alpha release. Windows is not yet supported natively — see the
-[Windows (via WSL2)](#windows-via-wsl2) section below.
+The macOS build is Developer ID signed and notarized by Apple, so it opens
+with a normal double-click. Linux ships `.deb` / `.rpm` / `.zip`. Windows runs
+via WSL2 — see the [Windows (via WSL2)](#windows-via-wsl2) section below.
 
 ## macOS
 
-Two builds are published per release:
+The macOS installer is built for Apple Silicon:
 
 | File                        | When to pick it                                                   |
 | --------------------------- | ----------------------------------------------------------------- |
 | `Orbit-<version>-arm64.dmg` | Apple Silicon Macs (M1/M2/M3/M4) — anything from late 2020 onward |
-| `Orbit-<version>-x64.dmg`   | Intel Macs                                                        |
 
-Not sure which? Open the Apple menu → About This Mac. "Chip: Apple M..." → arm64.
-"Processor: Intel..." → x64.
+Intel Macs aren't packaged yet — use the developer install (build from source)
+in the [README](README.md#developer-install-build-from-source). Not sure which
+you have? Apple menu → About This Mac: "Chip: Apple M..." is Apple Silicon.
 
 ### Install
 
@@ -26,29 +26,11 @@ Not sure which? Open the Apple menu → About This Mac. "Chip: Apple M..." → a
 2. Double-click the DMG, drag **Orbit** to the **Applications** folder.
 3. Eject the DMG (drag its icon to the trash).
 
-### First launch (Gatekeeper)
+### First launch
 
-The current alpha builds are **unsigned** — Apple's Gatekeeper will block
-the first launch:
-
-> "Orbit can't be opened because Apple cannot check it for malicious software."
-
-To run it the first time:
-
-1. Open the **Applications** folder in Finder.
-2. **Right-click** (or Control-click) **Orbit** → choose **Open**.
-3. The dialog now offers an **Open** button — click it.
-
-macOS remembers the decision. Subsequent launches work via Spotlight,
-Launchpad, or a double-click, with no further prompts.
-
-If you don't see the Open option in the right-click menu, run:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/Orbit.app
-```
-
-This removes the quarantine attribute Gatekeeper sets on downloads.
+The build is **Developer ID signed and notarized by Apple**, so it opens like
+any other app — double-click **Orbit** in Applications. No Gatekeeper warning,
+no right-click dance, no Terminal commands.
 
 ### Updates
 
@@ -57,8 +39,8 @@ available, a banner appears at the top of the window with a link to the
 Releases page. Click the link, download the new DMG, and replace the old
 app in Applications (drag-and-drop will prompt you to overwrite).
 
-There is no auto-installer — unsigned apps can't be patched by macOS's
-update mechanism. Manual download is one click after the banner appears.
+Auto-update isn't wired up yet, so the download is manual — one click after
+the banner appears.
 
 ### Uninstall
 

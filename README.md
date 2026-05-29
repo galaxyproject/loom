@@ -223,11 +223,11 @@ Three paths, depending on what you want.
 
 ### Desktop app (Orbit)
 
-Orbit ships as a native installer that bundles its own Node runtime, `uv`, and Loom -- no separate prerequisites. macOS DMGs (arm64 + x64) are built and attached to a draft Release on every `v*` tag push; Linux and Windows installers are next. See [INSTALL.md](INSTALL.md) for the macOS install steps and the Gatekeeper workaround (alpha builds are unsigned). See [RELEASING.md](RELEASING.md) for how a release is cut. If your platform isn't packaged yet, use the developer install below.
+Orbit ships as a native installer that bundles its own Node runtime, `uv`, and Loom -- no separate prerequisites. The macOS (Apple Silicon) build is Developer ID signed + notarized, so it opens with a normal double-click; Linux ships `.deb`/`.rpm`/`.zip`. Both are attached to each [release](https://github.com/galaxyproject/loom/releases). Windows runs via WSL2. See [INSTALL.md](INSTALL.md) for per-platform steps and [RELEASING.md](RELEASING.md) for how a release is cut. Intel Macs and other unpackaged targets can use the developer install below.
 
 ### Loom CLI from npm
 
-Run the brain on the command line without Orbit. Requires Node 20+ and (for Galaxy MCP) [uv](https://docs.astral.sh/uv/).
+Run the brain on the command line without Orbit. Requires Node 22+ and (for Galaxy MCP) [uv](https://docs.astral.sh/uv/).
 
 ```bash
 npm install -g @galaxyproject/loom
@@ -317,6 +317,7 @@ cd ~/loom/app && npm start
 ```
 
 > **If the script fails with `Could not get lock /var/lib/dpkg/lock-frontend`**, Ubuntu's automatic updater is running in the background. Stop it first, then re-run:
+>
 > ```bash
 > sudo systemctl stop unattended-upgrades
 > curl -fsSL https://raw.githubusercontent.com/galaxyproject/loom/main/scripts/setup-wsl.sh | bash
