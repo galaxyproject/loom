@@ -50,10 +50,10 @@ The notebook is the durable state. Plans, decisions, results, and interpretation
 Implemented and locally tested.
 
 - TypeScript typecheck passes (root + Orbit).
-- Local automated suite: 117 tests passing (notebook I/O, invocation YAML round-trip, profile / credential handling, team-dispatch, session-index, Galaxy config).
+- Local automated suite: 261 tests passing (notebook I/O, invocation YAML round-trip, profile / credential handling, team-dispatch, session-index, Galaxy config).
 - Notebook is the source of truth -- there is no parallel plan struct to drift from it.
 - Galaxy invocation polling is exercised against the deterministic state-transition rules (`all-ok → completed`, `any-error → failed`).
-- Skills system fetches on demand from `galaxyproject/galaxy-skills` (shipped as default). Additional skill repos are restricted to `github.com/galaxyproject/*` for the alpha (skill content is treated as authoritative agent instructions, so an arbitrary third-party repo would be a prompt-injection vector).
+- Skills system fetches on demand from `galaxyproject/galaxy-skills` (shipped as default). Additional skill repos are restricted to `github.com/galaxyproject/*` (skill content is treated as authoritative agent instructions, so an arbitrary third-party repo would be a prompt-injection vector).
 - Galaxy API keys are encrypted at rest in Orbit via Electron `safeStorage`; the brain receives the decrypted key as an env var at spawn time. CLI users without `safeStorage` fall back to plaintext on disk.
 - End-to-end validation against a live Galaxy server is in progress.
 
@@ -191,7 +191,7 @@ Loom can fetch operational know-how from curated GitHub repos following the Clau
 - **Galaxy tool development**
 - **Updating ToolShed tool revisions**
 
-Add your own repos in **Preferences → Skills**. Each entry is `{ name, url, branch?, enabled? }`. For the alpha, the URL allowlist is `https://github.com/galaxyproject/*` (the agent treats fetched SKILL.md content as authoritative instructions, so arbitrary repos are a prompt-injection vector). Example:
+Add your own repos in **Preferences → Skills**. Each entry is `{ name, url, branch?, enabled? }`. The URL allowlist is `https://github.com/galaxyproject/*` (the agent treats fetched SKILL.md content as authoritative instructions, so arbitrary repos are a prompt-injection vector). Example:
 
 ```json
 {
