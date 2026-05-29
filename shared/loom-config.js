@@ -99,6 +99,20 @@ export function loadConfig() {
   if (raw.executionMode !== "local" && raw.executionMode !== "cloud") {
     raw.executionMode = "cloud";
   }
+
+  // Guardian (local-execution safety) defaults. Secure by default: enabled,
+  // never bypassed, nothing trusted. Only relaxed by explicit user action.
+  const g = raw.guardian && typeof raw.guardian === "object" ? raw.guardian : {};
+  raw.guardian = {
+    enabled: g.enabled !== false,
+    dangerouslyBypassPermissions: g.dangerouslyBypassPermissions === true,
+    trustedWorkspaces: Array.isArray(g.trustedWorkspaces) ? g.trustedWorkspaces : [],
+    extraWorkspaceRoots: Array.isArray(g.extraWorkspaceRoots) ? g.extraWorkspaceRoots : [],
+    consentAcknowledged:
+      g.consentAcknowledged && typeof g.consentAcknowledged === "object"
+        ? g.consentAcknowledged
+        : null,
+  };
   return raw;
 }
 

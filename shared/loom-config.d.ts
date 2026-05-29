@@ -62,6 +62,26 @@ export interface LoomConfig {
      */
     sessionIndex?: boolean;
   };
+  /**
+   * Local-execution safety gate (exec-guard). Secure by default: the gate is
+   * enabled, never bypassed, and trusts nothing until the user says otherwise.
+   */
+  guardian?: {
+    /** Master switch. When false the gate is fully off (advanced escape hatch). */
+    enabled?: boolean;
+    /**
+     * Turn the gate into a pass-through (allow everything). Human-only: the
+     * agent can never set this, because writing ~/.loom/config.json is itself
+     * gated. Also settable via --dangerously-bypass-permissions / env.
+     */
+    dangerouslyBypassPermissions?: boolean;
+    /** Project dirs the user has chosen to trust (relaxes routine-bash prompts). */
+    trustedWorkspaces?: string[];
+    /** Extra absolute roots treated as inside the workspace jail. */
+    extraWorkspaceRoots?: string[];
+    /** Record of the one-time local-execution consent. */
+    consentAcknowledged?: { version: string; at: string } | null;
+  };
 }
 
 export interface SkillRepo {
