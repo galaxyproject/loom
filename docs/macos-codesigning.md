@@ -84,3 +84,22 @@ Note also that electron-forge notarizes and staples the **`.app`**, then wraps
 it in the `.dmg`/`.zip`. That's enough for the drag-to-Applications flow (the
 stapled app opens offline). Stapling the `.dmg` itself is a possible follow-up
 if we want the disk image to verify before it's even mounted.
+
+## The entitlements file
+
+`app/build/entitlements.mac.plist` grants the Hardened Runtime exceptions an
+Electron app that ships its own binaries needs:
+
+- `allow-jit` + `allow-unsigned-executable-memory` -- V8 JITs JS to machine code
+  and needs writable+executable memory.
+- `disable-library-validation` -- lets the bundle load Mach-O not signed by our
+  Team ID: the staged `node`/`uv` and the `.node` native modules (koffi,
+  better-sqlite3). Without it the brain subprocess and native deps fail to load.
+- `allow-dyld-environment-variables` -- Electron relies on `DYLD_*` in some
+  launch paths.
+
+**Do not put XML comments inside this plist.** codesign's entitlements parser
+(`AMFIUnserializeXML`) rejects them with `syntax error near line N`, and because
+electron-packager signs with `continueOnError`, the failure is swallowed as a
+warning and the app silently ships **adhoc** (which notarization then rejects).
+Keep the rationale here, not in the file.
