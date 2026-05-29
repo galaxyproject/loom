@@ -34,11 +34,35 @@ const piAuthStorageModulePath = join(piPackageDir, "dist/core/auth-storage.js");
 const piModelRegistryModulePath = join(piPackageDir, "dist/core/model-registry.js");
 const userArgs = process.argv.slice(2);
 
+// Local-execution safety flags. Translate to env so the exec-guard (brain side)
+// reads them; strip so they aren't forwarded to pi as unknown flags.
+if (userArgs.includes("--dangerously-bypass-permissions")) {
+  process.env.LOOM_DANGEROUSLY_BYPASS_PERMISSIONS = "1";
+}
+if (userArgs.includes("--safe")) {
+  process.env.LOOM_SAFE = "1";
+}
+for (let i = userArgs.length - 1; i >= 0; i--) {
+  if (userArgs[i] === "--dangerously-bypass-permissions" || userArgs[i] === "--safe") {
+    userArgs.splice(i, 1);
+  }
+}
+
 function hasArg(flag) {
   return userArgs.includes(flag) || userArgs.some((arg) => arg.startsWith(`${flag}=`));
 }
 
 const isInformationalCommand = ["--help", "-h", "--version", "--list-models"].some(hasArg);
+
+if (
+  !isInformationalCommand &&
+  process.env.LOOM_DANGEROUSLY_BYPASS_PERMISSIONS === "1" &&
+  process.env.LOOM_SAFE !== "1"
+) {
+  console.error(
+    "\n  \x1b[1;31m⚠  PERMISSIONS BYPASSED\x1b[0m -- Loom will run any command without asking.\n",
+  );
+}
 
 function getListModelsSearchPattern() {
   const index = userArgs.findIndex((arg) => arg === "--list-models");
