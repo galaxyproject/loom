@@ -4,11 +4,16 @@ import * as path from "path";
 import { getNotebookPath } from "../state";
 import { appendActivityEvent } from "../activity";
 import { redactArgs } from "../activity-hooks";
-import { loadGuardianConfig, resolveBypass, trustWorkspace } from "./guardian-config";
+import {
+  loadGuardianConfig,
+  resolveBypass,
+  trustWorkspace,
+  recordConsent,
+} from "./guardian-config";
 import { createPathResolver } from "./path-jail";
 import { classifyModelTier } from "./model-tier";
 import { decide } from "./policy";
-import type { PolicyResult } from "./types";
+import { CONSENT_VERSION, type PolicyResult } from "./types";
 
 // In-memory "allow for this session" set, keyed by tool + raw input signature.
 const sessionAllow = new Set<string>();
@@ -84,6 +89,23 @@ export function registerExecGuard(pi: ExtensionAPI): void {
       audit(event.toolName, input, result, "allowed:session");
       return;
     }
+
+    // One-time local-execution disclosure on the first gated action. Relies on
+    // the persisted flag (saveConfig is synchronous), so a failed save simply
+    // re-discloses rather than silently proceeding.
+    if (!config.consentAcknowledged) {
+      const ok = await ctx.ui.confirm(
+        "Loom runs actions on your computer",
+        "Loom can run shell commands and read/write files as you. Commands from the AI are gated, but no gate is perfect -- only use it in workspaces you trust. Continue?",
+        {},
+      );
+      if (!ok) {
+        audit(event.toolName, input, result, "blocked:consent-declined");
+        return { block: true, reason: "Local execution not consented." };
+      }
+      recordConsent(CONSENT_VERSION);
+    }
+
     const modelName = ctx.model?.id ?? "the model";
     const detail =
       event.toolName === "bash"

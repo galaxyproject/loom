@@ -97,4 +97,32 @@ describe("registerExecGuard", () => {
     );
     expect(r?.block).toBeFalsy();
   });
+  it("discloses once on first gated action and records consent", async () => {
+    // Clear the pre-seeded consent for this test only.
+    fs.writeFileSync(path.join(sandbox, ".loom", "config.json"), JSON.stringify({}));
+    const confirm = vi.fn(async () => true);
+    const c = ctx({ ui: { select: vi.fn(async () => "Deny"), confirm, notify: vi.fn() } });
+    await handler(
+      { type: "tool_call", toolName: "bash", toolCallId: "7", input: { command: "python a.py" } },
+      c,
+    );
+    await handler(
+      { type: "tool_call", toolName: "bash", toolCallId: "8", input: { command: "python b.py" } },
+      c,
+    );
+    expect(confirm).toHaveBeenCalledTimes(1);
+    const cfg = JSON.parse(fs.readFileSync(path.join(sandbox, ".loom", "config.json"), "utf-8"));
+    expect(cfg.guardian.consentAcknowledged).toBeTruthy();
+  });
+  it("declining consent blocks the action without prompting for the command", async () => {
+    fs.writeFileSync(path.join(sandbox, ".loom", "config.json"), JSON.stringify({}));
+    const select = vi.fn(async () => "Allow once");
+    const c = ctx({ ui: { select, confirm: vi.fn(async () => false), notify: vi.fn() } });
+    const r = await handler(
+      { type: "tool_call", toolName: "bash", toolCallId: "9", input: { command: "python a.py" } },
+      c,
+    );
+    expect(r?.block).toBe(true);
+    expect(select).not.toHaveBeenCalled();
+  });
 });
