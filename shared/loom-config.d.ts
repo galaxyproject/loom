@@ -5,6 +5,12 @@ export interface LlmProviderConfig {
   /** Base64 ciphertext produced by Electron safeStorage. Orbit-only. */
   apiKeyEncrypted?: string;
   model?: string;
+  /**
+   * Base URL for an OpenAI-compatible endpoint (e.g. Jetstream, vLLM, Ollama).
+   * Presence marks this entry as a custom provider: the brain registers it in
+   * ~/.pi/agent/models.json and supplies the key at runtime via --api-key.
+   */
+  baseUrl?: string;
 }
 
 export interface LoomConfig {
