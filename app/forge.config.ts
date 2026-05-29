@@ -81,6 +81,16 @@ function pruneLoomNodeModules(platform: string, arch: string): void {
       }
     }
   }
+
+  // pi-coding-agent bundles an examples/ tree (demo extensions, including a
+  // DOOM WASM overlay) that Loom never loads at runtime -- ~1.2MB of dead
+  // weight that also drags out codesign, since notarization gives every file
+  // an individual --timestamp round-trip. Drop it. (force: true no-ops if the
+  // path is ever absent.)
+  fs.rmSync(
+    path.join(LOOM_STAGE_DIR, "node_modules", "@earendil-works", "pi-coding-agent", "examples"),
+    { recursive: true, force: true },
+  );
 }
 
 function findKoffiBuildDirs(root: string): string[] {
