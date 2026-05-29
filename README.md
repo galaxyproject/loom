@@ -317,6 +317,7 @@ cd ~/loom/app && npm start
 ```
 
 > **If the script fails with `Could not get lock /var/lib/dpkg/lock-frontend`**, Ubuntu's automatic updater is running in the background. Stop it first, then re-run:
+>
 > ```bash
 > sudo systemctl stop unattended-upgrades
 > curl -fsSL https://raw.githubusercontent.com/galaxyproject/loom/main/scripts/setup-wsl.sh | bash
@@ -488,6 +489,30 @@ Pi supports any OpenAI-compatible API. For [LiteLLM](https://litellm.ai/), [Olla
 You'll also need `~/.pi/agent/models.json` for model capability metadata (context window, token limits) — see Pi's documentation. The Loom config handles provider selection and API keys; `models.json` handles model metadata Pi needs for request sizing.
 
 Or pass flags directly: `loom --provider litellm --model your-model-name`.
+
+## Local execution safety
+
+Loom drives a real coding agent: alongside the Galaxy tools, the model has `bash`, `write`, `edit`, and `read` on your machine. That's the point -- local analysis needs it -- but it means a misreading model, or one that's been prompt-injected by untrusted content (a Galaxy dataset, tool output, a fetched page), could run something destructive as you. This risk is higher with cheaper, less-capable models, which Loom lets you pick to save money.
+
+So Loom gates the model's local actions by default (the "exec-guard"):
+
+- **Workspace jail.** `write`/`edit` inside your analysis directory (plus the OS temp dir and `.loom/`) are silent; anything that resolves outside -- including via `..` or symlinks -- is blocked or prompts. Writes to executable/config locations (`.git/hooks`, `.loom/`) always prompt.
+- **Risk-classified `bash`.** Read-only/analysis commands (`ls`, `cat`, `grep`, `conda run`, ...) run without friction. Catastrophic patterns (`rm -rf /`, `sudo`, `curl | sh`, `dd of=/dev/...`, fork bombs, ...) are always blocked. Anything else prompts -- and any compound or redirected command (`;`, `&&`, `|`, `$(...)`, `>`) drops to a prompt rather than being trusted.
+- **Sensitive reads.** Reads of `~/.ssh`, `~/.aws`, `.env`, `*.pem`/`*.key`, `~/.loom/config.json`, and similar prompt (or are denied for weak models).
+- **Model-tier aware.** Every model is gated. Weaker models (Haiku / GPT-4o-mini / Flash class, or unknown/local models) get stricter defaults -- more actions are denied outright rather than offered for approval.
+- **Fail-closed.** With no interactive session to approve (headless / scripted runs), anything that would prompt is denied. A one-time consent notice is shown on the first gated action, and every decision is recorded in `activity.jsonl`.
+
+When a command needs approval you can allow it once, allow it for the session, or trust the workspace (which stops prompting for routine commands there).
+
+### Bypassing the gate
+
+If you fully control the environment and want the agent to run unattended (CI, a trusted pipeline, your own box), you can turn the gate off:
+
+- **Config:** set `"guardian": { "dangerouslyBypassPermissions": true }` in `~/.loom/config.json`.
+- **CLI:** `loom --dangerously-bypass-permissions` (one invocation; does not persist). `--safe` (or `LOOM_SAFE=1`) forces the gate back on and wins over everything.
+- **Orbit:** Preferences -> Safety -> "Dangerously bypass permissions" (a native confirm appears first; a red banner stays up while it's active).
+
+Bypass is total -- it removes all prompts and the workspace jail. It can only be enabled by a human through one of those channels: the agent can't turn it on itself, because editing `~/.loom/config.json` is gated and Orbit's toggle requires an OS-level confirmation the renderer can't forge. The default (`guardian.enabled: true`, not bypassed) is secure; relaxing it is always an explicit choice.
 
 ## Cost tracking
 
