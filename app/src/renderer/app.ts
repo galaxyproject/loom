@@ -2469,6 +2469,31 @@ const prefsBrowseCwd = document.getElementById("prefs-browse-cwd")!;
 
 const prefsProvider = document.getElementById("prefs-provider") as HTMLSelectElement;
 const prefsModel = document.getElementById("prefs-model") as HTMLSelectElement;
+const prefsBypass = document.getElementById("prefs-bypass") as HTMLInputElement;
+const bypassBanner = document.getElementById("bypass-banner")!;
+
+function refreshBypassBanner(active: boolean): void {
+  bypassBanner.classList.toggle("hidden", !active);
+}
+
+// Reflect the current bypass state from config on startup (banner only).
+async function initBypassBanner(): Promise<void> {
+  const cfg = (await window.orbit.getConfig()) as {
+    guardian?: { dangerouslyBypassPermissions?: boolean };
+  };
+  refreshBypassBanner(cfg.guardian?.dangerouslyBypassPermissions === true);
+}
+void initBypassBanner();
+
+// The bypass toggle acts immediately (not via Save). Main shows a native
+// confirm before enabling, so renderer-side injection can't flip it silently.
+prefsBypass.addEventListener("change", async () => {
+  const want = prefsBypass.checked;
+  const result = await window.orbit.setBypassPermissions(want);
+  // Revert the checkbox if enabling was cancelled at the native dialog.
+  prefsBypass.checked = result.enabled;
+  refreshBypassBanner(result.enabled);
+});
 const prefsApiKey = document.getElementById("prefs-api-key") as HTMLInputElement;
 const prefsApiKeyStatus = document.getElementById("prefs-api-key-status")!;
 const prefsApiKeyRow = document.getElementById("prefs-api-key-row")!;
@@ -2774,6 +2799,7 @@ async function openPreferences(): Promise<void> {
     defaultCwd?: string;
     condaBin?: string;
     skills?: { repos?: Array<{ name?: string; url?: string; branch?: string; enabled?: boolean }> };
+    guardian?: { dangerouslyBypassPermissions?: boolean };
   };
 
   // Build per-provider in-memory state from masked config.
@@ -2805,6 +2831,7 @@ async function openPreferences(): Promise<void> {
 
   prefsDefaultCwd.value = config.defaultCwd || "";
   prefsCondaBin.value = config.condaBin || "auto";
+  prefsBypass.checked = config.guardian?.dangerouslyBypassPermissions === true;
 
   // Skills: hydrate the editable table from config. The brain seeds
   // galaxy-skills if absent, but we hydrate from whatever's in config so

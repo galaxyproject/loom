@@ -168,6 +168,25 @@ a:visited {
   color: var(--text-bright);
 }
 
+/* Permissions-bypass warning bar. Intentionally loud (red), persistent, and
+   not dismissible -- it reflects an active unsafe state, not a notice. */
+#bypass-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  background: #6e0d0d;
+  color: #fff;
+  border-bottom: 1px solid #b91c1c;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+#bypass-banner.hidden {
+  display: none;
+}
+
 .pane {
   display: flex;
   flex-direction: column;

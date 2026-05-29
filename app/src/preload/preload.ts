@@ -67,6 +67,9 @@ export interface OrbitAPI {
   onFilesChanged(callback: () => void): () => void;
   getConfig(): Promise<Record<string, unknown>>;
   saveConfig(config: Record<string, unknown>): Promise<{ success: boolean; error?: string }>;
+  setBypassPermissions(
+    enabled: boolean,
+  ): Promise<{ ok: boolean; enabled: boolean; cancelled?: boolean }>;
   validateApiKey(provider: string, key: string): Promise<{ valid: boolean; error?: string }>;
   oauthStatus(
     provider: string,
@@ -153,6 +156,7 @@ const api: OrbitAPI = {
   },
   getConfig: () => ipcRenderer.invoke("config:get"),
   saveConfig: (config) => ipcRenderer.invoke("config:save", config),
+  setBypassPermissions: (enabled) => ipcRenderer.invoke("guardian:set-bypass", enabled),
   validateApiKey: (provider, key) => ipcRenderer.invoke("apiKey:validate", provider, key),
   oauthStatus: (provider) => ipcRenderer.invoke("oauth:status", provider),
   oauthSignIn: (provider) => ipcRenderer.invoke("oauth:sign-in", provider),

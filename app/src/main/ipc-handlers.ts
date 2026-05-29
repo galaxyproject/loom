@@ -322,6 +322,41 @@ export function registerIpcHandlers(agent: AgentManager): void {
     }
   });
 
+  // Local-execution bypass toggle. Deliberately NOT routed through config:save
+  // (whose allowlist blocks renderer-planted keys, ipc-handlers.ts ALLOWED_CONFIG_KEYS).
+  // Enabling bypass requires a NATIVE confirm dialog in the main process, which
+  // renderer-side injection (e.g. a markdown XSS) cannot auto-dismiss. The brain
+  // reads guardian config live per tool call, so no agent restart is needed.
+  ipcMain.handle("guardian:set-bypass", async (e, enabled: unknown) => {
+    const turnOn = enabled === true;
+    if (turnOn) {
+      const window = BrowserWindow.fromWebContents(e.sender) ?? undefined;
+      const opts = {
+        type: "warning" as const,
+        buttons: ["Cancel", "Enable bypass"],
+        defaultId: 0,
+        cancelId: 0,
+        title: "Bypass all command permissions?",
+        message: "Let the AI run any command without asking?",
+        detail:
+          "This disables the safety gate: the AI can run any shell command and read or write " +
+          "any file on your computer, with no per-action approval. Only do this in an " +
+          "environment you fully control.",
+      };
+      const result = window
+        ? await dialog.showMessageBox(window, opts)
+        : await dialog.showMessageBox(opts);
+      if (result.response !== 1) {
+        return { ok: true, enabled: false, cancelled: true };
+      }
+    }
+    const cfg = loadConfig();
+    cfg.guardian = { ...(cfg.guardian ?? {}), dangerouslyBypassPermissions: turnOn };
+    saveConfig(cfg);
+    log(`guardian bypass ${turnOn ? "ENABLED" : "disabled"}`);
+    return { ok: true, enabled: turnOn };
+  });
+
   ipcMain.handle("oauth:status", (_e, provider: string) => {
     if (!isOAuthProvider(provider)) {
       return { signedIn: false };

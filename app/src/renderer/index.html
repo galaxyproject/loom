@@ -42,6 +42,13 @@
           ×
         </button>
       </div>
+      <!-- Permissions-bypass banner. Shown only while the safety gate is off
+           (guardian.dangerouslyBypassPermissions). Persistent and unmissable. -->
+      <div id="bypass-banner" class="hidden" role="alert" aria-live="assertive">
+        <span class="bypass-banner-text">
+          ⚠ Permissions bypassed — the AI can run any command without asking.
+        </span>
+      </div>
       <div id="app-main">
         <!-- Left pane: File tree sidebar -->
         <div id="files-pane" class="pane">
@@ -471,6 +478,27 @@
             </table>
             <div class="prefs-row">
               <button id="prefs-skills-add" class="plan-btn">+ Add repo</button>
+            </div>
+          </section>
+
+          <section class="prefs-section">
+            <h3>Safety</h3>
+            <p class="prefs-help">
+              By default Loom gates the AI's local actions: shell commands and writes outside your
+              workspace need your approval, and destructive patterns are blocked. Bypassing
+              permissions turns that gate off entirely — the AI can run any command and edit any
+              file as you, with no prompts. Only enable this in an environment you fully control.
+            </p>
+            <div class="prefs-row">
+              <label for="prefs-bypass">Dangerously bypass permissions</label>
+              <input id="prefs-bypass" type="checkbox" />
+            </div>
+            <div class="prefs-row prefs-hint">
+              <span></span>
+              <span class="prefs-hint-text">
+                Enabling this takes effect immediately (it does not wait for Save) and persists
+                until you turn it off. A confirmation dialog appears before it's enabled.
+              </span>
             </div>
           </section>
         </div>
