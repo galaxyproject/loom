@@ -125,8 +125,13 @@ jobs:
             app/out/make/**/*.rpm
           if-no-files-found: error
 
+  # Only attach a draft Release on a real tag (or a dispatch re-run against a
+  # tag). A workflow_dispatch on a branch is a build-only test run -- the signed
+  # installers land as workflow artifacts you can download from the run, with no
+  # draft Release and no npm publish, so notarization can be iterated cheaply.
   publish:
     needs: build
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
