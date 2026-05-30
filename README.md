@@ -481,21 +481,28 @@ Galaxy credentials can also be provided via environment variables (`GALAXY_URL`,
 
 ### Local LLMs
 
-Pi supports any OpenAI-compatible API. For [LiteLLM](https://litellm.ai/), [Ollama](https://ollama.com/), or other local backends:
+Loom works with any OpenAI-compatible API -- a hosted service like [Jetstream](https://docs.jetstream-cloud.org/inference-service/overview/), or a local backend like [LiteLLM](https://litellm.ai/) or [Ollama](https://ollama.com/).
+
+In **Orbit**, open Preferences, set the provider to **OpenAI-compatible endpoint**, enter the base URL + API key (or click the **Jetstream** preset), and pick a model. The key is stored encrypted.
+
+For the **CLI**, add a provider entry with a `baseUrl` to `~/.loom/config.json`:
 
 ```json
 {
   "llm": {
-    "provider": "litellm",
-    "apiKey": "your-key",
-    "model": "your-model-name"
+    "active": "openai-compatible",
+    "providers": {
+      "openai-compatible": {
+        "baseUrl": "http://localhost:4000/v1",
+        "model": "your-model-name",
+        "apiKey": "your-key"
+      }
+    }
   }
 }
 ```
 
-You'll also need `~/.pi/agent/models.json` for model capability metadata (context window, token limits) — see Pi's documentation. The Loom config handles provider selection and API keys; `models.json` handles model metadata Pi needs for request sizing.
-
-Or pass flags directly: `loom --provider litellm --model your-model-name`.
+The `baseUrl` marks the entry as a custom endpoint: Loom registers it with Pi for you (writing the matching `~/.pi/agent/models.json` entry, with sensible metadata defaults) and passes the key to Pi at runtime, so the key never lands in `models.json`. The provider name is yours to choose -- `"openai-compatible"` is just a convention.
 
 ## Local execution safety
 
