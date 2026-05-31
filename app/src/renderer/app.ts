@@ -30,6 +30,12 @@ const messagesEl = document.getElementById("messages")!;
 const inputEl = document.getElementById("input") as HTMLTextAreaElement;
 const sendBtn = document.getElementById("send-btn")!;
 const abortBtn = document.getElementById("abort-btn")!;
+const queuedPanelEl = document.getElementById("queued-panel")!;
+const queuedToggleBtn = document.getElementById("queued-toggle") as HTMLButtonElement;
+const queuedCountEl = document.getElementById("queued-count")!;
+const queuedToggleIconEl = document.getElementById("queued-toggle-icon")!;
+const queuedListEl = document.getElementById("queued-list")!;
+const queuedClearBtn = document.getElementById("queued-clear") as HTMLButtonElement;
 const statusBadge = document.getElementById("agent-status")!;
 
 const cwdPathEl = document.getElementById("cwd-path")!;
@@ -904,7 +910,7 @@ function resetUiForFreshContext(opts: { clearPersistedCost?: boolean } = {}): vo
   const { clearPersistedCost = true } = opts;
   chat.clear();
   artifacts.clear();
-  clearPendingMessage();
+  clearQueue();
   sessionUsage.input = 0;
   sessionUsage.output = 0;
   sessionUsage.cacheRead = 0;
@@ -1027,29 +1033,99 @@ refreshCwd();
 
 // ── Chat Input ────────────────────────────────────────────────────────────────
 
-/** Queued message — stashed when user submits while agent is streaming. */
-let pendingMessage: string | null = null;
+/** Queued messages — stashed FIFO when user submits while agent is streaming. */
+let pendingQueue: string[] = [];
+let pendingQueueCollapsed = false;
+
+const QUEUED_PREVIEW_LIMIT = 80;
+
+function queuedPreview(text: string): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= QUEUED_PREVIEW_LIMIT) return normalized;
+  return normalized.slice(0, QUEUED_PREVIEW_LIMIT - 1) + "…";
+}
 
 function updateQueuedIndicator(): void {
-  const indicator = document.getElementById("queued-indicator");
-  if (!indicator) return;
-  if (pendingMessage) {
-    indicator.classList.remove("hidden");
-    indicator.title = `Queued: ${pendingMessage.slice(0, 100)}${pendingMessage.length > 100 ? "…" : ""} (click to cancel)`;
-  } else {
-    indicator.classList.add("hidden");
+  queuedPanelEl.classList.toggle("hidden", pendingQueue.length === 0);
+  queuedCountEl.textContent = `${pendingQueue.length} queued`;
+  queuedToggleBtn.setAttribute("aria-expanded", String(!pendingQueueCollapsed));
+  queuedToggleIconEl.textContent = pendingQueueCollapsed ? "▸" : "▾";
+  queuedListEl.classList.toggle("hidden", pendingQueueCollapsed);
+
+  const rows = document.createDocumentFragment();
+  pendingQueue.forEach((message, index) => {
+    const row = document.createElement("div");
+    row.className = "queued-row";
+    row.role = "listitem";
+
+    const position = document.createElement("span");
+    position.className = "queued-position";
+    position.textContent = `${index + 1}.`;
+
+    const preview = document.createElement("span");
+    preview.className = "queued-preview";
+    preview.textContent = queuedPreview(message);
+    preview.title = message;
+
+    const remove = document.createElement("button");
+    remove.className = "queued-remove";
+    remove.type = "button";
+    remove.dataset.queueIndex = String(index);
+    remove.title = `Remove queued message ${index + 1}`;
+    remove.setAttribute("aria-label", `Remove queued message ${index + 1}`);
+    remove.textContent = "×";
+
+    row.append(position, preview, remove);
+    rows.append(row);
+  });
+  queuedListEl.replaceChildren(rows);
+}
+
+function syncQueueCollapseAfterChange(previousLength: number): void {
+  if (pendingQueue.length <= 2) {
+    pendingQueueCollapsed = false;
+  } else if (previousLength <= 2) {
+    pendingQueueCollapsed = true;
   }
 }
 
-/** Clear any queued message without sending it. */
-function clearPendingMessage(): void {
-  pendingMessage = null;
+function enqueueMessage(text: string): void {
+  const previousLength = pendingQueue.length;
+  pendingQueue.push(text);
+  syncQueueCollapseAfterChange(previousLength);
   updateQueuedIndicator();
 }
 
-// Click the indicator to cancel the queued message
-document.getElementById("queued-indicator")?.addEventListener("click", () => {
-  clearPendingMessage();
+function removeFromQueue(index: number): void {
+  if (index < 0 || index >= pendingQueue.length) return;
+  const previousLength = pendingQueue.length;
+  pendingQueue.splice(index, 1);
+  syncQueueCollapseAfterChange(previousLength);
+  updateQueuedIndicator();
+}
+
+/** Clear all queued messages without sending them. */
+function clearQueue(): void {
+  pendingQueue = [];
+  pendingQueueCollapsed = false;
+  updateQueuedIndicator();
+}
+
+queuedToggleBtn.addEventListener("click", () => {
+  if (pendingQueue.length === 0) return;
+  pendingQueueCollapsed = !pendingQueueCollapsed;
+  updateQueuedIndicator();
+});
+
+queuedClearBtn.addEventListener("click", () => {
+  clearQueue();
+});
+
+queuedListEl.addEventListener("click", (e) => {
+  const target = e.target as HTMLElement | null;
+  const remove = target?.closest<HTMLButtonElement>("[data-queue-index]");
+  if (!remove) return;
+  removeFromQueue(Number(remove.dataset.queueIndex));
 });
 
 // Cheaper-model nudge state. Suppress per-session if the user dismisses
@@ -1102,30 +1178,30 @@ function submit(): void {
   // gets the hint inline above the agent's thinking response.
   maybeShowCheaperModelNudge(text);
 
-  // Slash commands — handled locally, no LLM round-trip (allowed even while streaming)
-  if (text.startsWith("/")) {
-    if (handleSlashCommand(text)) {
-      inputEl.value = "";
-      inputEl.style.height = "auto";
-      return;
-    }
-  }
-
   // If the agent is mid-turn, queue the message and flush when agent_end fires.
-  if (streaming) {
-    pendingMessage = text;
+  // Purely local slash commands still run immediately; slash commands that
+  // prompt the agent must join the FIFO queue like any other LLM turn.
+  if (streaming && !isLocalSlashCommand(text)) {
+    enqueueMessage(text);
     inputEl.value = "";
     inputEl.style.height = "auto";
-    updateQueuedIndicator();
     return;
   }
+
+  dispatchSubmittedText(text);
+  inputEl.value = "";
+  inputEl.style.height = "auto";
+}
+
+function dispatchSubmittedText(text: string): void {
+  // Slash commands handled locally may run without an LLM round-trip. Commands
+  // that do call the agent run here only after the current turn is idle.
+  if (text.startsWith("/") && handleSlashCommand(text)) return;
 
   chat.addUserMessage(text);
   chat.showThinking();
   setStatusBadge("thinking", "thinking...");
   window.orbit.prompt(text);
-  inputEl.value = "";
-  inputEl.style.height = "auto";
 }
 
 // Plan draft actions from chat cards — forward approve/reject as user messages,
@@ -1150,18 +1226,17 @@ messagesEl.addEventListener("plan-draft-action", (e) => {
   }
 });
 
-/** Flush any queued message after the current turn ends. */
-function flushPendingMessage(): void {
-  if (!pendingMessage) return;
-  const text = pendingMessage;
-  pendingMessage = null;
+/** Flush the next queued message after the current turn ends. */
+function flushNextQueuedMessage(): void {
+  if (pendingQueue.length === 0) return;
+  const previousLength = pendingQueue.length;
+  const text = pendingQueue.shift();
+  if (!text) return;
+  syncQueueCollapseAfterChange(previousLength);
   updateQueuedIndicator();
   // Use requestAnimationFrame so the UI updates before we start the next turn
   requestAnimationFrame(() => {
-    chat.addUserMessage(text);
-    chat.showThinking();
-    setStatusBadge("thinking", "thinking...");
-    window.orbit.prompt(text);
+    dispatchSubmittedText(text);
   });
 }
 
@@ -1214,6 +1289,26 @@ const SLASH_COMMANDS: SlashCommand[] = [
   { name: "connect", description: "open Galaxy connection settings" },
   { name: "help", description: "show this help" },
 ];
+
+const LOCAL_SLASH_COMMANDS = new Set([
+  "model",
+  "new",
+  "reset",
+  "clear",
+  "resume",
+  "continue",
+  "chat",
+  "connect",
+  "help",
+]);
+
+function slashCommandName(text: string): string {
+  return text.slice(1).split(/\s+/)[0] ?? "";
+}
+
+function isLocalSlashCommand(text: string): boolean {
+  return text.startsWith("/") && LOCAL_SLASH_COMMANDS.has(slashCommandName(text));
+}
 
 function escapeHtmlBasic(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -1903,13 +1998,11 @@ sendBtn.addEventListener("click", submit);
 
 abortBtn.addEventListener("click", () => {
   window.orbit.abort();
-  clearPendingMessage();
 });
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && streaming) {
     window.orbit.abort();
-    clearPendingMessage();
   }
 });
 
@@ -1993,10 +2086,18 @@ window.orbit.onAgentEvent((event) => {
         commitTurnUsage();
         // Surface assistant-side errors (e.g. 401 invalid API key) so the user
         // isn't staring at a silent UI after a failed call.
-        if (msg.stopReason === "error" && msg.errorMessage) {
+        if (msg.stopReason === "error") {
           chat.hideThinking();
-          chat.addErrorMessage(humanizeAgentError(msg.errorMessage).text);
+          chat.finishAssistantMessage();
+          if (msg.errorMessage) {
+            chat.addErrorMessage(humanizeAgentError(msg.errorMessage).text);
+          }
+          streaming = false;
+          stopTurnTimer();
           setStatusBadge("error");
+          sendBtn.classList.remove("hidden");
+          abortBtn.classList.add("hidden");
+          clearQueue();
         }
       }
       break;
@@ -2061,7 +2162,7 @@ window.orbit.onAgentEvent((event) => {
       chat.finishAssistantMessage();
       // Safety: clear any stuck button busy states if the turn ends without the
       // expected completion event arriving
-      flushPendingMessage();
+      flushNextQueuedMessage();
       hasRevealedActivityThisTurn = false;
       break;
 
@@ -2074,8 +2175,7 @@ window.orbit.onAgentEvent((event) => {
       setStatusBadge("error");
       sendBtn.classList.remove("hidden");
       abortBtn.classList.add("hidden");
-      // Clear any queued message on error so the indicator doesn't get stuck
-      clearPendingMessage();
+      clearQueue();
       break;
     }
   }
