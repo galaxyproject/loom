@@ -139,39 +139,64 @@
 
           <div id="input-area">
             <div id="slash-popup" class="hidden" role="listbox" aria-label="Slash commands"></div>
-            <span
-              id="queued-indicator"
-              class="hidden"
-              title="Queued — will send when agent is ready"
-              >queued <span aria-hidden="true">↓</span></span
-            >
-            <textarea
-              id="input"
-              placeholder="Ask for a plan, drop a file path, or type / for commands"
-              rows="1"
-              aria-label="Chat input"
-              aria-haspopup="listbox"
-              aria-controls="slash-popup"
-              aria-autocomplete="list"
-              aria-expanded="false"
-            ></textarea>
-            <button id="send-btn" title="Send" aria-label="Send message">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
+            <div id="queued-panel" class="queued-panel hidden" aria-live="polite">
+              <div class="queued-panel-header">
+                <button
+                  id="queued-toggle"
+                  class="queued-toggle"
+                  type="button"
+                  aria-expanded="true"
+                  aria-controls="queued-list"
+                >
+                  <span id="queued-count">0 queued</span>
+                  <span id="queued-toggle-icon" aria-hidden="true">▾</span>
+                </button>
+                <button
+                  id="queued-clear"
+                  class="queued-clear"
+                  type="button"
+                  title="Clear queue"
+                  aria-label="Clear queued messages"
+                >
+                  clear
+                </button>
+              </div>
+              <div id="queued-list" class="queued-list" role="list"></div>
+            </div>
+            <div class="composer-row">
+              <textarea
+                id="input"
+                placeholder="Ask for a plan, drop a file path, or type / for commands"
+                rows="1"
+                aria-label="Chat input"
+                aria-haspopup="listbox"
+                aria-controls="slash-popup"
+                aria-autocomplete="list"
+                aria-expanded="false"
+              ></textarea>
+              <button id="send-btn" title="Send" aria-label="Send message">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" />
+                </svg>
+              </button>
+              <button
+                id="abort-btn"
+                title="Stop"
+                class="hidden"
+                aria-label="Stop streaming response"
               >
-                <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" />
-              </svg>
-            </button>
-            <button id="abort-btn" title="Stop" class="hidden" aria-label="Stop streaming response">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="6" width="12" height="12" rx="2" />
-              </svg>
-            </button>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              </button>
+            </div>
           </div>
           <div id="input-hint">
             <span>Type <code>/</code> to see available commands</span>
