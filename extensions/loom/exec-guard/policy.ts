@@ -5,8 +5,9 @@ import type { PolicyDeps, PolicyRequest, PolicyResult } from "./types";
 const FILE_WRITE_TOOLS = new Set(["write", "edit"]);
 // Read-like pi tools that take an optional `path`. grep reads file CONTENTS, so
 // `grep <pat> ~/.ssh/id_rsa` is a credential-leak vector; ls/find/glob enumerate
-// names under a path. All must face the same sensitive-path floor as `read` --
-// otherwise they slip through the final allow and bypass the gate entirely.
+// names under a path. All face the sensitive-path floor AND the workspace jail --
+// a read pointed outside the work dir prompts, same as a write. A path-less call
+// (e.g. grep with just a pattern) searches the cwd and is allowed.
 const FILE_READ_TOOLS = new Set(["read", "grep", "ls", "find", "glob"]);
 
 function pick(toolInput: Record<string, unknown>, key: string): string | undefined {
@@ -37,16 +38,20 @@ export function decide(req: PolicyRequest, deps: PolicyDeps): PolicyResult {
 
   if (req.toolName === "bash") {
     const command = pick(req.toolInput, "command") ?? "";
-    const c = classifyBash(command);
+    const c = classifyBash(command, deps.home);
     if (c.kind === "catastrophic") {
       return { decision: "deny", category: "bash:catastrophic", reason: c.reason };
     }
-    // Floor: detectable read-args of a "safe" command still face sensitive-read + jail.
-    // This floor is never lifted by a trusted workspace.
+    // Floor: detectable read-args of a "safe" command still face sensitive-read +
+    // the workspace jail. This floor is never lifted by a trusted workspace.
+    // Reading file contents from outside the workspace prompts, same as a write.
     for (const p of c.readPaths) {
-      const resolved = deps.resolver.contains(p).resolved;
+      const { inside, resolved } = deps.resolver.contains(p);
       if (isSensitivePath(resolved, deps.home)) {
         return finalizeAsk(req, "read:sensitive", `read of sensitive path ${p}`);
+      }
+      if (!inside) {
+        return finalizeAsk(req, "read:escape", `read outside workspace: ${p}`);
       }
     }
     if (c.kind === "safe") {
@@ -79,12 +84,15 @@ export function decide(req: PolicyRequest, deps: PolicyDeps): PolicyResult {
   if (FILE_READ_TOOLS.has(req.toolName)) {
     const p = pick(req.toolInput, "path");
     if (p) {
-      const resolved = deps.resolver.contains(p).resolved;
+      const { inside, resolved } = deps.resolver.contains(p);
       if (isSensitivePath(resolved, deps.home)) {
         return finalizeAsk(req, "read:sensitive", `${req.toolName} of sensitive path ${p}`);
       }
+      if (!inside) {
+        return finalizeAsk(req, "read:escape", `${req.toolName} outside workspace: ${p}`);
+      }
     }
-    return { decision: "allow", category: "read:ok", reason: "non-sensitive read" };
+    return { decision: "allow", category: "read:ok", reason: "non-sensitive read in workspace" };
   }
 
   if (FILE_WRITE_TOOLS.has(req.toolName)) {

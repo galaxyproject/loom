@@ -496,9 +496,9 @@ Loom drives a real coding agent: alongside the Galaxy tools, the model has `bash
 
 So Loom gates the model's local actions by default (the "exec-guard"):
 
-- **Workspace jail.** `write`/`edit` inside your analysis directory (plus the OS temp dir) are silent; anything that resolves outside -- including via `..` or symlinks -- is blocked or prompts. Writes to control locations (`.git`, `.loom/`) always prompt, even inside the workspace -- a `.git/hooks` script would run on your next commit.
-- **Risk-classified `bash`.** Read-only/analysis commands (`ls`, `cat`, `grep`, `conda run`, ...) run without friction. Catastrophic patterns (`rm -rf /`, `sudo`, `curl | sh`, `dd of=/dev/...`, fork bombs, ...) are always blocked, including path-prefixed (`/usr/bin/sudo`) and long-flag (`rm --recursive --force /`) variants. Anything else prompts -- and any compound or redirected command (`;`, `&&`, `|`, `$(...)`, `>`) drops to a prompt rather than being trusted.
-- **Sensitive reads.** Reads of `~/.ssh`, `~/.aws`, `.env`, `*.pem`/`*.key`, `~/.loom/config.json`, and similar prompt (or are denied for weak models) -- whether the model uses `read`, `grep`, `ls`, or `find`.
+- **Workspace jail.** Reads, writes, and edits inside your analysis directory (plus the OS temp dir) are silent; anything that resolves outside -- including via `..`, a symlink, or `~`/`$HOME` -- prompts, or is denied for weak models. So the model reads and writes freely in your project but must ask to reach anything else on disk. Writes to control locations (`.git`, `.loom/`) always prompt, even inside the workspace -- a `.git/hooks` script would run on your next commit.
+- **Risk-classified `bash`.** Read-only/analysis commands (`ls`, `cat`, `grep`, ...) run without friction when they stay in the workspace. Catastrophic patterns (`rm -rf /`, `sudo`, `curl | sh`, `dd of=/dev/...`, fork bombs, ...) are always blocked -- including path-prefixed (`/usr/bin/sudo`), long-flag (`rm --recursive --force /`), wrapper-hidden (`env rm -rf ~`), explicit-home (`rm -rf $HOME`), and multi-line variants, plus any attempt to edit the gate's own config. Anything else prompts -- and any compound, redirected, or multi-line command (`;`, `&&`, `|`, `$(...)`, `>`, a newline) drops to a prompt rather than being trusted.
+- **Sensitive paths.** `~/.ssh`, `~/.aws`, `.env`, `*.pem`/`*.key`, `~/.loom/config.json`, OS keychains, and similar always prompt (or are denied for weak models) even inside the workspace -- whether the model uses `read`, `grep`, `ls`, `find`, or a `cat` in `bash`.
 - **Model-tier aware.** Every model is gated. Weaker models (Haiku / GPT-4o-mini / Flash class, or unknown/local models) get stricter defaults -- more actions are denied outright rather than offered for approval.
 - **Fail-closed.** With no interactive session to approve (headless / scripted runs), anything that would prompt is denied. A one-time consent notice is shown on the first gated action, and every decision is recorded in `activity.jsonl`.
 
@@ -512,7 +512,7 @@ If you fully control the environment and want the agent to run unattended (CI, a
 - **CLI:** `loom --dangerously-bypass-permissions` (one invocation; does not persist). `--safe` (or `LOOM_SAFE=1`) forces the gate back on and wins over everything.
 - **Orbit:** Preferences -> Safety -> "Dangerously bypass permissions" (a native confirm appears first; a red banner stays up while it's active).
 
-Bypass is total -- it removes all prompts and the workspace jail. It can only be enabled by a human through one of those channels: the agent can't turn it on itself, because editing `~/.loom/config.json` is gated and Orbit's toggle requires an OS-level confirmation the renderer can't forge. The default (`guardian.enabled: true`, not bypassed) is secure; relaxing it is always an explicit choice.
+Bypass is total -- it removes all prompts and the workspace jail. It can only be enabled by a human through one of those channels: the agent can't turn it on itself, because writing `~/.loom/config.json` is blocked whether it uses the file tools or `bash`, and Orbit's toggle requires an OS-level confirmation the renderer can't forge. The default (`guardian.enabled: true`, not bypassed) is secure; relaxing it is always an explicit choice.
 
 ## Cost tracking
 

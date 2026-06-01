@@ -152,4 +152,26 @@ describe("decide", () => {
       "allow",
     );
   });
+
+  it("reading a non-sensitive file OUTSIDE the workspace -> ask (trusted) / deny (weak)", () => {
+    expect(
+      decide(req({ toolName: "read", toolInput: { path: "/etc/hosts" } }), deps).decision,
+    ).toBe("ask");
+    expect(
+      decide(req({ toolName: "read", modelTier: "weak", toolInput: { path: "/etc/hosts" } }), deps)
+        .decision,
+    ).toBe("deny");
+  });
+  it("reading inside the workspace is allowed", () => {
+    expect(
+      decide(req({ toolName: "read", toolInput: { path: "/home/alice/project/data/x.csv" } }), deps)
+        .decision,
+    ).toBe("allow");
+  });
+  it("a safe bash read outside the workspace -> ask; inside -> allow", () => {
+    expect(decide(req({ toolInput: { command: "cat /etc/passwd" } }), deps).decision).toBe("ask");
+    expect(
+      decide(req({ toolInput: { command: "cat /home/alice/project/notes.txt" } }), deps).decision,
+    ).toBe("allow");
+  });
 });

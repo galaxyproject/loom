@@ -1,12 +1,20 @@
 import * as path from "path";
 
 // Directories under $HOME that hold credentials/secrets.
-const SENSITIVE_HOME_DIRS = [".ssh", ".aws", ".gnupg", ".config/gcloud", ".kube", ".docker"];
+const SENSITIVE_HOME_DIRS = [
+  ".ssh",
+  ".aws",
+  ".gnupg",
+  ".config/gcloud",
+  ".kube",
+  ".docker",
+  "Library/Keychains",
+];
 // Exact files under $HOME.
 const SENSITIVE_HOME_FILES = [".netrc", ".loom/config.json", ".pgpass", ".npmrc"];
 // Basename / extension patterns sensitive anywhere.
 const SENSITIVE_BASENAME =
-  /^(\.env(\..+)?|id_rsa|id_ed25519|id_ecdsa|.*\.pem|.*\.key|credentials)$/i;
+  /^(\.env(\..+)?|id_rsa|id_ed25519|id_ecdsa|.*\.pem|.*\.key|.*\.keychain(-db)?|credentials)$/i;
 
 function within(abs: string, dir: string): boolean {
   const rel = path.relative(dir, abs);

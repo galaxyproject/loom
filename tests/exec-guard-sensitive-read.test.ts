@@ -21,6 +21,10 @@ describe("isSensitivePath", () => {
     expect(isSensitivePath("/home/alice/project/server.key", HOME)).toBe(true);
     expect(isSensitivePath("/tmp/foo.pem", HOME)).toBe(true);
   });
+  it("flags macOS keychains", () => {
+    expect(isSensitivePath("/home/alice/Library/Keychains/login.keychain-db", HOME)).toBe(true);
+    expect(isSensitivePath("/home/alice/Library/Keychains/x.keychain", HOME)).toBe(true);
+  });
   it("allows ordinary project files", () => {
     expect(isSensitivePath("/home/alice/project/notebook.md", HOME)).toBe(false);
     expect(isSensitivePath("/home/alice/project/data/reads.fastq", HOME)).toBe(false);

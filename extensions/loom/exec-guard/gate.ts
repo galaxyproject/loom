@@ -54,7 +54,7 @@ export function registerExecGuard(pi: ExtensionAPI): void {
     const input = event.input as Record<string, unknown>;
     const cwd = ctx.cwd;
     const roots = [cwd, os.tmpdir(), path.join(cwd, ".loom"), ...config.extraWorkspaceRoots];
-    const resolver = createPathResolver(roots);
+    const resolver = createPathResolver(roots, os.homedir());
 
     let result: PolicyResult;
     try {
