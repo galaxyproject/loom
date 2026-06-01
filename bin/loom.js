@@ -18,6 +18,9 @@ process.env.PI_SKIP_VERSION_CHECK = "1";
 
 // Resolve extension paths relative to this script
 const extensionPath = resolve(__dirname, "../extensions/loom");
+// CLI-shell hand-off glue (the /orbit command). Kept out of the loom brain so
+// the brain stays shell-neutral; the command no-ops when embedded in Orbit.
+const orbitHandoffPath = resolve(__dirname, "../extensions/orbit-handoff");
 
 // pi-mcp-adapter is what teaches Pi how to use MCP servers from mcp.json
 // pi-web-access provides web_search, fetch_content, and code_search tools
@@ -466,6 +469,8 @@ const args = [
   webAccessPath,
   "-e",
   extensionPath,
+  "-e",
+  orbitHandoffPath,
   ...providerArgs,
   ...userArgs,
 ];

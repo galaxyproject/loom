@@ -16,7 +16,6 @@ import { setupUIBridge } from "./ui-bridge";
 import { registerSessionLifecycle } from "./session-lifecycle";
 import { registerActivityHooks } from "./activity-hooks";
 import { registerExecutionCommands } from "./execution-commands";
-import { registerOrbitCommand } from "./orbit-command";
 import { registerTeamTools } from "./teams/tool";
 import { isTeamDispatchEnabled } from "./teams/is-enabled";
 import { registerSessionIndexTools } from "./session-index/tools";
@@ -45,7 +44,6 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   registerNotebookSyncTools(pi);
   registerSyncCommand(pi);
   registerExecutionCommands(pi);
-  registerOrbitCommand(pi);
   registerConfusablesHint(pi);
   if (isTeamDispatchEnabled()) {
     registerTeamTools(pi);

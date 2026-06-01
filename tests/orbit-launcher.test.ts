@@ -1,6 +1,11 @@
 import { spawn } from "node:child_process";
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { findOrbit, launchOrbit, type FindOrbitDeps } from "../extensions/loom/orbit-launcher";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  findOrbit,
+  launchOrbit,
+  type FindOrbitDeps,
+} from "../extensions/orbit-handoff/orbit-launcher";
+import { handleOrbitHandoff } from "../extensions/orbit-handoff";
 
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 
@@ -100,5 +105,27 @@ describe("launchOrbit", () => {
     );
     expect(fakeChild.unref).toHaveBeenCalled();
     expect(result.pid).toBe(12345);
+  });
+});
+
+describe("handleOrbitHandoff -- embedded guard", () => {
+  const prev = process.env.LOOM_SHELL_KIND;
+  afterEach(() => {
+    if (prev === undefined) delete process.env.LOOM_SHELL_KIND;
+    else process.env.LOOM_SHELL_KIND = prev;
+  });
+
+  it("no-ops with a notice (no shutdown, no spawn) when already inside Orbit", async () => {
+    process.env.LOOM_SHELL_KIND = "orbit";
+    const notify = vi.fn();
+    const shutdown = vi.fn();
+    await handleOrbitHandoff(undefined, {
+      cwd: "/Users/me/analysis",
+      ui: { notify },
+      shutdown,
+    } as any);
+    expect(shutdown).not.toHaveBeenCalled();
+    expect(spawn).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining("already in Orbit"), "info");
   });
 });
