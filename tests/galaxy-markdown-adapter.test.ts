@@ -61,6 +61,38 @@ describe("galaxy-markdown-adapter -- round trip", () => {
     expect(galaxyMarkdownToLoom(prose)).toBe(prose);
   });
 
+  it("preserves a human-authored ```galaxy fence on pull", () => {
+    // A narrative galaxy directive someone wrote by hand (no carrier following)
+    // must survive -- only Loom's own directives, which sit directly above a
+    // carrier, get stripped.
+    const authored = [
+      "# Notes",
+      "",
+      "Example of a Galaxy directive you can use:",
+      "",
+      "```galaxy",
+      "history_dataset_display(history_dataset_id=abc)",
+      "```",
+      "",
+      "more prose",
+      "",
+    ].join("\n");
+    expect(galaxyMarkdownToLoom(authored)).toBe(authored);
+  });
+
+  it("strips Loom's directive but keeps an adjacent human-authored ```galaxy fence", async () => {
+    const human = ["```galaxy", "history_dataset_display(history_dataset_id=abc)", "```"].join(
+      "\n",
+    );
+    const pushed = await loomToGalaxyMarkdownRich(NOTEBOOK, { isValid: async () => true });
+    // Drop a hand-authored galaxy fence into the pushed page (with a blank line,
+    // as a human would), then pull.
+    const pulled = galaxyMarkdownToLoom(`${human}\n\n${pushed}`);
+    expect(pulled).toContain("history_dataset_display(history_dataset_id=abc)");
+    expect(pulled).toContain("```loom-invocation");
+    expect(pulled).not.toContain("invocation_outputs(");
+  });
+
   it("handles multiple invocation blocks", () => {
     const two =
       NOTEBOOK +

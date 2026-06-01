@@ -11,9 +11,11 @@
  * of quotes and newlines, so the carrier is always one well-formed line.
  *
  * Phase 2 adds a visible ` ```galaxy ` directive alongside the carrier; pull
- * strips those directives (Loom owns the projection under the loom-canonical
- * model), which is why galaxyMarkdownToLoom removes ```galaxy blocks here even
- * though Phase 1 never emits them -- it keeps pull forward-compatible.
+ * strips the directives Loom emitted (Loom owns the projection under the
+ * loom-canonical model and regenerates them each push). A Loom directive always
+ * sits immediately above a carrier with no blank line between, so pull strips
+ * only ```galaxy blocks in that position -- a ```galaxy fence a human wrote (or
+ * a co-author added on the Galaxy side) survives the round trip.
  */
 
 import { galaxyGet } from "./galaxy-api";
@@ -57,16 +59,29 @@ export function loomToGalaxyMarkdown(body: string): string {
   return out.join("\n");
 }
 
-/** Pull: carriers -> original loom-invocation fences; strip any ```galaxy blocks. */
+/** Pull: strip the ```galaxy directives Loom emitted, then carriers -> original
+ *  loom-invocation fences. Stripping runs first, while carriers are still single
+ *  lines, so the "directive sits directly above a carrier" check is exact. */
 export function galaxyMarkdownToLoom(body: string): string {
-  const restored = body.replace(CARRIER_RE, (_m, b64: string) =>
+  const withoutLoomDirectives = stripLoomGalaxyDirectiveBlocks(body);
+  return withoutLoomDirectives.replace(CARRIER_RE, (_m, b64: string) =>
     Buffer.from(b64, "base64").toString("utf8"),
   );
-  return stripGalaxyDirectiveBlocks(restored);
 }
 
-/** Remove ```galaxy ... ``` fenced blocks (Loom-emitted projection, regenerated each push). */
-function stripGalaxyDirectiveBlocks(body: string): string {
+// Single-line carrier matcher. CARRIER_RE is global/multiline (stateful via
+// lastIndex), so it's unsafe for a one-off .test(); this is the per-line form.
+const CARRIER_LINE_RE = /^\[loom-invocation:v1\]: #loom "[A-Za-z0-9+/=]+"$/;
+
+/**
+ * Remove only the ```galaxy directive blocks Loom itself emitted.
+ * loomToGalaxyMarkdownRich always writes the directive immediately above the
+ * invocation's carrier with no blank line between, so a ```galaxy block is
+ * Loom's iff the line right after its closing fence is a carrier. Every other
+ * ```galaxy block was authored by a human and is preserved verbatim -- stripping
+ * those unconditionally was silent data loss on pull.
+ */
+function stripLoomGalaxyDirectiveBlocks(body: string): string {
   const lines = body.split("\n");
   const out: string[] = [];
   let i = 0;
@@ -74,11 +89,15 @@ function stripGalaxyDirectiveBlocks(body: string): string {
     if (lines[i].trim() === GALAXY_FENCE_OPEN) {
       let end = i + 1;
       while (end < lines.length && lines[end].trim() !== FENCE_CLOSE) end++;
-      i = end + 1;
-    } else {
-      out.push(lines[i]);
-      i++;
+      // `end` is the closing fence (or EOF). Drop the block only when Loom's
+      // carrier immediately follows it; otherwise fall through and keep it.
+      if (end + 1 < lines.length && CARRIER_LINE_RE.test(lines[end + 1])) {
+        i = end + 1;
+        continue;
+      }
     }
+    out.push(lines[i]);
+    i++;
   }
   return out.join("\n");
 }
