@@ -146,6 +146,19 @@ function log(...args: unknown[]): void {
   console.log("[ipc]", ...args);
 }
 
+interface AgentPromptOptions {
+  streamingBehavior?: "steer" | "followUp";
+}
+
+function promptPayload(message: string, options?: AgentPromptOptions): Record<string, unknown> {
+  const payload: Record<string, unknown> = { type: "prompt", message };
+  const streamingBehavior = options?.streamingBehavior;
+  if (streamingBehavior === "steer" || streamingBehavior === "followUp") {
+    payload.streamingBehavior = streamingBehavior;
+  }
+  return payload;
+}
+
 /**
  * Ask the user to confirm that switching analysis directories will start
  * a fresh agent session and clear the current chat/plan/notebook view.
@@ -166,9 +179,9 @@ export async function confirmCwdChange(window?: BrowserWindow): Promise<boolean>
 }
 
 export function registerIpcHandlers(agent: AgentManager): void {
-  ipcMain.handle("agent:prompt", async (_e, message: string) => {
+  ipcMain.handle("agent:prompt", async (_e, message: string, options?: AgentPromptOptions) => {
     log("prompt:", message.slice(0, 80));
-    agent.send({ type: "prompt", message });
+    agent.send(promptPayload(message, options));
   });
 
   ipcMain.handle("agent:abort", async () => {

@@ -5,6 +5,7 @@ import { ArtifactPanel } from "./artifacts/artifact-panel.js";
 import { FilesPanel } from "./files/files-panel.js";
 import { FileViewer } from "./files/file-viewer.js";
 import { refreshGalaxyInvocations } from "./galaxy-invocations.js";
+import { PromptQueue, queuedPreview } from "./prompt-queue.js";
 import { LoomWidgetKey, decodeMarkdownWidget } from "../../../shared/loom-shell-contract.js";
 import { ALLOWED_SKILLS_PREFIX, isAllowedSkillUrl } from "../../../shared/loom-config.js";
 
@@ -1034,26 +1035,17 @@ refreshCwd();
 // ── Chat Input ────────────────────────────────────────────────────────────────
 
 /** Queued messages — stashed FIFO when user submits while agent is streaming. */
-let pendingQueue: string[] = [];
-let pendingQueueCollapsed = false;
-
-const QUEUED_PREVIEW_LIMIT = 80;
-
-function queuedPreview(text: string): string {
-  const normalized = text.replace(/\s+/g, " ").trim();
-  if (normalized.length <= QUEUED_PREVIEW_LIMIT) return normalized;
-  return normalized.slice(0, QUEUED_PREVIEW_LIMIT - 1) + "…";
-}
+const pendingQueue = new PromptQueue();
 
 function updateQueuedIndicator(): void {
   queuedPanelEl.classList.toggle("hidden", pendingQueue.length === 0);
   queuedCountEl.textContent = `${pendingQueue.length} queued`;
-  queuedToggleBtn.setAttribute("aria-expanded", String(!pendingQueueCollapsed));
-  queuedToggleIconEl.textContent = pendingQueueCollapsed ? "▸" : "▾";
-  queuedListEl.classList.toggle("hidden", pendingQueueCollapsed);
+  queuedToggleBtn.setAttribute("aria-expanded", String(!pendingQueue.collapsed));
+  queuedToggleIconEl.textContent = pendingQueue.collapsed ? "▸" : "▾";
+  queuedListEl.classList.toggle("hidden", pendingQueue.collapsed);
 
   const rows = document.createDocumentFragment();
-  pendingQueue.forEach((message, index) => {
+  pendingQueue.items.forEach((message, index) => {
     const row = document.createElement("div");
     row.className = "queued-row";
     row.role = "listitem";
@@ -1081,39 +1073,24 @@ function updateQueuedIndicator(): void {
   queuedListEl.replaceChildren(rows);
 }
 
-function syncQueueCollapseAfterChange(previousLength: number): void {
-  if (pendingQueue.length <= 2) {
-    pendingQueueCollapsed = false;
-  } else if (previousLength <= 2) {
-    pendingQueueCollapsed = true;
-  }
-}
-
 function enqueueMessage(text: string): void {
-  const previousLength = pendingQueue.length;
-  pendingQueue.push(text);
-  syncQueueCollapseAfterChange(previousLength);
+  pendingQueue.enqueue(text);
   updateQueuedIndicator();
 }
 
 function removeFromQueue(index: number): void {
-  if (index < 0 || index >= pendingQueue.length) return;
-  const previousLength = pendingQueue.length;
-  pendingQueue.splice(index, 1);
-  syncQueueCollapseAfterChange(previousLength);
+  pendingQueue.remove(index);
   updateQueuedIndicator();
 }
 
 /** Clear all queued messages without sending them. */
 function clearQueue(): void {
-  pendingQueue = [];
-  pendingQueueCollapsed = false;
+  pendingQueue.clear();
   updateQueuedIndicator();
 }
 
 queuedToggleBtn.addEventListener("click", () => {
-  if (pendingQueue.length === 0) return;
-  pendingQueueCollapsed = !pendingQueueCollapsed;
+  pendingQueue.toggleCollapsed();
   updateQueuedIndicator();
 });
 
@@ -1201,7 +1178,12 @@ function dispatchSubmittedText(text: string): void {
   chat.addUserMessage(text);
   chat.showThinking();
   setStatusBadge("thinking", "thinking...");
-  window.orbit.prompt(text);
+  promptAgent(text);
+}
+
+function promptAgent(message: string): void {
+  const options = streaming ? ({ streamingBehavior: "followUp" } as const) : undefined;
+  void window.orbit.prompt(message, options);
 }
 
 // Plan draft actions from chat cards — forward approve/reject as user messages,
@@ -1228,11 +1210,8 @@ messagesEl.addEventListener("plan-draft-action", (e) => {
 
 /** Flush the next queued message after the current turn ends. */
 function flushNextQueuedMessage(): void {
-  if (pendingQueue.length === 0) return;
-  const previousLength = pendingQueue.length;
-  const text = pendingQueue.shift();
+  const text = pendingQueue.flushNext();
   if (!text) return;
-  syncQueueCollapseAfterChange(previousLength);
   updateQueuedIndicator();
   // Use requestAnimationFrame so the UI updates before we start the next turn
   requestAnimationFrame(() => {
@@ -1373,14 +1352,14 @@ function handleSlashCommand(text: string): boolean {
   if (cmd === "notebook") {
     chat.addUserMessage(text);
     void loadNotebookFromDisk();
-    window.orbit.prompt("/notebook");
+    promptAgent("/notebook");
     return true;
   }
 
   // Loom commands — pass through to agent
   if (cmd === "plan" || cmd === "status" || cmd === "decisions" || cmd === "profiles") {
     chat.addUserMessage(text);
-    window.orbit.prompt(`/${cmd}`);
+    promptAgent(`/${cmd}`);
     return true;
   }
 
@@ -1470,34 +1449,14 @@ function handleSummarize(raw: string, argStr: string): void {
   );
   chat.showThinking();
   setStatusBadge("thinking", "thinking...");
-  window.orbit.prompt(prompt);
-}
-
-async function appendCostSectionToNotebook(section: string): Promise<void> {
-  const notebook = await window.orbit.loadNotebook();
-  if (!notebook.ok) {
-    throw new Error("Could not load notebook.md");
-  }
-  const current = notebook.content ?? "";
-  const separator =
-    current.length === 0
-      ? ""
-      : current.endsWith("\n\n")
-        ? ""
-        : current.endsWith("\n")
-          ? "\n"
-          : "\n\n";
-  const result = await window.orbit.writeFile("notebook.md", `${current}${separator}${section}\n`);
-  if (!result.ok) {
-    throw new Error(result.error);
-  }
-  await loadNotebookFromDisk();
+  promptAgent(prompt);
 }
 
 /**
- * /cost — snapshot completed-turn usage per model, price it against the
- * renderer's pricing table, and append the breakdown directly to notebook.md.
- * This is intentionally local so it can run while the agent is streaming.
+ * /cost — snapshot session token usage per model, price it against the renderer's
+ * pricing table, and ask the agent to append the breakdown to notebook.md.
+ * The renderer is the authoritative source for usage numbers; the agent just
+ * writes them out.
  */
 function handleCost(raw: string): void {
   if (perModelUsage.size === 0) {
@@ -1540,19 +1499,27 @@ function handleCost(raw: string): void {
     rows.join("\n");
 
   const heading = "## Session cost";
-  const section = `${heading}\n\n${table}`;
+  const prompt =
+    `Append the following session cost breakdown verbatim to the notebook file ` +
+    `(notebook.md) in the current working directory. Use Edit or Write to append — ` +
+    `do NOT regenerate, reformat, or wrap the table. The numbers below are authoritative ` +
+    `(captured from the renderer's usage counters, same source as the masthead), so ` +
+    `use them as-is.\n\n` +
+    `Use exactly this heading (H2, verbatim) on its own line, followed by a blank line, ` +
+    `then the table:\n` +
+    `    ${heading}\n\n` +
+    `--- Cost table ---\n` +
+    table +
+    `\n--- end table ---`;
 
   chat.addUserMessage(raw);
-  chat.addInfoMessage(`<i>Appending the session cost breakdown to <code>notebook.md</code>…</i>`);
-  void appendCostSectionToNotebook(section)
-    .then(() => {
-      chat.addInfoMessage(
-        `<i>Appended the session cost breakdown to <code>notebook.md</code>.</i>`,
-      );
-    })
-    .catch((err) => {
-      chat.addErrorMessage(`/cost: ${err instanceof Error ? err.message : String(err)}`);
-    });
+  chat.addInfoMessage(
+    `<i>Asking the agent to append the session cost breakdown to ` +
+      `<code>notebook.md</code>…</i>`,
+  );
+  chat.showThinking();
+  setStatusBadge("thinking", "thinking...");
+  promptAgent(prompt);
 }
 
 /**
@@ -2054,6 +2021,14 @@ window.orbit.onAgentEvent((event) => {
       // Don't hide thinking yet — wait for actual text content
       break;
 
+    case "message_start": {
+      const msg = (event as { message?: { role?: string } }).message;
+      if (msg?.role === "user") {
+        chat.finishAssistantMessage();
+      }
+      break;
+    }
+
     case "message_update": {
       // Pi.dev wraps events in assistantMessageEvent
       const ame = (event as { assistantMessageEvent?: Record<string, unknown> })
@@ -2516,6 +2491,8 @@ window.orbit.onAgentStatus((status, msg) => {
     sendBtn.classList.remove("hidden");
     abortBtn.classList.add("hidden");
     chat.hideThinking();
+    chat.finishAssistantMessage();
+    clearQueue();
   }
 
   // Show cwd welcome once, after the first successful agent start.

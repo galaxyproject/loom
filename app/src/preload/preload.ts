@@ -43,8 +43,12 @@ export interface FileNode {
   children?: FileNode[];
 }
 
+export interface PromptOptions {
+  streamingBehavior?: "steer" | "followUp";
+}
+
 export interface OrbitAPI {
-  prompt(message: string): Promise<void>;
+  prompt(message: string, options?: PromptOptions): Promise<void>;
   abort(): Promise<void>;
   newSession(): Promise<{ cancelled: boolean }>;
   getState(): Promise<unknown>;
@@ -137,7 +141,7 @@ export interface OrbitAPI {
 }
 
 const api: OrbitAPI = {
-  prompt: (message) => ipcRenderer.invoke("agent:prompt", message),
+  prompt: (message, options) => ipcRenderer.invoke("agent:prompt", message, options),
   abort: () => ipcRenderer.invoke("agent:abort"),
   newSession: () => ipcRenderer.invoke("agent:new-session"),
   getState: () => ipcRenderer.invoke("agent:get-state"),
