@@ -88,6 +88,44 @@ describe("decide", () => {
       ).decision,
     ).toBe("deny");
   });
+  it("grep/ls/find of a sensitive path -> ask (trusted) / deny (weak)", () => {
+    for (const tool of ["grep", "ls", "find"]) {
+      expect(
+        decide(req({ toolName: tool, toolInput: { path: "/home/alice/.ssh/id_rsa" } }), deps)
+          .decision,
+        tool,
+      ).toBe("ask");
+      expect(
+        decide(
+          req({ toolName: tool, modelTier: "weak", toolInput: { path: "/home/alice/.ssh" } }),
+          deps,
+        ).decision,
+        tool,
+      ).toBe("deny");
+    }
+  });
+  it("grep with no path (searches cwd) is allowed", () => {
+    expect(decide(req({ toolName: "grep", toolInput: { pattern: "TODO" } }), deps).decision).toBe(
+      "allow",
+    );
+  });
+  it("write to .git or .loom prompts even inside the workspace", () => {
+    expect(
+      decide(
+        req({
+          toolName: "write",
+          toolInput: { path: "/home/alice/project/.git/hooks/pre-commit" },
+        }),
+        deps,
+      ).decision,
+    ).toBe("ask");
+    expect(
+      decide(
+        req({ toolName: "edit", toolInput: { path: "/home/alice/project/.loom/config.json" } }),
+        deps,
+      ).decision,
+    ).toBe("ask");
+  });
   it("unknown bash -> ask (trusted) / deny (weak)", () => {
     expect(decide(req({ toolInput: { command: "python x.py" } }), deps).decision).toBe("ask");
     expect(

@@ -1,8 +1,13 @@
 import { classifyBash } from "./bash-risk";
-import { isSensitivePath } from "./sensitive-read";
+import { isSensitivePath, isProtectedWritePath } from "./sensitive-read";
 import type { PolicyDeps, PolicyRequest, PolicyResult } from "./types";
 
 const FILE_WRITE_TOOLS = new Set(["write", "edit"]);
+// Read-like pi tools that take an optional `path`. grep reads file CONTENTS, so
+// `grep <pat> ~/.ssh/id_rsa` is a credential-leak vector; ls/find/glob enumerate
+// names under a path. All must face the same sensitive-path floor as `read` --
+// otherwise they slip through the final allow and bypass the gate entirely.
+const FILE_READ_TOOLS = new Set(["read", "grep", "ls", "find", "glob"]);
 
 function pick(toolInput: Record<string, unknown>, key: string): string | undefined {
   const v = toolInput[key];
@@ -71,12 +76,12 @@ export function decide(req: PolicyRequest, deps: PolicyDeps): PolicyResult {
     return finalizeAsk(req, "bash:unknown", c.reason);
   }
 
-  if (req.toolName === "read") {
+  if (FILE_READ_TOOLS.has(req.toolName)) {
     const p = pick(req.toolInput, "path");
     if (p) {
       const resolved = deps.resolver.contains(p).resolved;
       if (isSensitivePath(resolved, deps.home)) {
-        return finalizeAsk(req, "read:sensitive", `read of sensitive path ${p}`);
+        return finalizeAsk(req, "read:sensitive", `${req.toolName} of sensitive path ${p}`);
       }
     }
     return { decision: "allow", category: "read:ok", reason: "non-sensitive read" };
@@ -85,12 +90,18 @@ export function decide(req: PolicyRequest, deps: PolicyDeps): PolicyResult {
   if (FILE_WRITE_TOOLS.has(req.toolName)) {
     const p = pick(req.toolInput, "path");
     if (!p) return finalizeAsk(req, "write:no-path", "write with no resolvable path");
-    const { inside } = deps.resolver.contains(p);
+    const { inside, resolved } = deps.resolver.contains(p);
+    // Gated even inside the jail: a script under .git/hooks runs on the next git
+    // operation, and .loom/ is Loom's own state -- the README promises these
+    // always prompt, so they must, regardless of being in the workspace.
+    if (isProtectedWritePath(resolved)) {
+      return finalizeAsk(req, "write:protected", `write to protected path ${p}`);
+    }
     if (inside)
       return { decision: "allow", category: "write:in-jail", reason: "write inside workspace" };
     return finalizeAsk(req, "write:escape", `write outside workspace: ${p}`);
   }
 
-  // Everything else (Galaxy/notebook tools, grep/find/ls) is allowed.
+  // Everything else (Galaxy/notebook tools, etc.) is allowed.
   return { decision: "allow", category: "other", reason: "non-local-execution tool" };
 }

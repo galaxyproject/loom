@@ -496,9 +496,9 @@ Loom drives a real coding agent: alongside the Galaxy tools, the model has `bash
 
 So Loom gates the model's local actions by default (the "exec-guard"):
 
-- **Workspace jail.** `write`/`edit` inside your analysis directory (plus the OS temp dir and `.loom/`) are silent; anything that resolves outside -- including via `..` or symlinks -- is blocked or prompts. Writes to executable/config locations (`.git/hooks`, `.loom/`) always prompt.
-- **Risk-classified `bash`.** Read-only/analysis commands (`ls`, `cat`, `grep`, `conda run`, ...) run without friction. Catastrophic patterns (`rm -rf /`, `sudo`, `curl | sh`, `dd of=/dev/...`, fork bombs, ...) are always blocked. Anything else prompts -- and any compound or redirected command (`;`, `&&`, `|`, `$(...)`, `>`) drops to a prompt rather than being trusted.
-- **Sensitive reads.** Reads of `~/.ssh`, `~/.aws`, `.env`, `*.pem`/`*.key`, `~/.loom/config.json`, and similar prompt (or are denied for weak models).
+- **Workspace jail.** `write`/`edit` inside your analysis directory (plus the OS temp dir) are silent; anything that resolves outside -- including via `..` or symlinks -- is blocked or prompts. Writes to control locations (`.git`, `.loom/`) always prompt, even inside the workspace -- a `.git/hooks` script would run on your next commit.
+- **Risk-classified `bash`.** Read-only/analysis commands (`ls`, `cat`, `grep`, `conda run`, ...) run without friction. Catastrophic patterns (`rm -rf /`, `sudo`, `curl | sh`, `dd of=/dev/...`, fork bombs, ...) are always blocked, including path-prefixed (`/usr/bin/sudo`) and long-flag (`rm --recursive --force /`) variants. Anything else prompts -- and any compound or redirected command (`;`, `&&`, `|`, `$(...)`, `>`) drops to a prompt rather than being trusted.
+- **Sensitive reads.** Reads of `~/.ssh`, `~/.aws`, `.env`, `*.pem`/`*.key`, `~/.loom/config.json`, and similar prompt (or are denied for weak models) -- whether the model uses `read`, `grep`, `ls`, or `find`.
 - **Model-tier aware.** Every model is gated. Weaker models (Haiku / GPT-4o-mini / Flash class, or unknown/local models) get stricter defaults -- more actions are denied outright rather than offered for approval.
 - **Fail-closed.** With no interactive session to approve (headless / scripted runs), anything that would prompt is denied. A one-time consent notice is shown on the first gated action, and every decision is recorded in `activity.jsonl`.
 
