@@ -174,4 +174,50 @@ describe("decide", () => {
       decide(req({ toolInput: { command: "cat /home/alice/project/notes.txt" } }), deps).decision,
     ).toBe("allow");
   });
+
+  // Auto mode (push 2): an active sandbox closes the exfil path, so out-of-workspace
+  // non-sensitive reads stop prompting -- trusted models only, and never lifting the
+  // sensitive floor or auto-running unknown/destructive bash.
+  it("auto sandbox relaxes out-of-workspace non-sensitive reads (read tool + safe bash)", () => {
+    expect(
+      decide(req({ toolName: "read", autoSandbox: true, toolInput: { path: "/etc/hosts" } }), deps)
+        .decision,
+    ).toBe("allow");
+    expect(
+      decide(req({ autoSandbox: true, toolInput: { command: "cat /etc/passwd" } }), deps).decision,
+    ).toBe("allow");
+  });
+  it("auto sandbox still floors sensitive reads and does NOT auto-run unknown bash", () => {
+    expect(
+      decide(
+        req({
+          toolName: "read",
+          autoSandbox: true,
+          toolInput: { path: "/home/alice/.ssh/id_rsa" },
+        }),
+        deps,
+      ).decision,
+    ).toBe("ask");
+    expect(
+      decide(req({ autoSandbox: true, toolInput: { command: "python x.py" } }), deps).decision,
+    ).toBe("ask");
+  });
+  it("auto sandbox relaxation is trusted-only -- weak models stay denied", () => {
+    expect(
+      decide(
+        req({
+          toolName: "read",
+          autoSandbox: true,
+          modelTier: "weak",
+          toolInput: { path: "/etc/hosts" },
+        }),
+        deps,
+      ).decision,
+    ).toBe("deny");
+  });
+  it("without an active sandbox, the out-of-workspace read still prompts", () => {
+    expect(decide(req({ toolName: "read", toolInput: { path: "/etc/hosts" } }), deps).decision).toBe(
+      "ask",
+    );
+  });
 });

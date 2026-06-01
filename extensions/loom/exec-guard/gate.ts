@@ -13,6 +13,7 @@ import {
 import { createPathResolver } from "./path-jail";
 import { classifyModelTier } from "./model-tier";
 import { decide } from "./policy";
+import { isAutoSandboxActive } from "./runtime-state";
 import { CONSENT_VERSION, type PolicyResult } from "./types";
 
 // In-memory "allow for this session" set, keyed by tool + raw input signature.
@@ -66,6 +67,7 @@ export function registerExecGuard(pi: ExtensionAPI): void {
           config,
           interactive: ctx.hasUI,
           cwd,
+          autoSandbox: isAutoSandboxActive(),
         },
         { resolver, home: os.homedir() },
       );

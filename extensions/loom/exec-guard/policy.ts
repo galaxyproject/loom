@@ -43,14 +43,16 @@ export function decide(req: PolicyRequest, deps: PolicyDeps): PolicyResult {
       return { decision: "deny", category: "bash:catastrophic", reason: c.reason };
     }
     // Floor: detectable read-args of a "safe" command still face sensitive-read +
-    // the workspace jail. This floor is never lifted by a trusted workspace.
-    // Reading file contents from outside the workspace prompts, same as a write.
+    // the workspace jail. The sensitive floor is never lifted. The out-of-workspace
+    // ask IS relaxed under an active Auto sandbox (trusted models only): the sandbox
+    // denies credential reads and bash network, so a non-sensitive read can't be
+    // exfiltrated -- no need to prompt.
     for (const p of c.readPaths) {
       const { inside, resolved } = deps.resolver.contains(p);
       if (isSensitivePath(resolved, deps.home)) {
         return finalizeAsk(req, "read:sensitive", `read of sensitive path ${p}`);
       }
-      if (!inside) {
+      if (!inside && !(req.autoSandbox && req.modelTier === "trusted")) {
         return finalizeAsk(req, "read:escape", `read outside workspace: ${p}`);
       }
     }
@@ -88,11 +90,13 @@ export function decide(req: PolicyRequest, deps: PolicyDeps): PolicyResult {
       if (isSensitivePath(resolved, deps.home)) {
         return finalizeAsk(req, "read:sensitive", `${req.toolName} of sensitive path ${p}`);
       }
-      if (!inside) {
+      // Out-of-workspace reads prompt -- unless an active Auto sandbox has the
+      // exfil path closed (trusted models only). Sensitive paths still floored above.
+      if (!inside && !(req.autoSandbox && req.modelTier === "trusted")) {
         return finalizeAsk(req, "read:escape", `${req.toolName} outside workspace: ${p}`);
       }
     }
-    return { decision: "allow", category: "read:ok", reason: "non-sensitive read in workspace" };
+    return { decision: "allow", category: "read:ok", reason: "non-sensitive read" };
   }
 
   if (FILE_WRITE_TOOLS.has(req.toolName)) {

@@ -24,6 +24,13 @@ export interface PolicyRequest {
   config: GuardianConfig;
   interactive: boolean;
   cwd: string;
+  /**
+   * Auto mode's OS sandbox is live. Lets the gate relax the escape-shaped asks
+   * the sandbox backstops (out-of-workspace non-sensitive reads, where bash's
+   * network-deny closes the exfil path). Never lifts the sensitive/jail floor or
+   * auto-runs unknown/destructive bash.
+   */
+  autoSandbox?: boolean;
 }
 
 export interface PolicyDeps {

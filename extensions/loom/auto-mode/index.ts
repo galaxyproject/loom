@@ -3,6 +3,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createBashTool } from "@earendil-works/pi-coding-agent";
 import { SandboxManager } from "@anthropic-ai/sandbox-runtime";
 import { loadGuardianConfig, resolveAutoMode } from "../exec-guard/guardian-config";
+import { isAutoSandboxActive, setAutoSandboxActive } from "../exec-guard/runtime-state";
 import { buildSandboxConfig } from "./sandbox-config";
 import { createSandboxedBashOps } from "./sandbox-bash";
 
@@ -21,13 +22,12 @@ import { createSandboxedBashOps } from "./sandbox-bash";
  * use the cwd captured at session start (follow-up: re-init on cwd change).
  */
 export function registerAutoMode(pi: ExtensionAPI): void {
-  let sandboxActive = false;
   let sessionCwd = process.cwd();
 
   pi.registerTool({
     ...createBashTool(sessionCwd),
     async execute(id, params, signal, onUpdate) {
-      const tool = sandboxActive
+      const tool = isAutoSandboxActive()
         ? createBashTool(sessionCwd, { operations: createSandboxedBashOps() })
         : createBashTool(sessionCwd);
       return tool.execute(id, params, signal, onUpdate);
@@ -36,12 +36,12 @@ export function registerAutoMode(pi: ExtensionAPI): void {
 
   // `!`-prefixed user commands bypass tool_call; sandbox them too when active.
   pi.on("user_bash", () => {
-    if (!sandboxActive) return;
+    if (!isAutoSandboxActive()) return;
     return { operations: createSandboxedBashOps() };
   });
 
   pi.on("session_start", async (_event, ctx) => {
-    sandboxActive = false;
+    setAutoSandboxActive(false);
     const cfg = loadGuardianConfig();
     if (!resolveAutoMode(cfg)) return; // off -> plain gate, no sandbox
 
@@ -64,11 +64,11 @@ export function registerAutoMode(pi: ExtensionAPI): void {
           galaxyUrl: process.env.GALAXY_URL,
         }),
       );
-      sandboxActive = true;
+      setAutoSandboxActive(true);
       ctx.ui.setStatus("loom-auto", "Auto (sandboxed)");
       ctx.ui.notify("Auto mode: bash runs inside an OS sandbox.", "info");
     } catch (err) {
-      sandboxActive = false;
+      setAutoSandboxActive(false);
       ctx.ui.notify(
         `Auto mode: sandbox init failed (${err instanceof Error ? err.message : String(err)}); bash stays gated per action.`,
         "error",
@@ -77,13 +77,13 @@ export function registerAutoMode(pi: ExtensionAPI): void {
   });
 
   pi.on("session_shutdown", async () => {
-    if (!sandboxActive) return;
+    if (!isAutoSandboxActive()) return;
     try {
       await SandboxManager.reset();
     } catch {
       // best-effort cleanup
     }
-    sandboxActive = false;
+    setAutoSandboxActive(false);
   });
 
   pi.registerCommand("auto", {
@@ -97,7 +97,7 @@ export function registerAutoMode(pi: ExtensionAPI): void {
         return;
       }
       ctx.ui.notify(
-        sandboxActive
+        isAutoSandboxActive()
           ? "Auto mode on -- bash runs inside the OS sandbox."
           : `Auto mode on, but the sandbox is inactive on ${process.platform}; bash stays gated per action.`,
         "info",
