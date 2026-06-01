@@ -1298,6 +1298,7 @@ const LOCAL_SLASH_COMMANDS = new Set([
   "resume",
   "continue",
   "chat",
+  "cost",
   "connect",
   "help",
 ]);
@@ -1472,11 +1473,31 @@ function handleSummarize(raw: string, argStr: string): void {
   window.orbit.prompt(prompt);
 }
 
+async function appendCostSectionToNotebook(section: string): Promise<void> {
+  const notebook = await window.orbit.loadNotebook();
+  if (!notebook.ok) {
+    throw new Error("Could not load notebook.md");
+  }
+  const current = notebook.content ?? "";
+  const separator =
+    current.length === 0
+      ? ""
+      : current.endsWith("\n\n")
+        ? ""
+        : current.endsWith("\n")
+          ? "\n"
+          : "\n\n";
+  const result = await window.orbit.writeFile("notebook.md", `${current}${separator}${section}\n`);
+  if (!result.ok) {
+    throw new Error(result.error);
+  }
+  await loadNotebookFromDisk();
+}
+
 /**
- * /cost — snapshot session token usage per model, price it against the renderer's
- * pricing table, and ask the agent to append the breakdown to notebook.md.
- * The renderer is the authoritative source for usage numbers; the agent just
- * writes them out.
+ * /cost — snapshot completed-turn usage per model, price it against the
+ * renderer's pricing table, and append the breakdown directly to notebook.md.
+ * This is intentionally local so it can run while the agent is streaming.
  */
 function handleCost(raw: string): void {
   if (perModelUsage.size === 0) {
@@ -1519,27 +1540,19 @@ function handleCost(raw: string): void {
     rows.join("\n");
 
   const heading = "## Session cost";
-  const prompt =
-    `Append the following session cost breakdown verbatim to the notebook file ` +
-    `(notebook.md) in the current working directory. Use Edit or Write to append — ` +
-    `do NOT regenerate, reformat, or wrap the table. The numbers below are authoritative ` +
-    `(captured from the renderer's usage counters, same source as the masthead), so ` +
-    `use them as-is.\n\n` +
-    `Use exactly this heading (H2, verbatim) on its own line, followed by a blank line, ` +
-    `then the table:\n` +
-    `    ${heading}\n\n` +
-    `--- Cost table ---\n` +
-    table +
-    `\n--- end table ---`;
+  const section = `${heading}\n\n${table}`;
 
   chat.addUserMessage(raw);
-  chat.addInfoMessage(
-    `<i>Asking the agent to append the session cost breakdown to ` +
-      `<code>notebook.md</code>…</i>`,
-  );
-  chat.showThinking();
-  setStatusBadge("thinking", "thinking...");
-  window.orbit.prompt(prompt);
+  chat.addInfoMessage(`<i>Appending the session cost breakdown to <code>notebook.md</code>…</i>`);
+  void appendCostSectionToNotebook(section)
+    .then(() => {
+      chat.addInfoMessage(
+        `<i>Appended the session cost breakdown to <code>notebook.md</code>.</i>`,
+      );
+    })
+    .catch((err) => {
+      chat.addErrorMessage(`/cost: ${err instanceof Error ? err.message : String(err)}`);
+    });
 }
 
 /**
@@ -1996,13 +2009,16 @@ inputEl.addEventListener("blur", () => {
 
 sendBtn.addEventListener("click", submit);
 
-abortBtn.addEventListener("click", () => {
+function abortCurrentTurn(): void {
+  clearQueue();
   window.orbit.abort();
-});
+}
+
+abortBtn.addEventListener("click", abortCurrentTurn);
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && streaming) {
-    window.orbit.abort();
+    abortCurrentTurn();
   }
 });
 

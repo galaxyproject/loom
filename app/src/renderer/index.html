@@ -139,7 +139,7 @@
 
           <div id="input-area">
             <div id="slash-popup" class="hidden" role="listbox" aria-label="Slash commands"></div>
-            <div id="queued-panel" class="queued-panel hidden" aria-live="polite">
+            <div id="queued-panel" class="queued-panel hidden">
               <div class="queued-panel-header">
                 <button
                   id="queued-toggle"
@@ -148,7 +148,7 @@
                   aria-expanded="true"
                   aria-controls="queued-list"
                 >
-                  <span id="queued-count">0 queued</span>
+                  <span id="queued-count" aria-live="polite" aria-atomic="true">0 queued</span>
                   <span id="queued-toggle-icon" aria-hidden="true">▾</span>
                 </button>
                 <button
