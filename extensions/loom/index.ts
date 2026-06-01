@@ -21,6 +21,7 @@ import { isTeamDispatchEnabled } from "./teams/is-enabled";
 import { registerSessionIndexTools } from "./session-index/tools";
 import { isSessionIndexEnabled } from "./session-index/is-enabled";
 import { registerConfusablesHint } from "./confusables-hint";
+import { resolveGalaxyToolName } from "./galaxy-code-mode";
 import * as fs from "fs";
 import { getState, getNotebookPath } from "./state";
 import {
@@ -227,30 +228,37 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   // Tool execution lifecycle: show status when Galaxy tools run
   // ─────────────────────────────────────────────────────────────────────────────
   const toolStartTimes = new Map<string, number>();
+  // In code-mode every Galaxy call arrives as galaxy_run_galaxy_tool, so the
+  // underlying tool name (resolvable from args, present only on start) is
+  // remembered per call for the end/result hooks to match on.
+  const effectiveGalaxyTool = new Map<string, string>();
 
   pi.on("tool_execution_start", async (event, ctx) => {
-    if (event.toolName?.startsWith("galaxy_")) {
-      const label = event.toolName.replace(/^galaxy_/, "").replace(/_/g, " ");
-      toolStartTimes.set(event.toolName, Date.now());
+    const effective = resolveGalaxyToolName(event.toolName, event.args);
+    if (event.toolCallId && effective) effectiveGalaxyTool.set(event.toolCallId, effective);
+    if (effective?.startsWith("galaxy_")) {
+      const label = effective.replace(/^galaxy_/, "").replace(/_/g, " ");
+      toolStartTimes.set(event.toolCallId, Date.now());
       ctx.ui.setStatus("galaxy-tool", `🔧 Running ${label}...`);
     }
   });
 
   pi.on("tool_execution_end", async (event, ctx) => {
-    if (event.toolName?.startsWith("galaxy_")) {
-      const startTime = toolStartTimes.get(event.toolName);
+    const effectiveTool = effectiveGalaxyTool.get(event.toolCallId) ?? event.toolName;
+    if (effectiveTool?.startsWith("galaxy_")) {
+      const startTime = toolStartTimes.get(event.toolCallId);
       if (startTime) {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        const label = event.toolName.replace(/^galaxy_/, "").replace(/_/g, " ");
+        const label = effectiveTool.replace(/^galaxy_/, "").replace(/_/g, " ");
         ctx.ui.setStatus("galaxy-tool", `✓ ${label} (${elapsed}s)`);
-        toolStartTimes.delete(event.toolName);
+        toolStartTimes.delete(event.toolCallId);
         setTimeout(() => ctx.ui.setStatus("galaxy-tool", ""), 3000);
       } else {
         ctx.ui.setStatus("galaxy-tool", "");
       }
     }
 
-    if (event.toolName === "galaxy_connect" && !event.isError) {
+    if (effectiveTool === "galaxy_connect" && !event.isError) {
       try {
         const resultText =
           typeof event.result === "string" ? event.result : JSON.stringify(event.result);
@@ -263,7 +271,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
       }
     }
 
-    if (event.toolName === "galaxy_create_history" && !event.isError) {
+    if (effectiveTool === "galaxy_create_history" && !event.isError) {
       try {
         const resultText =
           typeof event.result === "string" ? event.result : JSON.stringify(event.result);
@@ -279,7 +287,8 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_result", async (event, _ctx) => {
-    if (event.toolName === "galaxy_connect") {
+    const effectiveTool = effectiveGalaxyTool.get(event.toolCallId) ?? event.toolName;
+    if (effectiveTool === "galaxy_connect") {
       try {
         const firstContent = event.content?.[0];
         const resultText = firstContent && "text" in firstContent ? firstContent.text : undefined;
@@ -292,7 +301,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
       }
     }
 
-    if (event.toolName === "galaxy_create_history") {
+    if (effectiveTool === "galaxy_create_history") {
       try {
         const firstContent = event.content?.[0];
         const resultText = firstContent && "text" in firstContent ? firstContent.text : undefined;

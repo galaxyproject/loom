@@ -11,6 +11,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as path from "path";
 import { getNotebookPath } from "./state";
 import { appendActivityEvent } from "./activity";
+import { resolveGalaxyToolName } from "./galaxy-code-mode";
 
 // Read-only / filesystem-traversal tools clutter the log without telling the
 // user anything they'd want to re-read later. Omit them.
@@ -40,7 +41,14 @@ const REDACTED = "[redacted]";
  * original shape (the upstream tool runner needs it).
  */
 export function redactArgs(toolName: string, args: unknown): unknown {
-  if (CREDENTIAL_TOOLS.has(toolName)) {
+  // Resolve code-mode dispatches (galaxy_run_galaxy_tool({ name: "connect", ...}))
+  // to the underlying tool so credential-bearing calls are whole-object redacted
+  // by name in either discovery mode -- otherwise the key would land in
+  // activity.jsonl in plaintext.
+  if (
+    CREDENTIAL_TOOLS.has(toolName) ||
+    CREDENTIAL_TOOLS.has(resolveGalaxyToolName(toolName, args) ?? "")
+  ) {
     // Whole-object redact — opt-in for tools that exist solely to take a
     // credential. Only the tool name survives in the activity log.
     return { _redacted: true };
