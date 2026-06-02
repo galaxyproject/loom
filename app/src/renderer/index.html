@@ -272,10 +272,10 @@
         <button
           id="report-issue-btn"
           class="footer-control is-interactive"
-          title="Report an issue"
-          aria-label="Report an issue"
+          title="Send feedback"
+          aria-label="Send feedback"
         >
-          Report
+          Feedback
         </button>
         <div
           id="exec-mode-toggle"
@@ -630,28 +630,25 @@
       </div>
     </div>
 
-    <!-- Report-issue modal -->
+    <!-- Send-feedback modal -->
     <div id="report-overlay" class="modal-overlay hidden">
       <div class="modal">
         <div class="modal-header">
-          <h2>Report an issue</h2>
+          <h2>Send feedback</h2>
           <button id="report-close" class="modal-close" title="Close" aria-label="Close">×</button>
         </div>
         <div class="modal-body">
           <div class="report-account-note">
-            You'll need a GitHub account to submit this — your default browser will open the
-            pre-filled issue page on
+            Your feedback goes straight to the Loom team's private feedback store — no GitHub
+            account needed. If that service is unreachable, Orbit falls back to opening a pre-filled
+            issue on
             <a
               href="https://github.com/galaxyproject/loom"
               target="_blank"
               rel="noopener noreferrer"
               >github.com/galaxyproject/loom</a
-            >, and you click <em>Submit</em> there. No GitHub account?
-            <a href="https://github.com/signup" target="_blank" rel="noopener noreferrer"
-              >Create one</a
             >
-            — if you're serious about data analysis, you'll want one anyway (code, notebooks,
-            collaboration all live there).
+            with only your title and description (no diagnostics), which you submit there.
           </div>
           <div class="prefs-row">
             <label for="report-title">Title</label>
@@ -670,27 +667,28 @@
             <label><input type="checkbox" id="report-include-logs" /> Include logs</label>
           </div>
           <details class="report-disclosure">
-            <summary>What's in this report?</summary>
+            <summary>What's included?</summary>
             <p>
               <b>System info:</b> Orbit version, OS, Electron/Node versions, LLM model + provider
               name (no API key), Galaxy connection state (no credentials).
             </p>
             <p>
-              <b>Logs:</b> last 30 lines of <code>activity.jsonl</code> (if present in the cwd) and
-              last ~150 lines of the in-app shell stream. These can include filenames, tool
-              arguments, and command output -- review the issue body on GitHub before you click
-              Submit there.
+              <b>Logs:</b> last 15 events of <code>activity.jsonl</code> (summarized to one line
+              each, no raw payloads) and the last ~80 lines of the in-app shell stream. These can
+              include filenames, tool arguments, and command output.
             </p>
             <p>
-              Both are off by default. Opt in only when you've decided you're OK sharing them on a
-              public issue.
+              Both are on by default for the beta so we get useful diagnostics. Feedback goes to
+              Loom's private feedback store; uncheck either box to leave it out. If the store is
+              unreachable and we fall back to a public GitHub issue, only your text is sent — never
+              these diagnostics.
             </p>
           </details>
         </div>
         <div class="modal-footer">
           <div class="modal-actions">
             <button id="report-cancel" class="plan-btn">Cancel</button>
-            <button id="report-submit" class="plan-btn primary">Open as GitHub issue</button>
+            <button id="report-submit" class="plan-btn primary">Send feedback</button>
           </div>
         </div>
       </div>

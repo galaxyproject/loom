@@ -7,6 +7,8 @@ import { FileViewer } from "./files/file-viewer.js";
 import { refreshGalaxyInvocations } from "./galaxy-invocations.js";
 import { LoomWidgetKey, decodeMarkdownWidget } from "../../../shared/loom-shell-contract.js";
 import { ALLOWED_SKILLS_PREFIX, isAllowedSkillUrl } from "../../../shared/loom-config.js";
+import { SCHEMA_VERSION } from "../../../shared/feedback-contract.js";
+import type { FeedbackPayload, FeedbackSysinfo } from "../../../shared/feedback-contract.js";
 
 declare global {
   interface Window {
@@ -3055,11 +3057,12 @@ const REPORT_URL_BUDGET = 7000;
 function openReportModal(): void {
   reportTitle.value = "";
   reportBody.value = "";
-  // Default to no auto-collected data. The destination is a public GitHub
-  // issue, so opt-in beats opt-out -- forces the user to read the
-  // disclosure before sharing logs or sysinfo.
-  reportIncludeSysinfo.checked = false;
-  reportIncludeLogs.checked = false;
+  // Default ON: the primary destination is Loom's private capture store, not a
+  // public issue, so opt-out is fine. The user can still uncheck before sending,
+  // and the public GitHub fallback (POST failure) sends text only -- no
+  // diagnostics -- so this never auto-publishes logs to a public issue.
+  reportIncludeSysinfo.checked = true;
+  reportIncludeLogs.checked = true;
   reportOverlay.classList.remove("hidden");
   reportTitle.focus();
 }
@@ -3067,79 +3070,91 @@ function closeReportModal(): void {
   reportOverlay.classList.add("hidden");
 }
 
-async function buildReportBody(userText: string): Promise<string> {
-  const sections: string[] = [userText.trim() || "(no description provided)"];
+// Cap a body on its URL-encoded length for the GitHub-issue fallback. The "new
+// issue" URL (~8KB) is the real limit and punctuation roughly triples under
+// encodeURIComponent, so trim raw chars until the encoded form fits.
+function capForGithubUrl(body: string): string {
+  if (encodeURIComponent(body).length <= REPORT_URL_BUDGET) return body;
+  const marker = "\n\n...(truncated)";
+  const markerCost = encodeURIComponent(marker).length;
+  let out = body;
+  while (encodeURIComponent(out).length + markerCost > REPORT_URL_BUDGET) {
+    out = out.slice(0, Math.floor(out.length * 0.9));
+  }
+  return out + marker;
+}
+
+// Assemble the structured feedback payload POSTed to the capture worker. Honors
+// the two opt-in checkboxes; never includes cwd, API keys, or raw activity
+// payloads (sysinfo strips cwd; the activity tail is summarized to one line per
+// event).
+async function buildFeedbackPayload(): Promise<FeedbackPayload> {
+  const title = reportTitle.value.trim();
+  const body = reportBody.value.trim();
+  let sysinfo: FeedbackSysinfo | undefined;
+  let activityTail: string | undefined;
+  let shellTail: string | undefined;
 
   if (reportIncludeSysinfo.checked) {
     try {
       const info = await window.orbit.getReportSysinfo();
       const cfg = (await window.orbit.getConfig()) as {
-        llm?: { provider?: string; model?: string };
+        llm?: { active?: string; providers?: Record<string, { model?: string }> };
         galaxy?: { active: string | null };
       };
-      // Deliberately not including cwd -- a path like /home/<user>/<project>
-      // leaks both username and project name to a public issue, and isn't
-      // useful for debugging.
-      sections.push(
-        `## System info\n` +
-          `- Orbit: ${info.appVersion}\n` +
-          `- Platform: ${info.platform} ${info.arch}\n` +
-          `- Electron: ${info.electronVersion}, Chrome: ${info.chromeVersion}, Node: ${info.nodeVersion}\n` +
-          `- LLM: ${cfg.llm?.provider ?? "(none)"} / ${cfg.llm?.model ?? "(none)"}\n` +
-          `- Galaxy: ${cfg.galaxy?.active ? "configured" : "not configured"}`,
-      );
-    } catch (err) {
-      sections.push(
-        `## System info\n(failed to collect: ${err instanceof Error ? err.message : String(err)})`,
-      );
+      const active = cfg.llm?.active;
+      sysinfo = {
+        appVersion: info.appVersion,
+        platform: info.platform,
+        arch: info.arch,
+        electron: info.electronVersion,
+        chrome: info.chromeVersion,
+        node: info.nodeVersion,
+        llmProvider: active,
+        llmModel: active ? cfg.llm?.providers?.[active]?.model : undefined,
+        galaxyConfigured: Boolean(cfg.galaxy?.active),
+      };
+    } catch {
+      /* skip sysinfo on failure */
     }
   }
 
   if (reportIncludeLogs.checked) {
-    // Activity tail — last 15 events, summarized to {timestamp} {kind}.
-    // The full payload column has stuffed-JSON tool results that explode
-    // 3–5× under URL-encoding and quickly blow GitHub's URL budget.
     try {
       const res = await window.orbit.readFile("activity.jsonl");
       if (res.ok) {
         const text = new TextDecoder("utf-8").decode(res.bytes);
-        const lines = text.split("\n").filter(Boolean).slice(-15);
-        const summarized = lines.map((line) => {
-          try {
-            const e = JSON.parse(line) as { timestamp?: string; kind?: string; source?: string };
-            return `${e.timestamp ?? "?"} ${e.kind ?? "?"}${e.source ? " (" + e.source + ")" : ""}`;
-          } catch {
-            return line.slice(0, 80);
-          }
-        });
-        sections.push(
-          "## activity.jsonl (last 15 events, summarized)\n```\n" + summarized.join("\n") + "\n```",
-        );
+        activityTail = text
+          .split("\n")
+          .filter(Boolean)
+          .slice(-15)
+          .map((line) => {
+            try {
+              const e = JSON.parse(line) as { timestamp?: string; kind?: string; source?: string };
+              return `${e.timestamp ?? "?"} ${e.kind ?? "?"}${e.source ? " (" + e.source + ")" : ""}`;
+            } catch {
+              return line.slice(0, 80);
+            }
+          })
+          .join("\n");
       }
     } catch {
-      /* file missing or unreadable — skip */
+      /* file missing or unreadable -- skip */
     }
-
-    // Shell tail (last ~80 lines of in-memory ShellPanel)
-    const shellTail = shell.tail(80);
-    if (shellTail.trim()) {
-      sections.push("## Shell stream (last ~80 lines)\n```\n" + shellTail + "\n```");
-    }
+    const t = shell.tail(80);
+    if (t.trim()) shellTail = t;
   }
 
-  let body = sections.join("\n\n");
-  // Cap on the URL-encoded length, not the raw length — a body full of
-  // backslash-quoted JSON expands ~3× under encodeURIComponent. Trim
-  // raw chars until the encoded form fits the budget.
-  if (encodeURIComponent(body).length > REPORT_URL_BUDGET) {
-    const marker = "\n\n…(truncated)";
-    const markerCost = encodeURIComponent(marker).length;
-    while (encodeURIComponent(body).length + markerCost > REPORT_URL_BUDGET) {
-      body = body.slice(0, Math.floor(body.length * 0.9));
-    }
-    body = body + marker;
-  }
-  return body;
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    source: "orbit",
+    title,
+    body,
+    sysinfo,
+    activityTail,
+    shellTail,
+    clientTs: new Date().toISOString(),
+  };
 }
 
 reportBtn.addEventListener("click", openReportModal);
@@ -3165,8 +3180,19 @@ reportSubmit.addEventListener("click", async () => {
   }
   reportSubmit.disabled = true;
   try {
-    const body = await buildReportBody(reportBody.value);
-    await window.orbit.openIssueReport({ title, body });
+    const payload = await buildFeedbackPayload();
+    const result = await window.orbit.submitFeedback(payload);
+    if (result.ok) {
+      closeReportModal();
+      return;
+    }
+    // Fallback: the private store was unreachable. Open a PUBLIC GitHub issue
+    // with ONLY the user's text -- never the auto-collected diagnostics.
+    const fallbackBody = capForGithubUrl(
+      (reportBody.value.trim() || "(no description provided)") +
+        "\n\n_(sent via fallback; diagnostics omitted -- the feedback service was unreachable)_",
+    );
+    await window.orbit.openIssueReport({ title, body: fallbackBody });
     closeReportModal();
   } finally {
     reportSubmit.disabled = false;
