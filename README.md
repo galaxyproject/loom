@@ -514,6 +514,14 @@ If you fully control the environment and want the agent to run unattended (CI, a
 
 Bypass is total -- it removes all prompts and the workspace jail. It can only be enabled by a human through one of those channels: the agent can't turn it on itself, because writing `~/.loom/config.json` is blocked whether it uses the file tools or `bash`, and Orbit's toggle requires an OS-level confirmation the renderer can't forge. The default (`guardian.enabled: true`, not bypassed) is secure; relaxing it is always an explicit choice.
 
+### What the write-jail actually confines -- and what it doesn't
+
+To be precise about the boundary: the workspace jail (default-on, every platform) confines the AI's file writes via the `write` and `edit` tools. Those tools can create or modify files inside your analysis directory (where `notebook.md` lives), plus the OS temp dir and Loom's own `.loom` state; writing anywhere else, or to a credential-shaped path (private keys like `id_rsa`/`id_ed25519`, `*.pem`, `*.key`, `.env`, and `ssh`/`aws`/`gcloud`/`kube`/`docker`/keychain dirs), prompts for approval.
+
+Shell (`bash`) commands are **not** OS-sandboxed by default -- they're gated per action by the same approval flow (catastrophic patterns blocked outright, everything else prompts), but a bash command that writes a file or touches the network doesn't go through the write-jail path. To also confine bash writes and limit its network access inside a real OS sandbox, enable the opt-in bash sandbox (`--sandbox` / `LOOM_SANDBOX=1` / `guardian.sandbox`), available on macOS and Linux/WSL2.
+
+What this does **not** confine: reading files (the write-jail is not an exfiltration control), and data leaving via remote channels -- syncing the notebook to a Galaxy Page, Galaxy MCP operations (uploads, running tools), `skills_fetch`'s cache writes under `~/.loom`, or web fetches. Treat the working-dir confinement as "the AI's edits stay in your analysis directory," not "your data cannot leave the machine."
+
 ## Cost tracking
 
 Orbit's footer shows live in-flight cost for the active session (computed from `usage.cost` returned per stream event by pi-ai). For accurate **historical / per-project / per-model** reporting across all your sessions, run [CodeBurn](https://github.com/getagentseal/codeburn) in a separate terminal:

@@ -42,8 +42,16 @@ if (userArgs.includes("--dangerously-bypass-permissions")) {
 if (userArgs.includes("--safe")) {
   process.env.LOOM_SAFE = "1";
 }
+// Opt-in bash sandbox: run allowed bash inside an OS sandbox (the gate still gates).
+if (userArgs.includes("--sandbox")) {
+  process.env.LOOM_SANDBOX = "1";
+}
 for (let i = userArgs.length - 1; i >= 0; i--) {
-  if (userArgs[i] === "--dangerously-bypass-permissions" || userArgs[i] === "--safe") {
+  if (
+    userArgs[i] === "--dangerously-bypass-permissions" ||
+    userArgs[i] === "--safe" ||
+    userArgs[i] === "--sandbox"
+  ) {
     userArgs.splice(i, 1);
   }
 }

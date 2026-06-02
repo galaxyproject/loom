@@ -34,6 +34,7 @@
     ]
   },
   "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "^0.0.52",
     "@earendil-works/pi-coding-agent": "^0.75.4",
     "@earendil-works/pi-tui": "^0.75.4",
     "@sinclair/typebox": "^0.34.49",
@@ -67,8 +68,8 @@
     ]
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
     "@earendil-works/pi-ai": "^0.75.4",
+    "@eslint/js": "^10.0.1",
     "@types/better-sqlite3": "^7.6.13",
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",

@@ -81,6 +81,13 @@ function reconcileIncomingConfig(incoming: Record<string, unknown>): LoomConfig 
   const canEncrypt = safeStorageAvailable();
   const out: LoomConfig = { ...current, ...(incoming as LoomConfig) };
 
+  // Guardian: only the sandbox toggle comes from the renderer; merge it onto the
+  // stored block so toggling it never drops dangerouslyBypassPermissions / trustedWorkspaces.
+  const incomingGuardian = (incoming as { guardian?: { sandbox?: boolean } }).guardian;
+  if (incomingGuardian) {
+    out.guardian = { ...current.guardian, sandbox: incomingGuardian.sandbox === true };
+  }
+
   // LLM multi-provider reconciliation. The renderer sends:
   //   { active, providers: { [name]: { apiKey?, model? } } }
   // where apiKey may be UNCHANGED_SECRET (preserve), "" (clear), or a new value.
@@ -300,6 +307,7 @@ export function registerIpcHandlers(agent: AgentManager): void {
     "skills",
     "condaBin",
     "experiments",
+    "guardian",
   ]);
 
   function sanitizeConfig(input: unknown): LoomConfig {
@@ -317,6 +325,12 @@ export function registerIpcHandlers(agent: AgentManager): void {
     }
     if (dropped.length > 0) {
       log("config:save dropped unknown keys:", dropped);
+    }
+    // guardian: the renderer may only set the sandbox toggle. dangerouslyBypassPermissions
+    // is intentionally stripped here -- it has its own native-confirm IPC, so a renderer
+    // XSS that reached config:save still can't enable the bypass.
+    if (out.guardian && typeof out.guardian === "object" && !Array.isArray(out.guardian)) {
+      out.guardian = { sandbox: (out.guardian as Record<string, unknown>).sandbox === true };
     }
     return out as LoomConfig;
   }

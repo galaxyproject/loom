@@ -36,15 +36,19 @@ export function decide(req: PolicyRequest, deps: PolicyDeps): PolicyResult {
     return { decision: "allow", category: "bypass", reason: "permissions bypassed" };
   }
 
-  if (req.toolName === "bash") {
+  // pi emits its built-in file tools lowercase ("bash"/"read"/"write"/"edit"); we
+  // normalize so a future capitalized or renamed emission can't slip past the jail
+  // into the "other -> allow" bucket. (Verified: pi has exactly write+edit, lowercase.)
+  const toolName = req.toolName.toLowerCase();
+
+  if (toolName === "bash") {
     const command = pick(req.toolInput, "command") ?? "";
     const c = classifyBash(command, deps.home);
     if (c.kind === "catastrophic") {
       return { decision: "deny", category: "bash:catastrophic", reason: c.reason };
     }
     // Floor: detectable read-args of a "safe" command still face sensitive-read +
-    // the workspace jail. This floor is never lifted by a trusted workspace.
-    // Reading file contents from outside the workspace prompts, same as a write.
+    // the workspace jail. A read pointed outside the work dir prompts, same as a write.
     for (const p of c.readPaths) {
       const { inside, resolved } = deps.resolver.contains(p);
       if (isSensitivePath(resolved, deps.home)) {
@@ -81,24 +85,30 @@ export function decide(req: PolicyRequest, deps: PolicyDeps): PolicyResult {
     return finalizeAsk(req, "bash:unknown", c.reason);
   }
 
-  if (FILE_READ_TOOLS.has(req.toolName)) {
+  if (FILE_READ_TOOLS.has(toolName)) {
     const p = pick(req.toolInput, "path");
     if (p) {
       const { inside, resolved } = deps.resolver.contains(p);
       if (isSensitivePath(resolved, deps.home)) {
         return finalizeAsk(req, "read:sensitive", `${req.toolName} of sensitive path ${p}`);
       }
+      // Out-of-workspace reads prompt. Sensitive paths are floored above.
       if (!inside) {
         return finalizeAsk(req, "read:escape", `${req.toolName} outside workspace: ${p}`);
       }
     }
-    return { decision: "allow", category: "read:ok", reason: "non-sensitive read in workspace" };
+    return { decision: "allow", category: "read:ok", reason: "non-sensitive read" };
   }
 
-  if (FILE_WRITE_TOOLS.has(req.toolName)) {
+  if (FILE_WRITE_TOOLS.has(toolName)) {
     const p = pick(req.toolInput, "path");
     if (!p) return finalizeAsk(req, "write:no-path", "write with no resolvable path");
     const { inside, resolved } = deps.resolver.contains(p);
+    // Credential-shaped writes are floored regardless of jail membership, mirroring
+    // the read branch -- a secret dropped inside the workspace is still a secret.
+    if (isSensitivePath(resolved, deps.home)) {
+      return finalizeAsk(req, "write:sensitive", `write to sensitive path ${p}`);
+    }
     // Gated even inside the jail: a script under .git/hooks runs on the next git
     // operation, and .loom/ is Loom's own state -- the README promises these
     // always prompt, so they must, regardless of being in the workspace.
@@ -110,6 +120,11 @@ export function decide(req: PolicyRequest, deps: PolicyDeps): PolicyResult {
     return finalizeAsk(req, "write:escape", `write outside workspace: ${p}`);
   }
 
-  // Everything else (Galaxy/notebook tools, etc.) is allowed.
+  // Everything else is allowed: Galaxy/notebook tools, web fetchers, MCP. These are
+  // the remote/egress surface (notebook_push_to_galaxy, galaxy_upload_*/run_user_tool,
+  // skills_fetch's ~/.loom cache write, the mcp.json sync) and are deliberately OUT of scope
+  // for the working-dir write-jail -- a local write boundary cannot and does not
+  // promise anything about data leaving the machine. Gating egress is separate future
+  // work; do not let this fallthrough be read as "confined".
   return { decision: "allow", category: "other", reason: "non-local-execution tool" };
 }

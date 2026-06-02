@@ -187,6 +187,23 @@ a:visited {
   display: none;
 }
 
+#sandbox-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 12px;
+  background: var(--bg-surface);
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  flex: 0 0 auto;
+}
+#sandbox-banner.hidden {
+  display: none;
+}
+
 .pane {
   display: flex;
   flex-direction: column;

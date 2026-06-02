@@ -81,6 +81,13 @@ export interface LoomConfig {
     extraWorkspaceRoots?: string[];
     /** Record of the one-time local-execution consent. */
     consentAcknowledged?: { version: string; at: string } | null;
+    /**
+     * Opt-in bash sandbox: run allowed bash inside an OS sandbox (sandbox-exec /
+     * bubblewrap) so bash writes are confined to the workspace and its network is
+     * limited. Off by default (it restricts bash network); also settable via
+     * --sandbox / LOOM_SANDBOX. File-tool writes are confined by the gate regardless.
+     */
+    sandbox?: boolean;
   };
 }
 
