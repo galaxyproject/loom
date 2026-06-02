@@ -38,14 +38,18 @@ export async function handleOrbitHandoff(
 
   try {
     const result = launchOrbit(orbitPath, ctx.cwd);
+    // We deliberately do NOT auto-close the CLI. ctx.shutdown() only sets a flag
+    // that pi's interactive mode reads at agent_end, so a slash command can't
+    // trigger a graceful exit (terminal restore + the session_shutdown lifecycle),
+    // and a bare process.exit() would leave the terminal in raw mode. So we launch
+    // and ask the user to close the CLI themselves. (Orbit's embedded RPC brain
+    // honors shutdown-from-command; the terminal CLI doesn't yet -- once it does,
+    // this can move the launch into a session_shutdown handler and exit cleanly.)
     ctx.ui.notify(
-      `Launching Orbit (pid ${result.pid ?? "?"}) on ${ctx.cwd}. ` +
-        `Closing this CLI session -- your work continues in Orbit.`,
+      `Orbit is opening on ${ctx.cwd} (pid ${result.pid ?? "?"}). Your work continues there -- ` +
+        `press Ctrl-D or type /exit to close this CLI so both don't write the same notebook.`,
       "info",
     );
-    // ctx.shutdown() awaits the session_shutdown lifecycle (notebook summary,
-    // galaxy poller stop) before quitting -- no race with process.exit.
-    ctx.shutdown();
   } catch (err) {
     ctx.ui.notify(
       `Failed to launch Orbit at ${orbitPath}: ${err instanceof Error ? err.message : String(err)}`,

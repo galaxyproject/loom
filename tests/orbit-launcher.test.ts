@@ -131,3 +131,39 @@ describe("handleOrbitHandoff -- embedded guard", () => {
     expect(notify).toHaveBeenCalledWith(expect.stringContaining("already in Orbit"), "info");
   });
 });
+
+describe("handleOrbitHandoff -- launch (no auto-exit)", () => {
+  const prevShell = process.env.LOOM_SHELL_KIND;
+  const prevBin = process.env.ORBIT_BIN;
+  beforeEach(() => {
+    delete process.env.LOOM_SHELL_KIND; // not embedded
+    process.env.ORBIT_BIN = process.execPath; // a path that always exists, so findOrbit resolves
+  });
+  afterEach(() => {
+    if (prevShell === undefined) delete process.env.LOOM_SHELL_KIND;
+    else process.env.LOOM_SHELL_KIND = prevShell;
+    if (prevBin === undefined) delete process.env.ORBIT_BIN;
+    else process.env.ORBIT_BIN = prevBin;
+  });
+
+  it("launches Orbit, tells the user how to close the CLI, and does NOT auto-exit", async () => {
+    const fakeChild = { unref: vi.fn(), on: vi.fn(), pid: 999 };
+    vi.mocked(spawn).mockReturnValue(fakeChild as any);
+    const notify = vi.fn();
+    const shutdown = vi.fn();
+    await handleOrbitHandoff(undefined, {
+      cwd: "/Users/me/analysis",
+      ui: { notify },
+      shutdown,
+    } as any);
+    expect(spawn).toHaveBeenCalledWith(
+      process.execPath,
+      ["--cwd", "/Users/me/analysis"],
+      expect.objectContaining({ detached: true, stdio: "ignore" }),
+    );
+    // the descoped behavior: never auto-exits the CLI ...
+    expect(shutdown).not.toHaveBeenCalled();
+    // ... and tells the user how to close it themselves
+    expect(notify).toHaveBeenCalledWith(expect.stringMatching(/Ctrl-D|\/exit/), "info");
+  });
+});
