@@ -22,7 +22,7 @@ import { registerSessionIndexTools } from "./session-index/tools";
 import { isSessionIndexEnabled } from "./session-index/is-enabled";
 import { registerConfusablesHint } from "./confusables-hint";
 import { registerExecGuard } from "./exec-guard";
-import { registerAutoMode } from "./auto-mode";
+import { registerSandbox } from "./sandbox";
 import * as fs from "fs";
 import { getState, getNotebookPath, getNotebookWidgetMode, setNotebookWidgetMode } from "./state";
 import {
@@ -41,9 +41,10 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   // Register the local-execution safety gate first so its tool_call decision is
   // the authoritative boundary before anything else runs.
   registerExecGuard(pi);
-  // Auto mode layers an OS sandbox UNDER the gate (the gate still decides
-  // allow/ask/deny; the sandbox only contains an allowed command's blast radius).
-  registerAutoMode(pi);
+  // The opt-in bash sandbox layers an OS sandbox UNDER the gate (the gate still
+  // decides allow/ask/deny; the sandbox only contains an allowed command's blast
+  // radius). Default-on file-write confinement lives in the gate itself.
+  registerSandbox(pi);
 
   setupUIBridge(pi);
   registerSessionLifecycle(pi);

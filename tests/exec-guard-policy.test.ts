@@ -14,6 +14,7 @@ const baseCfg: GuardianConfig = {
   trustedWorkspaces: [],
   extraWorkspaceRoots: [],
   consentAcknowledged: null,
+  sandbox: false,
 };
 // fake resolver: "inside" iff the path starts with CWD or /tmp.
 const resolver: PathResolver = {

@@ -9,7 +9,7 @@ export function loadGuardianConfig(): GuardianConfig {
     trustedWorkspaces: g.trustedWorkspaces ?? [],
     extraWorkspaceRoots: g.extraWorkspaceRoots ?? [],
     consentAcknowledged: g.consentAcknowledged ?? null,
-    autoMode: g.autoMode === true,
+    sandbox: g.sandbox === true,
   };
 }
 
@@ -25,14 +25,13 @@ export function resolveBypass(cfg: GuardianConfig): boolean {
 }
 
 /**
- * Auto mode is ON if (env flag OR config) AND NOT force-off via --safe/LOOM_SAFE.
- * Unlike bypass, auto mode does not weaken the gate -- it adds an OS sandbox under
- * allowed bash -- so it's a normal toggle, not a human-only one.
+ * The OS bash sandbox is opt-in: enabling it necessarily restricts bash network
+ * (ASRT cannot confine writes alone), so it's a deliberate user choice, not a
+ * default. On via LOOM_SANDBOX=1 or guardian.sandbox. Default off.
  */
-export function resolveAutoMode(cfg: GuardianConfig): boolean {
-  if (process.env.LOOM_SAFE === "1") return false;
-  if (process.env.LOOM_AUTO === "1") return true;
-  return cfg.autoMode === true;
+export function resolveSandbox(cfg: GuardianConfig): boolean {
+  if (process.env.LOOM_SANDBOX === "1") return true;
+  return cfg.sandbox === true;
 }
 
 export function trustWorkspace(dir: string): void {

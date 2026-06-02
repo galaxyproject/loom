@@ -1,14 +1,15 @@
-// Runtime flag the auto-mode extension flips once the OS sandbox is actually
-// live, read by the gate so it can relax the escape-shaped asks the sandbox
-// backstops. Lives in exec-guard (the lower layer) so the gate never imports
-// upward into auto-mode. Reflects the *real* state -- false on unsupported
-// platforms or a failed init -- so the gate only relaxes when there's a wall.
-let autoSandboxActive = false;
+// Set by the bash sandbox layer when the OS sandbox is actually live for bash
+// (false on unsupported platforms or a failed init). Lives in exec-guard, the
+// lower layer, so the gate can query it without importing upward into the sandbox
+// module. Layer 1 (write confinement) does NOT relax anything off this flag; it is
+// kept here as the seam a future sound auto-allow (contained, recoverable
+// unknown-bash) will read.
+let sandboxActive = false;
 
-export function setAutoSandboxActive(active: boolean): void {
-  autoSandboxActive = active;
+export function setSandboxActive(active: boolean): void {
+  sandboxActive = active;
 }
 
-export function isAutoSandboxActive(): boolean {
-  return autoSandboxActive;
+export function isSandboxActive(): boolean {
+  return sandboxActive;
 }
