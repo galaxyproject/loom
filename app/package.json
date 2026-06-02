@@ -1,7 +1,7 @@
 {
   "name": "orbit",
   "productName": "Orbit",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Electron desktop shell for the Loom agent runtime (Galaxy bioinformatics)",
   "license": "MIT",
   "main": ".vite/build/main.js",
