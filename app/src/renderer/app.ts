@@ -115,30 +115,36 @@ let PRICING: Record<string, { in: number; out: number; cacheRead?: number; cache
     "qwen3:8b": { in: 0, out: 0 },
   };
 
-// Per-model context-window size (tokens). Fallback only — overwritten by
-// populateDynamicModelData() from pi-ai's registry. Powers the footer's
-// context-fill indicator. Honest-window caveat: the registry value for
-// openai-codex models (e.g. gpt-5.5 = 272000) reflects the API model's max,
-// which can exceed the ChatGPT-subscription endpoint's real limit, so the bar
-// may under-report on that path. Documented; not special-cased.
-let CONTEXT_WINDOWS: Record<string, number> = {
-  // Anthropic
-  "claude-opus-4-8": 200_000,
-  "claude-opus-4-7": 200_000,
-  "claude-opus-4-6": 200_000,
-  "claude-opus-4-5": 200_000,
-  "claude-sonnet-4-6": 200_000,
-  "claude-sonnet-4-5": 200_000,
-  "claude-haiku-4-5": 200_000,
-  // OpenAI
-  "gpt-4o": 128_000,
-  "gpt-4o-mini": 128_000,
-  "gpt-4-turbo": 128_000,
-  o1: 200_000,
-  "o1-mini": 128_000,
-  // Google
-  "gemini-2.5-pro": 1_048_576,
-  "gemini-2.5-flash": 1_048_576,
+// Per-model context-window size (tokens), keyed by provider then model id.
+// Fallback only — overwritten per provider by populateDynamicModelData() from
+// pi-ai's registry. Powers the footer's context-fill indicator. Keyed by
+// provider because pi-ai exposes the same model id under multiple providers
+// with different windows (e.g. gpt-5.2 is openai=400k but openai-codex=272k),
+// so a flat id→window map would let whichever provider loaded last win.
+// Honest-window caveat: a registry window (an openai-codex model, or Claude's
+// 1M tier) can exceed the endpoint's real usable limit, so the bar may
+// under-report on those paths. Documented; not special-cased.
+let CONTEXT_WINDOWS: Record<string, Record<string, number>> = {
+  anthropic: {
+    "claude-opus-4-8": 1_000_000,
+    "claude-opus-4-7": 1_000_000,
+    "claude-opus-4-6": 1_000_000,
+    "claude-opus-4-5": 200_000,
+    "claude-sonnet-4-6": 1_000_000,
+    "claude-sonnet-4-5": 200_000,
+    "claude-haiku-4-5": 200_000,
+  },
+  openai: {
+    "gpt-4o": 128_000,
+    "gpt-4o-mini": 128_000,
+    "gpt-4-turbo": 128_000,
+    o1: 200_000,
+    "o1-mini": 128_000,
+  },
+  google: {
+    "gemini-2.5-pro": 1_048_576,
+    "gemini-2.5-flash": 1_048_576,
+  },
 };
 
 interface Usage {
@@ -154,6 +160,11 @@ const turnUsage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 // produced them (the user can switch models mid-session).
 const perModelUsage = new Map<string, Usage>();
 let currentModel: string | null = null;
+// Active provider for currentModel. Tracked separately because pi-ai exposes
+// the same model id under multiple providers with different context windows,
+// and usage events carry only the model — so we set this at the explicit
+// model/provider change sites (startup, /model switch, prefs save).
+let currentProvider: string | null = null;
 
 // Current context occupancy: input + cacheRead of the LATEST assistant turn's
 // usage (the size of the last request sent to the model). This is NOT the
@@ -285,19 +296,44 @@ function renderUsage(): void {
   }
 }
 
-/** Resolve a model id to its context-window size (tokens), or null if unknown. */
-function contextWindowFor(model: string | null): number | null {
-  if (!model) return null;
-  const exact = CONTEXT_WINDOWS[model];
+/**
+ * Look up a model's window within one provider's table: exact, then date-suffix
+ * strip, then longest-key-first prefix requiring a delimiter boundary — so
+ * "gpt-5" can't swallow "gpt-5.4-pro" (a "." is not a boundary), while
+ * "claude-opus-4-8" still matches a dated "claude-opus-4-8-20250514".
+ */
+function windowFromTable(table: Record<string, number>, model: string): number | null {
+  const exact = table[model];
   if (typeof exact === "number" && exact > 0) return exact;
-  // Prefix match (e.g. claude-opus-4-8-20250514 → claude-opus-4-8).
-  for (const key of Object.keys(CONTEXT_WINDOWS)) {
-    if (model.startsWith(key)) {
-      const w = CONTEXT_WINDOWS[key];
-      if (w > 0) return w;
+  const stripped = model.replace(/-\d{8}$/, "");
+  if (typeof table[stripped] === "number" && table[stripped] > 0) return table[stripped];
+  for (const key of Object.keys(table).sort((a, b) => b.length - a.length)) {
+    if ((model.startsWith(`${key}-`) || model.startsWith(`${key}:`)) && table[key] > 0) {
+      return table[key];
     }
   }
   return null;
+}
+
+/**
+ * Resolve a model id to its context-window size (tokens), or null if unknown.
+ * Provider-qualified first (the same id can mean different windows on different
+ * providers); falls back to a provider-agnostic search when the provider is
+ * unknown or absent from the table, preferring the smallest match so the bar
+ * warns early rather than miss an overflow.
+ */
+function contextWindowFor(provider: string | null, model: string | null): number | null {
+  if (!model) return null;
+  if (provider && CONTEXT_WINDOWS[provider]) {
+    const w = windowFromTable(CONTEXT_WINDOWS[provider], model);
+    if (w !== null) return w;
+  }
+  let best: number | null = null;
+  for (const table of Object.values(CONTEXT_WINDOWS)) {
+    const w = windowFromTable(table, model);
+    if (w !== null && (best === null || w < best)) best = w;
+  }
+  return best;
 }
 
 // Context-fill indicator: shows how full the current model's context window is,
@@ -309,7 +345,7 @@ function contextWindowFor(model: string | null): number | null {
 function updateContextFill(): void {
   // Local is named windowSize (not `window`) to avoid shadowing the global
   // window object the renderer uses for window.orbit.* calls.
-  const windowSize = contextWindowFor(currentModel);
+  const windowSize = contextWindowFor(currentProvider, currentModel);
   if (!windowSize || contextTokens <= 0) {
     contextFillEl.classList.add("hidden");
     contextFillEl.classList.remove("warn", "danger");
@@ -326,7 +362,7 @@ function updateContextFill(): void {
   // null model, which the early return above already handled.
   contextFillEl.title =
     `Context: ${contextTokens.toLocaleString()} / ${windowSize.toLocaleString()} tokens (${pct}%)` +
-    `\nmodel: ${currentModel}`;
+    `\nmodel: ${currentModel}${currentProvider ? ` (${currentProvider})` : ""}`;
 }
 
 /** Format a long model id into a short display label, e.g. claude-sonnet-4-6 → "Sonnet 4.6". */
@@ -924,7 +960,8 @@ async function populateDynamicModelData(): Promise<void> {
           cacheWrite: e.pricing.cacheWrite,
         };
         if (typeof e.contextWindow === "number" && e.contextWindow > 0) {
-          newWindows[e.id] = e.contextWindow;
+          newWindows[provider] = newWindows[provider] ?? {};
+          newWindows[provider][e.id] = e.contextWindow;
         }
       }
     }
@@ -933,7 +970,13 @@ async function populateDynamicModelData(): Promise<void> {
     // IPC (e.g. deepseek before main process restarts) survive.
     MODELS_BY_PROVIDER = { ...MODELS_BY_PROVIDER, ...newModels };
     PRICING = { ...PRICING, ...newPricing };
-    CONTEXT_WINDOWS = { ...CONTEXT_WINDOWS, ...newWindows };
+    // Merge per provider so hardcoded providers/models not returned by the IPC
+    // survive (mirrors the MODELS/PRICING merge above).
+    const mergedWindows: typeof CONTEXT_WINDOWS = { ...CONTEXT_WINDOWS };
+    for (const [provider, table] of Object.entries(newWindows)) {
+      mergedWindows[provider] = { ...mergedWindows[provider], ...table };
+    }
+    CONTEXT_WINDOWS = mergedWindows;
     // A late registry load may add the current model's window → refresh.
     updateContextFill();
   } catch {
@@ -1045,6 +1088,7 @@ void (async () => {
     const model = activeProvider ? cfg.llm?.providers?.[activeProvider]?.model : undefined;
     if (model) {
       currentModel = model;
+      currentProvider = activeProvider ?? null;
       renderModelIndicator();
       // No request has been sent on this model yet → hide/reset the fill bar.
       contextTokens = 0;
@@ -1817,7 +1861,7 @@ async function switchModelByAlias(originalText: string, alias: string): Promise<
   chat.addUserMessage(originalText);
 
   const cfg = (await window.orbit.getConfig()) as { llm?: { active?: string } };
-  const currentProvider = cfg.llm?.active || "anthropic";
+  const prevProvider = cfg.llm?.active || "anthropic";
 
   // Search strategy: prefer current provider, then search all providers.
   // Within each provider: exact id match → id substring → label substring.
@@ -1833,13 +1877,13 @@ async function switchModelByAlias(originalText: string, alias: string): Promise<
   };
 
   // 1. Try current provider first (preserves user's existing setup)
-  const inCurrent = search(currentProvider);
+  const inCurrent = search(prevProvider);
   if (inCurrent) {
-    chosen = { provider: currentProvider, model: inCurrent };
+    chosen = { provider: prevProvider, model: inCurrent };
   } else {
     // 2. Fall back to searching every provider
     for (const p of Object.keys(MODELS_BY_PROVIDER)) {
-      if (p === currentProvider) continue;
+      if (p === prevProvider) continue;
       const m = search(p);
       if (m) {
         chosen = { provider: p, model: m };
@@ -1858,7 +1902,7 @@ async function switchModelByAlias(originalText: string, alias: string): Promise<
 
   // Partial update -- the reconciler preserves every other provider's
   // encrypted key + model and only overlays what we send.
-  const switchingProvider = chosen.provider !== currentProvider;
+  const switchingProvider = chosen.provider !== prevProvider;
   const update = {
     llm: {
       active: chosen.provider,
@@ -1872,6 +1916,7 @@ async function switchModelByAlias(originalText: string, alias: string): Promise<
   }
 
   currentModel = chosen.model.id;
+  currentProvider = chosen.provider;
   renderModelIndicator();
   // Manual switch: the stale request size is for the old model's window; reset
   // so the bar re-populates correctly on the new model's first turn.
@@ -3288,10 +3333,15 @@ async function savePreferences(): Promise<void> {
     void refreshGalaxyStatus();
     refreshSandboxBanner(prefsSandbox.checked);
     if (selectedModel) {
+      const modelChanged = selectedModel !== prevModel;
       currentModel = selectedModel;
+      currentProvider = activeProvider;
       renderModelIndicator();
-      // Manual switch: reset so the bar re-populates on the new model's next turn.
-      contextTokens = 0;
+      // Only zero the numerator when the model actually changed. Saving an
+      // unrelated pref restarts the agent with --continue (context preserved),
+      // so resetting here would needlessly hide the bar until the next turn.
+      // The window may still differ (provider change), so always recompute.
+      if (modelChanged) contextTokens = 0;
       updateContextFill();
     }
     // Info card, not a fake user prompt — was getting numbered as a real
