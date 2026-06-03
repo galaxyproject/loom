@@ -314,6 +314,7 @@ export function registerIpcHandlers(agent: AgentManager): void {
     "condaBin",
     "experiments",
     "guardian",
+    "updateCheck",
   ]);
 
   function sanitizeConfig(input: unknown): LoomConfig {
