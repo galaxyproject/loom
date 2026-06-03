@@ -57,6 +57,7 @@
     "test:watch": "vitest",
     "evals": "tsx evals/run.ts",
     "typecheck": "tsc --noEmit",
+    "check:versions": "node scripts/check-version-lockstep.mjs",
     "smoke:pack": "node scripts/smoke-pack.mjs",
     "prepublishOnly": "npm run typecheck && npm test && npm run smoke:pack"
   },

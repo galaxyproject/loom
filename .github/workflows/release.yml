@@ -58,6 +58,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Assert version lockstep
+        run: node scripts/check-version-lockstep.mjs
+
       - name: Install Linux packaging deps
         if: matrix.platform == 'linux'
         run: sudo apt-get update -qq && sudo apt-get install -y fakeroot rpm
@@ -146,6 +149,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
           files: |
             artifacts/**/*.dmg
