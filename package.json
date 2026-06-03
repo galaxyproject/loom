@@ -1,6 +1,6 @@
 {
   "name": "@galaxyproject/loom",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "AI co-scientist for Galaxy bioinformatics, built on Pi.dev",
   "keywords": [
