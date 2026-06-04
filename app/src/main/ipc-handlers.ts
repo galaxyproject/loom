@@ -308,6 +308,10 @@ export function registerIpcHandlers(agent: AgentManager): void {
     },
   );
 
+  // Lets the renderer know whether saving a key will actually hit the OS keychain
+  // (macOS safeStorage), so it can pre-warn the user before the system dialog.
+  ipcMain.handle("secure:is-encryption-available", () => safeStorageAvailable());
+
   // Top-level config keys the renderer is allowed to set. Anything else
   // submitted via config:save is dropped before saveConfig() runs — the
   // renderer is the smaller trust boundary, so a markdown XSS that
