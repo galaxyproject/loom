@@ -17,6 +17,7 @@ import {
   refreshCatalog,
   skillsCacheDir,
   BUILTIN_CATALOG,
+  refreshAllCatalogs,
 } from "../extensions/loom/skills-discovery";
 
 describe("parseFrontmatter", () => {
@@ -316,5 +317,42 @@ describe("BUILTIN_CATALOG", () => {
       "galaxy-integration/mcp-reference/SKILL.md",
     ]);
     for (const e of entries) expect(e.surfaces).toContain("loom");
+  });
+});
+
+describe("refreshAllCatalogs", () => {
+  let tmp: string;
+  beforeEach(() => {
+    // Point HOME at a temp dir and write a real ~/.loom/config.json so
+    // listEnabledSkillRepos() resolves the repo through its normal path
+    // (no module mocking, and no touching the developer's real config).
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "loom-all-"));
+    vi.spyOn(os, "homedir").mockReturnValue(tmp);
+    fs.mkdirSync(path.join(tmp, ".loom"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, ".loom", "config.json"),
+      JSON.stringify({
+        skills: {
+          repos: [{ name: "galaxy-skills", url: REPO.url, branch: "main", enabled: true }],
+        },
+      }),
+      "utf-8",
+    );
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("force-refreshes every enabled repo and reports counts", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockGithub([{ path: "a/SKILL.md", type: "blob" }], {
+        "a/SKILL.md": "---\nname: a\ndescription: d\nsurfaces: [loom]\n---\n",
+      }),
+    );
+    const summary = await refreshAllCatalogs();
+    expect(summary).toEqual([{ repo: "galaxy-skills", count: 1, ok: true }]);
   });
 });

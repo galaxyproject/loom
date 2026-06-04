@@ -250,6 +250,40 @@ export async function refreshCatalog(
   return skills;
 }
 
+export interface CatalogRefreshResult {
+  repo: string;
+  count: number;
+  ok: boolean;
+  error?: string;
+}
+
+/** Force-refresh every enabled repo (the manual path). Per-repo errors are reported, not thrown. */
+export async function refreshAllCatalogs(): Promise<CatalogRefreshResult[]> {
+  const out: CatalogRefreshResult[] = [];
+  for (const repo of listEnabledSkillRepos()) {
+    try {
+      const skills = await refreshCatalog(repo, { force: true });
+      out.push({ repo: repo.name, count: skills.length, ok: true });
+    } catch (e) {
+      out.push({
+        repo: repo.name,
+        count: 0,
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+  return out;
+}
+
+/** Current cached catalog counts without refreshing (the status path). */
+export function catalogSummary(): CatalogRefreshResult[] {
+  return listEnabledSkillRepos().map((repo) => {
+    const cat = readCatalog(repo);
+    return { repo: repo.name, count: cat?.skills.length ?? 0, ok: true };
+  });
+}
+
 /** For each enabled repo: refresh on start if stale/missing. Errors are swallowed (keep cache). */
 export async function backgroundRefreshSkills(): Promise<void> {
   for (const repo of listEnabledSkillRepos()) {

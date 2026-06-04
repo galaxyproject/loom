@@ -11,6 +11,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerPlanTools } from "./tools";
 import { registerNotebookSyncTools } from "./tools-sync";
 import { registerSyncCommand } from "./sync-command";
+import { registerSkillsCommand } from "./skills-command";
 import { setupContextInjection, formatConnectionStatus } from "./context";
 import { setupUIBridge } from "./ui-bridge";
 import { registerSessionLifecycle } from "./session-lifecycle";
@@ -54,6 +55,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   registerPlanTools(pi);
   registerNotebookSyncTools(pi);
   registerSyncCommand(pi);
+  registerSkillsCommand(pi);
   registerExecutionCommands(pi);
   registerFeedbackCommand(pi);
   registerConfusablesHint(pi);
