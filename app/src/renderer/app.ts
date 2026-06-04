@@ -9,6 +9,11 @@ import { PromptQueue, queuedPreview } from "./prompt-queue.js";
 import { LoomWidgetKey, decodeMarkdownWidget } from "../../../shared/loom-shell-contract.js";
 import { ALLOWED_SKILLS_PREFIX, isAllowedSkillUrl } from "../../../shared/loom-config.js";
 import {
+  KEYCHAIN_EXPLAINER_SHOWN_KEY,
+  payloadHasNewSecret,
+  shouldShowKeychainExplainer,
+} from "./keychain-explainer.js";
+import {
   SCHEMA_VERSION,
   formatActivityTail,
   capFeedbackPayload,
@@ -900,6 +905,7 @@ welcomeSave.addEventListener("click", async () => {
   const cwd = welcomeCwd.value.trim();
   if (cwd) cfg.defaultCwd = cwd;
 
+  await maybeShowKeychainExplainer(cfg);
   await window.orbit.saveConfig(cfg);
   welcomeOverlay.classList.add("hidden");
   await refreshGalaxyStatus();
@@ -1813,6 +1819,60 @@ function showNewSessionModal(): Promise<NewSessionChoice> {
     cancelBtn.addEventListener("click", onCancel);
     document.addEventListener("keydown", onKey);
   });
+}
+
+/**
+ * Show the one-time macOS keychain explainer and resolve when dismissed. While
+ * it's up it owns the keyboard: Enter or Escape dismiss it (this is a heads-up,
+ * not a gate -- the user already clicked Save, so dismissing just proceeds). We
+ * listen in the capture phase and stopImmediatePropagation so the welcome/prefs
+ * global Escape handlers don't fire on the overlay underneath us; capture wins
+ * regardless of the order those document-level listeners were registered.
+ */
+function showKeychainExplainer(): Promise<void> {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById("keychain-overlay");
+    const continueBtn = document.getElementById("keychain-continue") as HTMLButtonElement | null;
+    if (!overlay || !continueBtn) {
+      resolve();
+      return;
+    }
+    overlay.classList.remove("hidden");
+    const cleanup = () => {
+      overlay.classList.add("hidden");
+      continueBtn.removeEventListener("click", cleanup);
+      document.removeEventListener("keydown", onKey, true);
+      resolve();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === "Escape") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        cleanup();
+      }
+    };
+    continueBtn.addEventListener("click", cleanup);
+    document.addEventListener("keydown", onKey, true);
+  });
+}
+
+/**
+ * Show the keychain explainer once, immediately before a save that will encrypt
+ * a newly typed key. No-op after the first time, off macOS, when nothing new was
+ * typed, or when safeStorage is unavailable. Cheap checks short-circuit before the
+ * availability IPC; shouldShowKeychainExplainer stays the single source of truth.
+ */
+async function maybeShowKeychainExplainer(config: Record<string, unknown>): Promise<void> {
+  const alreadyShown = localStorage.getItem(KEYCHAIN_EXPLAINER_SHOWN_KEY) === "1";
+  const hasNewSecret = payloadHasNewSecret(config, UNCHANGED_SECRET);
+  if (alreadyShown || !hasNewSecret) return;
+  const platform = window.orbit.platform;
+  const encryptionAvailable = await window.orbit.isEncryptionAvailable();
+  if (!shouldShowKeychainExplainer({ platform, encryptionAvailable, alreadyShown, hasNewSecret })) {
+    return;
+  }
+  await showKeychainExplainer();
+  localStorage.setItem(KEYCHAIN_EXPLAINER_SHOWN_KEY, "1");
 }
 
 async function showCwdWelcome(prefix?: string): Promise<void> {
@@ -3331,6 +3391,7 @@ async function savePreferences(): Promise<void> {
   // and not touching the model — that case shouldn't claim a model swap).
   const prevModel = currentModel;
 
+  await maybeShowKeychainExplainer(config as Record<string, unknown>);
   const result = await window.orbit.saveConfig(config as Record<string, unknown>);
   if (result.success) {
     closePreferences();

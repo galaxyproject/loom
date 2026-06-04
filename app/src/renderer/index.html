@@ -817,6 +817,28 @@
       </div>
     </div>
 
+    <!-- macOS keychain pre-prompt explainer: primes the user right before
+         safeStorage triggers the system Keychain dialog on the first key save. -->
+    <div id="keychain-overlay" class="modal-overlay hidden">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Storing your API key securely</h2>
+        </div>
+        <div class="modal-body">
+          <p>
+            Orbit keeps your API keys in your Mac's Keychain so they're encrypted on disk. macOS
+            will now ask permission to do that. Please click
+            <strong>Always Allow</strong> so Orbit won't have to ask again.
+          </p>
+        </div>
+        <div class="modal-footer">
+          <div class="modal-actions">
+            <button id="keychain-continue" class="plan-btn primary">Continue</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script type="module" src="./app.ts"></script>
   </body>
 </html>
