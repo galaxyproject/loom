@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
+import { listEnabledSkillRepos } from "./skills";
 
 /** The product-surface id Loom claims. A skill opts in with `surfaces: [loom]`. */
 export const SURFACE_ID = "loom";
@@ -208,3 +209,92 @@ export async function discoverCatalog(
   }
   return entries.sort((a, b) => a.path.localeCompare(b.path));
 }
+
+export interface SkillCatalog {
+  generatedAt: number;
+  skills: SkillEntry[];
+}
+
+function catalogCachePath(repo: ConfiguredSkillRepo): string {
+  return path.join(skillsCacheDir(repo), "_catalog.json");
+}
+
+export function readCatalog(repo: ConfiguredSkillRepo): SkillCatalog | null {
+  try {
+    const data = JSON.parse(fs.readFileSync(catalogCachePath(repo), "utf-8"));
+    if (!data || typeof data.generatedAt !== "number" || !Array.isArray(data.skills)) return null;
+    return data as SkillCatalog;
+  } catch {
+    return null;
+  }
+}
+
+export function writeCatalog(repo: ConfiguredSkillRepo, skills: SkillEntry[]): void {
+  try {
+    fs.mkdirSync(skillsCacheDir(repo), { recursive: true });
+    const payload: SkillCatalog = { generatedAt: Date.now(), skills };
+    fs.writeFileSync(catalogCachePath(repo), JSON.stringify(payload, null, 2), "utf-8");
+  } catch (err) {
+    console.error("[skills] catalog write failed:", err);
+  }
+}
+
+export function isCatalogStale(cat: SkillCatalog, ttlMs: number = CATALOG_TTL_MS): boolean {
+  return Date.now() - cat.generatedAt >= ttlMs;
+}
+
+/** Re-walk a repo and rewrite its catalog. Skips the walk if the cache is fresh, unless forced. */
+export async function refreshCatalog(
+  repo: ConfiguredSkillRepo,
+  opts?: { force?: boolean; signal?: AbortSignal },
+): Promise<SkillEntry[]> {
+  const existing = readCatalog(repo);
+  if (!opts?.force && existing && !isCatalogStale(existing)) return existing.skills;
+  const skills = await discoverCatalog(repo, opts?.signal);
+  writeCatalog(repo, skills);
+  return skills;
+}
+
+/** For each enabled repo: refresh on start if stale/missing. Errors are swallowed (keep cache). */
+export async function backgroundRefreshSkills(): Promise<void> {
+  for (const repo of listEnabledSkillRepos()) {
+    try {
+      await refreshCatalog(repo);
+    } catch (err) {
+      console.warn(`[skills] background refresh failed for ${repo.name}:`, err);
+    }
+  }
+}
+
+const MCP_REFERENCE_WHEN_TO_USE =
+  "Reach for this before any Galaxy MCP tool call -- creating/listing histories, " +
+  "uploading data, finding and running tools, inspecting datasets or invocations -- " +
+  "and for the common gotchas (id vs name, history vs dataset ids, collection shapes).";
+
+/**
+ * Offline / first-run fallback. Used only when a repo has no resolved-catalog
+ * cache yet and the tree-walk can't run. Mirrors whatever is tagged on
+ * galaxy-skills `main` at ship time (the curated duo; add workflow-reports when
+ * its branch merges). Keep these in sync with the upstream frontmatter.
+ */
+export const BUILTIN_CATALOG: Record<string, SkillEntry[]> = {
+  "galaxy-skills": [
+    {
+      path: "collection-manipulation/SKILL.md",
+      name: "galaxy-transform-collection",
+      description:
+        "Galaxy Collection Transformation Command - transform Galaxy dataset collections " +
+        "reproducibly using Galaxy's native tools. Use when asked to filter, sort, relabel, " +
+        "restructure, flatten, nest, merge, or otherwise manipulate Galaxy collections.",
+      surfaces: ["loom"],
+    },
+    {
+      path: "galaxy-integration/mcp-reference/SKILL.md",
+      name: "galaxy-mcp-reference",
+      description:
+        "Galaxy MCP server tools reference for histories, datasets, tools, and workflows",
+      when_to_use: MCP_REFERENCE_WHEN_TO_USE,
+      surfaces: ["loom"],
+    },
+  ],
+};
