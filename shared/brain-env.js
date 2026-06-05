@@ -46,6 +46,11 @@ export const BRAIN_ENV_PASSTHROUGH = new Set([
 
 export const BRAIN_ENV_PREFIXES = ["LOOM_", "GALAXY_", "PI_"];
 
+// Must stay a superset of the brain's built-in provider->env-key map
+// (PROVIDER_ENV_MAP in bin/loom.js / app/src/main/agent.ts): a provider key
+// that isn't listed here is dropped at this boundary, so in remote mode -- where
+// creds are env-only -- the brain would fail its credential check and refuse to
+// launch. brain-env.test.ts guards the superset relationship.
 export const PROVIDER_API_KEY_NAMES = new Set([
   "ANTHROPIC_API_KEY",
   "OPENAI_API_KEY",
@@ -53,6 +58,7 @@ export const PROVIDER_API_KEY_NAMES = new Set([
   "MISTRAL_API_KEY",
   "GROQ_API_KEY",
   "XAI_API_KEY",
+  "DEEPSEEK_API_KEY",
   "AI_GATEWAY_API_KEY",
 ]);
 

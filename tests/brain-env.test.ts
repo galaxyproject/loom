@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildBrainEnv } from "../shared/brain-env.js";
+import { buildBrainEnv, PROVIDER_API_KEY_NAMES } from "../shared/brain-env.js";
 
 describe("buildBrainEnv", () => {
   it("forwards the named passthrough set", () => {
@@ -84,5 +84,34 @@ describe("buildBrainEnv", () => {
     const env = buildBrainEnv({ PATH: undefined, LOOM_X: undefined });
     expect(env.PATH).toBeUndefined();
     expect(env.LOOM_X).toBeUndefined();
+  });
+
+  // Mirror of the brain's PROVIDER_ENV_MAP values (bin/loom.js:151,
+  // app/src/main/agent.ts:13). In remote mode creds are env-only, so a built-in
+  // provider key that this list (and PROVIDER_API_KEY_NAMES) omits gets dropped
+  // at the boundary and the brain fails its credential check at boot. If you add
+  // a built-in provider to PROVIDER_ENV_MAP, add its key here and in brain-env.js.
+  const BUILTIN_PROVIDER_KEYS = [
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "GEMINI_API_KEY",
+    "MISTRAL_API_KEY",
+    "GROQ_API_KEY",
+    "XAI_API_KEY",
+    "DEEPSEEK_API_KEY",
+  ];
+
+  it("forwards every built-in provider key (incl. deepseek) when includeProviderKeys", () => {
+    const source = Object.fromEntries(BUILTIN_PROVIDER_KEYS.map((k) => [k, `val-${k}`]));
+    const env = buildBrainEnv(source, { includeProviderKeys: true });
+    for (const k of BUILTIN_PROVIDER_KEYS) {
+      expect(env[k], `${k} must be forwarded for its provider to work in remote`).toBe(`val-${k}`);
+    }
+  });
+
+  it("keeps PROVIDER_API_KEY_NAMES a superset of the brain's built-in provider keys", () => {
+    for (const k of BUILTIN_PROVIDER_KEYS) {
+      expect(PROVIDER_API_KEY_NAMES.has(k), `${k} missing from brain-env passthrough`).toBe(true);
+    }
   });
 });
