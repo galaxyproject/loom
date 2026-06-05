@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   isSensitivePath,
+  isCredentialStore,
   isProtectedWritePath,
 } from "../extensions/loom/exec-guard/sensitive-read";
 
@@ -28,6 +29,42 @@ describe("isSensitivePath", () => {
   it("allows ordinary project files", () => {
     expect(isSensitivePath("/home/alice/project/notebook.md", HOME)).toBe(false);
     expect(isSensitivePath("/home/alice/project/data/reads.fastq", HOME)).toBe(false);
+  });
+});
+
+// Dedicated credential stores: a subset of sensitive paths whose CONTENTS the
+// agent has no business reading, so reads are denied for ALL model tiers (not
+// downgraded to an ask). This is the floor that closes #183 -- ~/.loom/config.json
+// is a store; a credential-SHAPED file that might be a project fixture is not.
+describe("isCredentialStore", () => {
+  it("flags the dedicated home credential stores (dirs + exact files)", () => {
+    for (const p of [
+      "/home/alice/.ssh/id_rsa",
+      "/home/alice/.aws/credentials",
+      "/home/alice/.gnupg/secring.gpg",
+      "/home/alice/.config/gcloud/access_tokens.db",
+      "/home/alice/.kube/config",
+      "/home/alice/.docker/config.json",
+      "/home/alice/Library/Keychains/login.keychain-db",
+      "/home/alice/.netrc",
+      "/home/alice/.pgpass",
+      "/home/alice/.npmrc",
+      "/home/alice/.loom/config.json",
+    ])
+      expect(isCredentialStore(p, HOME), p).toBe(true);
+  });
+  it("does NOT flag credential-shaped files that may be project fixtures", () => {
+    // sensitive by basename, but not a dedicated store -> stays an ask, not a deny
+    expect(isCredentialStore("/home/alice/project/.env", HOME)).toBe(false);
+    expect(isCredentialStore("/home/alice/project/server.key", HOME)).toBe(false);
+    expect(isCredentialStore("/tmp/foo.pem", HOME)).toBe(false);
+    // every store is still sensitive; the inverse just isn't true
+    expect(isSensitivePath("/home/alice/project/.env", HOME)).toBe(true);
+  });
+  it("does NOT flag ordinary files, and is not fooled by lookalikes", () => {
+    expect(isCredentialStore("/home/alice/project/notebook.md", HOME)).toBe(false);
+    expect(isCredentialStore("/home/alice/.loom/analyses/proj/config.json", HOME)).toBe(false);
+    expect(isCredentialStore("/home/alice/.sshconfig", HOME)).toBe(false);
   });
 });
 

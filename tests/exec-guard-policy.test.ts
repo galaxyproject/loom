@@ -47,16 +47,63 @@ describe("decide", () => {
   it("safe bash allows", () => {
     expect(decide(req({ toolInput: { command: "ls -la" } }), deps).decision).toBe("allow");
   });
-  it("safe read-command on a sensitive path -> ask (trusted) / deny (weak)", () => {
+  it("read of a credential store is denied for ALL tiers (bash)", () => {
+    // hardened (#183): a dedicated credential store is never readable, even by a
+    // capable model with an interactive session to approve.
+    for (const tier of ["trusted", "weak"] as const)
+      expect(
+        decide(
+          req({ modelTier: tier, toolInput: { command: "cat /home/alice/.ssh/id_rsa" } }),
+          deps,
+        ).decision,
+        tier,
+      ).toBe("deny");
+  });
+  it("reading ~/.loom/config.json is denied for all tiers and via any path (#183)", () => {
+    const cfg = "/home/alice/.loom/config.json";
+    for (const tier of ["trusted", "weak"] as const)
+      expect(
+        decide(req({ modelTier: tier, toolInput: { command: `cat ${cfg}` } }), deps).decision,
+        `cat/${tier}`,
+      ).toBe("deny");
     expect(
-      decide(req({ toolInput: { command: "cat /home/alice/.ssh/id_rsa" } }), deps).decision,
-    ).toBe("ask");
+      decide(req({ toolName: "read", toolInput: { path: cfg } }), deps).decision,
+      "read tool",
+    ).toBe("deny");
+    // the reported evasion: a pipe forced kind="unknown" so the floor was skipped.
+    expect(
+      decide(req({ toolInput: { command: `cat ${cfg} | python3 -m json.tool` } }), deps).decision,
+      "piped",
+    ).toBe("deny");
+  });
+  it("the credential-store floor is NOT lifted by a trusted workspace", () => {
+    const cfg = { ...baseCfg, trustedWorkspaces: [CWD] };
     expect(
       decide(
-        req({ modelTier: "weak", toolInput: { command: "cat /home/alice/.ssh/id_rsa" } }),
+        req({ config: cfg, toolInput: { command: "cat /home/alice/.loom/config.json | base64" } }),
         deps,
       ).decision,
     ).toBe("deny");
+  });
+  it("a credential-SHAPED file that is not a dedicated store still asks/denies by tier", () => {
+    // basename .key/.pem can be a project fixture -> keep the prompt, don't hard-deny
+    expect(
+      decide(req({ toolName: "read", toolInput: { path: "/home/alice/project/server.key" } }), deps)
+        .decision,
+    ).toBe("ask");
+    expect(
+      decide(
+        req({
+          toolName: "read",
+          modelTier: "weak",
+          toolInput: { path: "/home/alice/project/server.key" },
+        }),
+        deps,
+      ).decision,
+    ).toBe("deny");
+    expect(
+      decide(req({ toolInput: { command: "cat /home/alice/project/secret.pem" } }), deps).decision,
+    ).toBe("ask");
   });
   it("write inside jail allows, outside asks (trusted) / denies (weak)", () => {
     expect(
@@ -73,37 +120,34 @@ describe("decide", () => {
       ).decision,
     ).toBe("deny");
   });
-  it("read sensitive -> ask/deny by tier", () => {
-    expect(
-      decide(req({ toolName: "read", toolInput: { path: "/home/alice/.aws/credentials" } }), deps)
-        .decision,
-    ).toBe("ask");
-    expect(
-      decide(
-        req({
-          toolName: "read",
-          modelTier: "weak",
-          toolInput: { path: "/home/alice/.aws/credentials" },
-        }),
-        deps,
-      ).decision,
-    ).toBe("deny");
-  });
-  it("grep/ls/find of a sensitive path -> ask (trusted) / deny (weak)", () => {
-    for (const tool of ["grep", "ls", "find"]) {
-      expect(
-        decide(req({ toolName: tool, toolInput: { path: "/home/alice/.ssh/id_rsa" } }), deps)
-          .decision,
-        tool,
-      ).toBe("ask");
+  it("read tool on a credential store is denied for ALL tiers", () => {
+    for (const tier of ["trusted", "weak"] as const)
       expect(
         decide(
-          req({ toolName: tool, modelTier: "weak", toolInput: { path: "/home/alice/.ssh" } }),
+          req({
+            toolName: "read",
+            modelTier: tier,
+            toolInput: { path: "/home/alice/.aws/credentials" },
+          }),
           deps,
         ).decision,
-        tool,
+        tier,
       ).toBe("deny");
-    }
+  });
+  it("grep/ls/find of a credential store is denied for ALL tiers", () => {
+    for (const tool of ["grep", "ls", "find"])
+      for (const tier of ["trusted", "weak"] as const)
+        expect(
+          decide(
+            req({
+              toolName: tool,
+              modelTier: tier,
+              toolInput: { path: "/home/alice/.ssh/id_rsa" },
+            }),
+            deps,
+          ).decision,
+          `${tool}/${tier}`,
+        ).toBe("deny");
   });
   it("grep with no path (searches cwd) is allowed", () => {
     expect(decide(req({ toolName: "grep", toolInput: { pattern: "TODO" } }), deps).decision).toBe(

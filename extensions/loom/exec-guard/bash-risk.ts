@@ -4,6 +4,12 @@ export interface BashClass {
   /** Path-like args to read-style commands, for the policy layer to run through
    *  sensitive-read + jail. Best-effort; empty when not confidently parseable. */
   readPaths: string[];
+  /** Content-read targets surfaced from EVERY shell segment, so the sensitive-read
+   *  floor still fires when a pipe/compound forces kind="unknown" (closes the
+   *  `cat secret | tool` evasion in #183). Unlike readPaths, this is computed even
+   *  for compound commands; the policy layer applies only the sensitive floor to
+   *  it (never the workspace-jail floor, so compound jail semantics are unchanged). */
+  sensitiveReadPaths: string[];
 }
 
 // Never-legitimate, irreversible-system-damage patterns. Order matters; first match wins.
@@ -180,29 +186,72 @@ const SHELL_META = /[;&|`\n\r]|\$\(|\$\{|<\(|>>?|<|\\\n/;
 
 const READ_LIKE = new Set(["cat", "head", "tail", "less", "more", "grep", "rg"]);
 
+// Content-read targets across EVERY shell segment (split on the same separators
+// as the catastrophic-rm scan). For any segment whose verb is a content reader,
+// collect its non-flag args. This is what closes the pipe evasion: `cat secret |
+// tool` is "unknown" as a whole, but its first segment still reads `secret`. A
+// path that is only an auth arg to a non-reading command (`ssh -i key`) is NOT
+// collected -- only verbs that dump file contents to stdout.
+function extractReadTargets(command: string): string[] {
+  const out: string[] = [];
+  for (const segment of command.split(/[;&|\n\r]+/)) {
+    const tokens = unwrap(segment.trim().split(/\s+/).filter(Boolean).map(stripQuotes));
+    if (tokens.length === 0) continue;
+    const verb = tokens[0].split("/").pop(); // basename: /bin/cat -> cat
+    if (!verb || !READ_LIKE.has(verb)) continue;
+    for (const t of tokens.slice(1)) if (!t.startsWith("-")) out.push(t);
+  }
+  return out;
+}
+
 export function classifyBash(commandRaw: string, home = ""): BashClass {
   const command = commandRaw.trim();
+  // Computed for every kind (incl. compound/unknown) so the policy layer's
+  // sensitive-read floor fires through a pipe; see BashClass.sensitiveReadPaths.
+  const sensitiveReadPaths = extractReadTargets(command);
   for (const [re, why] of CATASTROPHIC) {
-    if (re.test(command)) return { kind: "catastrophic", reason: why, readPaths: [] };
+    if (re.test(command))
+      return { kind: "catastrophic", reason: why, readPaths: [], sensitiveReadPaths };
   }
   if (isCatastrophicRm(command, home)) {
-    return { kind: "catastrophic", reason: "recursive force-delete of / or home", readPaths: [] };
+    return {
+      kind: "catastrophic",
+      reason: "recursive force-delete of / or home",
+      readPaths: [],
+      sensitiveReadPaths,
+    };
   }
   if (SHELL_META.test(command)) {
-    return { kind: "unknown", reason: "compound or redirected command", readPaths: [] };
+    return {
+      kind: "unknown",
+      reason: "compound or redirected command",
+      readPaths: [],
+      sensitiveReadPaths,
+    };
   }
   const tokens = command.split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) return { kind: "unknown", reason: "empty command", readPaths: [] };
+  if (tokens.length === 0)
+    return { kind: "unknown", reason: "empty command", readPaths: [], sensitiveReadPaths };
   const cmd = tokens[0];
 
   const prefixHit = SAFE_PREFIXES.some((p) => p.every((t, i) => tokens[i] === t));
   const isSafeCmd = SAFE_COMMANDS.has(cmd) || prefixHit;
   if (!isSafeCmd) {
-    return { kind: "unknown", reason: `'${cmd}' is not on the safe allowlist`, readPaths: [] };
+    return {
+      kind: "unknown",
+      reason: `'${cmd}' is not on the safe allowlist`,
+      readPaths: [],
+      sensitiveReadPaths,
+    };
   }
 
   // Collect path-like args for read-style commands so the policy layer can apply
   // the sensitive-read + jail floor (a "safe" cat must still not read ~/.ssh).
   const readPaths = READ_LIKE.has(cmd) ? tokens.slice(1).filter((t) => !t.startsWith("-")) : [];
-  return { kind: "safe", reason: `read-only/analysis command '${cmd}'`, readPaths };
+  return {
+    kind: "safe",
+    reason: `read-only/analysis command '${cmd}'`,
+    readPaths,
+    sensitiveReadPaths,
+  };
 }

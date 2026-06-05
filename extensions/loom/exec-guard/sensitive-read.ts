@@ -21,11 +21,22 @@ function within(abs: string, dir: string): boolean {
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
-export function isSensitivePath(absPath: string, home: string): boolean {
+// Dedicated credential stores: the home-relative dirs and exact files above
+// that exist solely to hold secrets. The agent has no legitimate reason to read
+// their CONTENTS, so reads are denied for every model tier (not just downgraded
+// to an ask). This is the floor that closes #183 -- ~/.loom/config.json is a
+// store. The basename patterns (.env, *.pem, *.key, ...) are deliberately NOT
+// stores: those can be project fixtures, so they keep the ask/deny-by-tier path.
+export function isCredentialStore(absPath: string, home: string): boolean {
   const norm = path.normalize(absPath);
   for (const d of SENSITIVE_HOME_DIRS) if (within(norm, path.join(home, d))) return true;
   for (const f of SENSITIVE_HOME_FILES) if (norm === path.join(home, f)) return true;
-  if (SENSITIVE_BASENAME.test(path.basename(norm))) return true;
+  return false;
+}
+
+export function isSensitivePath(absPath: string, home: string): boolean {
+  if (isCredentialStore(absPath, home)) return true;
+  if (SENSITIVE_BASENAME.test(path.basename(path.normalize(absPath)))) return true;
   return false;
 }
 

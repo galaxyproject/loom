@@ -128,3 +128,31 @@ describe("classifyBash -- adversarial-review hardening", () => {
     );
   });
 });
+
+// sensitiveReadPaths surfaces content-read targets to the policy layer even when
+// the command is compound -- closing the `cat secret | tool` pipe evasion that
+// the report (#183) used to dodge the sensitive-read floor (SHELL_META forces
+// kind="unknown", so readPaths alone stays empty).
+describe("classifyBash -- sensitiveReadPaths (pipe-evasion floor)", () => {
+  const CFG = "/home/alice/.loom/config.json";
+  it("surfaces a content-read target from a simple command", () => {
+    expect(classifyBash(`cat ${CFG}`).sensitiveReadPaths).toContain(CFG);
+    expect(classifyBash(`grep apiKey ${CFG}`).sensitiveReadPaths).toContain(CFG);
+    expect(classifyBash(`head -n 5 ${CFG}`).sensitiveReadPaths).toContain(CFG);
+  });
+  it("surfaces the read target even when piped/compound (the reported evasion)", () => {
+    expect(classifyBash(`cat ${CFG} | python3 -m json.tool`).sensitiveReadPaths).toContain(CFG);
+    expect(classifyBash(`cat ${CFG} | base64`).sensitiveReadPaths).toContain(CFG);
+    expect(classifyBash(`echo start; cat ${CFG}`).sensitiveReadPaths).toContain(CFG);
+  });
+  it("does not surface a path that is only an auth arg to a non-reading command", () => {
+    // ssh reads the key to authenticate; it is not dumping contents to stdout.
+    expect(
+      classifyBash("ssh -i /home/alice/.ssh/id_rsa user@host").sensitiveReadPaths,
+    ).not.toContain("/home/alice/.ssh/id_rsa");
+  });
+  it("is empty for commands with no content-read verb", () => {
+    expect(classifyBash("ls -la /home/alice/.ssh").sensitiveReadPaths).toEqual([]);
+    expect(classifyBash("python train.py").sensitiveReadPaths).toEqual([]);
+  });
+});
