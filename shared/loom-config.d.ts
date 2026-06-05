@@ -1,11 +1,31 @@
+/** Per-provider credentials + preferred model. */
+export interface LlmProviderConfig {
+  /** Plaintext API key. Orbit migrates this to apiKeyEncrypted on startup. */
+  apiKey?: string;
+  /** Base64 ciphertext produced by Electron safeStorage. Orbit-only. */
+  apiKeyEncrypted?: string;
+  model?: string;
+  /**
+   * Base URL for an OpenAI-compatible endpoint (e.g. Jetstream, vLLM, Ollama).
+   * Presence marks this entry as a custom provider: the brain registers it in
+   * ~/.pi/agent/models.json and supplies the key at runtime via --api-key.
+   */
+  baseUrl?: string;
+}
+
 export interface LoomConfig {
+  /**
+   * Opaque beta-tester code (e.g. "orbit-007"). When set, it rides along on
+   * feedback submissions so the team can attribute reports to a tester. Not a
+   * secret and not PII -- the code<->identity map lives outside the app. Also
+   * settable per-session via the LOOM_TESTER_ID env var.
+   */
+  testerId?: string;
   llm?: {
-    provider?: string;
-    /** Plaintext API key. Orbit migrates this to apiKeyEncrypted on startup. */
-    apiKey?: string;
-    /** Base64 ciphertext produced by Electron safeStorage. Orbit-only. */
-    apiKeyEncrypted?: string;
-    model?: string;
+    /** Name of the currently-active provider, e.g. "anthropic". */
+    active: string;
+    /** One entry per configured provider. */
+    providers: Record<string, LlmProviderConfig>;
   };
   galaxy?: {
     active: string | null;
@@ -21,6 +41,8 @@ export interface LoomConfig {
     >;
   };
   defaultCwd?: string;
+  /** When false, all update checks (CLI notice + Orbit auto-update/banner) are disabled. Default true. */
+  updateCheck?: boolean;
   /**
    * Execution mode gate. Independent of whether Galaxy credentials are
    * configured.
@@ -54,6 +76,33 @@ export interface LoomConfig {
      * session corpus via a SQLite+FTS5 mirror at ~/.loom/sessions-index.db.
      */
     sessionIndex?: boolean;
+  };
+  /**
+   * Local-execution safety gate (exec-guard). Secure by default: the gate is
+   * enabled, never bypassed, and trusts nothing until the user says otherwise.
+   */
+  guardian?: {
+    /** Master switch. When false the gate is fully off (advanced escape hatch). */
+    enabled?: boolean;
+    /**
+     * Turn the gate into a pass-through (allow everything). Human-only: the
+     * agent can never set this, because writing ~/.loom/config.json is itself
+     * gated. Also settable via --dangerously-bypass-permissions / env.
+     */
+    dangerouslyBypassPermissions?: boolean;
+    /** Project dirs the user has chosen to trust (relaxes routine-bash prompts). */
+    trustedWorkspaces?: string[];
+    /** Extra absolute roots treated as inside the workspace jail. */
+    extraWorkspaceRoots?: string[];
+    /** Record of the one-time local-execution consent. */
+    consentAcknowledged?: { version: string; at: string } | null;
+    /**
+     * Opt-in bash sandbox: run allowed bash inside an OS sandbox (sandbox-exec /
+     * bubblewrap) so bash writes are confined to the workspace and its network is
+     * limited. Off by default (it restricts bash network); also settable via
+     * --sandbox / LOOM_SANDBOX. File-tool writes are confined by the gate regardless.
+     */
+    sandbox?: boolean;
   };
 }
 

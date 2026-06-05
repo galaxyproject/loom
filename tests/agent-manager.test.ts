@@ -37,6 +37,11 @@ vi.mock("node:os", () => ({
 // before the root `vitest` can even start. Stub the small surface area we
 // transitively use; safeStorageAvailable() reads isEncryptionAvailable().
 vi.mock("electron", () => ({
+  // agent.ts imports `app` and reads `app?.isPackaged`; false routes it to the
+  // dev resolution paths (no packaged bundle). Without this export vitest
+  // throws "No 'app' export is defined on the 'electron' mock" in a clean
+  // checkout where app/node_modules/electron isn't installed.
+  app: { isPackaged: false },
   safeStorage: {
     isEncryptionAvailable: () => false,
     encryptString: () => Buffer.from(""),

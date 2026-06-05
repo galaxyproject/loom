@@ -50,8 +50,33 @@ gtn_search(topic: "transcriptomics", query: "rna-seq")  → filter
 gtn_fetch(url: "<url from search>")       → read the tutorial content
 ```
 
+## Calling Galaxy tools: build inputs from the schema
+
+Before `galaxy_run_tool`, look up the tool's real parameter schema and
+match it exactly — do not guess input names. The fastest path:
+
+1. **`galaxy_get_tool_details(tool_id, io_details=True)`** returns the
+   full parameter schema. (`galaxy_get_tool_input_template(tool_id)` is
+   the shortcut — it hands back a ready-to-fill `inputs` skeleton with
+   placeholders.)
+2. Build `inputs` to the exact parameter names. They are often not what
+   you would guess — e.g. `cat1`'s first input is `input1`, not `input`.
+3. Use flattened keys for nested params: `section|param`,
+   `conditional|selector`, `repeat_0|param` (and `repeat_1|...` for more
+   repeat instances).
+
+If a tool call fails with an opaque or parameter-shaped error — in
+particular `Required parameter(s) kwd not provided in request` — treat it
+as **your `inputs` not matching this tool**, not as the MCP or the Galaxy
+version being incompatible. Re-fetch the schema, fix `inputs`, and retry.
+That `kwd` message is a known Galaxy server quirk that masks an input
+error; it does not mean a parameter literally named `kwd` is missing.
+
 ## Common gotchas
 
+- **"kwd not provided" / opaque tool-run errors**: Almost always your
+  `inputs` not matching the tool schema, not an incompatibility — see
+  "Calling Galaxy tools" above. Re-fetch the schema and retry.
 - **Empty results from Galaxy queries**: Check `visible: true` filter,
   increase limits, verify dataset exists.
 - **Dataset ID vs HID**: Galaxy MCP uses dataset IDs (long strings),

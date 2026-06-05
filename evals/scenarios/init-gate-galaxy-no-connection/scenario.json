@@ -1,0 +1,15 @@
+{
+  "name": "/execute hard-fails when a [galaxy] plan has no active connection",
+  "description": "init-gate (#104) refuses to send the agent prompt when the latest plan is tagged [galaxy] but isGalaxyConnected() is false. The slash command short-circuits before any LLM call, so this scenario exercises Loom's command path without needing model auth or a network call.",
+  "tier": 1,
+  "inputs": ["/execute"],
+  "env": {
+    "ANTHROPIC_API_KEY": "fake-eval-key"
+  },
+  "timeoutMs": 5000,
+  "assertions": {
+    "events": {
+      "mustNotInclude": ["agent_start", "tool_execution_start", "turn_start"]
+    }
+  }
+}

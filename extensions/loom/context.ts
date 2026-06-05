@@ -7,18 +7,17 @@
  * guidance for the new markdown-and-invocation-block model.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import * as fs from "fs";
 import { getState, getNotebookPath } from "./state";
 import { isTeamDispatchEnabled } from "./teams/is-enabled";
 import { isSessionIndexEnabled } from "./session-index/is-enabled";
-import { getRecentActivityEvents } from "./activity";
 import { loadConfig } from "./config";
 import { listEnabledSkillRepos } from "./skills";
+import { findGalaxyPageBlocks } from "./galaxy-page-binding";
 
 const NOTEBOOK_HEAD_MAX_CHARS = 2000;
 const NOTEBOOK_TAIL_MAX_CHARS = 4000;
-const ACTIVITY_TAIL_COUNT = 10;
 
 /**
  * Read the user-curated notebook.md from disk and return a head + tail
@@ -77,18 +76,34 @@ ${excerpt}
 }
 
 /**
- * Last few activity events for continuity across restarts.
+ * Surface the loom-galaxy-page binding to the agent at session start so it
+ * knows which page push/pull would touch and which tool fits which direction.
  */
-function buildRecentActivityBlock(): string {
-  const events = getRecentActivityEvents(ACTIVITY_TAIL_COUNT);
-  if (events.length === 0) return "";
-  const lines = events.map((e) => `- ${e.timestamp} · ${e.kind}`);
+export function buildGalaxyPageBindingBlock(): string {
+  const nbPath = getNotebookPath();
+  if (!nbPath) return "";
+  let content: string;
+  try {
+    content = fs.readFileSync(nbPath, "utf-8");
+  } catch {
+    return "";
+  }
+  const binding = findGalaxyPageBlocks(content)[0];
+  if (!binding) return "";
   return `
-## Recent activity
+## Galaxy page binding
 
-Last ${events.length} event(s):
+This notebook is linked to a Galaxy page on \`${binding.galaxyServerUrl}\`:
 
-${lines.join("\n")}
+- page_id: \`${binding.pageId}\`
+- page_slug: \`${binding.pageSlug ?? "<none>"}\`
+- history_id: \`${binding.historyId}\`
+- last_synced_revision: \`${binding.lastSyncedRevision ?? "<none>"}\`
+
+Use \`notebook_push_to_galaxy\` to share progress with the user (creates a new
+revision of the Galaxy page). Use \`notebook_pull_from_galaxy\` to fetch
+updates the user made on the Galaxy side -- only when the user explicitly
+asks for it, since pull discards local edits since the last sync.
 `;
 }
 
@@ -98,6 +113,18 @@ ${lines.join("\n")}
  * if Galaxy MCP is registered. Cloud mode is the default and the
  * unrestricted, per-plan-routing behavior.
  */
+function buildActiveModelBlock(): string {
+  const cfg = loadConfig();
+  const active = cfg.llm?.active;
+  const model = active ? cfg.llm?.providers?.[active]?.model : undefined;
+  if (!active) return "";
+  const modelStr = model ? `${model}` : "unknown model";
+  return `## Active LLM
+
+You are **${modelStr}** running via the **${active}** provider. This is your current identity for this session — state it accurately when asked and do not claim to be a different model or provider.
+`;
+}
+
 function buildExecutionModeBlock(): string {
   const cfg = loadConfig();
   if (cfg.executionMode !== "local") return "";
@@ -197,8 +224,10 @@ After invoking via Galaxy MCP and getting an \`invocationId\` back:
 2. Periodically call \`galaxy_invocation_check_all\` to advance in-flight
    invocations. The tool auto-transitions YAML status (all-jobs-ok →
    completed, any-error → failed) and writes results back to the
-   notebook. After a transition, edit the markdown checkbox for the step
-   from \`- [ ]\` to \`- [x]\` (or \`- [!]\` for failures).
+   notebook. After a successful transition, inspect the output datasets,
+   record verification evidence in the notebook, then edit the markdown
+   checkbox for the step from \`- [ ]\` to \`- [x]\`. On failure, record
+   the error evidence and use \`- [!]\`.
 `;
 }
 
@@ -274,18 +303,72 @@ Common thread flags:
 | fastqc     | \`-t N\`              |
 | cutadapt   | \`-j N\`              |
 
-### Bash timeouts on long-running tools
+### Bash timeouts and long-running jobs
 
 Pi's \`bash\` tool's \`timeout\` is **optional** and in **seconds**. When
 omitted, the command runs to completion — correct default for
 bioinformatics pipelines whose runtime you cannot reliably predict
-(PGGB / assembly / minimap2 / bwa-on-WGS / long variant calling, conda
-solves on fresh envs).
+(minimap2 / bwa-on-WGS / variant calling, fresh-env conda solves,
+short-pipeline assembly).
 
 **Do not guess-cap at 3600 s.** Real pangenome builds will cross an hour
 and be killed partway. When you do need a bound, pick generously: 300 s
 for quick commands, 3600 s for short pipelines, 86400 s for overnight.
 Prefer **omitting \`timeout\` entirely** over capping too low.
+
+**Background jobs likely to run 10+ minutes** so the user isn't held
+hostage to a single bash call. A blocked tool holds the chat turn: the
+user cannot send messages, display sleep can interrupt UI updates, and
+a crash or abort kills the job mid-run. Signals to background:
+
+- Neural-network inference (foldseek ProstT5, ESM, AlphaFold)
+- mmseqs2 / foldseek on > ~500 sequences
+- MCL clustering on large graphs
+- STAR / hisat2 genome index generation
+- Genome assembly (hifiasm, flye, canu)
+- PGGB pangenome builds
+
+Routine multi-package conda installs and standard fastp / bwa / samtools
+steps stay in the synchronous-bash path — backgrounding them just bloats
+the activity stream.
+
+**Pattern — launch, record, poll:**
+
+\`\`\`bash
+# 1. Launch in background. \`disown\` detaches from the tool shell so the
+# job survives this tool invocation. Drop \`.done\` on success or \`.failed\`
+# on error so polling can distinguish "still running" from "finished badly"
+# — without the \`.failed\` branch a quick crash gets reported as
+# "still running" indefinitely.
+mkdir -p foldseek_work
+nohup sh -c '.loom/env/bin/foldseek easy-cluster ... > foldseek_work/run.log 2>&1 \\
+  && touch foldseek_work/.done || touch foldseek_work/.failed' > /dev/null 2>&1 &
+disown
+echo "Launched foldseek — tail foldseek_work/run.log to monitor"
+\`\`\`
+
+\`\`\`bash
+# 2. Poll in a later bash call (separate tool invocation, minutes later)
+if [ -f foldseek_work/.done ]; then
+  echo "Finished"
+  ls -lh foldseek_work/vir_struct_cluster_cluster.tsv 2>/dev/null \\
+    || echo "output missing — check log for errors"
+  tail -20 foldseek_work/run.log
+elif [ -f foldseek_work/.failed ]; then
+  echo "Failed — check log"
+  tail -20 foldseek_work/run.log
+else
+  echo "Still running"
+  tail -5 foldseek_work/run.log
+fi
+\`\`\`
+
+After launching, **return to the user immediately** with a message like
+"foldseek is running in the background — I'll check back in a few
+minutes, or you can ask me to check now." Append a brief
+\`## Background jobs\` breadcrumb to \`notebook.md\` with the job name,
+start time, and log path so the work is recoverable across renderer
+reloads (skip the PID — it's meaningless after a restart).
 `;
 }
 
@@ -335,8 +418,9 @@ If a tool call fails because a credential is missing or wrong:
   for headless setups. Galaxy MCP is registered automatically when the
   key is present; no chat paste needed.
 - **LLM providers** — same path: Orbit's Preferences → API Key, or
-  \`~/.loom/config.json\`'s \`llm.apiKey\` field. The renderer encrypts
-  via Electron \`safeStorage\` if available.
+  \`~/.loom/config.json\`'s \`llm.providers\` map (one entry per provider,
+  pointed to by \`llm.active\`). The renderer encrypts via Electron
+  \`safeStorage\` if available.
 - **Other MCP credentials** — point at the relevant config file or
   environment variable; never invite a paste.
 
@@ -348,7 +432,90 @@ should rotate it.
 `;
 }
 
-function buildPlanConventionBlock(): string {
+/**
+ * Verification discipline. This is deliberately brain-side policy:
+ * shells render progress, but Loom decides when evidence is sufficient to
+ * call a research artifact complete.
+ */
+export function buildVerificationDisciplineBlock(): string {
+  return `## Verification before completion
+
+Evidence comes before assertion. For every checkable result, you must
+run an actual verification step before marking a notebook step complete
+or telling the user the work is done.
+
+### What counts as verification
+
+Match the verification check to the artifact or action being completed:
+
+- **Galaxy workflow or tool run** — poll the invocation/job to a terminal
+  state with \`galaxy_invocation_check_all\` or the relevant Galaxy MCP
+  inspection call, then inspect resulting datasets/collections enough to
+  confirm they exist and look plausible for the request.
+- **Authored Galaxy workflow** (\`.ga\` or workflow JSON) —
+  upload/import it to Galaxy, invoke it on a small
+  appropriate test input, poll to completion, and inspect outputs.
+- **Galaxy dataset or collection output** — inspect state, datatype,
+  metadata, size, preview/peek, expected element count, and failed or
+  hidden elements when collections are involved.
+- **Local data file** — read or parse the file with an appropriate tool
+  for its format, such as BAM/CRAM, VCF/BCF, FASTQ/FASTA, CSV/TSV,
+  JSON, YAML, or similar project artifacts.
+- **Config, script, or report** — read it back and parse, lint, render,
+  smoke test, or otherwise confirm the state matches the user request.
+- **Plan execution** — each completed step needs notebook evidence:
+  command or Galaxy action, observed status/output, and the verification
+  result.
+
+### Verification examples
+
+Use a targeted check that proves the artifact is usable for the request.
+Prefer the smallest representative verification that establishes the
+claim, but do not skip required validation just to save time:
+
+- **Workflow \`.ga\` / workflow JSON**: import it into Galaxy, invoke it on
+  a tiny representative input, poll jobs to \`ok\`, then inspect expected
+  outputs for datatype, non-empty content when expected, and plausible
+  metadata.
+- **Galaxy dataset output**: inspect dataset state, datatype, name,
+  size/metadata, and a small preview/peek. If the output is a collection,
+  confirm expected element count and failed/hidden elements.
+- **BAM/CRAM**: check file exists and is non-empty; use Galaxy metadata or
+  a Galaxy/local tool such as \`samtools quickcheck\` and, when useful,
+  \`samtools flagstat\` or \`idxstats\` on a small output.
+- **VCF/BCF**: confirm headers parse, record count is plausible for the
+  request, sample names match expectations, and compression/index status
+  is correct when downstream tools need it.
+- **FASTQ/FASTA**: confirm gzip/container integrity if compressed, count
+  reads/sequences, and check a small preview for expected identifiers.
+- **CSV/TSV/JSON/YAML/config**: parse it with the appropriate parser,
+  confirm required keys/columns are present, and check row/object counts
+  against the request.
+- **Markdown/HTML/PDF report**: open or render enough of the artifact to
+  confirm requested sections, figures/tables, and links/references are
+  present.
+
+If verification is blocked by missing credentials, missing test data,
+tool unavailability, or user scope, stop and say exactly what is
+unverified. Do **not** mark the step \`- [x]\` and do **not** say "done"
+or "complete" for that artifact. Say "created but not verified" and ask
+for the missing input or approval to change scope.
+
+### Notebook requirement
+
+Every new plan step should include a concrete \`Verification:\` sub-bullet
+so the expected evidence is clear before work starts. Existing or ad-hoc
+steps may lack that line; in those cases, infer the appropriate check
+from the artifact and execute it after the work runs. Before flipping
+\`- [ ]\` to \`- [x]\`, write the verification evidence under that step
+or in the relevant results section of \`notebook.md\`. For failed or
+inconclusive checks, mark \`- [!]\` only when the step itself failed;
+otherwise leave it pending and record the blocker.
+`;
+}
+
+function buildPlanConventionBlock(opts: { omitAnchors?: boolean } = {}): string {
+  const omitAnchors = opts.omitAnchors === true;
   return `## Project model and plan sections
 
 The project is the directory you're working in. \`notebook.md\` is its
@@ -367,8 +534,9 @@ the geographic distribution analysis").
 When the user **does** ask for a plan, follow this order strictly:
 
 1. **Draft in chat (NOT in the notebook yet).** Reply in chat with a
-   fenced markdown block formatted as a plan section (see template
-   below). This is a proposal for review. Do not call Edit/Write to
+   \`\`\`plan fenced block formatted as a plan section (see template
+   below). Orbit renders \`\`\`plan fences as an interactive card with
+   Approve / Edit / Reject buttons. Do not call Edit/Write to
    put it into \`notebook.md\` at this point.
 2. **Wait for explicit plan approval.** The user must signal approval
    with words like "yes", "go", "approve", "looks good", "proceed",
@@ -391,47 +559,111 @@ If the user explicitly says "save this plan to the notebook even
 though I haven't approved it" or similar, that's a manual override —
 honor it and skip the remaining gates.
 
-### Plan section template (used in the chat draft AND the notebook write)
+### Plan section template (used in the chat draft and -- minus the fence -- the notebook write)
 
-Each step is a top-level checklist item with its routing and tool(s)
-on **indented sub-bullets**. Markdown collapses continuation-indent
-text into the parent line; sub-bullets render as a real nested list.
+The heading line is rigid: \`## Plan <Letter>: <Title> [<routing>]\`,
+with a literal letter (\`A\`, \`B\`, \`C\` -- pick the next free one),
+a colon, the human-readable title, and a routing tag in literal
+square brackets. Each step is a top-level checklist item with routing
+and tool(s) on **indented sub-bullets**. Markdown collapses
+continuation-indent text into the parent line; sub-bullets render as
+a real nested list.
 
-\`\`\`markdown
-## Plan A: <Title> [local|hybrid|remote]
+Worked example -- copy this shape exactly, just substitute domain
+content. **Use a \`\`\`plan fence** in chat (not \`\`\`markdown) so Orbit
+renders it as an interactive draft card with Approve/Edit/Reject buttons.
 
-<one or two sentences of rationale + research question>
+\`\`\`plan
+## Plan A: chrM Variant Calling [galaxy]
+
+Identify mitochondrial variants from 4 paired-end WGS samples using
+the IWC \`bwa-mem-chrM\` workflow. Output: chrM VCF + per-sample QC.
 
 ### Steps
 
-- [ ] 1. **<Step name>** {#plan-a-step-1} — <one-line purpose>
-  - Routing: local
-  - Tool: <tool-name-or-galaxy-id>
-- [ ] 2. **<Step name>** {#plan-a-step-2} — <one-line purpose>
-  - Routing: Galaxy
-  - Tool: <galaxy-tool-id>
+- [ ] 1. **QC FASTQs**${anchorOrEmpty("plan-a-step-1", omitAnchors)} — fastp adapter trim + per-base QC
+  - Routing: galaxy
+  - Tool: fastp
+  - Verification: confirm fastp HTML/JSON report exists and includes per-base quality metrics
+- [ ] 2. **Align to chrM reference**${anchorOrEmpty("plan-a-step-2", omitAnchors)} — BWA-MEM, sorted BAM out
+  - Routing: galaxy
+  - Tool: bwa_mem
+  - Verification: poll Galaxy invocation to \`ok\` and inspect BAM outputs
+- [ ] 3. **Call variants**${anchorOrEmpty("plan-a-step-3", omitAnchors)} — bcftools call, filter Q>=30
+  - Routing: galaxy
+  - Tool: bcftools_call
+  - Verification: confirm VCF exists and has variants passing the Q>=30 filter
 
 ### Parameters
 
 | Step | Tool | Parameter | Default | Value | Description |
 | --- | --- | --- | --- | --- | --- |
-| 1   | ... | ...       | ...     | ...   | ...         |
+| 1   | fastp     | --qualified_quality_phred | 15 | 20 | min Phred to keep |
+| 2   | bwa_mem   | --threads                 | 4  | 8  | parallel threads  |
+| 3   | bcftools_call | -p                    | 0.5 | 0.01 | call threshold  |
 \`\`\`
 
-Conventions:
+When you eventually Edit/Write the approved plan to \`notebook.md\`,
+**drop the surrounding \`\`\`plan fence** -- it's a chat-only render hint.
+Write the inner content (heading, steps, parameter table) as raw
+markdown so the notebook stays a clean durable record.
 
-- Use \`{#plan-X-step-N}\` anchors so invocation YAML blocks can reference
-  individual steps unambiguously.
-- Routing tag in the section header: \`[local]\`, \`[hybrid]\`, or
-  \`[remote]\`. Tag literal so future tooling can grep.
+Conventions (please re-read the heading line above before drafting):
+
+- Heading **must** be \`## Plan <Letter>: <Title> [<routing>]\`.
+  Examples that pass: \`## Plan A: RNA-seq DE [galaxy]\`,
+  \`## Plan B: Quick local QC [local]\`. Examples that **fail** and
+  must be avoided: \`## Plan: ...\` (missing letter),
+  \`## Plan A: ...\` (missing routing tag),
+  \`## Plan A - Title [galaxy]\` (dash instead of colon).
+- Routing tag in the section header is one of \`[galaxy]\`, \`[hybrid]\`,
+  \`[local]\`, or \`[remote]\`. Default to \`[galaxy]\` when the work has a
+  matching Galaxy workflow/tool; \`[hybrid]\` when some steps are local
+  and some Galaxy; \`[local]\` only for personal-scale or ad-hoc work.
+  Tag literal, lowercase, square brackets, no spaces inside the
+  brackets so tooling can grep.
+${anchorGuidance(omitAnchors)}
 - Step routing/tool details go on **sub-bullets**, not on the same line
   as the step heading. Markdown will collapse same-line continuation
   text and the rendered notebook becomes unreadable.
+- Each step needs a **Verification** sub-bullet. It must name a concrete
+  check (poll invocation + inspect dataset, run smoke test, parse file,
+  compare expected rows, etc.), not a vague "looks good".
 - Mark step status by editing the checkbox: \`- [ ]\` (pending),
-  \`- [x]\` (completed), \`- [!]\` (failed).
+  \`- [x]\` (verified completed), \`- [!]\` (failed). Never mark
+  \`- [x]\` until the verification evidence is written to the notebook.
 - Multiple plans coexist; append new plan sections at the bottom of the
   notebook. Don't delete old plans.
 `;
+}
+
+/** Render a step anchor only when anchors are safe for the active provider. */
+function anchorOrEmpty(id: string, omit: boolean): string {
+  return omit ? "" : ` {#${id}}`;
+}
+
+/**
+ * Inline guidance about anchors. Two versions:
+ * - Safe providers (Anthropic, OpenAI, Google, etc.): teach anchors so
+ *   invocation YAML blocks can reference steps unambiguously.
+ * - Llama-4 family on litellm-routed proxies: don't write anchors --
+ *   the proxy mistakes the curly-brace `{...}` for a tool-call boundary
+ *   and rejects the whole response as "Invalid function calling output."
+ *   The parser still accepts anchors when present, so existing notebooks
+ *   keep working; we just don't ask the model to produce them.
+ */
+function anchorGuidance(omit: boolean): string {
+  if (omit) {
+    return `- Step anchors (\`{#plan-X-step-N}\` syntax) are supported by the
+  parser but **do not write them**. The litellm proxy in front of this
+  Llama-4 deployment mistakes the curly-brace anchor for a tool-call
+  marker and rejects the response. Reference steps by their step number
+  + plan letter instead (e.g. "Plan A step 2").`;
+  }
+  return `- Use \`{#plan-X-step-N}\` anchors so invocation YAML blocks can
+  reference individual steps unambiguously. Place the anchor after the
+  bold step title and before the description em-dash:
+  \`- [ ] 1. **Step name** {#plan-a-step-1} — description\`.`;
 }
 
 /**
@@ -456,7 +688,7 @@ literal \`**asterisks**\` instead of bold. Two rules:
   Galaxy invocation status updates land in the YAML blocks. Keep chat
   for **dialogue + final status** — open questions, requested
   decisions, and a single end-of-turn summary like
-  *"All 8 steps done. Variant call results in plan-a-step-7. Ready
+  *"All 8 steps verified. Variant call results in plan-a-step-7. Ready
   for interpretation?"*
 
 When you do post a multi-line update, prefer a markdown list or a
@@ -701,11 +933,47 @@ asks what was said.
 `;
 }
 
+/**
+ * Heuristic id-based detector for Llama-4 family models. The actual bug
+ * we're working around lives in the litellm Llama-4 adapter (used by the
+ * SambaNova-on-TACC proxy and some other Llama-4 deployments): it
+ * misinterprets `{...}` patterns in model output as tool-call boundaries
+ * and tries to JSON-parse the contents, so notebook-anchor syntax
+ * (`{#plan-a-step-1}`) trips it and gets rejected as "Invalid function
+ * calling output." We don't have a clean signal for "is this model
+ * behind a buggy litellm adapter," so we approximate it by detecting
+ * Llama-4 in the model id and suppressing anchor guidance for the whole
+ * family. Trade-offs:
+ *   - False positive (Llama-4 on a non-buggy adapter): the model loses
+ *     anchor guidance and references steps by "Plan A step 2" instead;
+ *     no functional regression.
+ *   - False negative (some other model behind the same buggy proxy):
+ *     would re-surface "Invalid function calling output" -- not seen in
+ *     the matrix today.
+ *   - Init-gate parser accepts anchors when present regardless of which
+ *     prompt path ran, so swapping providers mid-project is fail-soft.
+ */
+function isLlama4Family(model: { id?: string; provider?: string } | undefined): boolean {
+  if (!model) return false;
+  const id = (model.id ?? "").toLowerCase();
+  return /llama-?4|maverick|scout/.test(id);
+}
+
 export function setupContextInjection(pi: ExtensionAPI): void {
   pi.on("before_agent_start", async (_event, ctx) => {
+    // The system prompt is sent as one cached block (Anthropic cache_control
+    // sits on the whole system text). Anything that changes turn-to-turn busts
+    // that cache for the entire ~8K-token prefix. So we keep the blocks below
+    // stable within a session — they only change when their inputs do (notebook
+    // edits, model/connection switch). The live activity tail (timestamps that
+    // changed every turn) was deliberately dropped from here; it stays in the
+    // Activity pane and activity.jsonl. The notebook is the durable record.
+    const omitAnchors = isLlama4Family(ctx.model);
     const systemPrompt = [
+      buildActiveModelBlock(),
       buildOperatingDisciplineBlock(),
-      buildPlanConventionBlock(),
+      buildVerificationDisciplineBlock(),
+      buildPlanConventionBlock({ omitAnchors }),
       buildParameterReviewBlock(),
       buildChatFormattingBlock(),
       buildNotebookWriteBlock(),
@@ -714,7 +982,7 @@ export function setupContextInjection(pi: ExtensionAPI): void {
       buildSkillsContext(),
       buildLocalEnvContext(),
       buildNotebookExcerptBlock(),
-      buildRecentActivityBlock(),
+      buildGalaxyPageBindingBlock(),
       buildTeamDispatchContext(),
       buildSessionIndexContext(),
     ]

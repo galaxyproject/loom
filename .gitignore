@@ -3,6 +3,9 @@ node_modules/
 # Production Vite build output for the web shell
 web/dist/
 
+# macOS Finder metadata
+.DS_Store
+
 # Test-generated notebook files
 *-notebook.md
 activity.jsonl
@@ -11,3 +14,9 @@ session.jsonl
 # Agent worktrees
 .worktrees/
 .claude/
+
+# Eval run artifacts (Phase 5+; not committed)
+evals/results/
+
+# Eval credentials (TACC proxy etc; per-machine)
+evals/.env

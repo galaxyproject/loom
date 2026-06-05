@@ -18,6 +18,11 @@ export class ChatPanel {
   private thinkingEl: HTMLElement | null = null;
   private cwd = "";
   private promptCounter = 0;
+  // Track the most recent error message so consecutive duplicates (e.g. the
+  // brain auto-retrying through an overloaded API) collapse to one card.
+  private lastErrorEl: HTMLElement | null = null;
+  private lastErrorText = "";
+  private lastErrorCount = 0;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -80,6 +85,7 @@ export class ChatPanel {
   }
 
   addUserMessage(text: string): void {
+    this.resetErrorDedup();
     const n = ++this.promptCounter;
     const turn = document.createElement("div");
     turn.className = "user-turn";
@@ -111,6 +117,7 @@ export class ChatPanel {
    * counter equals the replay's count. Live numbers continue from there.
    */
   addReplayUserMessage(text: string, promptNum: number): void {
+    this.resetErrorDedup();
     this.promptCounter = promptNum;
     const turn = document.createElement("div");
     turn.className = "user-turn";
@@ -306,12 +313,27 @@ export class ChatPanel {
     }
   }
 
+  private resetErrorDedup(): void {
+    this.lastErrorEl = null;
+    this.lastErrorText = "";
+    this.lastErrorCount = 0;
+  }
+
   addErrorMessage(text: string): void {
+    if (this.lastErrorEl && this.lastErrorText === text) {
+      this.lastErrorCount += 1;
+      this.lastErrorEl.textContent = `${text}  (x${this.lastErrorCount})`;
+      this.scrollToBottom();
+      return;
+    }
     const el = document.createElement("div");
     el.className = "message assistant";
     el.style.color = "var(--error)";
     el.textContent = text;
     this.container.appendChild(el);
+    this.lastErrorEl = el;
+    this.lastErrorText = text;
+    this.lastErrorCount = 1;
     this.scrollToBottom();
   }
 

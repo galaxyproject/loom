@@ -5,7 +5,7 @@
  * Cyrillic/Greek lookalikes for Latin letters when generating identifiers
  * -- most often `с` (U+0441) where Latin `c` belongs. pi-agent-core's
  * tool dispatch does an exact-string match (prepareToolCall in
- * node_modules/@mariozechner/pi-agent-core/dist/agent-loop.js), so one
+ * node_modules/@earendil-works/pi-agent-core/dist/agent-loop.js), so one
  * Cyrillic char in `brс_analytics_*` is enough to surface "Tool not
  * found" to the agent.
  *

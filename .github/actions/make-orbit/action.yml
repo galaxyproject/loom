@@ -1,0 +1,129 @@
+name: Make Orbit installer
+description: >-
+  Build a platform-specific Orbit installer with electron-forge -- including
+  optional macOS Developer ID signing + notarization -- and upload it as a
+  workflow artifact named Orbit-<platform>-<arch>. Shared by every leg of the
+  release workflow's build matrix so the signing setup can never drift between
+  the two macOS builds.
+
+inputs:
+  platform:
+    description: electron-forge --platform value (darwin or linux).
+    required: true
+  arch:
+    description: electron-forge --arch value (arm64 or x64).
+    required: true
+  # macOS signing/notarization secrets are passed in (composite actions can't
+  # read the secrets context). All optional: when empty -- on a fork, or before
+  # the secrets are configured -- the build simply runs unsigned, exactly as it
+  # does on the required-platform path. See docs/macos-codesigning.md.
+  macos-certificate-base64:
+    description: Base64-encoded Developer ID Application cert (.p12). Empty -> unsigned.
+    required: false
+    default: ""
+  macos-certificate-password:
+    description: Password for the .p12 certificate.
+    required: false
+    default: ""
+  apple-signing-identity:
+    description: Developer ID identity string; presence enables osxSign.
+    required: false
+    default: ""
+  apple-api-key-base64:
+    description: Base64-encoded App Store Connect API key (.p8). Empty -> not notarized.
+    required: false
+    default: ""
+  apple-api-key-id:
+    description: App Store Connect API key ID.
+    required: false
+    default: ""
+  apple-api-issuer:
+    description: App Store Connect API issuer ID.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install Linux packaging deps
+      if: inputs.platform == 'linux'
+      shell: bash
+      run: sudo apt-get update -qq && sudo apt-get install -y fakeroot rpm
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: |
+          package-lock.json
+          app/package-lock.json
+
+    - name: Install root deps
+      shell: bash
+      run: npm ci
+
+    - name: Install app deps
+      shell: bash
+      working-directory: app
+      run: npm ci
+
+    # Imports the Developer ID Application cert into a throwaway keychain so
+    # codesign (via electron-forge's osxSign) can find the identity. Skipped
+    # entirely when the cert secret isn't set -> unsigned build.
+    - name: Import Apple signing certificate
+      if: inputs.platform == 'darwin' && inputs.macos-certificate-base64 != ''
+      shell: bash
+      env:
+        MACOS_CERTIFICATE_BASE64: ${{ inputs.macos-certificate-base64 }}
+        MACOS_CERTIFICATE_PASSWORD: ${{ inputs.macos-certificate-password }}
+      run: |
+        CERT_PATH="$RUNNER_TEMP/developer-id.p12"
+        KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+        KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+        echo "$MACOS_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
+        security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+        security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+        security import "$CERT_PATH" -P "$MACOS_CERTIFICATE_PASSWORD" \
+          -t cert -f pkcs12 -k "$KEYCHAIN_PATH" \
+          -T /usr/bin/codesign -T /usr/bin/security
+        security set-key-partition-list -S apple-tool:,apple:,codesign: \
+          -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+        # Prepend our keychain to the user search list so codesign sees it.
+        security list-keychains -d user -s "$KEYCHAIN_PATH" \
+          $(security list-keychains -d user | sed 's/"//g')
+        rm -f "$CERT_PATH"
+
+    # Decodes the App Store Connect API key (.p8) to a file and exports its
+    # path; forge.config.ts reads APPLE_API_KEY_PATH to enable notarization.
+    # Skipped when the key secret isn't set -> signed-but-not-notarized.
+    - name: Stage notarization API key
+      if: inputs.platform == 'darwin' && inputs.apple-api-key-base64 != ''
+      shell: bash
+      env:
+        APPLE_API_KEY_BASE64: ${{ inputs.apple-api-key-base64 }}
+      run: |
+        KEY_PATH="$RUNNER_TEMP/asc-api-key.p8"
+        echo "$APPLE_API_KEY_BASE64" | base64 --decode > "$KEY_PATH"
+        echo "APPLE_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+
+    - name: Make Orbit (${{ inputs.platform }}-${{ inputs.arch }})
+      shell: bash
+      working-directory: app
+      # APPLE_API_KEY_PATH comes from the staging step via $GITHUB_ENV.
+      env:
+        APPLE_SIGNING_IDENTITY: ${{ inputs.apple-signing-identity }}
+        APPLE_API_KEY_ID: ${{ inputs.apple-api-key-id }}
+        APPLE_API_ISSUER: ${{ inputs.apple-api-issuer }}
+      run: npx electron-forge make --arch=${{ inputs.arch }} --platform=${{ inputs.platform }}
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Orbit-${{ inputs.platform }}-${{ inputs.arch }}
+        path: |
+          app/out/make/**/*.dmg
+          app/out/make/**/*.zip
+          app/out/make/**/*.deb
+          app/out/make/**/*.rpm
+        if-no-files-found: error

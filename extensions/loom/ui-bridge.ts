@@ -7,8 +7,13 @@
  * written on disk by the activity-hooks module for debug.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { onNotebookChange, getNotebookPath } from "./state.js";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+  onNotebookChange,
+  getNotebookPath,
+  getNotebookWidgetMode,
+  setNotebookWidgetMode,
+} from "./state.js";
 import { LoomWidgetKey, encodeMarkdownWidget } from "../../shared/loom-shell-contract.js";
 
 export function setupUIBridge(pi: ExtensionAPI): void {
@@ -23,8 +28,12 @@ export function setupUIBridge(pi: ExtensionAPI): void {
     if (!latestCtx) return;
     if (content === last.notebookMd) return;
     last.notebookMd = content;
+    // Respect an explicit close: if the user hid the panel via /notebook,
+    // don't reopen it on the next notebook write.
+    if (getNotebookWidgetMode() === "hidden") return;
     const nbPath = getNotebookPath();
     const header = nbPath ? `> \`${nbPath}\`\n\n` : "";
     latestCtx.ui.setWidget(LoomWidgetKey.Notebook, encodeMarkdownWidget(header + content));
+    setNotebookWidgetMode("open");
   });
 }

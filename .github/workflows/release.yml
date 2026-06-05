@@ -1,0 +1,162 @@
+name: release
+
+# Triggered by pushing a tag matching v* (e.g. v0.1.0-alpha.1), or manually
+# via workflow_dispatch (handy for re-running on the same tag without
+# inventing a new one).
+# Builds platform-specific Orbit installers and attaches them to a draft
+# GitHub Release (promote the draft manually), and publishes the @galaxyproject/loom
+# npm package via OIDC trusted publishing (no token, no 2FA prompt).
+#
+# All three installer platforms (arm64 mac, Intel mac, linux) build in one
+# matrix that `publish` waits on. The Intel leg used to run decoupled off to the
+# side: GitHub's now-retired macos-13 Intel fleet was small and could sit queued
+# for hours (~19h on the alpha.1 cut), which would have held the draft Release
+# hostage if `publish` depended on it. macos-26-intel schedules reliably, so
+# it's folded back in. If a future Intel runner starts stalling releases again,
+# split it back out into a best-effort job that `publish` doesn't need -- see
+# git history for that shape.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Two pushes (or a re-push) of the same tag would otherwise race to attach
+# artifacts to the draft Release.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Builds every installer platform; `publish` needs this job and attaches
+  # whatever lands here. fail-fast is off so one platform's failure doesn't
+  # cancel the others mid-build.
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macos-latest runners are arm64 (Apple Silicon).
+          - os: macos-latest
+            arch: arm64
+            platform: darwin
+          # Intel (x64) mac. macos-26-intel is the newest standard Intel runner
+          # (free for public repos) and the longest-lived label there'll be --
+          # macos-13 is already retired, macos-15-intel goes a macOS cycle
+          # sooner, and macos-26 is expected to be the last Intel-capable macOS.
+          # Bump as newer -intel labels appear.
+          - os: macos-26-intel
+            arch: x64
+            platform: darwin
+          # Linux x64 — produces .deb, .rpm, and .zip. Works natively on
+          # Linux and inside WSL2 (with WSLg) on Windows 11.
+          - os: ubuntu-latest
+            arch: x64
+            platform: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assert version lockstep
+        run: node scripts/check-version-lockstep.mjs
+
+      # Build, sign, notarize, package, and upload live in the make-orbit
+      # composite action so the security-sensitive macOS codesigning setup has
+      # exactly one copy. Apple secrets are passed in; when empty -- on a fork,
+      # or before they're configured -- the build runs unsigned, exactly as
+      # before. See docs/macos-codesigning.md.
+      - uses: ./.github/actions/make-orbit
+        with:
+          platform: ${{ matrix.platform }}
+          arch: ${{ matrix.arch }}
+          macos-certificate-base64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          macos-certificate-password: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          apple-signing-identity: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          apple-api-key-base64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          apple-api-key-id: ${{ secrets.APPLE_API_KEY_ID }}
+          apple-api-issuer: ${{ secrets.APPLE_API_ISSUER }}
+
+  # Only attach a draft Release on a real tag (or a dispatch re-run against a
+  # tag). A workflow_dispatch on a branch is a build-only test run -- the signed
+  # installers land as workflow artifacts you can download from the run, with no
+  # draft Release and no npm publish, so notarization can be iterated cheaply.
+  publish:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List collected artifacts
+        run: find artifacts -type f | sort
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          files: |
+            artifacts/**/*.dmg
+            artifacts/**/*.zip
+            artifacts/**/*.deb
+            artifacts/**/*.rpm
+          fail_on_unmatched_files: true
+
+  # Publish the @galaxyproject/loom npm package (the Loom CLI -- not Orbit) via
+  # OIDC trusted publishing. No NPM_TOKEN and no 2FA OTP: GitHub mints a
+  # short-lived id-token that npm verifies against the package's configured
+  # trusted publisher (npmjs.com -> package Settings -> Trusted Publisher,
+  # pointing at this repo + release.yml). Runs only on tag pushes so a
+  # workflow_dispatch re-run (used to re-attach Orbit artifacts) doesn't try to
+  # republish an existing version. Independent of the Orbit build -- they're
+  # separate channels; the prepublishOnly hook (typecheck + tests + smoke-pack)
+  # gates quality.
+  publish-npm:
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # OIDC trusted publishing needs npm >= 11.5.1; Node 22 still ships npm 10.x.
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@latest
+
+      - name: Install deps
+        run: npm ci
+
+      # Prerelease versions (0.1.0-alpha.4) publish under the prerelease channel
+      # (alpha) so they never land on the `latest` dist-tag; a plain semver
+      # (0.1.0) publishes to `latest`.
+      - name: Determine dist-tag from version
+        id: disttag
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if [[ "$VERSION" == *-* ]]; then
+            TAG="${VERSION#*-}"
+            TAG="${TAG%%.*}"
+          else
+            TAG="latest"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Publishing $VERSION with dist-tag '$TAG'"
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public --tag "${{ steps.disttag.outputs.tag }}"

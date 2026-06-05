@@ -1,6 +1,6 @@
 {
   "name": "@galaxyproject/loom",
-  "version": "0.1.0",
+  "version": "0.3.1",
   "type": "module",
   "description": "AI co-scientist for Galaxy bioinformatics, built on Pi.dev",
   "keywords": [
@@ -16,7 +16,7 @@
     "url": "https://github.com/galaxyproject/loom"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.19"
   },
   "files": [
     "bin/",
@@ -34,7 +34,9 @@
     ]
   },
   "dependencies": {
-    "@mariozechner/pi-coding-agent": "^0.73.0",
+    "@anthropic-ai/sandbox-runtime": "^0.0.52",
+    "@earendil-works/pi-coding-agent": "^0.78.0",
+    "@earendil-works/pi-tui": "^0.78.0",
     "@sinclair/typebox": "^0.34.49",
     "better-sqlite3": "^12.9.0",
     "chokidar": "^4.0.3",
@@ -53,7 +55,9 @@
     "prepare": "husky",
     "test": "vitest run",
     "test:watch": "vitest",
+    "evals": "tsx evals/run.ts",
     "typecheck": "tsc --noEmit",
+    "check:versions": "node scripts/check-version-lockstep.mjs",
     "smoke:pack": "node scripts/smoke-pack.mjs",
     "prepublishOnly": "npm run typecheck && npm test && npm run smoke:pack"
   },
@@ -65,8 +69,8 @@
     ]
   },
   "devDependencies": {
+    "@earendil-works/pi-ai": "^0.78.0",
     "@eslint/js": "^10.0.1",
-    "@mariozechner/pi-ai": "^0.73.0",
     "@types/better-sqlite3": "^7.6.13",
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",
@@ -74,6 +78,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "prettier": "^3.8.3",
+    "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.59.1",
     "vitest": "^4.1.4"

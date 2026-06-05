@@ -1,11 +1,19 @@
 import { ChatPanel } from "./chat/chat-panel.js";
+import { humanizeAgentError } from "./chat/error-humanizer.js";
 import { ShellPanel } from "./chat/shell-panel.js";
 import { ArtifactPanel } from "./artifacts/artifact-panel.js";
 import { FilesPanel } from "./files/files-panel.js";
 import { FileViewer } from "./files/file-viewer.js";
 import { refreshGalaxyInvocations } from "./galaxy-invocations.js";
+import { PromptQueue, queuedPreview } from "./prompt-queue.js";
 import { LoomWidgetKey, decodeMarkdownWidget } from "../../../shared/loom-shell-contract.js";
 import { ALLOWED_SKILLS_PREFIX, isAllowedSkillUrl } from "../../../shared/loom-config.js";
+import {
+  SCHEMA_VERSION,
+  formatActivityTail,
+  capFeedbackPayload,
+} from "../../../shared/feedback-contract.js";
+import type { FeedbackPayload, FeedbackSysinfo } from "../../../shared/feedback-contract.js";
 
 declare global {
   interface Window {
@@ -22,18 +30,37 @@ void window.orbit.getConfig().then((cfg: Record<string, unknown>) => {
   }
 });
 
+// macOS uses titleBarStyle: 'hiddenInset', which insets the traffic lights
+// over the top-left of the content. Toggle a body class so we can pad the
+// leftmost masthead away from them and skip the padding on other platforms.
+// navigator.platform is deprecated; prefer userAgentData and fall back for
+// older Chromium / non-Chromium runtimes that may host the renderer.
+const platformString =
+  (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ??
+  navigator.platform;
+if (/mac/i.test(platformString)) document.body.classList.add("platform-darwin");
+
 // ── Components ────────────────────────────────────────────────────────────────
 
 const messagesEl = document.getElementById("messages")!;
 const inputEl = document.getElementById("input") as HTMLTextAreaElement;
 const sendBtn = document.getElementById("send-btn")!;
 const abortBtn = document.getElementById("abort-btn")!;
+const queuedPanelEl = document.getElementById("queued-panel")!;
+const queuedToggleBtn = document.getElementById("queued-toggle") as HTMLButtonElement;
+const queuedCountEl = document.getElementById("queued-count")!;
+const queuedToggleIconEl = document.getElementById("queued-toggle-icon")!;
+const queuedListEl = document.getElementById("queued-list")!;
+const queuedClearBtn = document.getElementById("queued-clear") as HTMLButtonElement;
 const statusBadge = document.getElementById("agent-status")!;
 
 const cwdPathEl = document.getElementById("cwd-path")!;
 const cwdChangeBtn = document.getElementById("cwd-change")!;
 const usageTokensEl = document.getElementById("usage-tokens")!;
 const usageCostEl = document.getElementById("usage-cost")!;
+const contextFillEl = document.getElementById("context-fill")!;
+const contextFillBarEl = document.getElementById("context-fill-bar")!;
+const contextFillPctEl = document.getElementById("context-fill-pct")!;
 const modelIndicatorEl = document.getElementById("model-indicator")!;
 const modelIndicatorNameEl = document.getElementById("model-indicator-name")!;
 
@@ -80,9 +107,10 @@ let streaming = false;
 let PRICING: Record<string, { in: number; out: number; cacheRead?: number; cacheWrite?: number }> =
   {
     // Anthropic
-    "claude-opus-4-7": { in: 15, out: 75, cacheRead: 1.5, cacheWrite: 18.75 },
-    "claude-opus-4-6": { in: 15, out: 75, cacheRead: 1.5, cacheWrite: 18.75 },
-    "claude-opus-4-5": { in: 15, out: 75, cacheRead: 1.5, cacheWrite: 18.75 },
+    "claude-opus-4-8": { in: 5, out: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+    "claude-opus-4-7": { in: 5, out: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+    "claude-opus-4-6": { in: 5, out: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+    "claude-opus-4-5": { in: 5, out: 25, cacheRead: 0.5, cacheWrite: 6.25 },
     "claude-sonnet-4-6": { in: 3, out: 15, cacheRead: 0.3, cacheWrite: 3.75 },
     "claude-sonnet-4-5": { in: 3, out: 15, cacheRead: 0.3, cacheWrite: 3.75 },
     "claude-haiku-4-5": { in: 1, out: 5, cacheRead: 0.1, cacheWrite: 1.25 },
@@ -100,6 +128,38 @@ let PRICING: Record<string, { in: number; out: number; cacheRead?: number; cache
     "qwen3:8b": { in: 0, out: 0 },
   };
 
+// Per-model context-window size (tokens), keyed by provider then model id.
+// Fallback only — overwritten per provider by populateDynamicModelData() from
+// pi-ai's registry. Powers the footer's context-fill indicator. Keyed by
+// provider because pi-ai exposes the same model id under multiple providers
+// with different windows (e.g. gpt-5.2 is openai=400k but openai-codex=272k),
+// so a flat id→window map would let whichever provider loaded last win.
+// Honest-window caveat: a registry window (an openai-codex model, or Claude's
+// 1M tier) can exceed the endpoint's real usable limit, so the bar may
+// under-report on those paths. Documented; not special-cased.
+let CONTEXT_WINDOWS: Record<string, Record<string, number>> = {
+  anthropic: {
+    "claude-opus-4-8": 1_000_000,
+    "claude-opus-4-7": 1_000_000,
+    "claude-opus-4-6": 1_000_000,
+    "claude-opus-4-5": 200_000,
+    "claude-sonnet-4-6": 1_000_000,
+    "claude-sonnet-4-5": 200_000,
+    "claude-haiku-4-5": 200_000,
+  },
+  openai: {
+    "gpt-4o": 128_000,
+    "gpt-4o-mini": 128_000,
+    "gpt-4-turbo": 128_000,
+    o1: 200_000,
+    "o1-mini": 128_000,
+  },
+  google: {
+    "gemini-2.5-pro": 1_048_576,
+    "gemini-2.5-flash": 1_048_576,
+  },
+};
+
 interface Usage {
   input: number;
   output: number;
@@ -113,6 +173,17 @@ const turnUsage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 // produced them (the user can switch models mid-session).
 const perModelUsage = new Map<string, Usage>();
 let currentModel: string | null = null;
+// Active provider for currentModel. Tracked separately because pi-ai exposes
+// the same model id under multiple providers with different context windows,
+// and usage events carry only the model — so we set this at the explicit
+// model/provider change sites (startup, /model switch, prefs save).
+let currentProvider: string | null = null;
+
+// Current context occupancy: input + cacheRead of the LATEST assistant turn's
+// usage (the size of the last request sent to the model). This is NOT the
+// cumulative sessionUsage — it's the live "how full is the window right now"
+// numerator for the context-fill indicator. Reset on new session.
+let contextTokens = 0;
 
 // Pi's AssistantMessage.usage carries a `cost` object calculated upstream
 // from its authoritative rate table (`calculateCost` in pi-ai/models.js).
@@ -121,6 +192,55 @@ let currentModel: string | null = null;
 // after that, it's the source of truth for the footer cost string.
 let sessionCostFromPi: number | null = null;
 let turnCostFromPi: number = 0;
+
+// ── Cost persistence across renderer reloads (sleep/wake GPU reset) ──────────
+// Cost state is in-memory and wiped on renderer reload. Persist to
+// localStorage keyed by cwd so it survives display-sleep recovery reloads.
+
+function costKey(cwd: string): string {
+  return `orbit.cost.${cwd}`;
+}
+function saveCostState(cwd: string): void {
+  localStorage.setItem(
+    costKey(cwd),
+    JSON.stringify({
+      sessionUsage: { ...sessionUsage },
+      sessionCostFromPi,
+      perModelUsage: Object.fromEntries(perModelUsage),
+    }),
+  );
+}
+function restoreCostState(cwd: string): void {
+  try {
+    const raw = localStorage.getItem(costKey(cwd));
+    if (!raw) return;
+    const s = JSON.parse(raw) as {
+      sessionUsage: Usage;
+      sessionCostFromPi: number | null;
+      perModelUsage?: Record<string, Usage>;
+    };
+    sessionUsage.input = s.sessionUsage.input ?? 0;
+    sessionUsage.output = s.sessionUsage.output ?? 0;
+    sessionUsage.cacheRead = s.sessionUsage.cacheRead ?? 0;
+    sessionUsage.cacheWrite = s.sessionUsage.cacheWrite ?? 0;
+    sessionCostFromPi = s.sessionCostFromPi ?? null;
+    perModelUsage.clear();
+    if (s.perModelUsage) {
+      for (const [model, u] of Object.entries(s.perModelUsage)) {
+        perModelUsage.set(model, {
+          input: u.input ?? 0,
+          output: u.output ?? 0,
+          cacheRead: u.cacheRead ?? 0,
+          cacheWrite: u.cacheWrite ?? 0,
+        });
+      }
+    }
+    renderUsage();
+  } catch {}
+}
+function clearCostState(cwd: string): void {
+  localStorage.removeItem(costKey(cwd));
+}
 
 /** Match a model ID against the pricing table (handles date suffixes). */
 function findPricing(
@@ -187,6 +307,75 @@ function renderUsage(): void {
     usageCostEl.textContent = "";
     usageCostEl.classList.add("hidden");
   }
+}
+
+/**
+ * Look up a model's window within one provider's table: exact, then date-suffix
+ * strip, then longest-key-first prefix requiring a delimiter boundary — so
+ * "gpt-5" can't swallow "gpt-5.4-pro" (a "." is not a boundary), while
+ * "claude-opus-4-8" still matches a dated "claude-opus-4-8-20250514".
+ */
+function windowFromTable(table: Record<string, number>, model: string): number | null {
+  const exact = table[model];
+  if (typeof exact === "number" && exact > 0) return exact;
+  const stripped = model.replace(/-\d{8}$/, "");
+  if (typeof table[stripped] === "number" && table[stripped] > 0) return table[stripped];
+  for (const key of Object.keys(table).sort((a, b) => b.length - a.length)) {
+    if ((model.startsWith(`${key}-`) || model.startsWith(`${key}:`)) && table[key] > 0) {
+      return table[key];
+    }
+  }
+  return null;
+}
+
+/**
+ * Resolve a model id to its context-window size (tokens), or null if unknown.
+ * Provider-qualified first (the same id can mean different windows on different
+ * providers); falls back to a provider-agnostic search when the provider is
+ * unknown or absent from the table, preferring the smallest match so the bar
+ * warns early rather than miss an overflow.
+ */
+function contextWindowFor(provider: string | null, model: string | null): number | null {
+  if (!model) return null;
+  if (provider && CONTEXT_WINDOWS[provider]) {
+    const w = windowFromTable(CONTEXT_WINDOWS[provider], model);
+    if (w !== null) return w;
+  }
+  let best: number | null = null;
+  for (const table of Object.values(CONTEXT_WINDOWS)) {
+    const w = windowFromTable(table, model);
+    if (w !== null && (best === null || w < best)) best = w;
+  }
+  return best;
+}
+
+// Context-fill indicator: shows how full the current model's context window is,
+// so the user sees an impending overflow before it happens. The numerator is
+// the LATEST turn's request size (contextTokens), NOT cumulative sessionUsage.
+// Hidden when the window is unknown (no divide-by-zero / NaN). Honest-window
+// caveat: openai-codex models' registry window may exceed the real ChatGPT
+// endpoint limit, so the bar can under-report on that path (see CONTEXT_WINDOWS).
+function updateContextFill(): void {
+  // Local is named windowSize (not `window`) to avoid shadowing the global
+  // window object the renderer uses for window.orbit.* calls.
+  const windowSize = contextWindowFor(currentProvider, currentModel);
+  if (!windowSize || contextTokens <= 0) {
+    contextFillEl.classList.add("hidden");
+    contextFillEl.classList.remove("warn", "danger");
+    return;
+  }
+  const ratio = contextTokens / windowSize;
+  const pct = Math.min(100, Math.round(ratio * 100));
+  contextFillEl.classList.remove("hidden");
+  contextFillBarEl.style.width = `${Math.min(100, ratio * 100)}%`;
+  contextFillPctEl.textContent = `${pct}%`;
+  contextFillEl.classList.toggle("danger", ratio >= 0.9);
+  contextFillEl.classList.toggle("warn", ratio >= 0.7 && ratio < 0.9);
+  // currentModel is always non-null here: contextWindowFor returns null for a
+  // null model, which the early return above already handled.
+  contextFillEl.title =
+    `Context: ${contextTokens.toLocaleString()} / ${windowSize.toLocaleString()} tokens (${pct}%)` +
+    `\nmodel: ${currentModel}${currentProvider ? ` (${currentProvider})` : ""}`;
 }
 
 /** Format a long model id into a short display label, e.g. claude-sonnet-4-6 → "Sonnet 4.6". */
@@ -486,12 +675,51 @@ const welcomeProvider = document.getElementById("welcome-provider") as HTMLSelec
 const welcomeModel = document.getElementById("welcome-model") as HTMLSelectElement;
 const welcomeApiKey = document.getElementById("welcome-api-key") as HTMLInputElement;
 const welcomeApiKeyStatus = document.getElementById("welcome-api-key-status")!;
+const welcomeApiKeyRow = document.getElementById("welcome-api-key-row")!;
+const welcomeBaseUrlRow = document.getElementById("welcome-base-url-row")!;
+const welcomeBaseUrl = document.getElementById("welcome-base-url") as HTMLInputElement;
+const welcomeJetstreamPreset = document.getElementById(
+  "welcome-jetstream-preset",
+) as HTMLButtonElement;
+
+/** Jetstream's public, key-reachable proxy + the models it serves. Shared by the welcome screen and Preferences. */
+const JETSTREAM_BASE_URL = "https://llm.jetstream-cloud.org/api";
+const JETSTREAM_MODELS = ["gpt-oss-120b", "llama-4-scout"];
+
+const welcomeApiKeyHintRow = document.getElementById("welcome-api-key-hint-row")!;
+const welcomeOauthRow = document.getElementById("welcome-oauth-row")!;
+const welcomeOauthHintRow = document.getElementById("welcome-oauth-hint-row")!;
+const welcomeOauthStatus = document.getElementById("welcome-oauth-status")!;
+const welcomeOauthSignIn = document.getElementById("welcome-oauth-signin") as HTMLButtonElement;
 const welcomeGalaxyUrl = document.getElementById("welcome-galaxy-url") as HTMLInputElement;
 const welcomeGalaxyKey = document.getElementById("welcome-galaxy-key") as HTMLInputElement;
 const welcomeCwd = document.getElementById("welcome-cwd") as HTMLInputElement;
 const welcomeBrowseCwd = document.getElementById("welcome-browse-cwd")!;
 const welcomeSave = document.getElementById("welcome-save")!;
 const welcomeError = document.getElementById("welcome-error")!;
+
+/** Provider IDs that authenticate via OAuth rather than an API key. */
+const OAUTH_PROVIDERS = new Set<string>(["openai-codex"]);
+function isOAuthProvider(provider: string): boolean {
+  return OAUTH_PROVIDERS.has(provider);
+}
+
+function formatOAuthStatus(s: {
+  signedIn: boolean;
+  expiresInSeconds?: number;
+  accountId?: string;
+}): string {
+  if (!s.signedIn) return "Not signed in";
+  const who = s.accountId ? `Signed in (${s.accountId.slice(0, 8)}…)` : "Signed in";
+  // Don't expose the raw expiry -- pi-coding-agent refreshes silently. Only
+  // surface a hint if the token is already expired so users know a refresh
+  // will happen on next call (and so a stale auth.json isn't mistaken for
+  // a working credential).
+  if (typeof s.expiresInSeconds === "number" && s.expiresInSeconds < 0) {
+    return `${who} · token expired, will refresh on next use`;
+  }
+  return who;
+}
 
 // Wire a provider-dropdown / API-key-input / status-label triple to do
 // debounced live validation (see main/ipc-handlers.ts validateApiKey).
@@ -500,6 +728,8 @@ function wireApiKeyValidation(
   providerEl: HTMLSelectElement,
   keyEl: HTMLInputElement,
   statusEl: HTMLElement,
+  baseUrlEl?: HTMLInputElement,
+  modelEl?: HTMLSelectElement,
 ): void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let seq = 0;
@@ -510,6 +740,7 @@ function wireApiKeyValidation(
   const validateNow = async () => {
     const provider = providerEl.value;
     const key = keyEl.value.trim();
+    const baseUrl = baseUrlEl?.value.trim() || undefined;
     if (!key) {
       setStatus("", "");
       return;
@@ -517,10 +748,22 @@ function wireApiKeyValidation(
     const mySeq = ++seq;
     setStatus("checking", "Checking…");
     try {
-      const res = await window.orbit.validateApiKey(provider, key);
-      if (mySeq !== seq) return; // a newer request superseded this one
-      if (res.valid) setStatus("valid", "\u2713 Valid");
-      else setStatus("invalid", `\u2717 ${res.error || "Invalid"}`);
+      const res = await window.orbit.validateApiKey(provider, key, baseUrl);
+      if (mySeq !== seq) return;
+      if (res.valid) {
+        setStatus("valid", "\u2713 Valid");
+        if (modelEl && res.models && res.models.length > 0) {
+          const selected = modelEl.value;
+          modelEl.innerHTML = "";
+          for (const id of res.models) {
+            const opt = document.createElement("option");
+            opt.value = id;
+            opt.textContent = id;
+            if (id === selected) opt.selected = true;
+            modelEl.appendChild(opt);
+          }
+        }
+      } else setStatus("invalid", `\u2717 ${res.error || "Invalid"}`);
     } catch (err) {
       if (mySeq !== seq) return;
       setStatus("invalid", `\u2717 ${err instanceof Error ? err.message : String(err)}`);
@@ -532,6 +775,7 @@ function wireApiKeyValidation(
   };
   keyEl.addEventListener("input", schedule);
   providerEl.addEventListener("change", schedule);
+  baseUrlEl?.addEventListener("input", schedule);
 }
 
 function populateWelcomeModels(provider: string): void {
@@ -544,8 +788,64 @@ function populateWelcomeModels(provider: string): void {
     welcomeModel.appendChild(opt);
   }
 }
-welcomeProvider.addEventListener("change", () => populateWelcomeModels(welcomeProvider.value));
-wireApiKeyValidation(welcomeProvider, welcomeApiKey, welcomeApiKeyStatus);
+welcomeProvider.addEventListener("change", () => {
+  populateWelcomeModels(welcomeProvider.value);
+  void updateWelcomeAuthUi();
+});
+wireApiKeyValidation(
+  welcomeProvider,
+  welcomeApiKey,
+  welcomeApiKeyStatus,
+  welcomeBaseUrl,
+  welcomeModel,
+);
+
+welcomeJetstreamPreset.addEventListener("click", () => {
+  welcomeBaseUrl.value = JETSTREAM_BASE_URL;
+  welcomeModel.innerHTML = "";
+  for (const id of JETSTREAM_MODELS) {
+    const opt = document.createElement("option");
+    opt.value = id;
+    opt.textContent = id;
+    welcomeModel.appendChild(opt);
+  }
+  welcomeBaseUrl.dispatchEvent(new Event("input"));
+});
+
+async function updateWelcomeAuthUi(): Promise<void> {
+  const oauth = isOAuthProvider(welcomeProvider.value);
+  const custom = welcomeProvider.value === "openai-compatible";
+  welcomeBaseUrlRow.classList.toggle("hidden", !custom);
+  welcomeApiKeyRow.classList.toggle("hidden", oauth);
+  welcomeApiKeyHintRow.classList.toggle("hidden", oauth);
+  welcomeOauthRow.classList.toggle("hidden", !oauth);
+  welcomeOauthHintRow.classList.toggle("hidden", !oauth);
+  if (oauth) {
+    const status = await window.orbit.oauthStatus(welcomeProvider.value);
+    welcomeOauthStatus.textContent = formatOAuthStatus(status);
+    welcomeOauthStatus.classList.toggle("signed-in", status.signedIn);
+    welcomeOauthSignIn.textContent = status.signedIn ? "Sign in again" : "Sign in with ChatGPT";
+  }
+}
+
+welcomeOauthSignIn.addEventListener("click", async () => {
+  welcomeError.textContent = "";
+  welcomeOauthSignIn.disabled = true;
+  welcomeOauthStatus.textContent = "Opening browser…";
+  try {
+    const res = await window.orbit.oauthSignIn(welcomeProvider.value);
+    if (res.ok) {
+      welcomeOauthStatus.textContent = formatOAuthStatus(res.status);
+      welcomeOauthStatus.classList.toggle("signed-in", res.status.signedIn);
+      welcomeOauthSignIn.textContent = "Sign in again";
+    } else {
+      welcomeError.textContent = `Sign-in failed: ${res.error}`;
+      welcomeOauthStatus.textContent = "Not signed in";
+    }
+  } finally {
+    welcomeOauthSignIn.disabled = false;
+  }
+});
 
 welcomeBrowseCwd.addEventListener("click", async () => {
   const dir = await window.orbit.selectDirectory();
@@ -554,10 +854,23 @@ welcomeBrowseCwd.addEventListener("click", async () => {
 
 welcomeSave.addEventListener("click", async () => {
   welcomeError.textContent = "";
+  const oauth = isOAuthProvider(welcomeProvider.value);
   const apiKey = welcomeApiKey.value.trim();
-  if (!apiKey) {
+  if (!oauth && !apiKey) {
     welcomeError.textContent = "API key is required";
     return;
+  }
+  const custom = welcomeProvider.value === "openai-compatible";
+  if (custom && !welcomeBaseUrl.value.trim()) {
+    welcomeError.textContent = "Enter a base URL (or use the Jetstream preset).";
+    return;
+  }
+  if (oauth) {
+    const status = await window.orbit.oauthStatus(welcomeProvider.value);
+    if (!status.signedIn) {
+      welcomeError.textContent = "Sign in with ChatGPT before continuing.";
+      return;
+    }
   }
 
   // Galaxy: both-or-neither. The Preferences modal enforces the same
@@ -571,11 +884,18 @@ welcomeSave.addEventListener("click", async () => {
     return;
   }
 
+  // OAuth providers persist their credential in ~/.pi/agent/auth.json (written
+  // by the sign-in flow above), not in config.json. Skip writing apiKey for
+  // those so a leftover plaintext field doesn't shadow the real auth path.
+  const providerEntry: Record<string, unknown> = { model: welcomeModel.value || undefined };
+  if (!oauth) providerEntry.apiKey = apiKey;
+  if (welcomeBaseUrl.value.trim()) providerEntry.baseUrl = welcomeBaseUrl.value.trim();
   const cfg: Record<string, unknown> = {
     llm: {
-      provider: welcomeProvider.value,
-      model: welcomeModel.value,
-      apiKey,
+      active: welcomeProvider.value,
+      providers: {
+        [welcomeProvider.value]: providerEntry,
+      },
     },
   };
 
@@ -614,9 +934,20 @@ document.addEventListener("keydown", (e) => {
 });
 
 async function checkFirstRun(): Promise<void> {
-  const cfg = (await window.orbit.getConfig()) as { llm?: { hasApiKey?: boolean } };
-  if (!cfg.llm?.hasApiKey) {
+  const cfg = (await window.orbit.getConfig()) as {
+    llm?: { active?: string; providers?: Record<string, { hasApiKey?: boolean }> };
+  };
+  const active = cfg.llm?.active;
+  // Treat an OAuth-only setup (no API key, but provider has a stored token)
+  // as fully configured -- skip the welcome screen.
+  if (active && isOAuthProvider(active)) {
+    const status = await window.orbit.oauthStatus(active);
+    if (status.signedIn) return;
+  }
+  const hasKey = active ? Boolean(cfg.llm?.providers?.[active]?.hasApiKey) : false;
+  if (!hasKey) {
     populateWelcomeModels(welcomeProvider.value);
+    void updateWelcomeAuthUi();
     welcomeOverlay.classList.remove("hidden");
   }
 }
@@ -631,6 +962,7 @@ async function populateDynamicModelData(): Promise<void> {
     if (!res.ok) return;
     const newModels: Record<string, ModelChoice[]> = {};
     const newPricing: typeof PRICING = {};
+    const newWindows: typeof CONTEXT_WINDOWS = {};
     for (const [provider, entries] of Object.entries(res.providers)) {
       newModels[provider] = entries.map((e) => ({ id: e.id, label: e.label }));
       for (const e of entries) {
@@ -640,11 +972,26 @@ async function populateDynamicModelData(): Promise<void> {
           cacheRead: e.pricing.cacheRead,
           cacheWrite: e.pricing.cacheWrite,
         };
+        if (typeof e.contextWindow === "number" && e.contextWindow > 0) {
+          newWindows[provider] = newWindows[provider] ?? {};
+          newWindows[provider][e.id] = e.contextWindow;
+        }
       }
     }
     if (Object.keys(newModels).length === 0) return; // never replace with empty
-    MODELS_BY_PROVIDER = newModels;
-    PRICING = newPricing;
+    // Merge rather than replace so hardcoded providers not returned by the
+    // IPC (e.g. deepseek before main process restarts) survive.
+    MODELS_BY_PROVIDER = { ...MODELS_BY_PROVIDER, ...newModels };
+    PRICING = { ...PRICING, ...newPricing };
+    // Merge per provider so hardcoded providers/models not returned by the IPC
+    // survive (mirrors the MODELS/PRICING merge above).
+    const mergedWindows: typeof CONTEXT_WINDOWS = { ...CONTEXT_WINDOWS };
+    for (const [provider, table] of Object.entries(newWindows)) {
+      mergedWindows[provider] = { ...mergedWindows[provider], ...table };
+    }
+    CONTEXT_WINDOWS = mergedWindows;
+    // A late registry load may add the current model's window → refresh.
+    updateContextFill();
   } catch {
     /* keep hardcoded fallback */
   }
@@ -659,6 +1006,11 @@ function captureUsage(event: Record<string, unknown>): void {
   if (msg.model && typeof msg.model === "string" && msg.model !== currentModel) {
     currentModel = msg.model;
     renderModelIndicator();
+    // Window changed → the prior model's request size is meaningless for the new
+    // model, so reset and recompute (hides the bar until the new model's usage
+    // arrives, which on Anthropic lands in this same event below).
+    contextTokens = 0;
+    updateContextFill();
   }
 
   const u = msg.usage as (Partial<Usage> & { cost?: { total?: number } }) | undefined;
@@ -672,6 +1024,23 @@ function captureUsage(event: Record<string, unknown>): void {
   // Pi's rolling cost for this message (authoritative, computed in pi-ai).
   if (typeof u.cost?.total === "number") {
     turnCostFromPi = u.cost.total;
+  }
+
+  // Current context occupancy = this turn's request (prompt) size. In pi-ai's
+  // Usage, input/cacheRead/cacheWrite are DISJOINT: input = uncached prompt,
+  // cacheRead = cache hits, cacheWrite = cache-creation tokens. The full prompt
+  // size is the sum of all three (pi-ai's totalTokens is this sum plus output).
+  // On a cache-creation turn (fresh session / first large prompt) the bulk lands
+  // in cacheWrite, so omitting it would under-report exactly the large turns this
+  // indicator must warn about. Update only when we have a usable signal so a
+  // partial event doesn't zero it.
+  if (
+    typeof u.input === "number" ||
+    typeof u.cacheRead === "number" ||
+    typeof u.cacheWrite === "number"
+  ) {
+    contextTokens = (u.input ?? 0) + (u.cacheRead ?? 0) + (u.cacheWrite ?? 0);
+    updateContextFill();
   }
 }
 
@@ -715,6 +1084,9 @@ function commitTurnUsage(): void {
   turnUsage.cacheWrite = 0;
   turnCostFromPi = 0;
   renderUsage();
+  try {
+    saveCostState(cwdPathEl.textContent || "");
+  } catch {}
 }
 
 renderUsage();
@@ -722,10 +1094,18 @@ renderUsage();
 // Populate model indicator from config at startup so it shows before the first message
 void (async () => {
   try {
-    const cfg = (await window.orbit.getConfig()) as { llm?: { model?: string } };
-    if (cfg.llm?.model) {
-      currentModel = cfg.llm.model;
+    const cfg = (await window.orbit.getConfig()) as {
+      llm?: { active?: string; providers?: Record<string, { model?: string }> };
+    };
+    const activeProvider = cfg.llm?.active;
+    const model = activeProvider ? cfg.llm?.providers?.[activeProvider]?.model : undefined;
+    if (model) {
+      currentModel = model;
+      currentProvider = activeProvider ?? null;
       renderModelIndicator();
+      // No request has been sent on this model yet → hide/reset the fill bar.
+      contextTokens = 0;
+      updateContextFill();
     }
   } catch {
     /* getConfig may not be available yet */
@@ -740,15 +1120,21 @@ async function refreshCwd(): Promise<void> {
     cwdPathEl.textContent = cwd;
     cwdPathEl.title = cwd;
     chat.setCwd(cwd);
+    restoreCostState(cwd);
   } catch {
     /* getCwd not available yet */
   }
 }
 
-function resetUiForFreshContext(): void {
+// `clearPersistedCost` defaults to true so /new and other "wipe everything"
+// callers behave as before. `applyCwdChange` passes false so the source cwd's
+// per-cwd cost record survives the switch — otherwise the per-cwd keying is
+// pointless.
+function resetUiForFreshContext(opts: { clearPersistedCost?: boolean } = {}): void {
+  const { clearPersistedCost = true } = opts;
   chat.clear();
   artifacts.clear();
-  clearPendingMessage();
+  clearQueue();
   sessionUsage.input = 0;
   sessionUsage.output = 0;
   sessionUsage.cacheRead = 0;
@@ -758,6 +1144,14 @@ function resetUiForFreshContext(): void {
   turnUsage.cacheRead = 0;
   turnUsage.cacheWrite = 0;
   perModelUsage.clear();
+  sessionCostFromPi = null;
+  contextTokens = 0;
+  updateContextFill();
+  if (clearPersistedCost) {
+    try {
+      clearCostState(cwdPathEl.textContent || "");
+    } catch {}
+  }
   renderUsage();
   streaming = false;
   sendBtn.classList.remove("hidden");
@@ -767,16 +1161,18 @@ function resetUiForFreshContext(): void {
 }
 
 function applyCwdChange(dir: string): void {
-  resetUiForFreshContext();
+  resetUiForFreshContext({ clearPersistedCost: false });
   chat.setCwd(dir);
   cwdPathEl.textContent = dir;
   cwdPathEl.title = dir;
+  restoreCostState(dir);
   chat.addInfoMessage(
     `<i>Switched analysis directory to <code>${dir.replace(/</g, "&lt;")}</code>.</i>`,
   );
   hasShownStartupWelcome = false;
-  // Re-root the file tree, close any open viewer, hide the File tab — the
-  // old relPath is meaningless in the new cwd.
+  // Re-root the file tree, close any open viewer, hide the File tab. The
+  // notebook cache was already nulled by artifacts.clear() inside the
+  // resetUiForFreshContext() call above.
   fileViewer.close();
   artifacts.hideFileTab();
   filesPanel.reset();
@@ -797,6 +1193,43 @@ window.orbit.onCwdChanged((dir) => {
 // is restored, but the chat panel is empty because it's renderer-only state.
 // Replay prior turns only if the chat is currently blank — otherwise the user
 // is mid-flow (e.g. prefs-save restart) and replay would clobber live UI.
+async function loadNotebookFromDisk(): Promise<void> {
+  const r = await window.orbit.loadNotebook();
+  if (r.ok && r.content) {
+    artifacts.setNotebookMarkdown(`> \`${r.path}\`\n\n${r.content}`);
+    setArtifactCollapsed(false);
+  }
+}
+
+// On wake-from-sleep, auto-restore blank chat, notebook, and streaming UI state.
+window.orbit.onDisplayResume(() => {
+  if (!chat.hasContent()) {
+    void window.orbit.replayChat().then((r) => {
+      if (r.ok && r.segments > 0) {
+        chat.addInfoMessage("<i>— Session restored after display sleep —</i>");
+      }
+    });
+  }
+  if (artifacts.hasNotebookContent()) {
+    artifacts.reRenderNotebook();
+  } else {
+    void loadNotebookFromDisk();
+  }
+  // Re-sync streaming UI with actual agent state. If the agent is mid-turn
+  // (running a long tool like foldseek), restore the abort button so the
+  // user isn't stuck with a yellow send button and no way to interrupt.
+  // Key on `turnActive`, not `status === "running"`: status === "running"
+  // only means the brain process is alive, which is true between turns too.
+  void window.orbit.getAgentStatus().then(({ turnActive }) => {
+    if (turnActive && !streaming) {
+      streaming = true;
+      sendBtn.classList.add("hidden");
+      abortBtn.classList.remove("hidden");
+      setStatusBadge("running", "running...");
+    }
+  });
+});
+
 window.orbit.onSessionHistory((history) => {
   if (history.length === 0) return;
   if (chat.hasContent()) return;
@@ -826,29 +1259,75 @@ refreshCwd();
 
 // ── Chat Input ────────────────────────────────────────────────────────────────
 
-/** Queued message — stashed when user submits while agent is streaming. */
-let pendingMessage: string | null = null;
+/** Queued messages — stashed FIFO when user submits while agent is streaming. */
+const pendingQueue = new PromptQueue();
 
 function updateQueuedIndicator(): void {
-  const indicator = document.getElementById("queued-indicator");
-  if (!indicator) return;
-  if (pendingMessage) {
-    indicator.classList.remove("hidden");
-    indicator.title = `Queued: ${pendingMessage.slice(0, 100)}${pendingMessage.length > 100 ? "…" : ""} (click to cancel)`;
-  } else {
-    indicator.classList.add("hidden");
-  }
+  queuedPanelEl.classList.toggle("hidden", pendingQueue.length === 0);
+  queuedCountEl.textContent = `${pendingQueue.length} queued`;
+  queuedToggleBtn.setAttribute("aria-expanded", String(!pendingQueue.collapsed));
+  queuedToggleIconEl.textContent = pendingQueue.collapsed ? "▸" : "▾";
+  queuedListEl.classList.toggle("hidden", pendingQueue.collapsed);
+
+  const rows = document.createDocumentFragment();
+  pendingQueue.items.forEach((message, index) => {
+    const row = document.createElement("div");
+    row.className = "queued-row";
+    row.role = "listitem";
+
+    const position = document.createElement("span");
+    position.className = "queued-position";
+    position.textContent = `${index + 1}.`;
+
+    const preview = document.createElement("span");
+    preview.className = "queued-preview";
+    preview.textContent = queuedPreview(message);
+    preview.title = message;
+
+    const remove = document.createElement("button");
+    remove.className = "queued-remove";
+    remove.type = "button";
+    remove.dataset.queueIndex = String(index);
+    remove.title = `Remove queued message ${index + 1}`;
+    remove.setAttribute("aria-label", `Remove queued message ${index + 1}`);
+    remove.textContent = "×";
+
+    row.append(position, preview, remove);
+    rows.append(row);
+  });
+  queuedListEl.replaceChildren(rows);
 }
 
-/** Clear any queued message without sending it. */
-function clearPendingMessage(): void {
-  pendingMessage = null;
+function enqueueMessage(text: string): void {
+  pendingQueue.enqueue(text);
   updateQueuedIndicator();
 }
 
-// Click the indicator to cancel the queued message
-document.getElementById("queued-indicator")?.addEventListener("click", () => {
-  clearPendingMessage();
+function removeFromQueue(index: number): void {
+  pendingQueue.remove(index);
+  updateQueuedIndicator();
+}
+
+/** Clear all queued messages without sending them. */
+function clearQueue(): void {
+  pendingQueue.clear();
+  updateQueuedIndicator();
+}
+
+queuedToggleBtn.addEventListener("click", () => {
+  pendingQueue.toggleCollapsed();
+  updateQueuedIndicator();
+});
+
+queuedClearBtn.addEventListener("click", () => {
+  clearQueue();
+});
+
+queuedListEl.addEventListener("click", (e) => {
+  const target = e.target as HTMLElement | null;
+  const remove = target?.closest<HTMLButtonElement>("[data-queue-index]");
+  if (!remove) return;
+  removeFromQueue(Number(remove.dataset.queueIndex));
 });
 
 // Cheaper-model nudge state. Suppress per-session if the user dismisses
@@ -901,30 +1380,35 @@ function submit(): void {
   // gets the hint inline above the agent's thinking response.
   maybeShowCheaperModelNudge(text);
 
-  // Slash commands — handled locally, no LLM round-trip (allowed even while streaming)
-  if (text.startsWith("/")) {
-    if (handleSlashCommand(text)) {
-      inputEl.value = "";
-      inputEl.style.height = "auto";
-      return;
-    }
-  }
-
   // If the agent is mid-turn, queue the message and flush when agent_end fires.
-  if (streaming) {
-    pendingMessage = text;
+  // Purely local slash commands still run immediately; slash commands that
+  // prompt the agent must join the FIFO queue like any other LLM turn.
+  if (streaming && !isLocalSlashCommand(text)) {
+    enqueueMessage(text);
     inputEl.value = "";
     inputEl.style.height = "auto";
-    updateQueuedIndicator();
     return;
   }
+
+  dispatchSubmittedText(text);
+  inputEl.value = "";
+  inputEl.style.height = "auto";
+}
+
+function dispatchSubmittedText(text: string): void {
+  // Slash commands handled locally may run without an LLM round-trip. Commands
+  // that do call the agent run here only after the current turn is idle.
+  if (text.startsWith("/") && handleSlashCommand(text)) return;
 
   chat.addUserMessage(text);
   chat.showThinking();
   setStatusBadge("thinking", "thinking...");
-  window.orbit.prompt(text);
-  inputEl.value = "";
-  inputEl.style.height = "auto";
+  promptAgent(text);
+}
+
+function promptAgent(message: string): void {
+  const options = streaming ? ({ streamingBehavior: "followUp" } as const) : undefined;
+  void window.orbit.prompt(message, options);
 }
 
 // Plan draft actions from chat cards — forward approve/reject as user messages,
@@ -949,18 +1433,14 @@ messagesEl.addEventListener("plan-draft-action", (e) => {
   }
 });
 
-/** Flush any queued message after the current turn ends. */
-function flushPendingMessage(): void {
-  if (!pendingMessage) return;
-  const text = pendingMessage;
-  pendingMessage = null;
+/** Flush the next queued message after the current turn ends. */
+function flushNextQueuedMessage(): void {
+  const text = pendingQueue.flushNext();
+  if (!text) return;
   updateQueuedIndicator();
   // Use requestAnimationFrame so the UI updates before we start the next turn
   requestAnimationFrame(() => {
-    chat.addUserMessage(text);
-    chat.showThinking();
-    setStatusBadge("thinking", "thinking...");
-    window.orbit.prompt(text);
+    dispatchSubmittedText(text);
   });
 }
 
@@ -1013,6 +1493,27 @@ const SLASH_COMMANDS: SlashCommand[] = [
   { name: "connect", description: "open Galaxy connection settings" },
   { name: "help", description: "show this help" },
 ];
+
+const LOCAL_SLASH_COMMANDS = new Set([
+  "model",
+  "new",
+  "reset",
+  "clear",
+  "resume",
+  "continue",
+  "chat",
+  "cost",
+  "connect",
+  "help",
+]);
+
+function slashCommandName(text: string): string {
+  return text.slice(1).split(/\s+/)[0] ?? "";
+}
+
+function isLocalSlashCommand(text: string): boolean {
+  return text.startsWith("/") && LOCAL_SLASH_COMMANDS.has(slashCommandName(text));
+}
 
 function escapeHtmlBasic(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -1071,16 +1572,19 @@ function handleSlashCommand(text: string): boolean {
     return true;
   }
 
-  // Loom commands — pass through to agent
-  if (
-    cmd === "plan" ||
-    cmd === "status" ||
-    cmd === "notebook" ||
-    cmd === "decisions" ||
-    cmd === "profiles"
-  ) {
+  // /notebook: load from disk immediately, then also ask agent for a fresh
+  // widget (which may include a more recent snapshot post-compact).
+  if (cmd === "notebook") {
     chat.addUserMessage(text);
-    window.orbit.prompt(`/${cmd}`);
+    void loadNotebookFromDisk();
+    promptAgent("/notebook");
+    return true;
+  }
+
+  // Loom commands — pass through to agent
+  if (cmd === "plan" || cmd === "status" || cmd === "decisions" || cmd === "profiles") {
+    chat.addUserMessage(text);
+    promptAgent(`/${cmd}`);
     return true;
   }
 
@@ -1170,7 +1674,7 @@ function handleSummarize(raw: string, argStr: string): void {
   );
   chat.showThinking();
   setStatusBadge("thinking", "thinking...");
-  window.orbit.prompt(prompt);
+  promptAgent(prompt);
 }
 
 /**
@@ -1240,7 +1744,7 @@ function handleCost(raw: string): void {
   );
   chat.showThinking();
   setStatusBadge("thinking", "thinking...");
-  window.orbit.prompt(prompt);
+  promptAgent(prompt);
 }
 
 /**
@@ -1369,8 +1873,8 @@ async function resetSession(): Promise<void> {
 async function switchModelByAlias(originalText: string, alias: string): Promise<void> {
   chat.addUserMessage(originalText);
 
-  const cfg = (await window.orbit.getConfig()) as { llm?: { provider?: string } };
-  const currentProvider = cfg.llm?.provider || "anthropic";
+  const cfg = (await window.orbit.getConfig()) as { llm?: { active?: string } };
+  const prevProvider = cfg.llm?.active || "anthropic";
 
   // Search strategy: prefer current provider, then search all providers.
   // Within each provider: exact id match → id substring → label substring.
@@ -1386,13 +1890,13 @@ async function switchModelByAlias(originalText: string, alias: string): Promise<
   };
 
   // 1. Try current provider first (preserves user's existing setup)
-  const inCurrent = search(currentProvider);
+  const inCurrent = search(prevProvider);
   if (inCurrent) {
-    chosen = { provider: currentProvider, model: inCurrent };
+    chosen = { provider: prevProvider, model: inCurrent };
   } else {
     // 2. Fall back to searching every provider
     for (const p of Object.keys(MODELS_BY_PROVIDER)) {
-      if (p === currentProvider) continue;
+      if (p === prevProvider) continue;
       const m = search(p);
       if (m) {
         chosen = { provider: p, model: m };
@@ -1409,30 +1913,28 @@ async function switchModelByAlias(originalText: string, alias: string): Promise<
     return;
   }
 
-  // Save updated config
-  const current = (await window.orbit.getConfig()) as Record<string, unknown>;
-  const llm = ((current.llm as Record<string, unknown> | undefined) || {}) as Record<
-    string,
-    unknown
-  >;
-
-  const switchingProvider = chosen.provider !== currentProvider;
-  if (switchingProvider) {
-    llm.provider = chosen.provider;
-    // Don't clobber the existing API key — if the user has none for the new provider,
-    // the agent restart will fail with a clear error and they can set it in Preferences.
-  }
-  llm.model = chosen.model.id;
-  current.llm = llm;
-
-  const result = await window.orbit.saveConfig(current);
+  // Partial update -- the reconciler preserves every other provider's
+  // encrypted key + model and only overlays what we send.
+  const switchingProvider = chosen.provider !== prevProvider;
+  const update = {
+    llm: {
+      active: chosen.provider,
+      providers: { [chosen.provider]: { model: chosen.model.id } },
+    },
+  };
+  const result = await window.orbit.saveConfig(update);
   if (!result.success) {
     chat.addErrorMessage(`Failed to save config: ${result.error}`);
     return;
   }
 
   currentModel = chosen.model.id;
+  currentProvider = chosen.provider;
   renderModelIndicator();
+  // Manual switch: the stale request size is for the old model's window; reset
+  // so the bar re-populates correctly on the new model's first turn.
+  contextTokens = 0;
+  updateContextFill();
 
   if (switchingProvider) {
     chat.addInfoMessage(
@@ -1704,15 +2206,16 @@ inputEl.addEventListener("blur", () => {
 
 sendBtn.addEventListener("click", submit);
 
-abortBtn.addEventListener("click", () => {
+function abortCurrentTurn(): void {
+  clearQueue();
   window.orbit.abort();
-  clearPendingMessage();
-});
+}
+
+abortBtn.addEventListener("click", abortCurrentTurn);
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && streaming) {
-    window.orbit.abort();
-    clearPendingMessage();
+    abortCurrentTurn();
   }
 });
 
@@ -1747,6 +2250,14 @@ window.orbit.onAgentEvent((event) => {
       startTurnTimer();
       // Don't hide thinking yet — wait for actual text content
       break;
+
+    case "message_start": {
+      const msg = (event as { message?: { role?: string } }).message;
+      if (msg?.role === "user") {
+        chat.finishAssistantMessage();
+      }
+      break;
+    }
 
     case "message_update": {
       // Pi.dev wraps events in assistantMessageEvent
@@ -1796,10 +2307,18 @@ window.orbit.onAgentEvent((event) => {
         commitTurnUsage();
         // Surface assistant-side errors (e.g. 401 invalid API key) so the user
         // isn't staring at a silent UI after a failed call.
-        if (msg.stopReason === "error" && msg.errorMessage) {
+        if (msg.stopReason === "error") {
           chat.hideThinking();
-          chat.addErrorMessage(msg.errorMessage);
+          chat.finishAssistantMessage();
+          if (msg.errorMessage) {
+            chat.addErrorMessage(humanizeAgentError(msg.errorMessage).text);
+          }
+          streaming = false;
+          stopTurnTimer();
           setStatusBadge("error");
+          sendBtn.classList.remove("hidden");
+          abortBtn.classList.add("hidden");
+          clearQueue();
         }
       }
       break;
@@ -1813,13 +2332,20 @@ window.orbit.onAgentEvent((event) => {
       chat.hideThinking();
       const name = (event as { toolName?: string }).toolName || "tool";
       const id = (event as { toolCallId?: string }).toolCallId || name;
+      const startArgs = (event as { args?: Record<string, unknown> }).args;
       // Per-tool chat cards are noisy and duplicate what the Activity tab
       // shows (shell stream + activity.jsonl). Only team_dispatch keeps a
       // chat card because its collapsible per-turn body is genuinely useful.
       if (name === "team_dispatch") {
         chat.addToolCard(id, name);
       }
-      setStatusBadge("running", `running: ${name}`);
+      // Enrich the status badge with the command/path so users can see what
+      // is running without switching to the Activity tab.
+      const preview = formatArgsPreview(startArgs);
+      const badgeLabel = preview
+        ? `${name}: ${preview.length > 60 ? preview.slice(0, 60) + "…" : preview}`
+        : `running: ${name}`;
+      setStatusBadge("running", badgeLabel);
       break;
     }
 
@@ -1857,21 +2383,20 @@ window.orbit.onAgentEvent((event) => {
       chat.finishAssistantMessage();
       // Safety: clear any stuck button busy states if the turn ends without the
       // expected completion event arriving
-      flushPendingMessage();
+      flushNextQueuedMessage();
       hasRevealedActivityThisTurn = false;
       break;
 
     case "error": {
-      const msg = (event as { message?: string }).message || "Unknown error";
+      const rawMsg = (event as { message?: string }).message || "Unknown error";
       chat.hideThinking();
-      chat.addErrorMessage(msg);
+      chat.addErrorMessage(humanizeAgentError(rawMsg).text);
       streaming = false;
       stopTurnTimer();
       setStatusBadge("error");
       sendBtn.classList.remove("hidden");
       abortBtn.classList.add("hidden");
-      // Clear any queued message on error so the indicator doesn't get stuck
-      clearPendingMessage();
+      clearQueue();
       break;
     }
   }
@@ -2196,6 +2721,8 @@ window.orbit.onAgentStatus((status, msg) => {
     sendBtn.classList.remove("hidden");
     abortBtn.classList.add("hidden");
     chat.hideThinking();
+    chat.finishAssistantMessage();
+    clearQueue();
   }
 
   // Show cwd welcome once, after the first successful agent start.
@@ -2236,8 +2763,13 @@ divider.addEventListener("mousedown", (e) => {
 
 document.addEventListener("mousemove", (e) => {
   if (!dragging) return;
-  const appWidth = document.getElementById("app")!.clientWidth;
-  const pct = (e.clientX / appWidth) * 100;
+  // chatPane is a flex child of #app-main, so its flex-basis percentage
+  // resolves against #app-main's width (not #app's). These are equal today
+  // because #app-main is the only row in #app, but using #app-main keeps the
+  // math correct if the column-flex parent ever grows a sibling.
+  const containerWidth = document.getElementById("app-main")!.getBoundingClientRect().width;
+  const chatLeft = chatPane.getBoundingClientRect().left;
+  const pct = ((e.clientX - chatLeft) / containerWidth) * 100;
   const clamped = Math.max(25, Math.min(75, pct));
   chatPane.style.flex = `0 0 ${clamped}%`;
 });
@@ -2260,8 +2792,50 @@ const prefsBrowseCwd = document.getElementById("prefs-browse-cwd")!;
 
 const prefsProvider = document.getElementById("prefs-provider") as HTMLSelectElement;
 const prefsModel = document.getElementById("prefs-model") as HTMLSelectElement;
+const prefsBypass = document.getElementById("prefs-bypass") as HTMLInputElement;
+const bypassBanner = document.getElementById("bypass-banner")!;
+const prefsSandbox = document.getElementById("prefs-sandbox") as HTMLInputElement;
+const sandboxBanner = document.getElementById("sandbox-banner")!;
+
+function refreshBypassBanner(active: boolean): void {
+  bypassBanner.classList.toggle("hidden", !active);
+}
+
+function refreshSandboxBanner(active: boolean): void {
+  sandboxBanner.classList.toggle("hidden", !active);
+}
+
+// Reflect the current bypass + sandbox state from config on startup (banners only).
+async function initSafetyBanners(): Promise<void> {
+  const cfg = (await window.orbit.getConfig()) as {
+    guardian?: { dangerouslyBypassPermissions?: boolean; sandbox?: boolean };
+  };
+  refreshBypassBanner(cfg.guardian?.dangerouslyBypassPermissions === true);
+  refreshSandboxBanner(cfg.guardian?.sandbox === true);
+}
+void initSafetyBanners();
+
+// The bypass toggle acts immediately (not via Save). Main shows a native
+// confirm before enabling, so renderer-side injection can't flip it silently.
+prefsBypass.addEventListener("change", async () => {
+  const want = prefsBypass.checked;
+  const result = await window.orbit.setBypassPermissions(want);
+  // Revert the checkbox if enabling was cancelled at the native dialog.
+  prefsBypass.checked = result.enabled;
+  refreshBypassBanner(result.enabled);
+});
 const prefsApiKey = document.getElementById("prefs-api-key") as HTMLInputElement;
 const prefsApiKeyStatus = document.getElementById("prefs-api-key-status")!;
+const prefsApiKeyRow = document.getElementById("prefs-api-key-row")!;
+const prefsApiKeyHintRow = document.getElementById("prefs-api-key-hint-row")!;
+const prefsOauthRow = document.getElementById("prefs-oauth-row")!;
+const prefsOauthHintRow = document.getElementById("prefs-oauth-hint-row")!;
+const prefsOauthStatus = document.getElementById("prefs-oauth-status")!;
+const prefsOauthSignIn = document.getElementById("prefs-oauth-signin") as HTMLButtonElement;
+const prefsOauthSignOut = document.getElementById("prefs-oauth-signout") as HTMLButtonElement;
+const prefsBaseUrlRow = document.getElementById("prefs-base-url-row")!;
+const prefsBaseUrl = document.getElementById("prefs-base-url") as HTMLInputElement;
+const prefsJetstreamPreset = document.getElementById("prefs-jetstream-preset") as HTMLButtonElement;
 
 // Model catalog by provider — labels include cost guidance
 // (in/out price per 1M tokens). Fallback only — populateDynamicModelData()
@@ -2273,12 +2847,13 @@ interface ModelChoice {
 }
 let MODELS_BY_PROVIDER: Record<string, ModelChoice[]> = {
   anthropic: [
-    { id: "claude-opus-4-7", label: "Opus 4.7 — $15/$75 (most capable)" },
+    { id: "claude-opus-4-8", label: "Opus 4.8 — $5/$25 (most capable)" },
     { id: "claude-sonnet-4-6", label: "Sonnet 4.6 — $3/$15 (recommended)" },
     { id: "claude-haiku-4-5", label: "Haiku 4.5 — $1/$5 (cheapest)" },
-    { id: "claude-opus-4-6", label: "Opus 4.6 — $15/$75" },
+    { id: "claude-opus-4-7", label: "Opus 4.7 — $5/$25" },
+    { id: "claude-opus-4-6", label: "Opus 4.6 — $5/$25" },
     { id: "claude-sonnet-4-5", label: "Sonnet 4.5 — $3/$15" },
-    { id: "claude-opus-4-5", label: "Opus 4.5 — $15/$75" },
+    { id: "claude-opus-4-5", label: "Opus 4.5 — $5/$25" },
   ],
   openai: [
     { id: "gpt-4o-mini", label: "GPT-4o mini — $0.15/$0.60 (cheapest)" },
@@ -2286,6 +2861,11 @@ let MODELS_BY_PROVIDER: Record<string, ModelChoice[]> = {
     { id: "gpt-4-turbo", label: "GPT-4 Turbo — $10/$30" },
     { id: "o1-mini", label: "o1-mini — $3/$12" },
     { id: "o1", label: "o1 — $15/$60" },
+  ],
+  "openai-codex": [
+    { id: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
+    { id: "gpt-5.4", label: "GPT-5.4" },
+    { id: "gpt-5.4-mini", label: "GPT-5.4 mini" },
   ],
   google: [
     { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash — $0.15/$0.60 (cheapest)" },
@@ -2301,10 +2881,15 @@ let MODELS_BY_PROVIDER: Record<string, ModelChoice[]> = {
     { id: "llama-3.1-8b-instant", label: "Llama 3.1 8B (fast)" },
   ],
   xai: [{ id: "grok-2-latest", label: "Grok 2" }],
+  deepseek: [
+    { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
+    { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash (fast)" },
+  ],
   ollama: [
     { id: "qwen3-coder:30b", label: "Qwen3-Coder 30B (local, A5000) — free" },
     { id: "qwen3:8b", label: "Qwen3 8B (local, fast) — free" },
   ],
+  "openai-compatible": [],
 };
 
 function populateModels(provider: string, selected?: string): void {
@@ -2327,11 +2912,83 @@ function populateModels(provider: string, selected?: string): void {
   }
 }
 
-// Repopulate model dropdown when provider changes
+// Switching provider: save current fields, load new provider's state, refresh OAuth UI.
 prefsProvider.addEventListener("change", () => {
-  populateModels(prefsProvider.value);
+  snapshotCurrentProvider();
+  prefsActiveProvider = prefsProvider.value;
+  loadProviderFields(prefsActiveProvider);
+  void updatePrefsAuthUi();
 });
-wireApiKeyValidation(prefsProvider, prefsApiKey, prefsApiKeyStatus);
+wireApiKeyValidation(prefsProvider, prefsApiKey, prefsApiKeyStatus, prefsBaseUrl, prefsModel);
+prefsJetstreamPreset.addEventListener("click", () => {
+  prefsBaseUrl.value = JETSTREAM_BASE_URL;
+  prefsModel.innerHTML = "";
+  for (const id of JETSTREAM_MODELS) {
+    const opt = document.createElement("option");
+    opt.value = id;
+    opt.textContent = id;
+    prefsModel.appendChild(opt);
+  }
+  // Trigger validation/discovery if a key is already entered.
+  prefsBaseUrl.dispatchEvent(new Event("input"));
+});
+// Clear the "✓ Key stored" indicator as soon as the user starts typing.
+prefsApiKey.addEventListener("input", () => {
+  if (prefsApiKeyStatus.classList.contains("stored")) {
+    prefsApiKeyStatus.className = "api-key-status";
+    prefsApiKeyStatus.textContent = "";
+  }
+});
+
+async function updatePrefsAuthUi(): Promise<void> {
+  const oauth = isOAuthProvider(prefsProvider.value);
+  const custom = prefsProvider.value === "openai-compatible";
+  prefsBaseUrlRow.classList.toggle("hidden", !custom);
+  prefsApiKeyRow.classList.toggle("hidden", oauth);
+  prefsApiKeyHintRow.classList.toggle("hidden", oauth);
+  prefsOauthRow.classList.toggle("hidden", !oauth);
+  prefsOauthHintRow.classList.toggle("hidden", !oauth);
+  if (oauth) {
+    const status = await window.orbit.oauthStatus(prefsProvider.value);
+    prefsOauthStatus.textContent = formatOAuthStatus(status);
+    prefsOauthStatus.classList.toggle("signed-in", status.signedIn);
+    prefsOauthSignIn.textContent = status.signedIn ? "Sign in again" : "Sign in with ChatGPT";
+    prefsOauthSignOut.classList.toggle("hidden", !status.signedIn);
+  }
+}
+
+prefsOauthSignIn.addEventListener("click", async () => {
+  prefsOauthSignIn.disabled = true;
+  prefsOauthStatus.textContent = "Opening browser…";
+  prefsOauthStatus.classList.remove("signed-in");
+  try {
+    const res = await window.orbit.oauthSignIn(prefsProvider.value);
+    if (res.ok) {
+      prefsOauthStatus.textContent = formatOAuthStatus(res.status);
+      prefsOauthStatus.classList.toggle("signed-in", res.status.signedIn);
+      prefsOauthSignIn.textContent = "Sign in again";
+      prefsOauthSignOut.classList.toggle("hidden", !res.status.signedIn);
+    } else {
+      prefsOauthStatus.textContent = `Sign-in failed: ${res.error}`;
+    }
+  } finally {
+    prefsOauthSignIn.disabled = false;
+  }
+});
+
+prefsOauthSignOut.addEventListener("click", async () => {
+  if (!confirm("Sign out of ChatGPT? You'll need to sign in again to use Codex models.")) return;
+  prefsOauthSignOut.disabled = true;
+  try {
+    await window.orbit.oauthSignOut(prefsProvider.value);
+    prefsOauthStatus.textContent = "Not signed in";
+    prefsOauthStatus.classList.remove("signed-in");
+    prefsOauthSignIn.textContent = "Sign in with ChatGPT";
+    prefsOauthSignOut.classList.add("hidden");
+  } finally {
+    prefsOauthSignOut.disabled = false;
+  }
+});
 const prefsGalaxyUrl = document.getElementById("prefs-galaxy-url") as HTMLInputElement;
 const prefsGalaxyKey = document.getElementById("prefs-galaxy-key") as HTMLInputElement;
 const prefsGalaxyError = document.getElementById("prefs-galaxy-error")!;
@@ -2428,8 +3085,15 @@ prefsSkillsAddBtn.addEventListener("click", () => {
 
 /** Sentinel mirrors UNCHANGED_SECRET in main/ipc-handlers.ts. */
 const UNCHANGED_SECRET = "__loom_unchanged_secret__";
-/** Tracks whether a key is already on disk so blank-input = unchanged, not clear. */
-let prefsLlmHadKey = false;
+/** Per-provider in-memory state while Preferences is open. */
+interface ProviderState {
+  hadKey: boolean;
+  typedKey: string;
+  model: string;
+  baseUrl: string;
+}
+let prefsProviderStates: Record<string, ProviderState> = {};
+let prefsActiveProvider = "anthropic";
 let prefsGalaxyHadKey = false;
 
 // Both-or-neither: a half-filled Galaxy profile gets rejected by the brain
@@ -2447,9 +3111,44 @@ function updatePrefsGalaxyValidity(): void {
 prefsGalaxyUrl.addEventListener("input", updatePrefsGalaxyValidity);
 prefsGalaxyKey.addEventListener("input", updatePrefsGalaxyValidity);
 
+/** Snapshot the currently-visible provider fields into prefsProviderStates. */
+function snapshotCurrentProvider(): void {
+  prefsProviderStates[prefsActiveProvider] = {
+    hadKey: prefsProviderStates[prefsActiveProvider]?.hadKey ?? false,
+    typedKey: prefsApiKey.value,
+    model: prefsModel.value,
+    baseUrl: prefsBaseUrl.value.trim(),
+  };
+}
+
+/** Load a provider's stored state into the visible fields. */
+function loadProviderFields(provider: string): void {
+  const state = prefsProviderStates[provider] ?? {
+    hadKey: false,
+    typedKey: "",
+    model: "",
+    baseUrl: "",
+  };
+  populateModels(provider, state.model || undefined);
+  prefsApiKey.value = state.typedKey;
+  prefsBaseUrl.value = state.baseUrl;
+  prefsApiKey.placeholder = state.hadKey ? "leave blank to keep existing key" : "";
+  if (state.hadKey && !state.typedKey) {
+    prefsApiKeyStatus.className = "api-key-status stored";
+    prefsApiKeyStatus.textContent =
+      "✓ Key stored — leave blank to keep, or enter a new key to replace";
+  } else {
+    prefsApiKeyStatus.className = "api-key-status";
+    prefsApiKeyStatus.textContent = "";
+  }
+}
+
 async function openPreferences(): Promise<void> {
   const config = (await window.orbit.getConfig()) as {
-    llm?: { provider?: string; model?: string; hasApiKey?: boolean };
+    llm?: {
+      active?: string;
+      providers?: Record<string, { model?: string; baseUrl?: string; hasApiKey?: boolean }>;
+    };
     galaxy?: {
       active: string | null;
       profiles: Record<string, { url: string; hasApiKey?: boolean }>;
@@ -2457,15 +3156,23 @@ async function openPreferences(): Promise<void> {
     defaultCwd?: string;
     condaBin?: string;
     skills?: { repos?: Array<{ name?: string; url?: string; branch?: string; enabled?: boolean }> };
+    guardian?: { dangerouslyBypassPermissions?: boolean; sandbox?: boolean };
   };
 
-  prefsProvider.value = config.llm?.provider || "anthropic";
-  populateModels(prefsProvider.value, config.llm?.model);
-  prefsLlmHadKey = Boolean(config.llm?.hasApiKey);
-  prefsApiKey.value = "";
-  prefsApiKey.placeholder = prefsLlmHadKey ? "•••••••• (unchanged)" : "";
-  prefsApiKeyStatus.className = "api-key-status";
-  prefsApiKeyStatus.textContent = "";
+  // Build per-provider in-memory state from masked config.
+  prefsProviderStates = {};
+  for (const [name, p] of Object.entries(config.llm?.providers ?? {})) {
+    prefsProviderStates[name] = {
+      hadKey: Boolean(p.hasApiKey),
+      typedKey: "",
+      model: p.model ?? "",
+      baseUrl: p.baseUrl ?? "",
+    };
+  }
+  prefsActiveProvider = config.llm?.active || "anthropic";
+  prefsProvider.value = prefsActiveProvider;
+  loadProviderFields(prefsActiveProvider);
+  await updatePrefsAuthUi();
 
   // Galaxy: use active profile
   const activeProfile = config.galaxy?.active
@@ -2482,6 +3189,8 @@ async function openPreferences(): Promise<void> {
 
   prefsDefaultCwd.value = config.defaultCwd || "";
   prefsCondaBin.value = config.condaBin || "auto";
+  prefsBypass.checked = config.guardian?.dangerouslyBypassPermissions === true;
+  prefsSandbox.checked = config.guardian?.sandbox === true;
 
   // Skills: hydrate the editable table from config. The brain seeds
   // galaxy-skills if absent, but we hydrate from whatever's in config so
@@ -2519,8 +3228,14 @@ async function savePreferences(): Promise<void> {
   // Build a delta — only fields the user can edit. Main reconciles secrets
   // against what's on disk; the sentinel preserves a stored key when the
   // user left the input blank.
+  const activeState = prefsProviderStates[prefsActiveProvider] ?? {
+    hadKey: false,
+    typedKey: "",
+    model: "",
+    baseUrl: "",
+  };
   const typedApiKey = prefsApiKey.value.trim();
-  const llmApiKey = typedApiKey ? typedApiKey : prefsLlmHadKey ? UNCHANGED_SECRET : "";
+  const llmApiKey = typedApiKey ? typedApiKey : activeState.hadKey ? UNCHANGED_SECRET : "";
 
   const typedGalaxyKey = prefsGalaxyKey.value.trim();
   const galaxyUrl = prefsGalaxyUrl.value.trim();
@@ -2534,13 +3249,41 @@ async function savePreferences(): Promise<void> {
     return;
   }
 
-  const selectedModel = prefsModel.value || undefined;
+  // Snapshot the currently-visible fields before building the save payload.
+  snapshotCurrentProvider();
+  const activeProvider = prefsProvider.value;
+  const selectedModel = prefsProviderStates[activeProvider]?.model || prefsModel.value || undefined;
+
+  // Build the full providers map from in-memory state. OAuth providers persist
+  // credentials in ~/.pi/agent/auth.json -- don't ship an apiKey field (sentinel
+  // or "") for them, or the reconciler would try to preserve/clear a
+  // config.json key that was never there.
+  const providers: Record<string, { apiKey?: string; model?: string; baseUrl?: string }> = {};
+  for (const [name, state] of Object.entries(prefsProviderStates)) {
+    const entry: { apiKey?: string; model?: string; baseUrl?: string } = {
+      model: state.model || undefined,
+    };
+    if (state.baseUrl) entry.baseUrl = state.baseUrl;
+    if (!isOAuthProvider(name)) {
+      entry.apiKey = state.typedKey.trim()
+        ? state.typedKey.trim()
+        : state.hadKey
+          ? UNCHANGED_SECRET
+          : "";
+    }
+    providers[name] = entry;
+  }
+  // Override the active provider with the resolved current-screen values
+  // (covers the brand-new-provider case too).
+  const activeEntry: { apiKey?: string; model?: string; baseUrl?: string } = {
+    model: selectedModel,
+  };
+  if (prefsBaseUrl.value.trim()) activeEntry.baseUrl = prefsBaseUrl.value.trim();
+  if (!isOAuthProvider(activeProvider)) activeEntry.apiKey = llmApiKey;
+  providers[activeProvider] = activeEntry;
+
   const config: Record<string, unknown> = {
-    llm: {
-      provider: prefsProvider.value,
-      model: selectedModel,
-      apiKey: llmApiKey,
-    },
+    llm: { active: activeProvider, providers },
   };
 
   if (galaxyUrl || prefsGalaxyHadKey || typedGalaxyKey) {
@@ -2557,6 +3300,11 @@ async function savePreferences(): Promise<void> {
 
   config.defaultCwd = prefsDefaultCwd.value.trim() || undefined;
   config.condaBin = (prefsCondaBin.value as "auto" | "mamba" | "conda") || undefined;
+  // The bash sandbox toggle rides the normal Save path (which restarts the brain, so
+  // the sandbox engages at the next session_start). Main narrows this to the sandbox
+  // field only and merges it onto the stored guardian block, so it can't disturb the
+  // bypass setting.
+  config.guardian = { sandbox: prefsSandbox.checked };
 
   // Skills: persist whatever's in the table, dropping incomplete rows. If the
   // user emptied the list entirely, the brain's loadConfig will lazy-seed
@@ -2595,9 +3343,19 @@ async function savePreferences(): Promise<void> {
   const result = await window.orbit.saveConfig(config as Record<string, unknown>);
   if (result.success) {
     closePreferences();
+    void refreshGalaxyStatus();
+    refreshSandboxBanner(prefsSandbox.checked);
     if (selectedModel) {
+      const modelChanged = selectedModel !== prevModel;
       currentModel = selectedModel;
+      currentProvider = activeProvider;
       renderModelIndicator();
+      // Only zero the numerator when the model actually changed. Saving an
+      // unrelated pref restarts the agent with --continue (context preserved),
+      // so resetting here would needlessly hide the bar until the next turn.
+      // The window may still differ (provider change), so always recompute.
+      if (modelChanged) contextTokens = 0;
+      updateContextFill();
     }
     // Info card, not a fake user prompt — was getting numbered as a real
     // user submission and inflating the prompt counter.
@@ -2704,11 +3462,12 @@ const REPORT_URL_BUDGET = 7000;
 function openReportModal(): void {
   reportTitle.value = "";
   reportBody.value = "";
-  // Default to no auto-collected data. The destination is a public GitHub
-  // issue, so opt-in beats opt-out -- forces the user to read the
-  // disclosure before sharing logs or sysinfo.
-  reportIncludeSysinfo.checked = false;
-  reportIncludeLogs.checked = false;
+  // Default ON: the primary destination is Loom's private capture store, not a
+  // public issue, so opt-out is fine. The user can still uncheck before sending,
+  // and the public GitHub fallback (POST failure) sends text only -- no
+  // diagnostics -- so this never auto-publishes logs to a public issue.
+  reportIncludeSysinfo.checked = true;
+  reportIncludeLogs.checked = true;
   reportOverlay.classList.remove("hidden");
   reportTitle.focus();
 }
@@ -2716,79 +3475,100 @@ function closeReportModal(): void {
   reportOverlay.classList.add("hidden");
 }
 
-async function buildReportBody(userText: string): Promise<string> {
-  const sections: string[] = [userText.trim() || "(no description provided)"];
+// Cap a body on its URL-encoded length for the GitHub-issue fallback. The "new
+// issue" URL (~8KB) is the real limit and punctuation roughly triples under
+// encodeURIComponent, so trim raw chars until the encoded form fits.
+function capForGithubUrl(body: string): string {
+  if (encodeURIComponent(body).length <= REPORT_URL_BUDGET) return body;
+  const marker = "\n\n...(truncated)";
+  const markerCost = encodeURIComponent(marker).length;
+  let out = body;
+  while (encodeURIComponent(out).length + markerCost > REPORT_URL_BUDGET) {
+    out = out.slice(0, Math.floor(out.length * 0.9));
+  }
+  return out + marker;
+}
+
+// Assemble the structured feedback payload POSTed to the capture worker. Honors
+// the two opt-in checkboxes; never includes cwd or raw credentials (sysinfo
+// strips cwd; the activity tail renders one line per event with already-redacted
+// args and a truncated result).
+async function buildFeedbackPayload(): Promise<FeedbackPayload> {
+  const title = reportTitle.value.trim();
+  const body = reportBody.value.trim();
+  let sysinfo: FeedbackSysinfo | undefined;
+  let activityTail: string | undefined;
+  let shellTail: string | undefined;
 
   if (reportIncludeSysinfo.checked) {
     try {
       const info = await window.orbit.getReportSysinfo();
       const cfg = (await window.orbit.getConfig()) as {
-        llm?: { provider?: string; model?: string };
+        llm?: { active?: string; providers?: Record<string, { model?: string }> };
         galaxy?: { active: string | null };
       };
-      // Deliberately not including cwd -- a path like /home/<user>/<project>
-      // leaks both username and project name to a public issue, and isn't
-      // useful for debugging.
-      sections.push(
-        `## System info\n` +
-          `- Orbit: ${info.appVersion}\n` +
-          `- Platform: ${info.platform} ${info.arch}\n` +
-          `- Electron: ${info.electronVersion}, Chrome: ${info.chromeVersion}, Node: ${info.nodeVersion}\n` +
-          `- LLM: ${cfg.llm?.provider ?? "(none)"} / ${cfg.llm?.model ?? "(none)"}\n` +
-          `- Galaxy: ${cfg.galaxy?.active ? "configured" : "not configured"}`,
-      );
-    } catch (err) {
-      sections.push(
-        `## System info\n(failed to collect: ${err instanceof Error ? err.message : String(err)})`,
-      );
+      const active = cfg.llm?.active;
+      sysinfo = {
+        appVersion: info.appVersion,
+        platform: info.platform,
+        arch: info.arch,
+        electron: info.electronVersion,
+        chrome: info.chromeVersion,
+        node: info.nodeVersion,
+        llmProvider: active,
+        llmModel: active ? cfg.llm?.providers?.[active]?.model : undefined,
+        galaxyConfigured: Boolean(cfg.galaxy?.active),
+      };
+    } catch {
+      /* skip sysinfo on failure */
     }
   }
 
   if (reportIncludeLogs.checked) {
-    // Activity tail — last 15 events, summarized to {timestamp} {kind}.
-    // The full payload column has stuffed-JSON tool results that explode
-    // 3–5× under URL-encoding and quickly blow GitHub's URL budget.
     try {
-      const res = await window.orbit.readFile("activity.jsonl");
+      const res = await window.orbit.readFile("activity.jsonl", { tail: true });
       if (res.ok) {
         const text = new TextDecoder("utf-8").decode(res.bytes);
-        const lines = text.split("\n").filter(Boolean).slice(-15);
-        const summarized = lines.map((line) => {
-          try {
-            const e = JSON.parse(line) as { timestamp?: string; kind?: string; source?: string };
-            return `${e.timestamp ?? "?"} ${e.kind ?? "?"}${e.source ? " (" + e.source + ")" : ""}`;
-          } catch {
-            return line.slice(0, 80);
-          }
-        });
-        sections.push(
-          "## activity.jsonl (last 15 events, summarized)\n```\n" + summarized.join("\n") + "\n```",
-        );
+        const events = text
+          .split("\n")
+          .filter(Boolean)
+          .slice(-60)
+          .map((line) => {
+            try {
+              return JSON.parse(line) as {
+                timestamp: string;
+                kind: string;
+                source: string;
+                payload?: Record<string, unknown>;
+              };
+            } catch {
+              return {
+                timestamp: "?",
+                kind: "?",
+                source: "",
+                payload: { text: line.slice(0, 80) },
+              };
+            }
+          });
+        activityTail = formatActivityTail(events);
       }
     } catch {
-      /* file missing or unreadable — skip */
+      /* file missing or unreadable -- skip */
     }
-
-    // Shell tail (last ~80 lines of in-memory ShellPanel)
-    const shellTail = shell.tail(80);
-    if (shellTail.trim()) {
-      sections.push("## Shell stream (last ~80 lines)\n```\n" + shellTail + "\n```");
-    }
+    const t = shell.tail(200);
+    if (t.trim()) shellTail = t;
   }
 
-  let body = sections.join("\n\n");
-  // Cap on the URL-encoded length, not the raw length — a body full of
-  // backslash-quoted JSON expands ~3× under encodeURIComponent. Trim
-  // raw chars until the encoded form fits the budget.
-  if (encodeURIComponent(body).length > REPORT_URL_BUDGET) {
-    const marker = "\n\n…(truncated)";
-    const markerCost = encodeURIComponent(marker).length;
-    while (encodeURIComponent(body).length + markerCost > REPORT_URL_BUDGET) {
-      body = body.slice(0, Math.floor(body.length * 0.9));
-    }
-    body = body + marker;
-  }
-  return body;
+  return capFeedbackPayload({
+    schemaVersion: SCHEMA_VERSION,
+    source: "orbit",
+    title,
+    body,
+    sysinfo,
+    activityTail,
+    shellTail,
+    clientTs: new Date().toISOString(),
+  });
 }
 
 reportBtn.addEventListener("click", openReportModal);
@@ -2814,8 +3594,19 @@ reportSubmit.addEventListener("click", async () => {
   }
   reportSubmit.disabled = true;
   try {
-    const body = await buildReportBody(reportBody.value);
-    await window.orbit.openIssueReport({ title, body });
+    const payload = await buildFeedbackPayload();
+    const result = await window.orbit.submitFeedback(payload);
+    if (result.ok) {
+      closeReportModal();
+      return;
+    }
+    // Fallback: the private store was unreachable. Open a PUBLIC GitHub issue
+    // with ONLY the user's text -- never the auto-collected diagnostics.
+    const fallbackBody = capForGithubUrl(
+      (reportBody.value.trim() || "(no description provided)") +
+        "\n\n_(sent via fallback; diagnostics omitted -- the feedback service was unreachable)_",
+    );
+    await window.orbit.openIssueReport({ title, body: fallbackBody });
     closeReportModal();
   } finally {
     reportSubmit.disabled = false;
@@ -3029,6 +3820,76 @@ function escapeAttr(s: string): string {
 window.orbit.onProcUpdate((procs) => {
   renderProcs(procs as ProcInfo[]);
 });
+
+// ── Update-available banner ──────────────────────────────────────────────────
+//
+// One non-blocking check per session against the GitHub Releases API; main
+// caches the response for 24h. No auto-install (unsigned macOS DMGs can't
+// be updated by Squirrel.Mac), so the link just opens the Releases page in
+// the user's default browser.
+{
+  const updateBanner = document.getElementById("update-banner");
+  const updateVersionEl = document.getElementById("update-banner-version");
+  const updateLinkBtn = document.getElementById("update-banner-link");
+  const updateDismissBtn = document.getElementById("update-banner-dismiss");
+  const linkText = document.getElementById("update-banner-text-link");
+  const restartText = document.getElementById("update-banner-text-restart");
+  const restartVersionEl = document.getElementById("update-banner-restart-version");
+  const restartBtn = document.getElementById("update-banner-restart");
+
+  const DISMISSED_KEY = "orbit:update-dismissed-version";
+  let currentReleaseUrl: string | null = null;
+
+  if (updateBanner && updateVersionEl && updateLinkBtn && updateDismissBtn) {
+    updateLinkBtn.addEventListener("click", () => {
+      if (currentReleaseUrl) void window.orbit.openReleasePage(currentReleaseUrl);
+    });
+    updateDismissBtn.addEventListener("click", () => {
+      updateBanner.classList.add("hidden");
+      const v = updateVersionEl.textContent || restartVersionEl?.textContent;
+      if (v) {
+        try {
+          localStorage.setItem(DISMISSED_KEY, v);
+        } catch {}
+      }
+    });
+    restartBtn?.addEventListener("click", () => void window.orbit.restartToUpdate());
+
+    const showNotifyLinkBanner = async () => {
+      try {
+        const info = await window.orbit.checkVersion();
+        if (!info || !info.hasUpdate) return;
+        let dismissed: string | null = null;
+        try {
+          dismissed = localStorage.getItem(DISMISSED_KEY);
+        } catch {}
+        if (dismissed === info.latest) return;
+        updateVersionEl.textContent = info.latest;
+        currentReleaseUrl = info.releaseUrl;
+        linkText?.classList.remove("hidden");
+        updateLinkBtn.classList.remove("hidden");
+        updateBanner.classList.remove("hidden");
+      } catch {}
+    };
+
+    // macOS: in-place auto-update. Show the "restart to install" banner once a
+    // download completes; fall back to the notify-link banner on updater error.
+    if (window.orbit.platform === "darwin") {
+      window.orbit.onUpdateDownloaded((info) => {
+        if (restartVersionEl) restartVersionEl.textContent = info.version;
+        linkText?.classList.add("hidden");
+        updateLinkBtn.classList.add("hidden");
+        restartText?.classList.remove("hidden");
+        restartBtn?.classList.remove("hidden");
+        updateBanner.classList.remove("hidden");
+      });
+      window.orbit.onUpdateError(() => void showNotifyLinkBanner());
+    } else {
+      // Linux (and any non-darwin): the GitHub-releases notify-link banner.
+      void showNotifyLinkBanner();
+    }
+  }
+}
 
 // ── Focus input on load ───────────────────────────────────────────────────────
 inputEl.focus();

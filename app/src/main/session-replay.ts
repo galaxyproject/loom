@@ -27,13 +27,13 @@ type ContentBlock = {
 
 // Mirror pi-coding-agent's on-disk encoding: strip leading slash, then replace
 // remaining path separators / drive colons with `-`, wrap in `--`.
-// See session-manager.js:213 in @mariozechner/pi-coding-agent.
+// See session-manager.js:213 in @earendil-works/pi-coding-agent.
 function sessionsDir(cwd: string): string {
   const encoded = `--${cwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
   return path.join(os.homedir(), ".pi", "agent", "sessions", encoded);
 }
 
-function newestSessionFile(cwd: string): string | null {
+export function newestSessionFile(cwd: string): string | null {
   const dir = sessionsDir(cwd);
   if (!fs.existsSync(dir)) return null;
   const files = fs
@@ -54,16 +54,16 @@ function isBootstrapPrompt(text: string): boolean {
 }
 
 /**
- * Read the newest on-disk session for `cwd` and turn it into a compact replay.
+ * Read a session file and turn it into a compact replay. Caller picks the
+ * file (AgentManager pins one on spawn) -- newest-by-mtime is wrong on a
+ * fresh /new with old sessions still on disk.
+ *
  * Returns up to the last `maxSegments` user/assistant turns.
  */
 export function loadSessionHistory(
-  cwd: string,
+  file: string,
   options: { maxSegments?: number } = {},
 ): ReplaySegment[] {
-  const file = newestSessionFile(cwd);
-  if (!file) return [];
-
   let raw: string;
   try {
     raw = fs.readFileSync(file, "utf8");

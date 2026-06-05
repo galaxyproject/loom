@@ -20,6 +20,8 @@ import { registerFilesIpc, startFilesWatcher, stopFilesWatcher } from "./files-h
 import { ProcMonitor } from "./proc-monitor.js";
 import { migratePlaintextSecrets, isAvailable as safeStorageAvailable } from "./secure-config.js";
 import { getConfigDir, getConfigPath } from "../../../shared/loom-config.js";
+import { parseCliArgs, type CliArgs } from "./cli-args.js";
+import { initAutoUpdate } from "./auto-update.js";
 
 // Workaround for systems where chrome-sandbox isn't suid root
 app.commandLine.appendSwitch("no-sandbox");
@@ -28,6 +30,15 @@ app.commandLine.appendSwitch("no-sandbox");
 // fails with ESRCH on /dev/shm under restrictive AppArmor profiles
 // (Ubuntu 24.04+) and breaks DevTools and the PDF viewer.
 app.commandLine.appendSwitch("no-zygote");
+
+// Only one Orbit per machine. A second `Orbit --cwd X` invocation hands its
+// argv to the running instance via the `second-instance` event; if we can't
+// get the lock, quit immediately so the running instance handles the request.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+  process.exit(0);
+}
 
 // Custom scheme for serving files out of the current analysis cwd. The renderer
 // rewrites relative <img src> in notebook.md to orbit-artifact://cwd/<path>, and
@@ -120,9 +131,9 @@ function startConfigWatcher(): void {
   }
 }
 
-function getDefaultCwd(): string {
-  // Priority: env var > brain config.defaultCwd > hardcoded default
-  let cwd = process.env.LOOM_CWD;
+function getDefaultCwd(cliArgs?: CliArgs): string {
+  // Priority: --cwd CLI arg > LOOM_CWD env > brain config.defaultCwd > hardcoded.
+  let cwd = cliArgs?.cwd || process.env.LOOM_CWD;
   if (!cwd) {
     try {
       const configPath = path.join(LOOM_DIR, "config.json");
@@ -265,7 +276,27 @@ function createWindow(cwd: string): void {
   procMonitor = new ProcMonitor(mainWindow, () => agentManager?.getPid() ?? null);
 
   mainWindow.webContents.once("did-finish-load", () => {
-    log("renderer loaded, starting agent");
+    log("renderer loaded");
+
+    // Probe + migrate secrets here (not in whenReady) so the window is on
+    // screen first. On a fresh unsigned macOS install,
+    // safeStorage.isEncryptionAvailable() blocks on a Keychain auth prompt;
+    // running it before createWindow leaves the user staring at a blank
+    // dock + invisible system dialog. Brain spawn still gates on
+    // migration finishing, so env-injected keys are post-migration.
+    if (safeStorageAvailable()) {
+      try {
+        const result = migratePlaintextSecrets();
+        if (result.migrated) log("migrated plaintext secrets → safeStorage");
+      } catch (err) {
+        log("secret migration failed:", err);
+      }
+      startConfigWatcher();
+    } else {
+      log("safeStorage unavailable — keys remain plaintext on disk");
+    }
+
+    log("starting agent");
     agentManager!.start();
     procMonitor!.start();
   });
@@ -456,35 +487,56 @@ app.whenReady().then(() => {
 
   buildMenu();
 
-  // Migrate any plaintext API keys in ~/.loom/config.json to ciphertext. Must
-  // run before the agent spawns so the brain sees env-injected decrypted keys
-  // rather than the old plaintext.
-  if (safeStorageAvailable()) {
-    try {
-      const result = migratePlaintextSecrets();
-      if (result.migrated) log("migrated plaintext secrets → safeStorage");
-    } catch (err) {
-      log("secret migration failed:", err);
-    }
-    // Close the plaintext-write window from /connect mid-session: the brain
-    // process can't encrypt (no safeStorage), so it persists keys plaintext
-    // and we re-encrypt as soon as the file changes. fs.watch on the
-    // directory survives the atomic tmp+rename pattern in saveConfig().
-    startConfigWatcher();
-  } else {
-    log("safeStorage unavailable — keys remain plaintext on disk");
-  }
-
-  const cwd = getDefaultCwd();
+  const cliArgs = parseCliArgs(process.argv);
+  const cwd = getDefaultCwd(cliArgs);
   log("cwd:", cwd);
   createWindow(cwd);
+  initAutoUpdate();
 
   powerMonitor.on("suspend", () => log("[diag] powerMonitor suspend"));
-  powerMonitor.on("resume", () => log("[diag] powerMonitor resume"));
+  powerMonitor.on("resume", () => {
+    log("[diag] powerMonitor resume");
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    // Force GPU compositor repaint — macOS resets the GPU process on wake.
+    mainWindow.webContents.invalidate();
+    // Notify the renderer so it can auto-restore blank chat/notebook views.
+    mainWindow.webContents.send("display:resume");
+  });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow(cwd);
+    }
+  });
+
+  app.on("second-instance", async (_event, argv) => {
+    log("second-instance argv:", argv);
+    // parseCliArgs scans the whole argv, so the executable path at argv[0] is
+    // ignored without a slice -- the same call works for the first instance too.
+    const args = parseCliArgs(argv);
+    if (!args.cwd) {
+      // Bare second launch -- just surface the window.
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+      }
+      return;
+    }
+    const resolvedCwd = args.cwd.startsWith("~")
+      ? path.join(os.homedir(), args.cwd.slice(1))
+      : args.cwd;
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+    if (!agentManager) return;
+    if (resolvedCwd === agentManager.getCwd()) return;
+    const ok = await confirmCwdChange(mainWindow ?? undefined, resolvedCwd);
+    if (!ok) return;
+    if (agentManager.switchCwd(resolvedCwd)) {
+      log("switched cwd from second instance to:", resolvedCwd);
+      mainWindow?.webContents.send("agent:cwd-changed", resolvedCwd);
+      if (mainWindow) startFilesWatcher(mainWindow, resolvedCwd);
     }
   });
 });

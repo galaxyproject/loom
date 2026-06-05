@@ -29,8 +29,25 @@ export function getState(): AnalystState {
   return state;
 }
 
+// Notebook widget visibility mode:
+//   "auto"   - not shown yet; auto-shows on the next notebook change (default)
+//   "open"   - currently shown; stays in sync as the notebook changes
+//   "hidden" - user closed it via /notebook; stays closed (no auto-reopen)
+//              until they reopen it
+type NotebookWidgetMode = "auto" | "open" | "hidden";
+let notebookWidgetMode: NotebookWidgetMode = "auto";
+
+export function getNotebookWidgetMode(): NotebookWidgetMode {
+  return notebookWidgetMode;
+}
+
+export function setNotebookWidgetMode(mode: NotebookWidgetMode): void {
+  notebookWidgetMode = mode;
+}
+
 export function resetState(): void {
   stopWatchingNotebook();
+  notebookWidgetMode = "auto";
   state = {
     galaxyConnected: false,
     currentHistoryId: null,
@@ -150,6 +167,8 @@ export function getDefaultPath(_title: string, directory: string): string {
 export function initSessionArtifacts(cwd: string): void {
   const notebookPath = path.join(cwd, "notebook.md");
   const sessionDir = cwd;
+  // Fresh session: Pi has cleared extension widgets, so reset the mode too.
+  notebookWidgetMode = "auto";
 
   try {
     const autoCommit = ensureGitRepo(cwd);

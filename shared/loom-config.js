@@ -58,6 +58,36 @@ export function loadConfig() {
       raw = {};
     }
   }
+  // Migrate flat llm shape (pre-multi-provider) → {active, providers} map.
+  // Old: { llm: { provider, apiKey?, apiKeyEncrypted?, model? } }
+  // New: { llm: { active, providers: { [provider]: { apiKey?, apiKeyEncrypted?, model? } } } }
+  //
+  // Additive on purpose: if a config has BOTH old top-level fields and a
+  // partial providers map (which can happen if any caller wrote a half-
+  // migrated shape), fold the orphan fields into the right provider entry
+  // instead of silently leaving them as unreachable plaintext on disk.
+  if (raw.llm) {
+    const llm = raw.llm;
+    const orphanProvider = llm.provider || llm.active || "anthropic";
+    const providers = { ...(llm.providers || {}) };
+    const existing = providers[orphanProvider] || {};
+    const merged = { ...existing };
+    // Encrypted wins if both legacy fields are present -- the plaintext
+    // form is the less-safe one, and a half-migrated config that ended up
+    // with both shouldn't drop the encrypted blob.
+    if (llm.apiKeyEncrypted && !merged.apiKey && !merged.apiKeyEncrypted) {
+      merged.apiKeyEncrypted = llm.apiKeyEncrypted;
+    }
+    if (llm.apiKey && !merged.apiKey && !merged.apiKeyEncrypted) {
+      merged.apiKey = llm.apiKey;
+    }
+    if (llm.model && !merged.model) merged.model = llm.model;
+    if (merged.apiKey || merged.apiKeyEncrypted || merged.model) {
+      providers[orphanProvider] = merged;
+    }
+    raw.llm = { active: llm.active || orphanProvider, providers };
+  }
+
   // Lazy-seed default skills repo if the user hasn't configured any. This
   // also re-seeds galaxy-skills if every repo was removed manually — feels
   // less surprising than silently leaving it absent.
@@ -68,6 +98,26 @@ export function loadConfig() {
   // the project to local-only execution regardless of Galaxy credentials.
   if (raw.executionMode !== "local" && raw.executionMode !== "cloud") {
     raw.executionMode = "cloud";
+  }
+
+  // Guardian (local-execution safety) defaults. Secure by default: enabled,
+  // never bypassed, nothing trusted. Only relaxed by explicit user action.
+  const g = raw.guardian && typeof raw.guardian === "object" ? raw.guardian : {};
+  raw.guardian = {
+    enabled: g.enabled !== false,
+    dangerouslyBypassPermissions: g.dangerouslyBypassPermissions === true,
+    trustedWorkspaces: Array.isArray(g.trustedWorkspaces) ? g.trustedWorkspaces : [],
+    extraWorkspaceRoots: Array.isArray(g.extraWorkspaceRoots) ? g.extraWorkspaceRoots : [],
+    consentAcknowledged:
+      g.consentAcknowledged && typeof g.consentAcknowledged === "object"
+        ? g.consentAcknowledged
+        : null,
+    sandbox: g.sandbox === true,
+  };
+  // Update checks are on by default; an explicit false (set in config or via
+  // the CLI's --no-update-check) silences the CLI notice + Orbit's checks.
+  if (typeof raw.updateCheck !== "boolean") {
+    raw.updateCheck = true;
   }
   return raw;
 }

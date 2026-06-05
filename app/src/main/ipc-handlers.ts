@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow, shell, app } from "electron";
+import { ipcMain, dialog, BrowserWindow, shell, app, autoUpdater } from "electron";
 import type { AgentManager } from "./agent.js";
 import { startFilesWatcher, resolveWithin } from "./files-handler.js";
 import { loadSessionHistory } from "./session-replay.js";
@@ -7,7 +7,16 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import { loadConfig, saveConfig, type LoomConfig } from "./config.js";
 import { encryptSecret, isAvailable as safeStorageAvailable } from "./secure-config.js";
-import { getProviders, getModels } from "@mariozechner/pi-ai";
+import { getProviders, getModels } from "@earendil-works/pi-ai";
+import { checkLatestVersion } from "./version-check.js";
+import { postFeedback } from "./feedback.js";
+import type { FeedbackPayload } from "../../../shared/feedback-contract.js";
+import {
+  getOAuthStatus,
+  isOAuthProvider,
+  signInOpenAICodex,
+  signOutOAuth,
+} from "./oauth-handler.js";
 
 /**
  * Sentinel the renderer sends back in a secret field when the user did NOT
@@ -18,9 +27,8 @@ export const UNCHANGED_SECRET = "__loom_unchanged_secret__";
 /** Masked shape returned to the renderer — never carries plaintext secrets. */
 interface MaskedLoomConfig extends Omit<LoomConfig, "llm" | "galaxy"> {
   llm?: {
-    provider?: string;
-    model?: string;
-    hasApiKey: boolean;
+    active: string;
+    providers: Record<string, { model?: string; baseUrl?: string; hasApiKey: boolean }>;
   };
   galaxy?: {
     active: string | null;
@@ -33,9 +41,22 @@ function maskConfig(cfg: LoomConfig): MaskedLoomConfig {
   const masked: MaskedLoomConfig = { ...rest };
   if (cfg.llm) {
     masked.llm = {
-      provider: cfg.llm.provider,
-      model: cfg.llm.model,
-      hasApiKey: Boolean(cfg.llm.apiKey || cfg.llm.apiKeyEncrypted),
+      active: cfg.llm.active,
+      providers: Object.fromEntries(
+        Object.entries(cfg.llm.providers ?? {}).map(([k, v]) => [
+          k,
+          {
+            model: v.model,
+            baseUrl: v.baseUrl,
+            // OAuth providers authenticate via ~/.pi/agent/auth.json -- an
+            // orphan apiKey on the entry (manual edit, or the legacy-shape
+            // migrator) is dead weight, not a real credential. Don't surface
+            // it to the renderer or it'll mis-render "Key stored" UI for
+            // an account that actually authenticates by sign-in.
+            hasApiKey: isOAuthProvider(k) ? false : Boolean(v.apiKey || v.apiKeyEncrypted),
+          },
+        ]),
+      ),
     };
   }
   if (cfg.galaxy) {
@@ -61,26 +82,50 @@ function reconcileIncomingConfig(incoming: Record<string, unknown>): LoomConfig 
   const canEncrypt = safeStorageAvailable();
   const out: LoomConfig = { ...current, ...(incoming as LoomConfig) };
 
-  // LLM key reconciliation
-  const incomingLlm = (incoming as { llm?: { apiKey?: string } }).llm;
+  // Guardian: only the sandbox toggle comes from the renderer; merge it onto the
+  // stored block so toggling it never drops dangerouslyBypassPermissions / trustedWorkspaces.
+  const incomingGuardian = (incoming as { guardian?: { sandbox?: boolean } }).guardian;
+  if (incomingGuardian) {
+    out.guardian = { ...current.guardian, sandbox: incomingGuardian.sandbox === true };
+  }
+
+  // LLM multi-provider reconciliation. The renderer sends:
+  //   { active, providers: { [name]: { apiKey?, model? } } }
+  // where apiKey may be UNCHANGED_SECRET (preserve), "" (clear), or a new value.
+  type IncomingProvider = { apiKey?: string; model?: string; baseUrl?: string };
+  type IncomingLlm = { active?: string; providers?: Record<string, IncomingProvider> };
+  const incomingLlm = (incoming as { llm?: IncomingLlm }).llm;
   if (incomingLlm) {
-    const rawKey = incomingLlm.apiKey;
-    const mergedLlm: LoomConfig["llm"] = {
-      provider: (incoming as { llm?: { provider?: string } }).llm?.provider,
-      model: (incoming as { llm?: { model?: string } }).llm?.model,
+    // Seed from disk so a partial payload (e.g. /model switching just one
+    // provider's model) preserves every other provider's encrypted blob.
+    const mergedProviders: NonNullable<LoomConfig["llm"]>["providers"] = {
+      ...(current.llm?.providers ?? {}),
     };
-    if (rawKey === UNCHANGED_SECRET || rawKey === undefined) {
-      // Preserve whatever was on disk.
-      if (current.llm?.apiKeyEncrypted) mergedLlm.apiKeyEncrypted = current.llm.apiKeyEncrypted;
-      if (current.llm?.apiKey) mergedLlm.apiKey = current.llm.apiKey;
-    } else if (rawKey === "") {
-      // Explicit clear — drop both fields.
-    } else if (canEncrypt) {
-      mergedLlm.apiKeyEncrypted = encryptSecret(rawKey);
-    } else {
-      mergedLlm.apiKey = rawKey;
+    for (const [name, p] of Object.entries(incomingLlm.providers ?? {})) {
+      const existing = current.llm?.providers?.[name];
+      const rawKey = p.apiKey;
+      const entry: { apiKey?: string; apiKeyEncrypted?: string; model?: string; baseUrl?: string } =
+        {};
+      // Preserve existing model if the incoming entry doesn't carry one --
+      // a partial save (e.g. rotate-just-the-key) shouldn't wipe the model.
+      if (p.model !== undefined) entry.model = p.model;
+      else if (existing?.model) entry.model = existing.model;
+      if (p.baseUrl !== undefined) entry.baseUrl = p.baseUrl;
+      else if (existing?.baseUrl) entry.baseUrl = existing.baseUrl;
+      if (rawKey === UNCHANGED_SECRET || rawKey === undefined) {
+        if (existing?.apiKeyEncrypted) entry.apiKeyEncrypted = existing.apiKeyEncrypted;
+        else if (existing?.apiKey) entry.apiKey = existing.apiKey;
+      } else if (rawKey !== "") {
+        if (canEncrypt) entry.apiKeyEncrypted = encryptSecret(rawKey);
+        else entry.apiKey = rawKey;
+      }
+      // empty rawKey ("") = explicit clear — neither field set
+      mergedProviders[name] = entry;
     }
-    out.llm = mergedLlm;
+    out.llm = {
+      active: incomingLlm.active ?? current.llm?.active ?? "anthropic",
+      providers: mergedProviders,
+    };
   }
 
   // Galaxy profile reconciliation (per profile)
@@ -114,12 +159,30 @@ function log(...args: unknown[]): void {
   console.log("[ipc]", ...args);
 }
 
+interface AgentPromptOptions {
+  streamingBehavior?: "steer" | "followUp";
+}
+
+function promptPayload(message: string, options?: AgentPromptOptions): Record<string, unknown> {
+  const payload: Record<string, unknown> = { type: "prompt", message };
+  const streamingBehavior = options?.streamingBehavior;
+  if (streamingBehavior === "steer" || streamingBehavior === "followUp") {
+    payload.streamingBehavior = streamingBehavior;
+  }
+  return payload;
+}
+
 /**
  * Ask the user to confirm that switching analysis directories will start
  * a fresh agent session and clear the current chat/plan/notebook view.
  * Returns true if the user confirmed.
  */
-export async function confirmCwdChange(window?: BrowserWindow): Promise<boolean> {
+export async function confirmCwdChange(
+  window?: BrowserWindow,
+  targetCwd?: string,
+): Promise<boolean> {
+  const consequence =
+    "The current chat, plan, and notebook view will be cleared from this window. The previous session remains on disk and can be resumed by opening that directory again.";
   const result = await dialog.showMessageBox(window!, {
     type: "warning",
     buttons: ["Cancel", "Continue"],
@@ -127,16 +190,17 @@ export async function confirmCwdChange(window?: BrowserWindow): Promise<boolean>
     cancelId: 0,
     title: "Change analysis directory?",
     message: "Changing the analysis directory will start a new agent session.",
-    detail:
-      "The current chat, plan, and notebook view will be cleared from this window. The previous session remains on disk and can be resumed by opening that directory again.",
+    // When the target is known up front (e.g. a `--cwd` hand-off from another
+    // process), show WHERE -- otherwise the user is approving a blind switch.
+    detail: targetCwd ? `New directory:\n${targetCwd}\n\n${consequence}` : consequence,
   });
   return result.response === 1;
 }
 
 export function registerIpcHandlers(agent: AgentManager): void {
-  ipcMain.handle("agent:prompt", async (_e, message: string) => {
+  ipcMain.handle("agent:prompt", async (_e, message: string, options?: AgentPromptOptions) => {
     log("prompt:", message.slice(0, 80));
-    agent.send({ type: "prompt", message });
+    agent.send(promptPayload(message, options));
   });
 
   ipcMain.handle("agent:abort", async () => {
@@ -179,15 +243,20 @@ export function registerIpcHandlers(agent: AgentManager): void {
     return agent.getCwd();
   });
 
-  // Replay the current session's chat transcript into the renderer. Used by
-  // the /chat slash command to recover chat after the window blanks out
-  // (e.g. after an accidental file:// navigation). No agent restart — just
-  // re-read session.jsonl and push the ReplaySegment[] back.
+  // Replay the current session's chat transcript into the renderer. Used
+  // by /chat and by display:resume after wake-from-sleep. Reads only from
+  // the pinned session file, so a fresh /new start (pinned = null) returns
+  // empty instead of surfacing stale per-cwd history.
   ipcMain.handle("chat:replay", async (e) => {
     const window = BrowserWindow.fromWebContents(e.sender);
     if (!window || window.isDestroyed()) return { ok: false, error: "no window" };
+    const file = agent.getReplaySessionFile();
+    if (!file) {
+      window.webContents.send("agent:session-history", []);
+      return { ok: true, segments: 0 };
+    }
     try {
-      const history = loadSessionHistory(agent.getCwd());
+      const history = loadSessionHistory(file);
       window.webContents.send("agent:session-history", history);
       return { ok: true, segments: history.length };
     } catch (err) {
@@ -229,8 +298,13 @@ export function registerIpcHandlers(agent: AgentManager): void {
 
   ipcMain.handle(
     "apiKey:validate",
-    async (_e, provider: string, key: string): Promise<{ valid: boolean; error?: string }> => {
-      return validateApiKey(provider, key);
+    async (
+      _e,
+      provider: string,
+      key: string,
+      baseUrl?: string,
+    ): Promise<{ valid: boolean; error?: string; models?: string[] }> => {
+      return validateApiKey(provider, key, baseUrl);
     },
   );
 
@@ -248,6 +322,8 @@ export function registerIpcHandlers(agent: AgentManager): void {
     "skills",
     "condaBin",
     "experiments",
+    "guardian",
+    "updateCheck",
   ]);
 
   function sanitizeConfig(input: unknown): LoomConfig {
@@ -266,6 +342,12 @@ export function registerIpcHandlers(agent: AgentManager): void {
     if (dropped.length > 0) {
       log("config:save dropped unknown keys:", dropped);
     }
+    // guardian: the renderer may only set the sandbox toggle. dangerouslyBypassPermissions
+    // is intentionally stripped here -- it has its own native-confirm IPC, so a renderer
+    // XSS that reached config:save still can't enable the bypass.
+    if (out.guardian && typeof out.guardian === "object" && !Array.isArray(out.guardian)) {
+      out.guardian = { sandbox: (out.guardian as Record<string, unknown>).sandbox === true };
+    }
     return out as LoomConfig;
   }
 
@@ -283,6 +365,77 @@ export function registerIpcHandlers(agent: AgentManager): void {
       log("config:save failed:", err);
       return { success: false, error: String(err) };
     }
+  });
+
+  // Local-execution bypass toggle. Deliberately NOT routed through config:save
+  // (whose allowlist blocks renderer-planted keys, ipc-handlers.ts ALLOWED_CONFIG_KEYS).
+  // Enabling bypass requires a NATIVE confirm dialog in the main process, which
+  // renderer-side injection (e.g. a markdown XSS) cannot auto-dismiss. The brain
+  // reads guardian config live per tool call, so no agent restart is needed.
+  ipcMain.handle("guardian:set-bypass", async (e, enabled: unknown) => {
+    const turnOn = enabled === true;
+    if (turnOn) {
+      const window = BrowserWindow.fromWebContents(e.sender) ?? undefined;
+      const opts = {
+        type: "warning" as const,
+        buttons: ["Cancel", "Enable bypass"],
+        defaultId: 0,
+        cancelId: 0,
+        title: "Bypass all command permissions?",
+        message: "Let the AI run any command without asking?",
+        detail:
+          "This disables the safety gate: the AI can run any shell command and read or write " +
+          "any file on your computer, with no per-action approval. Only do this in an " +
+          "environment you fully control.",
+      };
+      const result = window
+        ? await dialog.showMessageBox(window, opts)
+        : await dialog.showMessageBox(opts);
+      if (result.response !== 1) {
+        return { ok: true, enabled: false, cancelled: true };
+      }
+    }
+    const cfg = loadConfig();
+    cfg.guardian = { ...(cfg.guardian ?? {}), dangerouslyBypassPermissions: turnOn };
+    saveConfig(cfg);
+    log(`guardian bypass ${turnOn ? "ENABLED" : "disabled"}`);
+    return { ok: true, enabled: turnOn };
+  });
+
+  ipcMain.handle("oauth:status", (_e, provider: string) => {
+    if (!isOAuthProvider(provider)) {
+      return { signedIn: false };
+    }
+    return getOAuthStatus(provider);
+  });
+
+  ipcMain.handle("oauth:sign-in", async (_e, provider: string) => {
+    if (provider !== "openai-codex") {
+      return { ok: false as const, error: `Unknown OAuth provider: ${provider}` };
+    }
+    try {
+      const status = await signInOpenAICodex();
+      // Restart the brain so it picks up the new credential on next prompt.
+      agent.stop();
+      agent.start();
+      return { ok: true as const, status };
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle("oauth:sign-out", async (_e, provider: string) => {
+    if (!isOAuthProvider(provider)) {
+      return { ok: false as const, error: `Unknown OAuth provider: ${provider}` };
+    }
+    try {
+      signOutOAuth(provider);
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+    }
+    agent.stop();
+    agent.start();
+    return { ok: true as const };
   });
 
   ipcMain.handle("notebook:status", (): { exists: boolean; hasContent: boolean } => {
@@ -333,6 +486,16 @@ export function registerIpcHandlers(agent: AgentManager): void {
       }
     },
   );
+
+  ipcMain.handle("notebook:load", async () => {
+    const nbPath = path.join(agent.getCwd(), "notebook.md");
+    try {
+      const content = fs.readFileSync(nbPath, "utf-8");
+      return { ok: true, content, path: nbPath };
+    } catch {
+      return { ok: false, content: null, path: nbPath };
+    }
+  });
 
   ipcMain.handle("file:open", async (_e, filePath: string) => {
     log("open file:", filePath);
@@ -386,6 +549,35 @@ export function registerIpcHandlers(agent: AgentManager): void {
     arch: process.arch,
   }));
 
+  // Version checker: surfaces a "new release available" banner in the
+  // renderer. No auto-install (unsigned macOS builds can't be patched by
+  // Squirrel.Mac); a packaged build user manually downloads the new DMG.
+  // Renderer is rate-limited to one call per session — checkLatestVersion
+  // itself caches the GitHub response for 24h on disk.
+  ipcMain.handle("version:check", async () => {
+    return await checkLatestVersion();
+  });
+
+  // Opens the GitHub releases page in the user's default browser when they
+  // click the "update available" banner. Hard-coded URL — renderer never
+  // gets a generic openExternal capability.
+  ipcMain.handle("version:open-release", async (_e, url: unknown) => {
+    const releasesPage = "https://github.com/galaxyproject/loom/releases/latest";
+    const target =
+      typeof url === "string" && /^https:\/\/github\.com\/galaxyproject\/loom\/releases\//.test(url)
+        ? url
+        : releasesPage;
+    await shell.openExternal(target);
+    return { opened: true };
+  });
+
+  // Apply a downloaded macOS update + relaunch. autoUpdater.quitAndInstall is a
+  // no-op unless an update was actually downloaded, so this is safe to call.
+  ipcMain.handle("update:restart", () => {
+    autoUpdater.quitAndInstall();
+    return { restarting: true };
+  });
+
   // Issue reporter: opens a pre-filled GitHub "new issue" URL in the user's
   // browser. The renderer never gets a generic openExternal capability —
   // we hard-code the repo here so a compromised renderer can't redirect.
@@ -398,6 +590,17 @@ export function registerIpcHandlers(agent: AgentManager): void {
     return { opened: true };
   });
 
+  // Feedback capture: POST the payload to the orbit-feedback worker. The
+  // endpoint URL (and any shared secret) live in main only -- see feedback.ts --
+  // so a compromised renderer can't redirect it. Returns {ok,...} so the
+  // renderer can fall back to the GitHub-issue flow when the POST fails.
+  ipcMain.handle("feedback:submit", async (_e, payload: FeedbackPayload) => {
+    // Stamp the opaque tester code from config in main (authoritative; the
+    // renderer never sets it). Non-secret; lets the team attribute the report.
+    const testerId = loadConfig().testerId || process.env.LOOM_TESTER_ID;
+    return await postFeedback(testerId ? { ...payload, testerId } : payload);
+  });
+
   // Model registry — pulls from pi-ai's bundled list so the dropdown stays
   // current with the brain's actual capabilities. Replaces the hand-edited
   // MODELS_BY_PROVIDER + PRICING constants in the renderer (they're kept as
@@ -408,15 +611,17 @@ export function registerIpcHandlers(agent: AgentManager): void {
     const USER_FACING_PROVIDERS: ReadonlySet<string> = new Set([
       "anthropic",
       "openai",
+      "openai-codex",
       "google",
       "ollama",
       "openrouter",
       "groq",
       "mistral",
       "xai",
+      "deepseek",
     ]);
     type Pricing = { input: number; output: number; cacheRead?: number; cacheWrite?: number };
-    type Entry = { id: string; label: string; pricing: Pricing };
+    type Entry = { id: string; label: string; pricing: Pricing; contextWindow?: number };
     const out: Record<string, Entry[]> = {};
     try {
       for (const provider of getProviders()) {
@@ -435,6 +640,9 @@ export function registerIpcHandlers(agent: AgentManager): void {
               cacheRead: m.cost.cacheRead,
               cacheWrite: m.cost.cacheWrite,
             },
+            // Model's max context window (tokens). Powers the renderer's
+            // context-fill indicator. May be undefined for some providers.
+            contextWindow: typeof m.contextWindow === "number" ? m.contextWindow : undefined,
           };
         });
       }
@@ -456,12 +664,37 @@ export function registerIpcHandlers(agent: AgentManager): void {
 async function validateApiKey(
   provider: string,
   key: string,
-): Promise<{ valid: boolean; error?: string }> {
+  baseUrl?: string,
+): Promise<{ valid: boolean; error?: string; models?: string[] }> {
   const trimmed = key.trim();
   if (!trimmed) return { valid: false, error: "Key is empty" };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
   try {
+    if (baseUrl) {
+      const trimmedBase = baseUrl.trim().replace(/\/+$/, "");
+      if (!/^https?:\/\//.test(trimmedBase)) {
+        return { valid: false, error: "Base URL must start with http(s)://" };
+      }
+      const res = await fetch(`${trimmedBase}/models`, {
+        headers: { authorization: `Bearer ${trimmed}` },
+        signal: controller.signal,
+      });
+      if (res.status === 401) return { valid: false, error: "Invalid API key (401)" };
+      if (!res.ok) return { valid: false, error: `Unexpected response: HTTP ${res.status}` };
+      try {
+        const body = (await res.json()) as { data?: unknown };
+        const raw = body.data;
+        const models = Array.isArray(raw)
+          ? raw
+              .map((m) => (m && typeof m === "object" ? (m as { id?: unknown }).id : undefined))
+              .filter((id): id is string => typeof id === "string")
+          : [];
+        return { valid: true, models };
+      } catch {
+        return { valid: true };
+      }
+    }
     if (provider === "anthropic") {
       if (!trimmed.startsWith("sk-ant-")) {
         return { valid: false, error: "Anthropic keys start with sk-ant-" };

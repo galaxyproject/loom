@@ -9,8 +9,8 @@
  *   - Galaxy skills fetch (operational know-how from galaxyproject/galaxy-skills)
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { getNotebookPath } from "./state";
 import {

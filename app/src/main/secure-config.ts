@@ -39,17 +39,17 @@ function tryDecrypt(b64: string | undefined): string | null {
 }
 
 /**
- * Resolve the LLM API key for the brain. Returns the plaintext value if it can
- * be obtained, preferring the encrypted field. `null` means no key is
+ * Resolve the LLM API key for the active provider. Returns the plaintext value
+ * if available, preferring the encrypted field. `null` means no key is
  * available via config (env vars may still supply one).
  */
 export function resolveLlmApiKey(config: LoomConfig): string | null {
   const llm = config.llm;
-  if (!llm) return null;
-  if (llm.apiKey) return llm.apiKey;
-  if (llm.apiKeyEncrypted && isAvailable()) {
-    return tryDecrypt(llm.apiKeyEncrypted);
-  }
+  if (!llm?.active || !llm.providers) return null;
+  const p = llm.providers[llm.active];
+  if (!p) return null;
+  if (p.apiKey) return p.apiKey;
+  if (p.apiKeyEncrypted && isAvailable()) return tryDecrypt(p.apiKeyEncrypted);
   return null;
 }
 
@@ -81,12 +81,16 @@ export function migratePlaintextSecrets(): { migrated: boolean; skipped: string 
   const config = loadConfig();
   let changed = false;
 
-  if (config.llm?.apiKey) {
-    const enc = encryptSecret(config.llm.apiKey);
-    config.llm = { ...config.llm, apiKeyEncrypted: enc };
-    delete config.llm.apiKey;
-    changed = true;
-    log("migrated llm.apiKey → apiKeyEncrypted");
+  if (config.llm?.providers) {
+    for (const [name, p] of Object.entries(config.llm.providers)) {
+      if (p.apiKey) {
+        const enc = encryptSecret(p.apiKey);
+        config.llm.providers[name] = { ...p, apiKeyEncrypted: enc };
+        delete config.llm.providers[name].apiKey;
+        changed = true;
+        log(`migrated llm.providers.${name}.apiKey → apiKeyEncrypted`);
+      }
+    }
   }
 
   const profiles = config.galaxy?.profiles;

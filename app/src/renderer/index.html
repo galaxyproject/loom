@@ -22,6 +22,46 @@
   </head>
   <body>
     <div id="app">
+      <!-- Update-available banner. Hidden until renderer fetches release info
+           and finds a newer tag than app.getVersion(). No auto-install for
+           unsigned macOS builds; clicking the link opens the Releases page. -->
+      <div id="update-banner" class="hidden" role="status" aria-live="polite">
+        <span class="update-banner-text" id="update-banner-text-link">
+          A new Orbit release is available (<span id="update-banner-version"></span>).
+        </span>
+        <span class="update-banner-text hidden" id="update-banner-text-restart">
+          Orbit <span id="update-banner-restart-version"></span> downloaded.
+        </span>
+        <button id="update-banner-link" class="update-banner-link" type="button">
+          Open release page
+        </button>
+        <button id="update-banner-restart" class="update-banner-link hidden" type="button">
+          Restart to install
+        </button>
+        <button
+          id="update-banner-dismiss"
+          class="update-banner-dismiss"
+          type="button"
+          title="Dismiss"
+          aria-label="Dismiss update notice"
+        >
+          ×
+        </button>
+      </div>
+      <!-- Permissions-bypass banner. Shown only while the safety gate is off
+           (guardian.dangerouslyBypassPermissions). Persistent and unmissable. -->
+      <div id="bypass-banner" class="hidden" role="alert" aria-live="assertive">
+        <span class="bypass-banner-text">
+          ⚠ Permissions bypassed — the AI can run any command without asking.
+        </span>
+      </div>
+      <!-- Bash-sandbox indicator. Shown when guardian.sandbox is on (opt-in).
+           Informational (a good state), not a warning. -->
+      <div id="sandbox-banner" class="hidden" role="status" aria-live="polite">
+        <span class="sandbox-banner-text"
+          >Bash sandbox on -- bash confined to the workspace; network limited.</span
+        >
+      </div>
       <div id="app-main">
         <!-- Left pane: File tree sidebar -->
         <div id="files-pane" class="pane">
@@ -119,39 +159,64 @@
 
           <div id="input-area">
             <div id="slash-popup" class="hidden" role="listbox" aria-label="Slash commands"></div>
-            <span
-              id="queued-indicator"
-              class="hidden"
-              title="Queued — will send when agent is ready"
-              >queued <span aria-hidden="true">↓</span></span
-            >
-            <textarea
-              id="input"
-              placeholder="Ask for a plan, drop a file path, or type / for commands"
-              rows="1"
-              aria-label="Chat input"
-              aria-haspopup="listbox"
-              aria-controls="slash-popup"
-              aria-autocomplete="list"
-              aria-expanded="false"
-            ></textarea>
-            <button id="send-btn" title="Send" aria-label="Send message">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
+            <div id="queued-panel" class="queued-panel hidden">
+              <div class="queued-panel-header">
+                <button
+                  id="queued-toggle"
+                  class="queued-toggle"
+                  type="button"
+                  aria-expanded="true"
+                  aria-controls="queued-list"
+                >
+                  <span id="queued-count" aria-live="polite" aria-atomic="true">0 queued</span>
+                  <span id="queued-toggle-icon" aria-hidden="true">▾</span>
+                </button>
+                <button
+                  id="queued-clear"
+                  class="queued-clear"
+                  type="button"
+                  title="Clear queue"
+                  aria-label="Clear queued messages"
+                >
+                  clear
+                </button>
+              </div>
+              <div id="queued-list" class="queued-list" role="list"></div>
+            </div>
+            <div class="composer-row">
+              <textarea
+                id="input"
+                placeholder="Ask for a plan, drop a file path, or type / for commands"
+                rows="1"
+                aria-label="Chat input"
+                aria-haspopup="listbox"
+                aria-controls="slash-popup"
+                aria-autocomplete="list"
+                aria-expanded="false"
+              ></textarea>
+              <button id="send-btn" title="Send" aria-label="Send message">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" />
+                </svg>
+              </button>
+              <button
+                id="abort-btn"
+                title="Stop"
+                class="hidden"
+                aria-label="Stop streaming response"
               >
-                <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" />
-              </svg>
-            </button>
-            <button id="abort-btn" title="Stop" class="hidden" aria-label="Stop streaming response">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="6" width="12" height="12" rx="2" />
-              </svg>
-            </button>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              </button>
+            </div>
           </div>
           <div id="input-hint">
             <span>Type <code>/</code> to see available commands</span>
@@ -252,10 +317,10 @@
         <button
           id="report-issue-btn"
           class="footer-control is-interactive"
-          title="Report an issue"
-          aria-label="Report an issue"
+          title="Send feedback"
+          aria-label="Send feedback"
         >
-          Report
+          Feedback
         </button>
         <div
           id="exec-mode-toggle"
@@ -294,6 +359,10 @@
           <span id="usage-tokens">0 tok</span>
           <span id="usage-cost"></span>
         </div>
+        <div id="context-fill" class="footer-control hidden" title="Context window usage">
+          <span id="context-fill-track"><span id="context-fill-bar"></span></span>
+          <span id="context-fill-pct">0%</span>
+        </div>
         <div id="cwd-bar" class="footer-control">
           <span id="cwd-path" title="Analysis directory">~</span>
           <button
@@ -330,17 +399,20 @@
         </div>
         <div class="modal-body">
           <section class="prefs-section">
-            <h3>LLM Provider</h3>
+            <h3>LLM Providers</h3>
             <div class="prefs-row">
-              <label for="prefs-provider">Provider</label>
+              <label for="prefs-provider">Active provider</label>
               <select id="prefs-provider">
                 <option value="anthropic">Anthropic</option>
                 <option value="openai">OpenAI</option>
+                <option value="openai-codex">OpenAI Codex (ChatGPT subscription)</option>
                 <option value="google">Google (Gemini)</option>
                 <option value="mistral">Mistral</option>
                 <option value="groq">Groq</option>
                 <option value="xai">xAI</option>
+                <option value="deepseek">DeepSeek</option>
                 <option value="ollama">Ollama (local)</option>
+                <option value="openai-compatible">OpenAI-compatible endpoint</option>
               </select>
             </div>
             <div class="prefs-row">
@@ -356,13 +428,50 @@
                 Prices in the dropdown are per 1M tokens (input/output).
               </span>
             </div>
-            <div class="prefs-row">
+            <div class="prefs-row hidden" id="prefs-base-url-row">
+              <label for="prefs-base-url">Base URL</label>
+              <div class="prefs-row-with-btn">
+                <input
+                  id="prefs-base-url"
+                  type="text"
+                  placeholder="https://host/v1 (OpenAI-compatible)"
+                />
+                <button
+                  id="prefs-jetstream-preset"
+                  class="plan-btn"
+                  type="button"
+                  title="Fill Jetstream defaults"
+                >
+                  Jetstream
+                </button>
+              </div>
+            </div>
+            <div class="prefs-row" id="prefs-api-key-row">
               <label for="prefs-api-key">API Key</label>
               <input id="prefs-api-key" type="password" placeholder="sk-..." />
             </div>
-            <div class="prefs-row prefs-hint">
+            <div class="prefs-row prefs-hint" id="prefs-api-key-hint-row">
               <span></span>
               <span id="prefs-api-key-status" class="api-key-status"></span>
+            </div>
+            <div class="prefs-row hidden" id="prefs-oauth-row">
+              <label>Sign in</label>
+              <div class="prefs-row-with-btn">
+                <span id="prefs-oauth-status" class="prefs-oauth-status">Not signed in</span>
+                <button id="prefs-oauth-signin" class="plan-btn" type="button">
+                  Sign in with ChatGPT
+                </button>
+                <button id="prefs-oauth-signout" class="plan-btn danger hidden" type="button">
+                  Sign out
+                </button>
+              </div>
+            </div>
+            <div class="prefs-row prefs-hint hidden" id="prefs-oauth-hint-row">
+              <span></span>
+              <span class="prefs-hint-text">
+                Opens your browser to OpenAI. Requires a ChatGPT Plus, Pro, Business, Edu, or
+                Enterprise subscription. Token refresh is handled automatically.
+              </span>
             </div>
           </section>
 
@@ -432,6 +541,41 @@
               <button id="prefs-skills-add" class="plan-btn">+ Add repo</button>
             </div>
           </section>
+
+          <section class="prefs-section">
+            <h3>Safety</h3>
+            <p class="prefs-help">
+              By default Loom gates the AI's local actions: shell commands and writes outside your
+              workspace need your approval, and destructive patterns are blocked. Bypassing
+              permissions turns that gate off entirely — the AI can run any command and edit any
+              file as you, with no prompts. Only enable this in an environment you fully control.
+            </p>
+            <div class="prefs-row">
+              <label for="prefs-bypass">Dangerously bypass permissions</label>
+              <input id="prefs-bypass" type="checkbox" />
+            </div>
+            <div class="prefs-row prefs-hint">
+              <span></span>
+              <span class="prefs-hint-text">
+                Enabling this takes effect immediately (it does not wait for Save) and persists
+                until you turn it off. A confirmation dialog appears before it's enabled.
+              </span>
+            </div>
+            <div class="prefs-row">
+              <label for="prefs-sandbox">Sandbox bash execution</label>
+              <input id="prefs-sandbox" type="checkbox" />
+            </div>
+            <div class="prefs-row prefs-hint">
+              <span></span>
+              <span class="prefs-hint-text">
+                Runs the AI's bash commands inside an OS sandbox: bash writes are confined to your
+                analysis directory and its network is limited. Off by default because it restricts
+                bash network access (e.g. some downloads). Takes effect after Save (restarts the
+                session). Your file edits are confined to the analysis directory regardless of this
+                setting.
+              </span>
+            </div>
+          </section>
         </div>
         <div class="modal-footer">
           <span id="prefs-restart-note">Changes will restart the agent session.</span>
@@ -450,11 +594,6 @@
           <h2>Welcome to orbit</h2>
         </div>
         <div class="modal-body">
-          <img
-            class="welcome-badge"
-            src="./assets/badges/ask-me-about-loom.svg"
-            alt="Ask me about Loom"
-          />
           <p class="welcome-intro">
             orbit is an AI-driven bioinformatics analysis app. Configure your LLM provider to get
             started. You can change settings later in Preferences.
@@ -467,24 +606,61 @@
               <select id="welcome-provider">
                 <option value="anthropic">Anthropic</option>
                 <option value="openai">OpenAI</option>
+                <option value="openai-codex">OpenAI Codex (ChatGPT subscription)</option>
                 <option value="google">Google (Gemini)</option>
                 <option value="mistral">Mistral</option>
                 <option value="groq">Groq</option>
                 <option value="xai">xAI</option>
+                <option value="deepseek">DeepSeek</option>
                 <option value="ollama">Ollama (local)</option>
+                <option value="openai-compatible">OpenAI-compatible endpoint</option>
               </select>
             </div>
             <div class="prefs-row">
               <label for="welcome-model">Model</label>
               <select id="welcome-model"></select>
             </div>
-            <div class="prefs-row">
+            <div class="prefs-row hidden" id="welcome-base-url-row">
+              <label for="welcome-base-url">Base URL</label>
+              <div class="prefs-row-with-btn">
+                <input
+                  id="welcome-base-url"
+                  type="text"
+                  placeholder="https://host/v1 (OpenAI-compatible)"
+                />
+                <button
+                  id="welcome-jetstream-preset"
+                  class="plan-btn"
+                  type="button"
+                  title="Fill Jetstream defaults"
+                >
+                  Jetstream
+                </button>
+              </div>
+            </div>
+            <div class="prefs-row" id="welcome-api-key-row">
               <label for="welcome-api-key">API Key</label>
               <input id="welcome-api-key" type="password" placeholder="sk-..." />
             </div>
-            <div class="prefs-row prefs-hint">
+            <div class="prefs-row prefs-hint" id="welcome-api-key-hint-row">
               <span></span>
               <span id="welcome-api-key-status" class="api-key-status"></span>
+            </div>
+            <div class="prefs-row hidden" id="welcome-oauth-row">
+              <label>Sign in</label>
+              <div class="prefs-row-with-btn">
+                <span id="welcome-oauth-status" class="prefs-oauth-status">Not signed in</span>
+                <button id="welcome-oauth-signin" class="plan-btn" type="button">
+                  Sign in with ChatGPT
+                </button>
+              </div>
+            </div>
+            <div class="prefs-row prefs-hint hidden" id="welcome-oauth-hint-row">
+              <span></span>
+              <span class="prefs-hint-text">
+                Opens your browser to OpenAI. Requires a ChatGPT Plus, Pro, Business, Edu, or
+                Enterprise subscription.
+              </span>
             </div>
           </section>
 
@@ -576,28 +752,25 @@
       </div>
     </div>
 
-    <!-- Report-issue modal -->
+    <!-- Send-feedback modal -->
     <div id="report-overlay" class="modal-overlay hidden">
       <div class="modal">
         <div class="modal-header">
-          <h2>Report an issue</h2>
+          <h2>Send feedback</h2>
           <button id="report-close" class="modal-close" title="Close" aria-label="Close">×</button>
         </div>
         <div class="modal-body">
           <div class="report-account-note">
-            You'll need a GitHub account to submit this — your default browser will open the
-            pre-filled issue page on
+            Your feedback goes straight to the Loom team's private feedback store — no GitHub
+            account needed. If that service is unreachable, Orbit falls back to opening a pre-filled
+            issue on
             <a
               href="https://github.com/galaxyproject/loom"
               target="_blank"
               rel="noopener noreferrer"
               >github.com/galaxyproject/loom</a
-            >, and you click <em>Submit</em> there. No GitHub account?
-            <a href="https://github.com/signup" target="_blank" rel="noopener noreferrer"
-              >Create one</a
             >
-            — if you're serious about data analysis, you'll want one anyway (code, notebooks,
-            collaboration all live there).
+            with only your title and description (no diagnostics), which you submit there.
           </div>
           <div class="prefs-row">
             <label for="report-title">Title</label>
@@ -616,27 +789,29 @@
             <label><input type="checkbox" id="report-include-logs" /> Include logs</label>
           </div>
           <details class="report-disclosure">
-            <summary>What's in this report?</summary>
+            <summary>What's included?</summary>
             <p>
               <b>System info:</b> Orbit version, OS, Electron/Node versions, LLM model + provider
               name (no API key), Galaxy connection state (no credentials).
             </p>
             <p>
-              <b>Logs:</b> last 30 lines of <code>activity.jsonl</code> (if present in the cwd) and
-              last ~150 lines of the in-app shell stream. These can include filenames, tool
-              arguments, and command output -- review the issue body on GitHub before you click
-              Submit there.
+              <b>Logs:</b> last 60 events of <code>activity.jsonl</code> (one line each: tool name,
+              arguments, and a truncated result -- credentials and API keys redacted) and the last
+              ~200 lines of the in-app shell stream. These can include filenames, tool arguments,
+              and command output.
             </p>
             <p>
-              Both are off by default. Opt in only when you've decided you're OK sharing them on a
-              public issue.
+              Both are on by default for the beta so we get useful diagnostics. Feedback goes to
+              Loom's private feedback store; uncheck either box to leave it out. If the store is
+              unreachable and we fall back to a public GitHub issue, only your text is sent — never
+              these diagnostics.
             </p>
           </details>
         </div>
         <div class="modal-footer">
           <div class="modal-actions">
             <button id="report-cancel" class="plan-btn">Cancel</button>
-            <button id="report-submit" class="plan-btn primary">Open as GitHub issue</button>
+            <button id="report-submit" class="plan-btn primary">Send feedback</button>
           </div>
         </div>
       </div>

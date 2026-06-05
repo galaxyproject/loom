@@ -92,6 +92,16 @@ export class FilesPanel {
     row.dataset.type = node.type;
     row.style.paddingLeft = `${10 + depth * 12}px`;
 
+    row.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // Right-click on a file selects it, matching the convention of every
+      // editor file tree. Directories have no selection visual (setSelected
+      // only applies the class to type=file rows), so they're a no-op.
+      if (node.type === "file") this.setSelected(node.relPath);
+      showFilePathContextMenu(e.clientX, e.clientY, node.relPath);
+    });
+
     const icon = document.createElement("span");
     icon.className = "files-tree-icon";
 
@@ -159,6 +169,89 @@ export class FilesPanel {
     }
     return wrap;
   }
+}
+
+/**
+ * Lightweight right-click menu for a file/folder row in the files panel.
+ * Floats at the cursor; click anywhere outside (or Escape) closes it.
+ * One submenu only — keep it short until users tell us they want more.
+ */
+function showFilePathContextMenu(x: number, y: number, relPath: string): void {
+  // Tear down any prior menu first so a fast double-right-click doesn't
+  // leave orphans.
+  document.getElementById("files-tree-ctx-menu")?.remove();
+
+  const menu = document.createElement("div");
+  menu.id = "files-tree-ctx-menu";
+  menu.className = "files-tree-ctx-menu";
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+
+  const addItem = (label: string, onClick: () => void | Promise<void>): void => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "files-tree-ctx-item";
+    item.textContent = label;
+    item.addEventListener("click", (e) => {
+      e.stopPropagation();
+      // Surface clipboard rejections (no secure context, permission
+      // denied, etc.) instead of swallowing them — a silent copy menu is
+      // the worst kind of broken.
+      Promise.resolve(onClick())
+        .catch((err) => console.warn(`[files-ctx-menu] "${label}" failed:`, err))
+        .finally(close);
+    });
+    menu.appendChild(item);
+  };
+
+  const close = (): void => {
+    menu.remove();
+    document.removeEventListener("click", closeOnOutside, true);
+    document.removeEventListener("keydown", closeOnEscape, true);
+    window.removeEventListener("blur", close);
+  };
+  const closeOnOutside = (e: Event): void => {
+    if (!menu.contains(e.target as Node)) close();
+  };
+  const closeOnEscape = (e: KeyboardEvent): void => {
+    if (e.key === "Escape") close();
+  };
+
+  addItem("Copy relative path", async () => {
+    await navigator.clipboard.writeText(relPath);
+  });
+  addItem("Copy absolute path", async () => {
+    const cwd = await window.orbit.getCwd();
+    // cwd is OS-native; relPath uses forward slashes (per files-handler's
+    // toPosix). Joining with "/" works on Linux/macOS and Windows accepts
+    // mixed separators — good enough for clipboard fodder.
+    const sep = cwd.includes("\\") && !cwd.includes("/") ? "\\" : "/";
+    await navigator.clipboard.writeText(`${cwd}${sep}${relPath}`);
+  });
+  addItem("Copy file name", async () => {
+    const parts = relPath.split("/");
+    await navigator.clipboard.writeText(parts[parts.length - 1] ?? relPath);
+  });
+
+  document.body.appendChild(menu);
+
+  // Clamp to viewport so a right-click near the right/bottom edge doesn't
+  // place the menu off-screen.
+  const rect = menu.getBoundingClientRect();
+  if (rect.right > window.innerWidth) {
+    menu.style.left = `${Math.max(0, window.innerWidth - rect.width - 4)}px`;
+  }
+  if (rect.bottom > window.innerHeight) {
+    menu.style.top = `${Math.max(0, window.innerHeight - rect.height - 4)}px`;
+  }
+
+  // Defer the outside-click handler so this very right-click doesn't
+  // immediately close the menu we just opened.
+  setTimeout(() => {
+    document.addEventListener("click", closeOnOutside, true);
+    document.addEventListener("keydown", closeOnEscape, true);
+    window.addEventListener("blur", close);
+  }, 0);
 }
 
 function iconFor(name: string): string {

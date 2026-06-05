@@ -1,7 +1,5 @@
 # Loom & Orbit
 
-![Ask me about Loom](app/src/renderer/assets/badges/ask-me-about-loom.svg)
-
 An AI research harness for [Galaxy](https://galaxyproject.org) bioinformatics, built on [Pi.dev](https://pi.dev).
 
 Loom turns a working directory into a co-scientist project: ad-hoc exploration, plans, executed steps, interpretations, and follow-up plans all accumulate as markdown in a single, durable, git-tracked `notebook.md`. The agent reads and writes that notebook directly; there is no parallel structured-state store. When Galaxy is configured the agent surveys the workflow registry and tool catalog while drafting plans and routes individual steps to Galaxy or local execution as appropriate.
@@ -52,10 +50,10 @@ The notebook is the durable state. Plans, decisions, results, and interpretation
 Implemented and locally tested.
 
 - TypeScript typecheck passes (root + Orbit).
-- Local automated suite: 117 tests passing (notebook I/O, invocation YAML round-trip, profile / credential handling, team-dispatch, session-index, Galaxy config).
+- Local automated suite: 261 tests passing (notebook I/O, invocation YAML round-trip, profile / credential handling, team-dispatch, session-index, Galaxy config).
 - Notebook is the source of truth -- there is no parallel plan struct to drift from it.
 - Galaxy invocation polling is exercised against the deterministic state-transition rules (`all-ok → completed`, `any-error → failed`).
-- Skills system fetches on demand from `galaxyproject/galaxy-skills` (shipped as default). Additional skill repos are restricted to `github.com/galaxyproject/*` for the alpha (skill content is treated as authoritative agent instructions, so an arbitrary third-party repo would be a prompt-injection vector).
+- Skills system fetches on demand from `galaxyproject/galaxy-skills` (shipped as default). Additional skill repos are restricted to `github.com/galaxyproject/*` (skill content is treated as authoritative agent instructions, so an arbitrary third-party repo would be a prompt-injection vector).
 - Galaxy API keys are encrypted at rest in Orbit via Electron `safeStorage`; the brain receives the decrypted key as an env var at spawn time. CLI users without `safeStorage` fall back to plaintext on disk.
 - End-to-end validation against a live Galaxy server is in progress.
 
@@ -98,12 +96,15 @@ frequencies across tissues.
 - [ ] 1. **QC FASTQ** {#plan-a-step-1} — fastp adapter trim + per-base QC
   - Routing: local
   - Tool: fastp
+  - Verification: confirm fastp HTML/JSON report exists and includes per-base quality metrics
 - [x] 2. **Reference index** {#plan-a-step-2} — bwa index of chrM
   - Routing: local
   - Tool: bwa index, samtools faidx
+  - Verification: confirm BWA index sidecar files and `.fai` exist
 - [ ] 3. **Read alignment** {#plan-a-step-3} — BWA-MEM, paired collection
   - Routing: Galaxy
   - Tool: bwa-mem2/2.2.1
+  - Verification: poll Galaxy invocation to `ok` and inspect BAM outputs
 - ...
 
 ### Parameters
@@ -116,9 +117,13 @@ frequencies across tissues.
 Conventions:
 
 - Routing tag in the section header: `[local]`, `[hybrid]`, or `[remote]`. Literal so future tooling can grep.
-- Step status by the checkbox: `- [ ]` pending, `- [x]` completed, `- [!]` failed.
+- Step status by the checkbox: `- [ ]` pending, `- [x]` verified completed, `- [!]` failed.
+- If verification is blocked or inconclusive but the step itself has not failed, leave the step pending and record the blocker.
 - Anchors `{#plan-X-step-N}` so Galaxy invocation YAML can reference individual steps.
 - Multiple plans coexist; new plan sections append at the bottom. Old plans aren't deleted.
+
+See [docs/agent/notebook-schema.md](docs/agent/notebook-schema.md) for
+verification evidence requirements.
 
 ### Four-stage approval before notebook write
 
@@ -186,7 +191,7 @@ Loom can fetch operational know-how from curated GitHub repos following the Clau
 - **Galaxy tool development**
 - **Updating ToolShed tool revisions**
 
-Add your own repos in **Preferences → Skills**. Each entry is `{ name, url, branch?, enabled? }`. For the alpha, the URL allowlist is `https://github.com/galaxyproject/*` (the agent treats fetched SKILL.md content as authoritative instructions, so arbitrary repos are a prompt-injection vector). Example:
+Add your own repos in **Preferences → Skills**. Each entry is `{ name, url, branch?, enabled? }`. The URL allowlist is `https://github.com/galaxyproject/*` (the agent treats fetched SKILL.md content as authoritative instructions, so arbitrary repos are a prompt-injection vector). Example:
 
 ```json
 {
@@ -218,11 +223,11 @@ Three paths, depending on what you want.
 
 ### Desktop app (Orbit)
 
-Orbit ships as a native installer (signed DMG on macOS, AppImage/deb on Linux, installer on Windows) and bundles its own Node runtime, `uv`, and Loom -- so there are no separate prerequisites. Once a build is signed and published, install it from the [Releases page](https://github.com/galaxyproject/loom/releases). Until then, use the developer install below.
+Orbit ships as a native installer that bundles its own Node runtime, `uv`, and Loom -- no separate prerequisites. The macOS (Apple Silicon) build is Developer ID signed + notarized, so it opens with a normal double-click; Linux ships `.deb`/`.rpm`/`.zip`. Both are attached to each [release](https://github.com/galaxyproject/loom/releases). Windows runs via WSL2. See [INSTALL.md](INSTALL.md) for per-platform steps and [RELEASING.md](RELEASING.md) for how a release is cut. Intel Macs and other unpackaged targets can use the developer install below.
 
 ### Loom CLI from npm
 
-Run the brain on the command line without Orbit. Requires Node 20+ and (for Galaxy MCP) [uv](https://docs.astral.sh/uv/).
+Run the brain on the command line without Orbit. Requires Node 22+ and (for Galaxy MCP) [uv](https://docs.astral.sh/uv/).
 
 ```bash
 npm install -g @galaxyproject/loom
@@ -234,6 +239,13 @@ Or run without installing:
 ```bash
 npx @galaxyproject/loom
 ```
+
+**Pop into Orbit any time.** Once Orbit is installed, type `/orbit` inside
+the Loom CLI to open the current analysis in the desktop app -- same analysis
+directory, same notebook, just a richer view. Orbit opens on that directory;
+close the CLI (Ctrl-D or `/exit`) once it's up so the two don't both write the
+same notebook. If Orbit isn't installed, `/orbit` will point you at the release
+page.
 
 Install `uv` if you don't already have it:
 
@@ -310,6 +322,13 @@ source ~/.bashrc
 
 cd ~/loom/app && npm start
 ```
+
+> **If the script fails with `Could not get lock /var/lib/dpkg/lock-frontend`**, Ubuntu's automatic updater is running in the background. Stop it first, then re-run:
+>
+> ```bash
+> sudo systemctl stop unattended-upgrades
+> curl -fsSL https://raw.githubusercontent.com/galaxyproject/loom/main/scripts/setup-wsl.sh | bash
+> ```
 
 Keep your analysis data inside `~/` (the Linux filesystem) — `/mnt/c/` paths are significantly slower across the filesystem boundary.
 
@@ -462,21 +481,60 @@ Galaxy credentials can also be provided via environment variables (`GALAXY_URL`,
 
 ### Local LLMs
 
-Pi supports any OpenAI-compatible API. For [LiteLLM](https://litellm.ai/), [Ollama](https://ollama.com/), or other local backends:
+Loom works with any OpenAI-compatible API -- a hosted service like [Jetstream](https://docs.jetstream-cloud.org/inference-service/overview/), or a local backend like [LiteLLM](https://litellm.ai/) or [Ollama](https://ollama.com/).
+
+In **Orbit**, open Preferences, set the provider to **OpenAI-compatible endpoint**, enter the base URL + API key (or click the **Jetstream** preset), and pick a model. The key is stored encrypted.
+
+For the **CLI**, add a provider entry with a `baseUrl` to `~/.loom/config.json`:
 
 ```json
 {
   "llm": {
-    "provider": "litellm",
-    "apiKey": "your-key",
-    "model": "your-model-name"
+    "active": "openai-compatible",
+    "providers": {
+      "openai-compatible": {
+        "baseUrl": "http://localhost:4000/v1",
+        "model": "your-model-name",
+        "apiKey": "your-key"
+      }
+    }
   }
 }
 ```
 
-You'll also need `~/.pi/agent/models.json` for model capability metadata (context window, token limits) — see Pi's documentation. The Loom config handles provider selection and API keys; `models.json` handles model metadata Pi needs for request sizing.
+The `baseUrl` marks the entry as a custom endpoint: Loom registers it with Pi for you (writing the matching `~/.pi/agent/models.json` entry, with sensible metadata defaults) and passes the key to Pi at runtime, so the key never lands in `models.json`. The provider name is yours to choose -- `"openai-compatible"` is just a convention.
 
-Or pass flags directly: `loom --provider litellm --model your-model-name`.
+## Local execution safety
+
+Loom drives a real coding agent: alongside the Galaxy tools, the model has `bash`, `write`, `edit`, and `read` on your machine. That's the point -- local analysis needs it -- but it means a misreading model, or one that's been prompt-injected by untrusted content (a Galaxy dataset, tool output, a fetched page), could run something destructive as you. This risk is higher with cheaper, less-capable models, which Loom lets you pick to save money.
+
+So Loom gates the model's local actions by default (the "exec-guard"):
+
+- **Workspace jail.** Reads, writes, and edits inside your analysis directory (plus the OS temp dir) are silent; anything that resolves outside -- including via `..`, a symlink, or `~`/`$HOME` -- prompts, or is denied for weak models. So the model reads and writes freely in your project but must ask to reach anything else on disk. Writes to control locations (`.git`, `.loom/`) always prompt, even inside the workspace -- a `.git/hooks` script would run on your next commit.
+- **Risk-classified `bash`.** Read-only/analysis commands (`ls`, `cat`, `grep`, ...) run without friction when they stay in the workspace. Catastrophic patterns (`rm -rf /`, `sudo`, `curl | sh`, `dd of=/dev/...`, fork bombs, ...) are always blocked -- including path-prefixed (`/usr/bin/sudo`), long-flag (`rm --recursive --force /`), wrapper-hidden (`env rm -rf ~`), explicit-home (`rm -rf $HOME`), and multi-line variants, plus any attempt to edit the gate's own config. Anything else prompts -- and any compound, redirected, or multi-line command (`;`, `&&`, `|`, `$(...)`, `>`, a newline) drops to a prompt rather than being trusted.
+- **Sensitive paths.** `~/.ssh`, `~/.aws`, `.env`, `*.pem`/`*.key`, `~/.loom/config.json`, OS keychains, and similar always prompt (or are denied for weak models) even inside the workspace -- whether the model uses `read`, `grep`, `ls`, `find`, or a `cat` in `bash`.
+- **Model-tier aware.** Every model is gated. Weaker models (Haiku / GPT-4o-mini / Flash class, or unknown/local models) get stricter defaults -- more actions are denied outright rather than offered for approval.
+- **Fail-closed.** With no interactive session to approve (headless / scripted runs), anything that would prompt is denied. A one-time consent notice is shown on the first gated action, and every decision is recorded in `activity.jsonl`.
+
+When a command needs approval you can allow it once, allow it for the session, or trust the workspace (which stops prompting for routine commands there).
+
+### Bypassing the gate
+
+If you fully control the environment and want the agent to run unattended (CI, a trusted pipeline, your own box), you can turn the gate off:
+
+- **Config:** set `"guardian": { "dangerouslyBypassPermissions": true }` in `~/.loom/config.json`.
+- **CLI:** `loom --dangerously-bypass-permissions` (one invocation; does not persist). `--safe` (or `LOOM_SAFE=1`) forces the gate back on and wins over everything.
+- **Orbit:** Preferences -> Safety -> "Dangerously bypass permissions" (a native confirm appears first; a red banner stays up while it's active).
+
+Bypass is total -- it removes all prompts and the workspace jail. It can only be enabled by a human through one of those channels: the agent can't turn it on itself, because writing `~/.loom/config.json` is blocked whether it uses the file tools or `bash`, and Orbit's toggle requires an OS-level confirmation the renderer can't forge. The default (`guardian.enabled: true`, not bypassed) is secure; relaxing it is always an explicit choice.
+
+### What the write-jail actually confines -- and what it doesn't
+
+To be precise about the boundary: the workspace jail (default-on, every platform) confines the AI's file writes via the `write` and `edit` tools. Those tools can create or modify files inside your analysis directory (where `notebook.md` lives), plus the OS temp dir and Loom's own `.loom` state; writing anywhere else, or to a credential-shaped path (private keys like `id_rsa`/`id_ed25519`, `*.pem`, `*.key`, `.env`, and `ssh`/`aws`/`gcloud`/`kube`/`docker`/keychain dirs), prompts for approval.
+
+Shell (`bash`) commands are **not** OS-sandboxed by default -- they're gated per action by the same approval flow (catastrophic patterns blocked outright, everything else prompts), but a bash command that writes a file or touches the network doesn't go through the write-jail path. To also confine bash writes and limit its network access inside a real OS sandbox, enable the opt-in bash sandbox (`--sandbox` / `LOOM_SANDBOX=1` / `guardian.sandbox`), available on macOS and Linux/WSL2.
+
+What this does **not** confine: reading files (the write-jail is not an exfiltration control), and data leaving via remote channels -- syncing the notebook to a Galaxy Page, Galaxy MCP operations (uploads, running tools), `skills_fetch`'s cache writes under `~/.loom`, or web fetches. Treat the working-dir confinement as "the AI's edits stay in your analysis directory," not "your data cannot leave the machine."
 
 ## Cost tracking
 
@@ -529,7 +587,7 @@ Galaxy MCP (registered separately when credentials are present) provides `galaxy
 
 | Component  | Technology                                            |
 | ---------- | ----------------------------------------------------- |
-| Agent      | Pi.dev (`@mariozechner/pi-coding-agent`)              |
+| Agent      | Pi.dev (`@earendil-works/pi-coding-agent`)            |
 | MCP bridge | `pi-mcp-adapter`, `uvx galaxy-mcp`                    |
 | Language   | TypeScript (strict)                                   |
 | Tests      | Vitest                                                |

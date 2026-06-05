@@ -7,25 +7,31 @@
  * `loom-invocation` YAML blocks.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerPlanTools } from "./tools";
+import { registerNotebookSyncTools } from "./tools-sync";
+import { registerSyncCommand } from "./sync-command";
 import { setupContextInjection, formatConnectionStatus } from "./context";
 import { setupUIBridge } from "./ui-bridge";
 import { registerSessionLifecycle } from "./session-lifecycle";
 import { registerActivityHooks } from "./activity-hooks";
 import { registerExecutionCommands } from "./execution-commands";
+import { registerFeedbackCommand } from "./feedback-command";
 import { registerTeamTools } from "./teams/tool";
 import { isTeamDispatchEnabled } from "./teams/is-enabled";
 import { registerSessionIndexTools } from "./session-index/tools";
 import { isSessionIndexEnabled } from "./session-index/is-enabled";
 import { registerConfusablesHint } from "./confusables-hint";
+import { registerExecGuard } from "./exec-guard";
+import { registerSandbox } from "./sandbox";
 import * as fs from "fs";
-import { getState, getNotebookPath } from "./state";
+import { getState, getNotebookPath, getNotebookWidgetMode, setNotebookWidgetMode } from "./state";
 import {
   loadProfiles,
   saveProfile,
   switchProfile,
   profileNameFromUrl,
+  normalizeGalaxyUrl,
   warnOnUnusableActiveProfile,
 } from "./profiles";
 import { LoomWidgetKey, encodeMarkdownWidget } from "../../shared/loom-shell-contract.js";
@@ -33,12 +39,23 @@ import { LoomWidgetKey, encodeMarkdownWidget } from "../../shared/loom-shell-con
 export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   warnOnUnusableActiveProfile();
 
+  // Register the local-execution safety gate first so its tool_call decision is
+  // the authoritative boundary before anything else runs.
+  registerExecGuard(pi);
+  // The opt-in bash sandbox layers an OS sandbox UNDER the gate (the gate still
+  // decides allow/ask/deny; the sandbox only contains an allowed command's blast
+  // radius). Default-on file-write confinement lives in the gate itself.
+  registerSandbox(pi);
+
   setupUIBridge(pi);
   registerSessionLifecycle(pi);
   registerActivityHooks(pi);
 
   registerPlanTools(pi);
+  registerNotebookSyncTools(pi);
+  registerSyncCommand(pi);
   registerExecutionCommands(pi);
+  registerFeedbackCommand(pi);
   registerConfusablesHint(pi);
   if (isTeamDispatchEnabled()) {
     registerTeamTools(pi);
@@ -117,11 +134,14 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
         return;
       }
 
-      const galaxyUrl = await ctx.ui.input("Galaxy Server URL", "https://usegalaxy.org");
-      if (!galaxyUrl) {
+      const galaxyUrlInput = await ctx.ui.input("Galaxy Server URL", "https://usegalaxy.org");
+      if (!galaxyUrlInput) {
         ctx.ui.notify("Connection cancelled", "warning");
         return;
       }
+      // Accept a bare host ("test.galaxyproject.org") by defaulting to https://
+      // instead of rejecting it as an invalid URL.
+      const galaxyUrl = normalizeGalaxyUrl(galaxyUrlInput);
 
       ctx.ui.notify(
         "To get your API key: Log into Galaxy → User → Preferences → Manage API Key",
@@ -199,14 +219,22 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   // /notebook — view current notebook content
   // ─────────────────────────────────────────────────────────────────────────────
   pi.registerCommand("notebook", {
-    description: "View current notebook content",
+    description: "Toggle the notebook panel",
     handler: async (_args, ctx) => {
+      // Open → close. Marks "hidden" so the panel doesn't auto-reopen on the
+      // next notebook write (see ui-bridge); a second /notebook reopens it.
+      if (getNotebookWidgetMode() === "open") {
+        ctx.ui.setWidget(LoomWidgetKey.Notebook, undefined);
+        setNotebookWidgetMode("hidden");
+        return;
+      }
       const notebookPath = getNotebookPath();
       if (notebookPath && fs.existsSync(notebookPath)) {
         try {
           const content = fs.readFileSync(notebookPath, "utf-8");
           const header = `> \`${notebookPath}\`\n\n`;
           ctx.ui.setWidget(LoomWidgetKey.Notebook, encodeMarkdownWidget(header + content));
+          setNotebookWidgetMode("open");
         } catch (err) {
           ctx.ui.notify(`Failed to read notebook: ${err}`, "error");
         }
@@ -216,6 +244,74 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
         "No notebook in cwd. A new notebook.md is created automatically on session start.",
         "info",
       );
+    },
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // /compact — manually compact the conversation to reclaim context
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Guards a second Loom /compact from racing the first: pi's compact() has no
+  // internal concurrency guard (it just resets its abort controller), so a
+  // concurrent call orphans the in-flight run. This only covers Loom-initiated
+  // compactions -- pi's own auto-compaction isn't observable from an extension
+  // (ExtensionContext exposes no isCompacting), so that race is left to pi.
+  // Cleared in both completion callbacks and on a synchronous compact() throw.
+  let compactionInFlight = false;
+  pi.registerCommand("compact", {
+    description:
+      "Compact the conversation to free up context. Optional: /compact <instructions> to steer the summary.",
+    handler: async (args, ctx) => {
+      // No UI (e.g. headless RPC consumers) -> skip notifications; still compact.
+      // Wrapped because ctx.ui/hasUI assert an active context and can throw if the
+      // session was swapped while a compaction was in flight; a dropped toast is fine.
+      const notify = (msg: string, level: "info" | "warning" | "error") => {
+        try {
+          if (ctx.hasUI) ctx.ui.notify(msg, level);
+        } catch {
+          /* stale context after a session swap -- nothing to show */
+        }
+      };
+
+      if (compactionInFlight) {
+        notify("A compaction is already running.", "warning");
+        return;
+      }
+
+      const before = ctx.getContextUsage();
+      const beforeStr = before?.tokens != null ? `${before.tokens.toLocaleString()} tokens` : "?";
+      // The notebook is the durable record (snapshotted on session_before_compact),
+      // so the summary can drop verbose tool chatter without losing project state.
+      const customInstructions =
+        args.trim() ||
+        "Preserve the current analysis plan, decisions, and Galaxy invocation state. " +
+          "Verbose tool outputs and dataset previews can be dropped — the notebook holds the durable record.";
+
+      compactionInFlight = true;
+      notify(`Compacting (was ${beforeStr})…`, "info");
+      try {
+        ctx.compact({
+          customInstructions,
+          onComplete: (result) => {
+            compactionInFlight = false;
+            // getContextUsage() reads null right after compaction (pi only learns the
+            // new size on the next model response), so report the authoritative
+            // before-count from the result; the footer shows the new size next turn.
+            notify(
+              `✅ Compacted (was ${result.tokensBefore.toLocaleString()} tokens). New size shows after the next turn.`,
+              "info",
+            );
+          },
+          onError: (err) => {
+            compactionInFlight = false;
+            notify(`Compaction failed: ${err.message}`, "error");
+          },
+        });
+      } catch (err) {
+        // ctx.compact() asserts an active context synchronously and can throw
+        // before either callback runs; reset the guard so /compact isn't wedged.
+        compactionInFlight = false;
+        notify(`Compaction failed: ${err instanceof Error ? err.message : String(err)}`, "error");
+      }
     },
   });
 

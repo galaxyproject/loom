@@ -64,6 +64,7 @@ export class ArtifactPanel {
   private fileTabBtn: HTMLButtonElement;
   private tabButtons: HTMLButtonElement[];
   private activeTab: TabKey = "notebook";
+  private lastNotebookMarkdown: string | null = null;
 
   /** Optional callback fired when the user clicks the File-tab close (×). */
   onFileTabClose: (() => void) | null = null;
@@ -121,6 +122,9 @@ export class ArtifactPanel {
 
   /** Replace the notebook view with rendered markdown. */
   setNotebookMarkdown(markdown: string): void {
+    // Only cache non-empty content so a blank early widget doesn't clobber
+    // a real notebook on the next display:resume re-render.
+    if (markdown.trim()) this.lastNotebookMarkdown = markdown;
     this.notebookEl.innerHTML = "";
     const wrapper = document.createElement("div");
     wrapper.className = "result-block notebook-dump";
@@ -129,6 +133,24 @@ export class ArtifactPanel {
     content.innerHTML = renderMarkdown(markdown || "", notebookMarked);
     wrapper.appendChild(content);
     this.notebookEl.appendChild(wrapper);
+  }
+
+  /** Re-render the last known non-empty notebook content. No-op if never set. */
+  reRenderNotebook(): void {
+    if (this.lastNotebookMarkdown) this.setNotebookMarkdown(this.lastNotebookMarkdown);
+  }
+
+  /**
+   * Called on cwd change so a wake-from-sleep after switching projects
+   * doesn't re-render the prior project's notebook over the new session.
+   */
+  clearNotebook(): void {
+    this.lastNotebookMarkdown = null;
+    this.notebookEl.innerHTML = "";
+  }
+
+  hasNotebookContent(): boolean {
+    return this.lastNotebookMarkdown !== null;
   }
 
   /** Switch the visible tab without touching the stored content. */
@@ -142,8 +164,13 @@ export class ArtifactPanel {
     this.fileEl.classList.toggle("hidden", tab !== "file");
   }
 
-  /** Reset notebook to its empty state and switch to the Notebook tab. */
+  /**
+   * Reset notebook to its empty placeholder + switch to the Notebook tab.
+   * Must null the cache too -- a later display:resume would otherwise re-
+   * render the cleared session's stale notebook via reRenderNotebook.
+   */
   clear(): void {
+    this.lastNotebookMarkdown = null;
     this.notebookEl.innerHTML = NOTEBOOK_EMPTY_HTML;
     this.selectTab("notebook");
   }

@@ -43,8 +43,12 @@ export interface FileNode {
   children?: FileNode[];
 }
 
+export interface PromptOptions {
+  streamingBehavior?: "steer" | "followUp";
+}
+
 export interface OrbitAPI {
-  prompt(message: string): Promise<void>;
+  prompt(message: string, options?: PromptOptions): Promise<void>;
   abort(): Promise<void>;
   newSession(): Promise<{ cancelled: boolean }>;
   getState(): Promise<unknown>;
@@ -53,7 +57,10 @@ export interface OrbitAPI {
   listFiles(opts?: {
     includeHidden?: boolean;
   }): Promise<{ ok: true; root: FileNode; cwd: string } | { ok: false; error: string }>;
-  readFile(relPath: string): Promise<
+  readFile(
+    relPath: string,
+    opts?: { tail?: boolean },
+  ): Promise<
     | {
         ok: true;
         size: number;
@@ -67,7 +74,25 @@ export interface OrbitAPI {
   onFilesChanged(callback: () => void): () => void;
   getConfig(): Promise<Record<string, unknown>>;
   saveConfig(config: Record<string, unknown>): Promise<{ success: boolean; error?: string }>;
-  validateApiKey(provider: string, key: string): Promise<{ valid: boolean; error?: string }>;
+  setBypassPermissions(
+    enabled: boolean,
+  ): Promise<{ ok: boolean; enabled: boolean; cancelled?: boolean }>;
+  validateApiKey(
+    provider: string,
+    key: string,
+    baseUrl?: string,
+  ): Promise<{ valid: boolean; error?: string; models?: string[] }>;
+  oauthStatus(
+    provider: string,
+  ): Promise<{ signedIn: boolean; expiresInSeconds?: number; accountId?: string }>;
+  oauthSignIn(provider: string): Promise<
+    | {
+        ok: true;
+        status: { signedIn: boolean; expiresInSeconds?: number; accountId?: string };
+      }
+    | { ok: false; error: string }
+  >;
+  oauthSignOut(provider: string): Promise<{ ok: true } | { ok: false; error: string }>;
   respondToUiRequest(id: string, response: Record<string, unknown>): void;
   restartAgent(): Promise<void>;
   resetSession(): Promise<void>;
@@ -80,13 +105,19 @@ export interface OrbitAPI {
   onAgentStatus(
     callback: (status: "running" | "stopped" | "error", msg?: string) => void,
   ): () => void;
-  getAgentStatus(): Promise<{ status: "running" | "stopped" | "error"; message?: string }>;
+  getAgentStatus(): Promise<{
+    status: "running" | "stopped" | "error";
+    message?: string;
+    turnActive: boolean;
+  }>;
   onCwdChanged(callback: (dir: string) => void): () => void;
+  onDisplayResume(callback: () => void): () => void;
   onOpenPreferences(callback: () => void): () => void;
   onShowSlashCommands(callback: () => void): () => void;
   onProcUpdate(callback: (procs: ProcInfo[]) => void): () => void;
   onSessionHistory(callback: (history: ReplaySegment[]) => void): () => void;
   replayChat(): Promise<{ ok: true; segments: number } | { ok: false; error: string }>;
+  loadNotebook(): Promise<{ ok: boolean; content: string | null; path: string }>;
   getReportSysinfo(): Promise<{
     appVersion: string;
     electronVersion: string;
@@ -96,6 +127,9 @@ export interface OrbitAPI {
     arch: string;
   }>;
   openIssueReport(payload: { title: string; body: string }): Promise<{ opened: boolean }>;
+  submitFeedback(
+    payload: import("../../../shared/feedback-contract.js").FeedbackPayload,
+  ): Promise<{ ok: boolean; status?: number; id?: string; error?: string }>;
   listAllModels(): Promise<
     | {
         ok: true;
@@ -105,22 +139,34 @@ export interface OrbitAPI {
             id: string;
             label: string;
             pricing: { input: number; output: number; cacheRead?: number; cacheWrite?: number };
+            contextWindow?: number;
           }>
         >;
       }
     | { ok: false; error: string }
   >;
+  checkVersion(): Promise<{
+    current: string;
+    latest: string;
+    hasUpdate: boolean;
+    releaseUrl: string;
+  } | null>;
+  openReleasePage(url?: string): Promise<{ opened: boolean }>;
+  restartToUpdate(): Promise<{ restarting: boolean }>;
+  onUpdateDownloaded(cb: (info: { version: string }) => void): void;
+  onUpdateError(cb: (info: { message: string }) => void): void;
+  platform: string;
 }
 
 const api: OrbitAPI = {
-  prompt: (message) => ipcRenderer.invoke("agent:prompt", message),
+  prompt: (message, options) => ipcRenderer.invoke("agent:prompt", message, options),
   abort: () => ipcRenderer.invoke("agent:abort"),
   newSession: () => ipcRenderer.invoke("agent:new-session"),
   getState: () => ipcRenderer.invoke("agent:get-state"),
   getCwd: () => ipcRenderer.invoke("agent:get-cwd"),
   openFile: (filePath) => ipcRenderer.invoke("file:open", filePath),
   listFiles: (opts) => ipcRenderer.invoke("files:list", opts),
-  readFile: (relPath) => ipcRenderer.invoke("files:read", relPath),
+  readFile: (relPath, opts) => ipcRenderer.invoke("files:read", relPath, opts),
   writeFile: (relPath, content) => ipcRenderer.invoke("files:write", relPath, content),
   onFilesChanged: (callback) => {
     const handler = () => callback();
@@ -129,7 +175,12 @@ const api: OrbitAPI = {
   },
   getConfig: () => ipcRenderer.invoke("config:get"),
   saveConfig: (config) => ipcRenderer.invoke("config:save", config),
-  validateApiKey: (provider, key) => ipcRenderer.invoke("apiKey:validate", provider, key),
+  setBypassPermissions: (enabled) => ipcRenderer.invoke("guardian:set-bypass", enabled),
+  validateApiKey: (provider, key, baseUrl) =>
+    ipcRenderer.invoke("apiKey:validate", provider, key, baseUrl),
+  oauthStatus: (provider) => ipcRenderer.invoke("oauth:status", provider),
+  oauthSignIn: (provider) => ipcRenderer.invoke("oauth:sign-in", provider),
+  oauthSignOut: (provider) => ipcRenderer.invoke("oauth:sign-out", provider),
 
   respondToUiRequest: (id, response) => {
     ipcRenderer.send("agent:ui-response", {
@@ -173,6 +224,12 @@ const api: OrbitAPI = {
     return () => ipcRenderer.removeListener("agent:cwd-changed", handler);
   },
 
+  onDisplayResume: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("display:resume", handler);
+    return () => ipcRenderer.removeListener("display:resume", handler);
+  },
+
   onOpenPreferences: (callback) => {
     const handler = () => callback();
     ipcRenderer.on("menu:open-preferences", handler);
@@ -192,11 +249,23 @@ const api: OrbitAPI = {
   },
 
   replayChat: () => ipcRenderer.invoke("chat:replay"),
+  loadNotebook: () => ipcRenderer.invoke("notebook:load"),
 
   getReportSysinfo: () => ipcRenderer.invoke("report:sysinfo"),
   openIssueReport: (payload) => ipcRenderer.invoke("report:open-issue", payload),
+  submitFeedback: (payload) => ipcRenderer.invoke("feedback:submit", payload),
 
   listAllModels: () => ipcRenderer.invoke("models:list-all"),
+  checkVersion: () => ipcRenderer.invoke("version:check"),
+  openReleasePage: (url) => ipcRenderer.invoke("version:open-release", url),
+  restartToUpdate: () => ipcRenderer.invoke("update:restart"),
+  onUpdateDownloaded: (cb) => {
+    ipcRenderer.on("update:downloaded", (_e, info) => cb(info));
+  },
+  onUpdateError: (cb) => {
+    ipcRenderer.on("update:error", (_e, info) => cb(info));
+  },
+  platform: process.platform,
   onSessionHistory: (callback) => {
     const handler = (_e: unknown, history: ReplaySegment[]) => callback(history);
     ipcRenderer.on("agent:session-history", handler);

@@ -25,6 +25,10 @@ file -- if anything in the topic docs seems to conflict, these win.
   ad-hoc edits -- answer those directly.
 - **Never proceed past an unverified step.** Examine results before moving
   on. Stop on failure.
+- **Never claim a checkable artifact is done without evidence.** A workflow,
+  tool run, file, config, report, or plan step is complete only after Loom
+  has run the relevant verification and recorded the evidence in the
+  notebook.
 - **Never invent dataset IDs, invocation IDs, history IDs, or workflow
   IDs.** Look them up via the MCP tools.
 - **Update the notebook, not chat, with durable findings.** Chat is for
@@ -78,5 +82,7 @@ re-anchor here:
 - Galaxy invocations live in `loom-invocation` YAML blocks.
 - Don't auto-create plans -- wait for an ask.
 - Never proceed past an unverified step.
+- Never claim a checkable artifact is done without notebook-recorded
+  verification evidence.
 - Never invent dataset / invocation / history / workflow IDs.
 - Update the notebook, not chat, with durable findings.

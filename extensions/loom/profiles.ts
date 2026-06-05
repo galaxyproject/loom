@@ -101,6 +101,20 @@ export function profileNameFromUrl(url: string): string {
  * accepted but with a warning to the console — institutions run
  * private Galaxy mirrors, so an allowlist would be too narrow.
  */
+/**
+ * Default a scheme-less Galaxy URL to https://. Users routinely type a bare
+ * host ("test.galaxyproject.org") and expect it to resolve; without this
+ * `new URL()` throws and they just see "Not a valid URL." https is the right
+ * default -- it's the only scheme allowed for non-loopback hosts anyway.
+ * Explicit schemes (including http:// for localhost) are preserved as typed.
+ */
+export function normalizeGalaxyUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return trimmed;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
 export function validateGalaxyUrl(url: string): { ok: true } | { ok: false; reason: string } {
   let parsed: URL;
   try {

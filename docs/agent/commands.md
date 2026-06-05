@@ -24,10 +24,11 @@ There are no `analysis_*` plan tools. Plans are markdown sections.
 
 ## Slash commands
 
-| Command                   | What it does                                                           |
-| ------------------------- | ---------------------------------------------------------------------- |
-| `/notebook`               | View current notebook content                                          |
-| `/status`                 | Galaxy connection + notebook path summary                              |
-| `/connect [name]`         | Connect to Galaxy (prompts for credentials, or switches profile)       |
-| `/profiles`               | List saved Galaxy server profiles                                      |
-| `/execute` (alias `/run`) | Tell the agent to run the next pending step in the latest plan section |
+| Command                   | What it does                                                                                                                                      |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/notebook`               | View current notebook content                                                                                                                     |
+| `/status`                 | Galaxy connection + notebook path summary                                                                                                         |
+| `/connect [name]`         | Connect to Galaxy (prompts for credentials, or switches profile)                                                                                  |
+| `/profiles`               | List saved Galaxy server profiles                                                                                                                 |
+| `/execute` (alias `/run`) | Tell the agent to run the next pending step in the latest plan section                                                                            |
+| `/compact [instructions]` | Compact the conversation to reclaim context; optional summary steer (Orbit defaults to a notebook-aware summary; terminal CLI uses pi's built-in) |
