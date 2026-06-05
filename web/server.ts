@@ -19,6 +19,7 @@ import { WebSocketServer, WebSocket } from "ws";
 
 import { buildBrainEnv } from "../shared/brain-env.js";
 import { evaluateBind, authorizeWsUpgrade } from "./auth.js";
+import { isForwardableUiResponse } from "./rpc-guard.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOOM_BIN = resolve(__dirname, "../bin/loom.js");
@@ -344,7 +345,14 @@ wss.on("connection", (socket) => {
       return;
     }
     if (channel === "agent:ui-response") {
-      sendToLoom(args[0] as Record<string, unknown>);
+      // The brain trusts its stdin and dispatches by command.type, so only a
+      // genuine extension UI response may cross. See isForwardableUiResponse --
+      // this is what stops a client smuggling {type:"bash"} past the gate.
+      if (isForwardableUiResponse(args[0])) {
+        sendToLoom(args[0]);
+      } else {
+        log("dropped non-ui-response payload on agent:ui-response channel");
+      }
       return;
     }
 
