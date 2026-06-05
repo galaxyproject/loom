@@ -9,6 +9,7 @@ import { resolveLlmApiKey, resolveGalaxyApiKey } from "./secure-config.js";
 import { loadSessionHistory, newestSessionFile } from "./session-replay.js";
 import { collectDescendantsOf } from "./proc-monitor.js";
 import { buildBrainEnv as buildBaseBrainEnv } from "../../../shared/brain-env.js";
+import { noLocalShellSpawnExtras } from "./local-shell.js";
 
 const PROVIDER_ENV_MAP: Record<string, string> = {
   anthropic: "ANTHROPIC_API_KEY",
@@ -111,13 +112,15 @@ function buildBrainEnv(fresh: boolean): NodeJS.ProcessEnv {
   // ask the base helper to forward them from shell env.
   const env = buildBaseBrainEnv();
   env.LOOM_SHELL_KIND = "orbit";
-  // The desktop shell always has a local execution surface, so the brain's
-  // exec-guard must stay on. LOOM_LOCAL_EXEC is the shell->brain capability
-  // signal (extensions/loom/local-exec.ts); set it authoritatively here so an
-  // ambient LOOM_LOCAL_EXEC=off in the launching environment can't silently
-  // disable the guard. A future Windows remote-only desktop flips this to "off"
-  // when it resolves no local-exec capability.
+  // The desktop always has a local *file* surface, so exec-guard stays on
+  // everywhere. LOOM_LOCAL_EXEC is the shell->brain capability signal
+  // (extensions/loom/local-exec.ts); set it authoritatively so an ambient
+  // LOOM_LOCAL_EXEC=off in the launching environment can't silently disable the
+  // guard. Windows remote-only does NOT flip this: it keeps the file write-jail
+  // and instead removes the bash *tool* (see noLocalShellSpawnExtras / the args
+  // pushed in start()), flagging the brain via LOOM_LOCAL_SHELL=off.
   env.LOOM_LOCAL_EXEC = "on";
+  Object.assign(env, noLocalShellSpawnExtras().env);
   if (fresh) env.LOOM_FRESH_SESSION = "1";
   // Prepend the bundled uv directory to PATH when packaged so MCP servers
   // configured with `command: "uvx"` (Galaxy MCP) find the shipped binary.
@@ -271,6 +274,9 @@ export class AgentManager {
     if (wantsContinue) {
       args.push("--continue");
     }
+
+    // Remote-only platforms (Windows) remove the bash tool from the model.
+    args.push(...noLocalShellSpawnExtras().args);
     this.hasStartedBefore = true;
     this.nextStartSkipContinue = false;
 
