@@ -15,6 +15,7 @@ import { isSessionIndexEnabled } from "./session-index/is-enabled";
 import { loadConfig } from "./config";
 import { listEnabledSkillRepos } from "./skills";
 import { findGalaxyPageBlocks } from "./galaxy-page-binding";
+import { isLocalShellDisabled } from "./local-exec.js";
 
 const NOTEBOOK_HEAD_MAX_CHARS = 2000;
 const NOTEBOOK_TAIL_MAX_CHARS = 4000;
@@ -125,7 +126,9 @@ You are **${modelStr}** running via the **${active}** provider. This is your cur
 `;
 }
 
-function buildExecutionModeBlock(): string {
+export function buildExecutionModeBlock(): string {
+  // With no local shell there is no Local execution mode to describe.
+  if (isLocalShellDisabled()) return "";
   const cfg = loadConfig();
   if (cfg.executionMode !== "local") return "";
   return `## Execution mode: LOCAL
@@ -235,7 +238,10 @@ After invoking via Galaxy MCP and getting an \`invocationId\` back:
  * Local-tool environment convention — per-analysis conda env rooted in
  * the analysis cwd. Always relevant; no longer mode-gated.
  */
-function buildLocalEnvContext(): string {
+export function buildLocalEnvContext(): string {
+  // No local shell (Windows remote-only): the conda/bash local-tool path does
+  // not exist here -- don't coach the model to use a shell it can't reach.
+  if (isLocalShellDisabled()) return "";
   return `
 ## Local-tool environment (per-analysis conda env)
 
@@ -369,6 +375,24 @@ minutes, or you can ask me to check now." Append a brief
 \`## Background jobs\` breadcrumb to \`notebook.md\` with the job name,
 start time, and log path so the work is recoverable across renderer
 reloads (skip the PID — it's meaningless after a restart).
+`;
+}
+
+/**
+ * Remote-only execution note -- injected when there is no local shell
+ * (LOOM_LOCAL_SHELL=off, i.e. Windows remote-only desktop). Replaces the
+ * conda/bash blocks that are suppressed by the early returns above.
+ */
+export function buildNoLocalShellBlock(): string {
+  if (!isLocalShellDisabled()) return "";
+  return `
+## Execution: remote-only (Galaxy)
+
+This build has no local shell. All computation runs on Galaxy via the Galaxy
+MCP tools -- there is no bash, conda, or local-pipeline path here. Route every
+plan step \`[galaxy]\` or \`[remote]\`; do not propose local shell or conda
+steps. You can still read and write files in the workspace (the notebook and
+its inputs/outputs).
 `;
 }
 
@@ -981,6 +1005,7 @@ export function setupContextInjection(pi: ExtensionAPI): void {
       buildGalaxyContextBlock(),
       buildSkillsContext(),
       buildLocalEnvContext(),
+      buildNoLocalShellBlock(),
       buildNotebookExcerptBlock(),
       buildGalaxyPageBindingBlock(),
       buildTeamDispatchContext(),
