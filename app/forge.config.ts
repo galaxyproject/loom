@@ -324,6 +324,7 @@ const config: ForgeConfig = {
       name: "@electron-forge/maker-squirrel",
       config: {
         name: "Orbit",
+        setupIcon: "resources/icon.ico",
         // Squirrel is happy unsigned for dev/internal builds; production
         // distribution will need a code-signing cert configured here.
       },
