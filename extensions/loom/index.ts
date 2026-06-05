@@ -86,6 +86,19 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
     description:
       "Connect to Galaxy server. Use /connect to pick a profile or add a new one, /connect <name> to switch.",
     handler: async (args, ctx) => {
+      // In a curated remote shell (no local exec) the Galaxy connection is pinned
+      // to operator-injected env; the user must not repoint it or overwrite the
+      // injected key. Slash commands are dispatched from browser input before the
+      // model runs and bypass the tool_call gate, so guard here -- without it a
+      // remote client could /connect to an attacker host or a cloud-metadata URL
+      // (SSRF) and overwrite GALAXY_URL/GALAXY_API_KEY in-process.
+      if (isLocalExecDisabled()) {
+        ctx.ui.notify(
+          "Galaxy connection is managed by the host in remote mode and can't be changed here.",
+          "info",
+        );
+        return;
+      }
       const { profiles, active } = loadProfiles();
       const profileNames = Object.keys(profiles);
 
