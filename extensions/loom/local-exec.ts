@@ -2,11 +2,15 @@
  * Local-execution capability signal.
  *
  * The shell tells the brain whether it has a local execution surface via the
- * LOOM_LOCAL_EXEC env var. A shell that runs the brain with no local exec --
- * the web/container remote shell, and eventually a native Windows remote-only
- * build -- sets LOOM_LOCAL_EXEC=off and supplies its own authoritative tool_call
- * gate, so the brain skips its local-execution safety machinery (exec-guard +
- * bash sandbox) there.
+ * LOOM_LOCAL_EXEC env var. A shell that runs the brain with no local exec at all
+ * -- the web/container remote shell -- sets LOOM_LOCAL_EXEC=off and supplies its
+ * own authoritative tool_call gate, so the brain skips its local-execution
+ * safety machinery (exec-guard + bash sandbox) there.
+ *
+ * The native Windows remote-only desktop is deliberately NOT this case: it keeps
+ * a local *file* surface (so LOOM_LOCAL_EXEC stays "on" and exec-guard runs) and
+ * only removes the bash *shell*, signalled by the sibling LOOM_LOCAL_SHELL var
+ * (see isLocalShellDisabled below).
  *
  * The default (var unset or any value other than "off") is "local exec
  * available", so the guard stays ON -- fail-safe. Because this toggles a
