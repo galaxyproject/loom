@@ -111,6 +111,13 @@ function buildBrainEnv(fresh: boolean): NodeJS.ProcessEnv {
   // ask the base helper to forward them from shell env.
   const env = buildBaseBrainEnv();
   env.LOOM_SHELL_KIND = "orbit";
+  // The desktop shell always has a local execution surface, so the brain's
+  // exec-guard must stay on. LOOM_LOCAL_EXEC is the shell->brain capability
+  // signal (extensions/loom/local-exec.ts); set it authoritatively here so an
+  // ambient LOOM_LOCAL_EXEC=off in the launching environment can't silently
+  // disable the guard. A future Windows remote-only desktop flips this to "off"
+  // when it resolves no local-exec capability.
+  env.LOOM_LOCAL_EXEC = "on";
   if (fresh) env.LOOM_FRESH_SESSION = "1";
   // Prepend the bundled uv directory to PATH when packaged so MCP servers
   // configured with `command: "uvx"` (Galaxy MCP) find the shipped binary.

@@ -24,6 +24,7 @@ import { isSessionIndexEnabled } from "./session-index/is-enabled";
 import { registerConfusablesHint } from "./confusables-hint";
 import { registerExecGuard } from "./exec-guard";
 import { registerSandbox } from "./sandbox";
+import { isLocalExecDisabled } from "./local-exec";
 import * as fs from "fs";
 import { getState, getNotebookPath, getNotebookWidgetMode, setNotebookWidgetMode } from "./state";
 import {
@@ -39,13 +40,25 @@ import { LoomWidgetKey, encodeMarkdownWidget } from "../../shared/loom-shell-con
 export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   warnOnUnusableActiveProfile();
 
-  // Register the local-execution safety gate first so its tool_call decision is
-  // the authoritative boundary before anything else runs.
-  registerExecGuard(pi);
-  // The opt-in bash sandbox layers an OS sandbox UNDER the gate (the gate still
-  // decides allow/ask/deny; the sandbox only contains an allowed command's blast
-  // radius). Default-on file-write confinement lives in the gate itself.
-  registerSandbox(pi);
+  // Local-execution safety gate + opt-in bash sandbox. Both only make sense
+  // when the brain has a local execution surface. A shell that runs the brain
+  // with no local exec -- the web/container remote shell (and eventually native
+  // Windows remote-only) -- sets LOOM_LOCAL_EXEC=off and supplies its own
+  // authoritative tool_call gate (web-mode-gate). Registering exec-guard there
+  // is redundant, and its interactive approval prompts have no human to answer
+  // in a headless container, so they would hang the agent on the first gated
+  // action. Skipping both keeps the shell's gate the single tool_call authority.
+  // Shells WITH a local exec surface (desktop, CLI) set LOOM_LOCAL_EXEC
+  // authoritatively at spawn so an ambient value can't toggle this off here.
+  if (!isLocalExecDisabled()) {
+    // Register the gate first so its tool_call decision is the authoritative
+    // boundary before anything else runs.
+    registerExecGuard(pi);
+    // The opt-in bash sandbox layers an OS sandbox UNDER the gate (the gate still
+    // decides allow/ask/deny; the sandbox only contains an allowed command's blast
+    // radius). Default-on file-write confinement lives in the gate itself.
+    registerSandbox(pi);
+  }
 
   setupUIBridge(pi);
   registerSessionLifecycle(pi);

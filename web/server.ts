@@ -116,6 +116,11 @@ function startLoom(): void {
       args.push("--model", process.env.LOOM_LLM_MODEL);
     }
     env.LOOM_NOTEBOOK_ALLOWLIST = join(cwd, "notebook.md");
+    // No local execution surface in the container: the web-mode-gate is the
+    // sole tool_call authority, so tell the brain to skip its local-exec guard
+    // (whose headless approval prompts would otherwise hang). See
+    // extensions/loom/index.ts.
+    env.LOOM_LOCAL_EXEC = "off";
   }
 
   log("starting loom subprocess", { bin: LOOM_BIN, cwd, remote: IS_REMOTE_MODE });
