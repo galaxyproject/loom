@@ -57,6 +57,13 @@ jobs:
           - os: ubuntu-latest
             arch: x64
             platform: linux
+          # Native Windows (x64). Ships remote-only (Galaxy I/O; no local bash).
+          # Squirrel .exe, unsigned for beta -- SmartScreen "Unknown publisher"
+          # is accepted (Authenticode cert is a fast-follow). maker-squirrel is
+          # already configured in app/forge.config.ts.
+          - os: windows-latest
+            arch: x64
+            platform: win32
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -108,6 +115,7 @@ jobs:
             artifacts/**/*.zip
             artifacts/**/*.deb
             artifacts/**/*.rpm
+            artifacts/**/*.exe
           fail_on_unmatched_files: true
 
   # Publish the @galaxyproject/loom npm package (the Loom CLI -- not Orbit) via

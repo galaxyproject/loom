@@ -8,7 +8,7 @@ description: >-
 
 inputs:
   platform:
-    description: electron-forge --platform value (darwin or linux).
+    description: electron-forge --platform value (darwin, linux, or win32).
     required: true
   arch:
     description: electron-forge --arch value (arm64 or x64).
@@ -126,4 +126,5 @@ runs:
           app/out/make/**/*.zip
           app/out/make/**/*.deb
           app/out/make/**/*.rpm
+          app/out/make/**/*.exe
         if-no-files-found: error
