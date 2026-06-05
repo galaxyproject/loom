@@ -1,8 +1,22 @@
 /**
  * Web-mode gate -- Pi extension loaded by web/server.ts when LOOM_MODE=remote.
  *
- * Blocks `bash` outright. Confines `edit`/`write`/`read` to a path allowlist
- * (the brain's notebook.md, in practice). Other tools pass through.
+ * Default-DENY allowlist for the remote brain's tool surface. The agent may
+ * only reach the curated remote surface:
+ *   - Galaxy / BRC-Analytics MCP tools (galaxy_*, brc_analytics_*)
+ *   - the brain's HTTP helper tools (gtn_*, notebook_*, skills_fetch)
+ *   - path-gated edit/write/read, confined to the session notebook.md
+ * Everything else -- bash/grep/find/ls, the pi-web-access egress tools
+ * (fetch_content/web_search/code_search/get_search_content), experiment-gated
+ * team/chat tools, and anything added to the brain in the future -- is blocked.
+ * Enumerating the keep-set rather than the block-set means a newly added tool
+ * is closed by default instead of silently reachable.
+ *
+ * In remote mode this gate is the SOLE tool_call authority: web/server.ts sets
+ * LOOM_LOCAL_EXEC=off so the brain skips its local-execution guard (there is no
+ * local execution surface to guard in a container). The gate therefore can't
+ * lean on that guard for the malformed-input case -- it normalizes
+ * `path ?? file_path` the same way pi's file tools do before the jail check.
  *
  * Path comparisons walk the deepest existing prefix through realpath so a
  * pre-existing symlink in `/tmp/loom-session/` can't redirect a gated tool
@@ -14,8 +28,17 @@ import { resolve, dirname, basename, join } from "node:path";
 import { realpathSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+// pi built-in file tools, confined to the notebook path allowlist.
 const PATH_GATED_TOOLS = new Set(["edit", "write", "read"]);
-const BLOCKED_TOOLS = new Set(["bash", "grep", "find", "ls"]);
+
+// The curated remote surface. MCP tools are "<server>_<tool>" with the server
+// name's hyphens normalized to underscores (pi-mcp-adapter formatToolName,
+// default "server" prefix): galaxy -> galaxy_, brc-analytics -> brc_analytics_.
+// gtn_*/notebook_* are brain-registered HTTP helper tools.
+const ALLOWED_PREFIXES = ["galaxy_", "brc_analytics_", "gtn_", "notebook_"];
+
+// Allowed tool names that don't share one of the prefixes above.
+const ALLOWED_EXACT = new Set(["skills_fetch"]);
 
 /**
  * Resolve an absolute path with symlink collapsing. Walks up until it finds
@@ -58,14 +81,22 @@ export function shouldBlockTool(
   allowlist: string[],
   cwd: string,
 ): BlockDecision | undefined {
-  if (BLOCKED_TOOLS.has(toolName)) {
-    return { block: true, reason: `${toolName} is disabled in remote mode` };
+  // pi's file tools render with `file_path ?? path`; check both so the jail
+  // can't be slipped by emitting file_path instead of path. With the brain's
+  // local-exec guard disabled in remote, this gate is the only enforcement.
+  if (PATH_GATED_TOOLS.has(toolName)) {
+    const raw = input.path ?? input.file_path;
+    if (typeof raw !== "string") {
+      return { block: true, reason: `${toolName} requires a path in remote mode` };
+    }
+    if (isPathAllowed(raw, allowlist, cwd)) return undefined;
+    return { block: true, reason: `path "${raw}" is not in the remote-mode allowlist` };
   }
-  if (!PATH_GATED_TOOLS.has(toolName)) return undefined;
-  const path = input.path;
-  if (typeof path !== "string") return undefined;
-  if (isPathAllowed(path, allowlist, cwd)) return undefined;
-  return { block: true, reason: `path "${path}" is not in the remote-mode allowlist` };
+  // Curated remote surface -> allowed.
+  if (ALLOWED_EXACT.has(toolName)) return undefined;
+  if (ALLOWED_PREFIXES.some((p) => toolName.startsWith(p))) return undefined;
+  // Default deny: bash/grep/find/ls, egress tools, experiments, future tools.
+  return { block: true, reason: `${toolName} is not available in remote mode` };
 }
 
 function parseAllowlist(): string[] {

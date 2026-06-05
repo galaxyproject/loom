@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, writeFileSync, symlinkSync, rmSync, realpathSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isPathAllowed, shouldBlockTool } from "./web-mode-gate.js";
+import gate, { isPathAllowed, shouldBlockTool } from "./web-mode-gate.js";
 
 describe("isPathAllowed", () => {
   const allowlist = ["/tmp/loom-session/notebook.md"];
@@ -106,7 +106,7 @@ describe("shouldBlockTool", () => {
     expect(result).toBeUndefined();
   });
 
-  it("permits unrelated tools (e.g. galaxy_invocation_record)", () => {
+  it("permits curated brain tools (galaxy_invocation_record)", () => {
     const result = shouldBlockTool(
       "galaxy_invocation_record",
       { foo: "bar" },
@@ -144,5 +144,111 @@ describe("shouldBlockTool", () => {
       "/tmp/loom-session",
     );
     expect(result).toEqual({ block: true, reason: expect.stringContaining("ls") });
+  });
+
+  const allowlist = ["/tmp/loom-session/notebook.md"];
+  const cwd = "/tmp/loom-session";
+
+  // Default-DENY allowlist: the curated remote surface passes through.
+  it.each([
+    "galaxy_run_tool",
+    "galaxy_connect",
+    "brc_analytics_get_genome",
+    "gtn_search",
+    "gtn_fetch",
+    "notebook_push_to_galaxy",
+    "skills_fetch",
+  ])("permits curated remote-surface tool %s", (toolName) => {
+    expect(shouldBlockTool(toolName, { foo: "bar" }, allowlist, cwd)).toBeUndefined();
+  });
+
+  // Egress, experiments, and unknown/future tools are denied by default --
+  // this is the whole point of inverting the denylist to an allowlist.
+  it.each([
+    "fetch_content",
+    "web_search",
+    "code_search",
+    "get_search_content",
+    "team_dispatch",
+    "chat_search",
+    "some_future_tool",
+    "glob",
+  ])("denies non-surface tool %s by default", (toolName) => {
+    const result = shouldBlockTool(toolName, { url: "http://169.254.169.254/" }, allowlist, cwd);
+    expect(result).toEqual({ block: true, reason: expect.stringContaining(toolName) });
+  });
+
+  // pi's file tools render with file_path ?? path; the jail must honor both.
+  it("path-gates edit emitted with file_path (outside allowlist -> blocked)", () => {
+    const result = shouldBlockTool("edit", { file_path: "/etc/passwd" }, allowlist, cwd);
+    expect(result?.block).toBe(true);
+  });
+
+  it("permits edit emitted with file_path on notebook.md", () => {
+    const result = shouldBlockTool(
+      "edit",
+      { file_path: "/tmp/loom-session/notebook.md" },
+      allowlist,
+      cwd,
+    );
+    expect(result).toBeUndefined();
+  });
+
+  it("blocks a path-gated tool emitted with no path or file_path", () => {
+    const result = shouldBlockTool("write", { content: "x" }, allowlist, cwd);
+    expect(result?.block).toBe(true);
+  });
+});
+
+// Exercise the actual registered extension, not just the pure helpers: proves
+// it wires a tool_call handler, parses LOOM_NOTEBOOK_ALLOWLIST the way
+// server.ts writes it, and returns pi's {block:true} shape. In remote mode this
+// gate is the SOLE tool_call authority (web/server.ts sets LOOM_LOCAL_EXEC=off,
+// so the brain skips its exec-guard), so it must be self-sufficient -- a sibling
+// write in the session dir has to be blocked by the gate alone.
+describe("web-mode-gate registration (default export)", () => {
+  const NOTEBOOK = "/tmp/loom-session/notebook.md";
+  let savedEnv: string | undefined;
+
+  beforeEach(() => {
+    savedEnv = process.env.LOOM_NOTEBOOK_ALLOWLIST;
+    process.env.LOOM_NOTEBOOK_ALLOWLIST = NOTEBOOK;
+  });
+  afterEach(() => {
+    if (savedEnv === undefined) delete process.env.LOOM_NOTEBOOK_ALLOWLIST;
+    else process.env.LOOM_NOTEBOOK_ALLOWLIST = savedEnv;
+  });
+
+  type ToolEvent = { toolName: string; input: Record<string, unknown> };
+
+  function loadHandler(): (event: ToolEvent) => Promise<unknown> {
+    let handler: ((event: ToolEvent) => Promise<unknown>) | undefined;
+    const fakePi = {
+      on: (event: string, h: (event: ToolEvent) => Promise<unknown>) => {
+        if (event === "tool_call") handler = h;
+      },
+    };
+    gate(fakePi as unknown as Parameters<typeof gate>[0]);
+    if (!handler) throw new Error("gate did not register a tool_call handler");
+    return handler;
+  }
+
+  it("wires tool_call, parses the env allowlist, and enforces the boundary end-to-end", async () => {
+    const handler = loadHandler();
+    // default-deny: local exec + egress blocked
+    expect(await handler({ toolName: "bash", input: { command: "ls" } })).toMatchObject({
+      block: true,
+    });
+    expect(
+      await handler({ toolName: "fetch_content", input: { url: "http://169.254.169.254/" } }),
+    ).toMatchObject({ block: true });
+    // writes confined to the env-provided notebook allowlist; a sibling in the
+    // session dir is blocked by the gate alone (no exec-guard in remote)
+    expect(await handler({ toolName: "edit", input: { path: NOTEBOOK } })).toBeUndefined();
+    expect(
+      await handler({ toolName: "write", input: { path: "/tmp/loom-session/secret.txt" } }),
+    ).toMatchObject({ block: true });
+    // curated remote surface passes through
+    expect(await handler({ toolName: "galaxy_run_tool", input: {} })).toBeUndefined();
   });
 });
