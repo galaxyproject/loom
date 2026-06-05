@@ -25,7 +25,7 @@
  */
 
 import { resolve, dirname, basename, join } from "node:path";
-import { realpathSync } from "node:fs";
+import { realpathSync, lstatSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // pi built-in file tools, confined to the notebook path allowlist.
@@ -108,8 +108,30 @@ function parseAllowlist(): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Defense-in-depth: an allowlist entry that is itself a symlink would realResolve
+ * to its target, so a write to notebook.md could land on a file outside the
+ * session dir. The brain creates notebook.md as a regular file and the agent has
+ * no symlink-creating tool, so this only guards a malicious pre-placed symlink
+ * (e.g. a tampered image): drop any entry that already exists as a symlink. A
+ * not-yet-existing entry is kept (notebook.md is created lazily as a real file).
+ */
+export function dropSymlinkedEntries(entries: string[]): string[] {
+  return entries.filter((entry) => {
+    try {
+      if (lstatSync(entry).isSymbolicLink()) {
+        console.error(`[web-mode-gate] dropping symlinked notebook allowlist entry: ${entry}`);
+        return false;
+      }
+    } catch {
+      /* doesn't exist yet -- keep; it will be created as a regular file */
+    }
+    return true;
+  });
+}
+
 export default function (pi: ExtensionAPI): void {
-  const allowlist = parseAllowlist();
+  const allowlist = dropSymlinkedEntries(parseAllowlist());
   const cwd = process.cwd();
 
   pi.on("tool_call", async (event) => {

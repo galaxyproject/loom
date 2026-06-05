@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, writeFileSync, symlinkSync, rmSync, realpathSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import gate, { isPathAllowed, shouldBlockTool } from "./web-mode-gate.js";
+import gate, { isPathAllowed, shouldBlockTool, dropSymlinkedEntries } from "./web-mode-gate.js";
 
 describe("isPathAllowed", () => {
   const allowlist = ["/tmp/loom-session/notebook.md"];
@@ -72,6 +72,18 @@ describe("isPathAllowed with real symlinks", () => {
     // realResolve should walk up to the (existing) parent and rejoin.
     const target = join(tmpDir, "notebook.md");
     expect(isPathAllowed(target, [target])).toBe(true);
+  });
+
+  it("dropSymlinkedEntries drops a symlinked entry, keeps a regular file and a not-yet-existing path", () => {
+    const real = join(tmpDir, "notebook.md");
+    writeFileSync(real, "");
+    const link = join(tmpDir, "linked-notebook.md");
+    symlinkSync(real, link); // a notebook.md that is itself a symlink to elsewhere
+    const missing = join(tmpDir, "created-lazily.md");
+    const kept = dropSymlinkedEntries([real, link, missing]);
+    expect(kept).toContain(real); // regular file kept
+    expect(kept).toContain(missing); // not-yet-existing kept (created as a real file later)
+    expect(kept).not.toContain(link); // symlinked entry dropped
   });
 });
 
