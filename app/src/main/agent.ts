@@ -9,6 +9,7 @@ import { resolveLlmApiKey, resolveGalaxyApiKey } from "./secure-config.js";
 import { loadSessionHistory, newestSessionFile } from "./session-replay.js";
 import { collectDescendantsOf } from "./proc-monitor.js";
 import { TurnWatchdog } from "./turn-watchdog.js";
+import { formatWindowTitle } from "./window-title.js";
 
 /**
  * How long the brain may stay completely silent mid-turn before Orbit treats the
@@ -234,6 +235,17 @@ export class AgentManager {
       timeoutMs: TURN_SILENCE_TIMEOUT_MS,
       onTimeout: () => this.handleTurnStalled(),
     });
+    this.refreshWindowTitle();
+  }
+
+  /**
+   * Reflect the active analysis directory in the window title so the context
+   * is glanceable across multiple open project windows (#190). Main owns the
+   * title; see createWindow() where page-title-updated is suppressed.
+   */
+  private refreshWindowTitle(): void {
+    if (this.window.isDestroyed()) return;
+    this.window.setTitle(formatWindowTitle(this.cwd, os.homedir()));
   }
 
   /** Reset session continuity (e.g. when switching to a new analysis directory). */
@@ -249,12 +261,14 @@ export class AgentManager {
       this.hasStartedBefore = false;
     }
     this.cwd = cwd;
+    this.refreshWindowTitle();
     log("cwd set to", cwd);
   }
 
   switchCwd(cwd: string): boolean {
     if (cwd === this.cwd) return false;
     this.cwd = cwd;
+    this.refreshWindowTitle();
     this.hasStartedBefore = false;
     // Don't force-skip --continue: let start()'s hasExistingSession() check
     // decide. If the target cwd has a Pi session on disk, we want to resume

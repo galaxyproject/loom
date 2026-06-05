@@ -241,6 +241,13 @@ function createWindow(cwd: string): void {
     mainWindow?.focus();
   });
 
+  // The renderer's static <title> would otherwise be mirrored onto the native
+  // window title on every load/reload, clobbering the cwd-aware title that
+  // AgentManager sets (#190). Let main own the title instead.
+  mainWindow.webContents.on("page-title-updated", (event) => {
+    event.preventDefault();
+  });
+
   // Keep the main window on the renderer; external URLs (including file://
   // links from the notebook — IGV viewers, reports, etc.) open in new
   // Orbit-managed windows so the main app never navigates away.

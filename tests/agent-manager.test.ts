@@ -95,6 +95,7 @@ describe("AgentManager", () => {
     const { AgentManager } = await import("../app/src/main/agent.js");
     const window = {
       isDestroyed: () => false,
+      setTitle: vi.fn(),
       webContents: { send: vi.fn() },
     };
 
@@ -128,6 +129,7 @@ describe("AgentManager", () => {
     const { AgentManager } = await import("../app/src/main/agent.js");
     const window = {
       isDestroyed: () => false,
+      setTitle: vi.fn(),
       webContents: { send: vi.fn() },
     };
 
@@ -155,7 +157,7 @@ describe("AgentManager", () => {
         const proc = makeProcess(101);
         spawnMock.mockReturnValue(proc);
         const { AgentManager, TURN_SILENCE_TIMEOUT_MS } = await import("../app/src/main/agent.js");
-        const window = { isDestroyed: () => false, webContents: { send: vi.fn() } };
+        const window = { isDestroyed: () => false, setTitle: vi.fn(), webContents: { send: vi.fn() } };
         const manager = new AgentManager(window as any, "/analysis");
         manager.start();
 
@@ -182,7 +184,7 @@ describe("AgentManager", () => {
         const proc = makeProcess(101);
         spawnMock.mockReturnValue(proc);
         const { AgentManager, TURN_SILENCE_TIMEOUT_MS } = await import("../app/src/main/agent.js");
-        const window = { isDestroyed: () => false, webContents: { send: vi.fn() } };
+        const window = { isDestroyed: () => false, setTitle: vi.fn(), webContents: { send: vi.fn() } };
         const manager = new AgentManager(window as any, "/analysis");
         manager.start();
 
@@ -205,7 +207,7 @@ describe("AgentManager", () => {
         const proc = makeProcess(101);
         spawnMock.mockReturnValue(proc);
         const { AgentManager, TURN_SILENCE_TIMEOUT_MS } = await import("../app/src/main/agent.js");
-        const window = { isDestroyed: () => false, webContents: { send: vi.fn() } };
+        const window = { isDestroyed: () => false, setTitle: vi.fn(), webContents: { send: vi.fn() } };
         const manager = new AgentManager(window as any, "/analysis");
         manager.start();
 
@@ -220,5 +222,27 @@ describe("AgentManager", () => {
         vi.useRealTimers();
       }
     });
+  });
+
+  it("sets the window title from the cwd on construction, switch, and setCwd", async () => {
+    spawnMock.mockReturnValue(makeProcess(101));
+
+    const { AgentManager } = await import("../app/src/main/agent.js");
+    const setTitle = vi.fn();
+    const window = {
+      isDestroyed: () => false,
+      setTitle,
+      webContents: { send: vi.fn() },
+    };
+
+    // os.homedir() is mocked to "/tmp/home" at the top of this file.
+    const manager = new AgentManager(window as any, "/tmp/home/projectA");
+    expect(setTitle).toHaveBeenLastCalledWith("~/projectA — Orbit");
+
+    expect(manager.switchCwd("/srv/data/projectB")).toBe(true);
+    expect(setTitle).toHaveBeenLastCalledWith("/srv/data/projectB — Orbit");
+
+    manager.setCwd("/tmp/home/projectC");
+    expect(setTitle).toHaveBeenLastCalledWith("~/projectC — Orbit");
   });
 });
