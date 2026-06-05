@@ -1,4 +1,5 @@
 import { ChatPanel } from "./chat/chat-panel.js";
+import { detectCompactIntent } from "./chat/compact-intent.js";
 import { humanizeAgentError } from "./chat/error-humanizer.js";
 import { ShellPanel } from "./chat/shell-panel.js";
 import { ArtifactPanel } from "./artifacts/artifact-panel.js";
@@ -1361,6 +1362,41 @@ messagesEl.addEventListener("click", (e) => {
   target.replaceWith(document.createTextNode("(dismissed)"));
 });
 
+// Compact-intent nudge state (#171). Same one-time-per-session +
+// "Don't show again" persistence as the cheaper-model nudge.
+const COMPACT_NUDGE_SKIP_KEY = "loom.skipCompactNudge";
+let compactNudgeShownThisSession = false;
+
+/**
+ * The agent cannot compact its own context -- that's the `/compact` command,
+ * a harness action. Users type "compact"/"reduce the context" into chat
+ * anyway, the agent writes a notebook summary, and (before its guardrail)
+ * over-claimed it had compacted while the context-fill bar didn't move (#171).
+ * Catch that plain-text intent shell-side and point them at the real command.
+ */
+function maybeShowCompactIntentHint(text: string): void {
+  if (compactNudgeShownThisSession) return;
+  if (localStorage.getItem(COMPACT_NUDGE_SKIP_KEY) === "1") return;
+  if (!detectCompactIntent(text)) return;
+  compactNudgeShownThisSession = true;
+  chat.addInfoMessage(
+    `<i><strong>Heads up:</strong> the agent can't compact the conversation ` +
+      `itself. Writing a notebook summary won't shrink the context window. ` +
+      `Run <code>/compact</code> to actually reclaim context (the notebook is ` +
+      `kept). For a full reset, start a new session and choose ` +
+      `<strong>Keep notebook</strong>. ` +
+      `<a href="#" class="compact-nudge-dismiss">Don't show again</a></i>`,
+  );
+}
+
+messagesEl.addEventListener("click", (e) => {
+  const target = e.target as HTMLElement | null;
+  if (!target?.classList.contains("compact-nudge-dismiss")) return;
+  e.preventDefault();
+  localStorage.setItem(COMPACT_NUDGE_SKIP_KEY, "1");
+  target.replaceWith(document.createTextNode("(dismissed)"));
+});
+
 function submit(): void {
   const text = inputEl.value.trim();
   if (!text) return;
@@ -1370,6 +1406,9 @@ function submit(): void {
   // Cheaper-model nudge fires before slash dispatch so /execute on Opus
   // gets the hint inline above the agent's thinking response.
   maybeShowCheaperModelNudge(text);
+
+  // Nudge plain-text "compact"/"reduce context" requests toward /compact (#171).
+  maybeShowCompactIntentHint(text);
 
   // If the agent is mid-turn, queue the message and flush when agent_end fires.
   // Purely local slash commands still run immediately; slash commands that
