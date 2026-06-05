@@ -26,7 +26,8 @@ describe("parseFrontmatter", () => {
 name: galaxy-mcp-reference
 description: Galaxy MCP reference
 when_to_use: Use for MCP calls
-surfaces: [loom, claude-code]
+metadata:
+  surfaces: [loom, claude-code]
 user_invocable: true
 ---
 body here`;
@@ -38,7 +39,7 @@ body here`;
   });
 
   it("normalizes a scalar surfaces value to a one-element array", () => {
-    const fm = parseFrontmatter(`---\nname: x\nsurfaces: loom\n---\n`);
+    const fm = parseFrontmatter(`---\nname: x\nmetadata:\n  surfaces: loom\n---\n`);
     expect(fm.surfaces).toEqual(["loom"]);
   });
 
@@ -215,7 +216,7 @@ describe("discoverCatalog", () => {
         ],
         {
           "collection-manipulation/SKILL.md":
-            "---\nname: galaxy-transform-collection\ndescription: transform collections\nsurfaces: [loom]\n---\nbody",
+            "---\nname: galaxy-transform-collection\ndescription: transform collections\nmetadata:\n  surfaces: [loom]\n---\nbody",
           "galaxy-integration/mcp-reference/SKILL.md":
             "---\nname: galaxy-mcp-reference\ndescription: mcp ref\n---\nbody",
         },
@@ -290,7 +291,7 @@ describe("catalog cache", () => {
     vi.stubGlobal(
       "fetch",
       mockGithub([{ path: "new/SKILL.md", type: "blob" }], {
-        "new/SKILL.md": "---\nname: new\ndescription: fresh\nsurfaces: [loom]\n---\n",
+        "new/SKILL.md": "---\nname: new\ndescription: fresh\nmetadata:\n  surfaces: [loom]\n---\n",
       }),
     );
     const skills = await refreshCatalog(REPO, { force: true });
@@ -309,7 +310,7 @@ describe("catalog cache", () => {
       }),
     );
     const fetchMock = mockGithub([{ path: "new/SKILL.md", type: "blob" }], {
-      "new/SKILL.md": "---\nname: new\ndescription: fresh\nsurfaces: [loom]\n---\n",
+      "new/SKILL.md": "---\nname: new\ndescription: fresh\nmetadata:\n  surfaces: [loom]\n---\n",
     });
     vi.stubGlobal("fetch", fetchMock);
     const skills = await refreshCatalog(REPO); // no force -- staleness should trigger the walk
@@ -359,7 +360,7 @@ describe("refreshAllCatalogs", () => {
     vi.stubGlobal(
       "fetch",
       mockGithub([{ path: "a/SKILL.md", type: "blob" }], {
-        "a/SKILL.md": "---\nname: a\ndescription: d\nsurfaces: [loom]\n---\n",
+        "a/SKILL.md": "---\nname: a\ndescription: d\nmetadata:\n  surfaces: [loom]\n---\n",
       }),
     );
     const summary = await refreshAllCatalogs();

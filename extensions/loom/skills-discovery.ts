@@ -53,7 +53,13 @@ export function parseFrontmatter(text: string): SkillFrontmatter {
   if (typeof o.name === "string") fm.name = o.name;
   if (typeof o.description === "string") fm.description = o.description;
   if (typeof o.when_to_use === "string") fm.when_to_use = o.when_to_use.trim();
-  fm.surfaces = toSurfaces(o.surfaces);
+  // `surfaces` is a custom (non-standard) key, so per the Agent-Skills spec it
+  // lives under the `metadata` object rather than polluting the top level.
+  const metadata =
+    o.metadata && typeof o.metadata === "object"
+      ? (o.metadata as Record<string, unknown>)
+      : undefined;
+  fm.surfaces = toSurfaces(metadata?.surfaces);
   return fm;
 }
 
