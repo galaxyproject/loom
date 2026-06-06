@@ -2285,6 +2285,11 @@ window.orbit.onAgentEvent((event) => {
       const msg = (event as { message?: { role?: string } }).message;
       if (msg?.role === "user") {
         chat.finishAssistantMessage();
+      } else if (msg?.role === "assistant") {
+        // A new assistant message in the same turn (agentic loop step) keeps
+        // streaming into the active chat message, so separate its text from the
+        // previous message's prose with a blank line (issue #200).
+        chat.separateNextBlock();
       }
       break;
     }
@@ -2322,7 +2327,10 @@ window.orbit.onAgentEvent((event) => {
         const delta = ame.delta as string;
         if (delta) chat.appendDelta(delta);
       } else if (ameType === "text_end") {
-        // text block finished, but agent turn might continue
+        // Text block finished, but the agent turn might continue with a tool
+        // call and then more text. Separate that next block from this one so
+        // they don't render butted together (issue #200).
+        chat.separateNextBlock();
       }
       break;
     }

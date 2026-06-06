@@ -1,4 +1,5 @@
 import { renderMarkdown } from "./markdown.js";
+import { joinTextBlocks } from "./block-spacing.js";
 import {
   TEAM_DISPATCH_KIND,
   type TeamDispatchDetails,
@@ -13,6 +14,10 @@ export class ChatPanel {
   private container: HTMLElement;
   private currentMessage: HTMLElement | null = null;
   private currentText = "";
+  // When true, the next streamed delta starts a new assistant text block and is
+  // separated from the prior block with a blank line (issue #200) so successive
+  // segments around tool calls don't render butted together ("Galaxy.Creating").
+  private pendingBlockBreak = false;
   private toolCards = new Map<string, HTMLElement>();
   private scrollLocked = true;
   private thinkingEl: HTMLElement | null = null;
@@ -147,6 +152,7 @@ export class ChatPanel {
     this.container.innerHTML = "";
     this.currentMessage = null;
     this.currentText = "";
+    this.pendingBlockBreak = false;
     this.toolCards.clear();
     this.thinkingEl = null;
   }
@@ -229,6 +235,7 @@ export class ChatPanel {
 
   startAssistantMessage(): void {
     this.currentText = "";
+    this.pendingBlockBreak = false;
     const el = document.createElement("div");
     el.className = "message assistant";
     el.innerHTML = '<span class="cursor-blink"></span>';
@@ -237,9 +244,24 @@ export class ChatPanel {
     this.scrollToBottom();
   }
 
+  /**
+   * Mark that the current assistant text block has ended (a tool call or a new
+   * assistant message follows). The next streamed delta then opens a new block,
+   * separated from the previous one by a blank line so they don't run together
+   * in the rendered markdown (issue #200). No-op once the message is finished.
+   */
+  separateNextBlock(): void {
+    if (this.currentMessage) this.pendingBlockBreak = true;
+  }
+
   appendDelta(delta: string): void {
     if (!this.currentMessage) return;
-    this.currentText += delta;
+    if (this.pendingBlockBreak) {
+      this.pendingBlockBreak = false;
+      this.currentText = joinTextBlocks(this.currentText, delta);
+    } else {
+      this.currentText += delta;
+    }
     this.renderCurrentMessage();
     this.scrollToBottom();
   }
@@ -252,6 +274,7 @@ export class ChatPanel {
     this.container.querySelectorAll(".cursor-blink").forEach((c) => c.remove());
     this.currentMessage = null;
     this.currentText = "";
+    this.pendingBlockBreak = false;
   }
 
   addToolCard(id: string, name: string): void {
