@@ -31,6 +31,7 @@ const extensionPath = resolve(__dirname, "../extensions/loom");
 // the brain stays shell-neutral; the command no-ops when embedded in Orbit.
 const orbitHandoffPath = resolve(__dirname, "../extensions/orbit-handoff");
 const cliUpdatePath = resolve(__dirname, "../extensions/cli-update");
+const whatsNewPath = resolve(__dirname, "../extensions/whats-new");
 const updateCheckScript = resolve(__dirname, "update-check.js");
 
 // pi-mcp-adapter is what teaches Pi how to use MCP servers from mcp.json
@@ -557,6 +558,8 @@ const args = [
   orbitHandoffPath,
   "-e",
   cliUpdatePath,
+  "-e",
+  whatsNewPath,
   ...providerArgs,
   ...userArgs,
 ];
