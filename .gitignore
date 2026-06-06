@@ -10,7 +10,10 @@ session.jsonl
 
 # Agent worktrees
 .worktrees/
-.claude/
+
+# Local agent state, except shared skills which are versioned with the repo
+.claude/*
+!.claude/skills/
 
 # Eval run artifacts (Phase 5+; not committed)
 evals/results/
