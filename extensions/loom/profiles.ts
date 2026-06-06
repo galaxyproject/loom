@@ -185,25 +185,37 @@ export function resolveProfileApiKey(name: string, profile: GalaxyProfile): stri
   throw new Error(`Profile "${name}" has no API key configured.`);
 }
 
+export type ActiveGalaxyStatus = "usable" | "configured-unusable" | "none";
+
 /**
- * Called once at brain startup. If the active profile is encrypted-only
- * and the shell hasn't injected `GALAXY_API_KEY`, log a clear stderr
- * line so the user knows why Galaxy calls won't work -- otherwise the
- * brain would silently 401 against every request.
+ * Usability of the active Galaxy profile for THIS process. The startup greeting
+ * reads this so its message can't contradict the actual credential state.
+ *
+ * - `usable`: GALAXY_URL + GALAXY_API_KEY are both in env (however they got
+ *   there -- plaintext profile, explicit export, or Orbit's decrypt-inject).
+ * - `configured-unusable`: no usable env key, but the active profile carries an
+ *   encrypted key this process can't decrypt (Orbit-only safeStorage). Galaxy
+ *   calls would 401; the fix is to run from Orbit or export GALAXY_API_KEY.
+ * - `none`: no usable active profile to speak of.
+ *
+ * Pure given (profiles, env); `activeGalaxyStatus()` is the thin live wrapper.
  */
-export function warnOnUnusableActiveProfile(): void {
-  const { active, profiles } = loadProfiles();
-  if (!active) return;
-  const profile = profiles[active];
-  if (!profile) return;
-  if (profile.apiKey) return;
-  if (process.env.GALAXY_API_KEY) return;
-  if (!profile.apiKeyEncrypted) return;
-  console.error(
-    `[galaxy] Active profile "${active}" has only an encrypted API key and ` +
-      `GALAXY_API_KEY is not set in the environment. Galaxy calls will fail. ` +
-      `Run from Orbit (auto-injects the decrypted key) or export GALAXY_API_KEY explicitly.`,
-  );
+export function getActiveGalaxyStatus(
+  profiles: GalaxyProfiles,
+  env: NodeJS.ProcessEnv,
+): ActiveGalaxyStatus {
+  if (env.GALAXY_URL && env.GALAXY_API_KEY) return "usable";
+  const active = profiles.active;
+  if (!active) return "none";
+  const profile = profiles.profiles[active];
+  if (profile && !profile.apiKey && !env.GALAXY_API_KEY && profile.apiKeyEncrypted) {
+    return "configured-unusable";
+  }
+  return "none";
+}
+
+export function activeGalaxyStatus(): ActiveGalaxyStatus {
+  return getActiveGalaxyStatus(loadProfiles(), process.env);
 }
 
 /**

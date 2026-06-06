@@ -8,7 +8,7 @@ import {
   saveProfile,
   switchProfile,
   loadProfiles,
-  warnOnUnusableActiveProfile,
+  getActiveGalaxyStatus,
 } from "../extensions/loom/profiles";
 
 // All loom-config / profiles paths derive from os.homedir() at call time.
@@ -137,52 +137,46 @@ describe("syncMcpConfig", () => {
   });
 });
 
-describe("warnOnUnusableActiveProfile", () => {
-  function captureErrors(fn: () => void): string[] {
-    const errors: string[] = [];
-    const orig = console.error;
-    console.error = (msg: string) => errors.push(msg);
-    try {
-      fn();
-    } finally {
-      console.error = orig;
-    }
-    return errors;
-  }
-
-  it("warns when active profile is encrypted-only and env is unset", () => {
-    saveProfile("a", "https://a.galaxyproject.org", "plain-A");
-    const cfgPath = path.join(sandboxHome, ".loom/config.json");
-    const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf-8"));
-    cfg.galaxy.profiles.a = { url: "https://a.galaxyproject.org", apiKeyEncrypted: "ZW5j" };
-    fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
-    delete process.env.GALAXY_API_KEY;
-    const errors = captureErrors(() => warnOnUnusableActiveProfile());
-    expect(errors.length).toBe(1);
-    expect(errors[0]).toContain('Active profile "a"');
-    expect(errors[0]).toMatch(/GALAXY_API_KEY/);
+describe("getActiveGalaxyStatus", () => {
+  const withDefault = (p: Record<string, unknown>) => ({
+    active: "default",
+    profiles: { default: p as never },
   });
 
-  it("does not warn when active profile has plaintext key", () => {
-    saveProfile("a", "https://a.galaxyproject.org", "plain-A");
-    delete process.env.GALAXY_API_KEY;
-    const errors = captureErrors(() => warnOnUnusableActiveProfile());
-    expect(errors.length).toBe(0);
+  it("is usable when GALAXY_URL and GALAXY_API_KEY are both in env", () => {
+    const status = getActiveGalaxyStatus(withDefault({ url: "u", apiKeyEncrypted: "ZW5j" }), {
+      GALAXY_URL: "u",
+      GALAXY_API_KEY: "k",
+    });
+    expect(status).toBe("usable");
   });
 
-  it("does not warn when env injection is present (Orbit path)", () => {
-    saveProfile("a", "https://a.galaxyproject.org", "plain-A");
-    const cfgPath = path.join(sandboxHome, ".loom/config.json");
-    const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf-8"));
-    cfg.galaxy.profiles.a = { url: "https://a.galaxyproject.org", apiKeyEncrypted: "ZW5j" };
-    fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
-    process.env.GALAXY_API_KEY = "injected-by-orbit";
-    const errors = captureErrors(() => warnOnUnusableActiveProfile());
-    expect(errors.length).toBe(0);
+  it("is configured-unusable for an encrypted-only active profile with no env key", () => {
+    const status = getActiveGalaxyStatus(withDefault({ url: "u", apiKeyEncrypted: "ZW5j" }), {});
+    expect(status).toBe("configured-unusable");
   });
 
-  it("does not warn when there is no active profile", () => {
-    const errors = captureErrors(() => warnOnUnusableActiveProfile());
-    expect(errors.length).toBe(0);
+  it("is usable (not configured-unusable) once Orbit injects the env key", () => {
+    const status = getActiveGalaxyStatus(withDefault({ url: "u", apiKeyEncrypted: "ZW5j" }), {
+      GALAXY_URL: "u",
+      GALAXY_API_KEY: "injected-by-orbit",
+    });
+    expect(status).toBe("usable");
+  });
+
+  it("is none when there is no active profile", () => {
+    expect(getActiveGalaxyStatus({ active: null, profiles: {} }, {})).toBe("none");
+  });
+
+  it("is none when the active name points at a missing profile", () => {
+    expect(getActiveGalaxyStatus({ active: "ghost", profiles: {} }, {})).toBe("none");
+  });
+
+  it("is none for a plaintext-key profile not yet wired into env", () => {
+    // Has a usable key on disk, so it's not the encrypted-unusable case; env
+    // just isn't set, which bin/loom.js wouldn't allow in practice. Documents
+    // the boundary.
+    const status = getActiveGalaxyStatus(withDefault({ url: "u", apiKey: "plain" }), {});
+    expect(status).toBe("none");
   });
 });

@@ -33,13 +33,10 @@ import {
   switchProfile,
   profileNameFromUrl,
   normalizeGalaxyUrl,
-  warnOnUnusableActiveProfile,
 } from "./profiles";
 import { LoomWidgetKey, encodeMarkdownWidget } from "../../shared/loom-shell-contract.js";
 
 export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
-  warnOnUnusableActiveProfile();
-
   // Register the local-execution safety gate first so its tool_call decision is
   // the authoritative boundary before anything else runs.
   registerExecGuard(pi);
