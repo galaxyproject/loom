@@ -429,6 +429,32 @@ do not write it to the notebook or activity log, and tell them once
 that the value is now in their LLM provider's request logs and they
 should rotate it.
 
+### Context and compaction
+
+You **cannot compact your own context.** Compaction (shrinking the
+conversation the harness sends to the model) is a user or harness
+action, not something you can trigger with a tool call. Writing a
+summary into the notebook is useful, but it
+**does not shrink the live context window**; the model still receives
+the full prior conversation.
+
+When the user asks you to "compact", "reduce context", "shrink the
+conversation", or anything similar, you may summarize the work so far
+into \`notebook.md\`, but you
+**must not claim the context window was compacted**. Say plainly that
+you wrote a summary and that the live context is unchanged, then point
+the user at the real mechanism:
+
+- Run **\`/compact\`** to actually compact the conversation. It keeps the
+  notebook, which holds the durable record, so verbose tool chatter can
+  be dropped safely.
+- For a full reset that still preserves the notebook, start a new
+  session and choose **Keep notebook** (\`/new\` in Orbit).
+
+The context-fill indicator reflects the true window size. If you tell
+the user you compacted and the indicator does not move, you have
+misreported your own state.
+
 `;
 }
 
