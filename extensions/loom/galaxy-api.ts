@@ -9,27 +9,6 @@
 // Galaxy API response types
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface GalaxyInvocationStepJob {
-  id: string;
-  state: string;
-  tool_id: string;
-}
-
-export interface GalaxyInvocationStep {
-  id: string;
-  order_index: number;
-  state: string | null;
-  jobs: GalaxyInvocationStepJob[];
-}
-
-export interface GalaxyInvocationResponse {
-  id: string;
-  state: string;
-  workflow_id: string;
-  history_id: string;
-  steps: GalaxyInvocationStep[];
-}
-
 /**
  * Subset of GET /api/jobs/{jobId} we actually read.
  * tool_version lives at the top level per Galaxy's Job.to_dict().

@@ -4,8 +4,17 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { resetState, setNotebookPath } from "../extensions/loom/state";
 import { renderInvocationYaml, type InvocationYaml } from "../extensions/loom/notebook-writer";
-import * as galaxyApi from "../extensions/loom/galaxy-api";
 import { checkInvocations } from "../extensions/loom/tools";
+import { getInvocations } from "@galaxyproject/galaxy-ops";
+
+// vi.mock is hoisted -- the factory must not reference variables declared below it.
+vi.mock("@galaxyproject/galaxy-ops", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@galaxyproject/galaxy-ops")>();
+  return {
+    ...actual,
+    getInvocations: vi.fn(),
+  };
+});
 
 function invocation(overrides: Partial<InvocationYaml> = {}): InvocationYaml {
   return {
@@ -31,6 +40,7 @@ describe("checkInvocations", () => {
     process.env.GALAXY_URL = "https://usegalaxy.org";
     process.env.GALAXY_API_KEY = "test-key";
     setNotebookPath(nbPath);
+    vi.mocked(getInvocations).mockReset();
   });
 
   afterEach(() => {
@@ -45,7 +55,7 @@ describe("checkInvocations", () => {
 
   it("marks an invocation completed when all jobs are ok", async () => {
     writeFileSync(nbPath, renderInvocationYaml(invocation()), "utf-8");
-    vi.spyOn(galaxyApi, "galaxyGet").mockResolvedValue({
+    vi.mocked(getInvocations).mockResolvedValue({
       id: "inv-1",
       state: "scheduled",
       workflow_id: "wf-1",
@@ -61,7 +71,7 @@ describe("checkInvocations", () => {
           ],
         },
       ],
-    });
+    } as any);
 
     const result = await checkInvocations(undefined);
     const parsed = JSON.parse(result.content[0].text);
@@ -76,7 +86,7 @@ describe("checkInvocations", () => {
 
   it("marks an invocation failed when any job errors", async () => {
     writeFileSync(nbPath, renderInvocationYaml(invocation()), "utf-8");
-    vi.spyOn(galaxyApi, "galaxyGet").mockResolvedValue({
+    vi.mocked(getInvocations).mockResolvedValue({
       id: "inv-1",
       state: "scheduled",
       workflow_id: "wf-1",
@@ -92,7 +102,7 @@ describe("checkInvocations", () => {
           ],
         },
       ],
-    });
+    } as any);
 
     const result = await checkInvocations("inv-1");
     const parsed = JSON.parse(result.content[0].text);
@@ -106,13 +116,12 @@ describe("checkInvocations", () => {
 
   it("does not rewrite already completed invocations in check_all", async () => {
     writeFileSync(nbPath, renderInvocationYaml(invocation({ status: "completed" })), "utf-8");
-    const galaxyGet = vi.spyOn(galaxyApi, "galaxyGet");
 
     const result = await checkInvocations(undefined);
     const parsed = JSON.parse(result.content[0].text);
 
     expect(parsed.success).toBe(true);
     expect(parsed.results).toEqual([]);
-    expect(galaxyGet).not.toHaveBeenCalled();
+    expect(vi.mocked(getInvocations)).not.toHaveBeenCalled();
   });
 });

@@ -21,7 +21,8 @@ import {
   upsertInvocationBlock,
   type InvocationYaml,
 } from "./notebook-writer";
-import { getGalaxyConfig, galaxyGet, type GalaxyInvocationResponse } from "./galaxy-api";
+import { getGalaxyConfig } from "./galaxy-api";
+import { createGalaxyContext, getInvocations } from "@galaxyproject/galaxy-ops";
 import { type ConfiguredSkillRepo, listEnabledSkillRepos, findSkillRepo } from "./skills";
 import * as fs from "fs";
 import * as path from "path";
@@ -713,10 +714,9 @@ export async function checkInvocations(
 
     for (const block of toCheck) {
       try {
-        const inv = await galaxyGet<GalaxyInvocationResponse>(
-          `/invocations/${block.invocationId}`,
-          signal,
-        );
+        const cfg = getGalaxyConfig()!; // guard already ran above -- cfg is non-null here
+        const ctx = createGalaxyContext({ baseUrl: cfg.url, apiKey: cfg.apiKey, signal });
+        const inv = await getInvocations({ invocationId: block.invocationId }, ctx);
 
         const summary = { ok: 0, running: 0, queued: 0, error: 0, other: 0 };
         let totalJobs = 0;
