@@ -22,6 +22,7 @@
     "bin/",
     "extensions/",
     "shared/",
+    "CHANGELOG.md",
     "README.md",
     "LICENSE"
   ],
