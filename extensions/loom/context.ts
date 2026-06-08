@@ -162,7 +162,7 @@ flip the toggle to Cloud if they want Galaxy back.
  * Galaxy connection status block — replaces the old Local|Remote toggle
  * with agent-side per-plan routing decisions.
  */
-function buildGalaxyContextBlock(): string {
+export function buildGalaxyContextBlock(): string {
   const cfg = loadConfig();
   // Local mode short-circuits — no Galaxy guidance, even if connected.
   if (cfg.executionMode === "local") {
@@ -248,6 +248,19 @@ After invoking via Galaxy MCP and getting an \`invocationId\` back:
    record verification evidence in the notebook, then edit the markdown
    checkbox for the step from \`- [ ]\` to \`- [x]\`. On failure, record
    the error evidence and use \`- [!]\`.
+
+### Running a single tool
+
+A single tool run (\`galaxy_run_tool\` / \`galaxy_run_user_tool\`) is not a
+workflow invocation: it returns a **job**, not an \`invocationId\`, and
+leaves no \`loom-invocation\` block — so nothing polls it for you. The
+"Started tool …" / HTTP 200 response means the job was **submitted, not
+that it finished**. Before you tell the user the step worked, confirm the
+job reached a terminal \`ok\` state: call \`galaxy_get_job_details\` with one
+of the run's output dataset ids (it returns the job that made that dataset,
+with its state), or inspect the output dataset's state directly. If the job
+ends in \`error\`/\`failed\`/\`deleted\`, surface that failure in chat
+immediately — don't wait for the user to ask.
 `;
 }
 
@@ -494,10 +507,18 @@ or telling the user the work is done.
 
 Match the verification check to the artifact or action being completed:
 
-- **Galaxy workflow or tool run** — poll the invocation/job to a terminal
-  state with \`galaxy_invocation_check_all\` or the relevant Galaxy MCP
-  inspection call, then inspect resulting datasets/collections enough to
-  confirm they exist and look plausible for the request.
+- **Galaxy workflow invocation** — poll to a terminal state with
+  \`galaxy_invocation_check_all\`, then inspect resulting
+  datasets/collections enough to confirm they exist and look plausible
+  for the request.
+- **Single Galaxy tool run** (\`galaxy_run_tool\` / \`galaxy_run_user_tool\`)
+  — the "Started tool …" / HTTP 200 response means the job was
+  *submitted*, not that it finished, and no \`loom-invocation\` block
+  polls it for you. Confirm the job reached a terminal \`ok\` state: call
+  \`galaxy_get_job_details\` with one of the run's output dataset ids (or
+  inspect the output dataset state) before claiming the step worked. If
+  the job state is \`error\`/\`failed\`/\`deleted\`, report the failure to the
+  user proactively rather than waiting to be asked.
 - **Authored Galaxy workflow** (\`.ga\` or workflow JSON) —
   upload/import it to Galaxy, invoke it on a small
   appropriate test input, poll to completion, and inspect outputs.
