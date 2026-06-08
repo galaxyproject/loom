@@ -7,6 +7,7 @@
  */
 
 import { renderMarkdown } from "../chat/markdown.js";
+import { extOf, imagePreviewBlob } from "./image-preview.js";
 
 type FileKind = "text" | "image" | "pdf" | "binary";
 
@@ -73,17 +74,6 @@ const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"]);
 
 const PDF_EXTS = new Set([".pdf"]);
 
-function extOf(path: string): string {
-  const base = path.split("/").pop() ?? "";
-  // Handle .gz / .bz2 / .xz / .zst suffixes — strip and look at the inner ext.
-  // (Useful for things like sample.vcf.gz that should still be recognized as
-  // text in spirit; we treat the compressed version as binary because we
-  // can't decompress in the renderer, but exposing the inner ext is harmless.)
-  const dot = base.lastIndexOf(".");
-  if (dot <= 0) return "";
-  return base.slice(dot).toLowerCase();
-}
-
 function kindOf(path: string): FileKind {
   const ext = extOf(path);
   if (!ext) return "text"; // no extension → treat as text
@@ -91,24 +81,6 @@ function kindOf(path: string): FileKind {
   if (IMAGE_EXTS.has(ext)) return "image";
   if (PDF_EXTS.has(ext)) return "pdf";
   return "binary";
-}
-
-function mimeForImage(ext: string): string {
-  switch (ext) {
-    case ".png":
-      return "image/png";
-    case ".jpg":
-    case ".jpeg":
-      return "image/jpeg";
-    case ".gif":
-      return "image/gif";
-    case ".svg":
-      return "image/svg+xml";
-    case ".webp":
-      return "image/webp";
-    default:
-      return "application/octet-stream";
-  }
 }
 
 function formatBytes(n: number): string {
@@ -288,11 +260,9 @@ export class FileViewer {
   private reloadImage(bytes: Uint8Array): void {
     const img = this.container.querySelector<HTMLImageElement>("img.file-viewer-image");
     if (!img) return;
-    const buf = bytes.buffer.slice(
-      bytes.byteOffset,
-      bytes.byteOffset + bytes.byteLength,
-    ) as ArrayBuffer;
-    const blob = new Blob([buf]);
+    // Must keep the MIME type — a typeless blob: URL loads raster formats fine
+    // but breaks SVG, which is what made previews vanish on the next reload (#188).
+    const blob = imagePreviewBlob(this.currentPath ?? "", bytes);
     const nextUrl = URL.createObjectURL(blob);
     const prev = this.currentImageUrl;
     this.currentImageUrl = nextUrl;
@@ -523,13 +493,7 @@ export class FileViewer {
     const wrap = document.createElement("div");
     wrap.className = "file-viewer-image-wrap";
 
-    const ext = extOf(relPath);
-    const mime = mimeForImage(ext);
-    // Copy into a fresh ArrayBuffer to satisfy Blob's BlobPart typing, which
-    // requires a plain ArrayBuffer (not ArrayBufferLike).
-    const buffer = new ArrayBuffer(bytes.byteLength);
-    new Uint8Array(buffer).set(bytes);
-    const blob = new Blob([buffer], { type: mime });
+    const blob = imagePreviewBlob(relPath, bytes);
     const url = URL.createObjectURL(blob);
     this.currentImageUrl = url;
 
