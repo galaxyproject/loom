@@ -35,6 +35,17 @@ export function humanizeAgentError(raw: string | undefined | null): HumanizedErr
   const errType = inner?.type;
   const errMsg = inner?.message ?? parsed.message ?? "";
 
+  // Google's consumer Generative Language API geo-blocks unsupported regions
+  // with a 400 FAILED_PRECONDITION. It keys the error on `status`/`code`, not
+  // the Anthropic-style `type`, so it slips past the switch below -- match its
+  // stable message and explain it instead of echoing the raw payload.
+  if (/user location is not supported/i.test(errMsg)) {
+    return {
+      text: "Gemini isn't available in your region -- Google blocked the request. Switch to a non-Google provider (e.g. Anthropic, OpenAI, or DeepSeek) in Preferences.",
+      retriable: false,
+    };
+  }
+
   switch (errType) {
     case "overloaded_error":
       return {

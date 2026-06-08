@@ -61,4 +61,22 @@ describe("humanizeAgentError", () => {
     const raw = "Just a plain error string {not really json";
     expect(humanizeAgentError(raw).text).toBe(raw);
   });
+
+  it("explains the Google geo-block 400 instead of showing the raw payload", () => {
+    // Shape @google/genai throws (and pi forwards verbatim) for a region block:
+    // ApiError.message === JSON.stringify(errorBody). Note Google keys the error
+    // on `status`/`code`, not the Anthropic-style `type`.
+    const raw = JSON.stringify({
+      error: {
+        code: 400,
+        message: "User location is not supported for the API use.",
+        status: "FAILED_PRECONDITION",
+      },
+    });
+    const result = humanizeAgentError(raw);
+    expect(result.text).toMatch(/region/i);
+    expect(result.text).not.toContain("{");
+    expect(result.text).not.toContain("FAILED_PRECONDITION");
+    expect(result.retriable).toBe(false);
+  });
 });
