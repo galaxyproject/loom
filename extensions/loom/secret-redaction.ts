@@ -42,6 +42,10 @@ const SECRET_ENV_VARS = [
   "AZURE_OPENAI_API_KEY",
   "HF_TOKEN",
   "GALAXY_API_KEY",
+  // Custom OpenAI-compatible endpoints carry their key here (pi --api-key). With
+  // the dev/CI env fallback this can be the only place the key lives, so its
+  // value would otherwise dodge redaction.
+  "LOOM_ACTIVE_LLM_API_KEY",
 ];
 
 /** Minimal structural shape for a pi tool-result content item. */

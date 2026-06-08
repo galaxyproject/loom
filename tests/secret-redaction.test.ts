@@ -31,10 +31,15 @@ describe("collectSecretValues", () => {
     const secrets = collectSecretValues({} as never, {
       GALAXY_API_KEY: "galaxy-env-2222222222",
       ANTHROPIC_API_KEY: "sk-ant-env-3333333333",
+      // Custom OpenAI-compatible endpoint key the brain receives as --api-key.
+      // With the dev/CI env fallback it can arrive in the env without ever
+      // touching config, so its value must still be redactable.
+      LOOM_ACTIVE_LLM_API_KEY: "loom-active-env-4444444444",
       PATH: "/usr/bin", // not a secret var -> ignored
     });
     expect(secrets).toContain("galaxy-env-2222222222");
     expect(secrets).toContain("sk-ant-env-3333333333");
+    expect(secrets).toContain("loom-active-env-4444444444");
     expect(secrets).not.toContain("/usr/bin");
   });
 

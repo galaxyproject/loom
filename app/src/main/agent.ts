@@ -38,24 +38,26 @@ function buildSecretEnv(): Record<string, string> {
   const cfg = loadConfig();
 
   const provider = cfg.llm?.active || "anthropic";
-  const llmKey = resolveLlmApiKey(cfg);
   const isCustom = Boolean(cfg.llm?.providers?.[provider]?.baseUrl);
   // OAuth providers ignore env-var keys -- the brain reads ~/.pi/agent/auth.json.
   // If the user switched away from an API-key provider the old key is still in
   // config.json (preserved on purpose so they can switch back); don't leak it
   // into the env under a misrouted variable name.
-  if (llmKey && !OAUTH_PROVIDERS.has(provider)) {
-    if (isCustom) {
-      // Custom OpenAI-compatible endpoint: the brain converts this into
-      // pi's --api-key (a built-in env var wouldn't map to the provider).
-      env.LOOM_ACTIVE_LLM_API_KEY = llmKey;
-    } else {
-      const envVar = PROVIDER_ENV_MAP[provider] || "AI_GATEWAY_API_KEY";
-      env[envVar] = llmKey;
-    }
+  if (!OAUTH_PROVIDERS.has(provider)) {
+    // Custom OpenAI-compatible endpoints route through pi's --api-key via
+    // LOOM_ACTIVE_LLM_API_KEY; built-in providers use their own env var.
+    const targetVar = isCustom
+      ? "LOOM_ACTIVE_LLM_API_KEY"
+      : PROVIDER_ENV_MAP[provider] || "AI_GATEWAY_API_KEY";
+    // Config key wins; otherwise fall back to a key exported into Orbit's own
+    // env (`export ANTHROPIC_API_KEY=...; npm start`). In dev with safeStorage
+    // off this is the only key path; in prod it's a handy CI/power-user override.
+    const llmKey = resolveLlmApiKey(cfg) ?? process.env[targetVar];
+    if (llmKey) env[targetVar] = llmKey;
   }
 
-  const galaxyKey = resolveGalaxyApiKey(cfg);
+  // Galaxy key: config wins, else an exported GALAXY_API_KEY.
+  const galaxyKey = resolveGalaxyApiKey(cfg) ?? process.env.GALAXY_API_KEY;
   if (galaxyKey) {
     env.GALAXY_API_KEY = galaxyKey;
   }

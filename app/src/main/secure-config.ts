@@ -1,4 +1,4 @@
-import { safeStorage } from "electron";
+import { app, safeStorage } from "electron";
 import type { LoomConfig } from "../../../shared/loom-config.js";
 import { loadConfig, saveConfig } from "../../../shared/loom-config.js";
 
@@ -13,6 +13,13 @@ export function isAvailable(): boolean {
   // env makes us skip the probe entirely; encrypted secrets just stay
   // unread for the duration of the test.
   if (process.env.LOOM_DISABLE_SAFE_STORAGE === "1") return false;
+  // Dev (`npm start`, unpackaged) shares ~/.loom/config.json with the installed
+  // app but runs as a different, cdhash-pinned Electron binary. If dev touched
+  // safeStorage it would create and own the "<App> Safe Storage" keychain item,
+  // and the installed Developer ID build would no longer match its ACL -- the
+  // cause of every-launch prompts. Skip it in dev so only the packaged signed
+  // build owns the item; dev keys come from the env (see agent.ts buildSecretEnv).
+  if (!app.isPackaged) return false;
   try {
     return safeStorage.isEncryptionAvailable();
   } catch {
