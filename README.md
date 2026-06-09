@@ -276,7 +276,7 @@ Or use the CLI:
 node bin/loom.js                       # from repo root
 ```
 
-The developer install needs Node 20+ and `uv` on `PATH`. Per-OS bootstrap below.
+The developer install needs Node 22+ and `uv` on `PATH`. Per-OS bootstrap below.
 
 #### Linux (Ubuntu/Debian)
 
