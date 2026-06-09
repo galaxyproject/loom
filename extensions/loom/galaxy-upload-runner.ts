@@ -23,7 +23,10 @@ export function runGalaxyUpload(opts: RunGalaxyUploadOpts): Promise<UploadRunRes
     execFile(
       "uvx",
       opts.args,
-      { env: opts.env, signal: opts.signal, maxBuffer: 1024 * 1024 },
+      // 10MB headroom: with --silent output is tiny, but a chatty/retrying
+      // transfer shouldn't trip ERR_CHILD_PROCESS_STDIO_MAXBUFFER and look like
+      // a spawn failure.
+      { env: opts.env, signal: opts.signal, maxBuffer: 10 * 1024 * 1024 },
       (err, stdout, stderr) => {
         const e = err as (NodeJS.ErrnoException & { code?: number | string }) | null;
         if (e && (e.name === "AbortError" || e.code === "ABORT_ERR")) {
