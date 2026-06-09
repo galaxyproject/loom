@@ -276,6 +276,9 @@ Or use the CLI:
 node bin/loom.js                       # from repo root
 ```
 
+For a browser-based dev loop with hot reload (the Orbit renderer served over
+the web, against the same brain), see [`web/README.md`](web/README.md).
+
 The developer install needs Node 22+ and `uv` on `PATH`. Per-OS bootstrap below.
 
 #### Linux (Ubuntu/Debian)
