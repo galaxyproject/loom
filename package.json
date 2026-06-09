@@ -38,6 +38,7 @@
     "@anthropic-ai/sandbox-runtime": "^0.0.52",
     "@earendil-works/pi-coding-agent": "^0.78.0",
     "@earendil-works/pi-tui": "^0.78.0",
+    "@galaxyproject/galaxy-ops": "file:../../../../tmp/galaxy-ops.tgz",
     "@sinclair/typebox": "^0.34.49",
     "better-sqlite3": "^12.9.0",
     "chokidar": "^4.0.3",
