@@ -9,6 +9,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerPlanTools } from "./tools";
+import { registerGalaxyUploadTool } from "./galaxy-upload";
 import { registerNotebookSyncTools } from "./tools-sync";
 import { registerSyncCommand } from "./sync-command";
 import { setupContextInjection, formatConnectionStatus } from "./context";
@@ -70,6 +71,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   registerActivityHooks(pi);
 
   registerPlanTools(pi);
+  registerGalaxyUploadTool(pi);
   registerNotebookSyncTools(pi);
   registerSyncCommand(pi);
   registerExecutionCommands(pi);
