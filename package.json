@@ -40,7 +40,7 @@
     "@earendil-works/pi-tui": "^0.78.0",
     "@sinclair/typebox": "^0.34.49",
     "better-sqlite3": "^12.9.0",
-    "chokidar": "^4.0.3",
+    "chokidar": "^5.0.0",
     "node-html-parser": "^7.1.0",
     "pi-mcp-adapter": "^2.4.0",
     "pi-web-access": "^0.10.6",
