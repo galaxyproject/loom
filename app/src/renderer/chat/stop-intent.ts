@@ -17,23 +17,20 @@
  * err quiet.
  */
 
-// Polite/filler lead-ins that don't change the intent.
-const LEAD_IN =
-  /(please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|just\s+|ok,?\s+|okay,?\s+|hey,?\s+)*/
-    .source;
-// The stop verbs themselves.
-const STOP_VERB = /(stop|abort|halt|cancel)/.source;
-// The only objects allowed after the verb. Each clearly refers to the turn
-// itself, never to a Galaxy/genomic noun -- "stop the response" is in, but
-// "stop the workflow" is deliberately out (it has no "the workflow" object).
-const TURN_OBJECT =
-  /(\s+(it|this|that|now|please|thinking|responding|generating|the\s+response|what\s+you'?re\s+doing|what\s+you\s+are\s+doing))*/
-    .source;
-
-const STOP_INTENT = new RegExp(`^${LEAD_IN}${STOP_VERB}${TURN_OBJECT}[\\s.!?]*$`);
+// A bare stop imperative, in three segments: an optional politeness lead-in
+// ("please ", "can you "...), a stop verb, then only turn-referring objects
+// ("it", "thinking", "the response"...). The object list is the precision
+// knob -- "stop the response" matches, but "stop the FastQC tool" has no
+// matching object and falls through to a normal prompt. Deictic objects
+// ("this"/"that") are deliberately excluded: "cancel that" can mean a Galaxy
+// job, not the turn, and we'd rather miss it than abort something wanted.
+const STOP_INTENT =
+  /^(please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|just\s+|ok,?\s+|okay,?\s+|hey,?\s+)*(stop|abort|halt|cancel)(\s+(it|now|please|thinking|responding|generating|the\s+response|what\s+you'?re\s+doing|what\s+you\s+are\s+doing))*[\s.!?]*$/;
 
 export function detectStopIntent(text: string): boolean {
-  const t = text.trim().toLowerCase();
+  // Normalize curly apostrophes (macOS smart-quotes mangle "you're") to ASCII
+  // so the typed phrase still matches the regex.
+  const t = text.trim().toLowerCase().replace(/[‘’]/g, "'");
   if (!t) return false;
   // Slash commands are dispatched, never read as a chat intent.
   if (t.startsWith("/")) return false;

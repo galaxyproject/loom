@@ -31,11 +31,11 @@ describe("detectStopIntent", () => {
       "stop the response",
       "stop what you are doing", // verbatim from the bug report
       "stop what you're doing",
+      "stop what you’re doing", // macOS smart-quote apostrophe (U+2019)
       "abort",
       "abort it",
       "abort thinking", // verbatim from the bug report
       "cancel",
-      "cancel that",
       "halt",
       "STOP NOW",
       "  stop  ", // surrounding whitespace
@@ -53,6 +53,8 @@ describe("detectStopIntent", () => {
       "/stop", // a slash command, never a chat intent
       "stop the FastQC tool from running on every sample", // real instruction
       "cancel the workflow invocation in Galaxy", // real Galaxy action
+      "cancel that job", // deictic + object: a Galaxy action, not a halt
+      "stop that", // deictic "that" deliberately excluded
       "abort the upload and use the local file instead", // real instruction
       "how do I abort a running job?", // a question
       "find the stop codon in this sequence", // biology, not a command

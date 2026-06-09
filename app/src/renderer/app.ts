@@ -1409,6 +1409,11 @@ messagesEl.addEventListener("click", (e) => {
   target.replaceWith(document.createTextNode("(dismissed)"));
 });
 
+function clearInput(): void {
+  inputEl.value = "";
+  inputEl.style.height = "auto";
+}
+
 function submit(): void {
   const text = inputEl.value.trim();
   if (!text) return;
@@ -1428,8 +1433,7 @@ function submit(): void {
   if (streaming && detectStopIntent(text)) {
     abortCurrentTurn();
     chat.addInfoMessage("<i>Stopping the current response...</i>");
-    inputEl.value = "";
-    inputEl.style.height = "auto";
+    clearInput();
     return;
   }
 
@@ -1438,14 +1442,12 @@ function submit(): void {
   // prompt the agent must join the FIFO queue like any other LLM turn.
   if (streaming && !isLocalSlashCommand(text)) {
     enqueueMessage(text);
-    inputEl.value = "";
-    inputEl.style.height = "auto";
+    clearInput();
     return;
   }
 
   dispatchSubmittedText(text);
-  inputEl.value = "";
-  inputEl.style.height = "auto";
+  clearInput();
 }
 
 function dispatchSubmittedText(text: string): void {
