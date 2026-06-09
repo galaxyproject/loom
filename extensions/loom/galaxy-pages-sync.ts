@@ -13,6 +13,11 @@ import { getGalaxyConfig, type GalaxyConfig } from "./galaxy-api";
 import { readNotebook, writeNotebook, withNotebookLock } from "./notebook-writer";
 import { createPage, updatePage, getPage } from "./galaxy-pages-api";
 import {
+  loomToGalaxyMarkdownRich,
+  galaxyInvocationValidator,
+  galaxyMarkdownToLoom,
+} from "./galaxy-markdown-adapter";
+import {
   findGalaxyPageBlocks,
   upsertGalaxyPageBlock,
   stripGalaxyPageBlocks,
@@ -168,7 +173,7 @@ export async function resumeGalaxyPage(
       );
     }
 
-    const remoteBody = wrapUntrustedRemoteBody(page.content ?? "");
+    const remoteBody = wrapUntrustedRemoteBody(galaxyMarkdownToLoom(page.content ?? ""));
     const binding: GalaxyPageBindingYaml = {
       pageId: page.id,
       pageSlug: page.slug ?? null,
@@ -211,7 +216,7 @@ export async function pullNotebookFromGalaxy(): Promise<PullResult> {
       );
     }
     const page = await getPage(existing.pageId);
-    const remoteBody = wrapUntrustedRemoteBody(page.content ?? "");
+    const remoteBody = wrapUntrustedRemoteBody(galaxyMarkdownToLoom(page.content ?? ""));
     const refreshed: GalaxyPageBindingYaml = {
       ...existing,
       pageSlug: page.slug ?? existing.pageSlug,
@@ -229,8 +234,12 @@ export async function pushNotebookToGalaxy(opts: PushOptions = {}): Promise<Push
   return withNotebookLock(nbPath, async () => {
     const content = await readNotebook(nbPath);
     const existing = findGalaxyPageBlocks(content)[0];
-    // Strip both the binding block and any untrusted-content markers so the
-    // body sent to Galaxy (and re-persisted) is clean -- no marker round-trip.
+    // `stripped` is the canonical local notebook with the binding block and any
+    // untrusted-content markers removed, so the body sent to Galaxy (and
+    // re-persisted locally) is clean -- no marker round-trip. Push projects it to
+    // Galaxy via loomToGalaxyMarkdownRich; the local writeNotebook calls below
+    // persist `stripped` as-is, so notebook.md never holds the projected
+    // (carrier/directive) form.
     const stripped = stripUntrustedMarkers(stripGalaxyPageBlocks(content));
 
     if (existing) {
@@ -242,7 +251,7 @@ export async function pushNotebookToGalaxy(opts: PushOptions = {}): Promise<Push
         );
       }
       const updated = await updatePage(existing.pageId, {
-        content: stripped,
+        content: await loomToGalaxyMarkdownRich(stripped, galaxyInvocationValidator),
         content_format: "markdown",
         edit_source: "agent",
       });
@@ -268,7 +277,7 @@ export async function pushNotebookToGalaxy(opts: PushOptions = {}): Promise<Push
       title: opts.title ?? "Untitled notebook",
       slug: opts.slug,
       annotation: opts.annotation,
-      content: stripped,
+      content: await loomToGalaxyMarkdownRich(stripped, galaxyInvocationValidator),
       content_format: "markdown",
     });
     const binding: GalaxyPageBindingYaml = {
