@@ -36,9 +36,11 @@ export class ChatPanel {
   private lastErrorText = "";
   private lastErrorCount = 0;
   private history: MessageRecord[] = [];
+  private copyBtn: HTMLElement;
 
   constructor(container: HTMLElement) {
     this.container = container;
+    this.copyBtn = this.initCopyButton();
 
     this.container.addEventListener("scroll", () => {
       const { scrollTop, scrollHeight, clientHeight } = this.container;
@@ -423,6 +425,51 @@ export class ChatPanel {
     return lines.join("\n---\n\n");
   }
 
+  private initCopyButton(): HTMLElement {
+    const btn = document.createElement("button");
+    btn.className = "chat-copy-btn";
+    btn.hidden = true;
+    btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy`;
+    document.body.appendChild(btn);
+
+    // Prevent the click from clearing the selection before we read it
+    btn.addEventListener("mousedown", (e) => e.preventDefault());
+
+    btn.addEventListener("click", () => {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const frag = sel.getRangeAt(0).cloneContents();
+      const tmp = document.createElement("div");
+      tmp.appendChild(frag);
+      const md = fragmentToMarkdown(tmp);
+      navigator.clipboard.writeText(md).then(() => {
+        btn.textContent = "✓ Copied";
+        setTimeout(() => {
+          btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy`;
+          btn.hidden = true;
+          sel.removeAllRanges();
+        }, 1200);
+      });
+    });
+
+    document.addEventListener("selectionchange", () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) { btn.hidden = true; return; }
+      const range = sel.getRangeAt(0);
+      if (!this.container.contains(range.commonAncestorContainer)) { btn.hidden = true; return; }
+      const rect = range.getBoundingClientRect();
+      if (!rect.width && !rect.height) { btn.hidden = true; return; }
+      btn.hidden = false;
+      const bh = 28, bw = 80;
+      const top = rect.bottom + 6 + bh > window.innerHeight ? rect.top - bh - 4 : rect.bottom + 4;
+      const left = Math.max(4, Math.min(rect.right - bw, window.innerWidth - bw - 4));
+      btn.style.top = `${top}px`;
+      btn.style.left = `${left}px`;
+    });
+
+    return btn;
+  }
+
   private renderCurrentMessage(): void {
     if (!this.currentMessage) return;
 
@@ -451,6 +498,47 @@ export class ChatPanel {
         this.container.scrollTop = this.container.scrollHeight;
       });
     }
+  }
+}
+
+function fragmentToMarkdown(el: HTMLElement): string {
+  return nodeToMd(el).trim();
+}
+
+function nodeToMd(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
+  if (node.nodeType !== Node.ELEMENT_NODE) return "";
+  const el = node as HTMLElement;
+  const tag = el.tagName.toLowerCase();
+  const inner = () => Array.from(el.childNodes).map(nodeToMd).join("");
+
+  switch (tag) {
+    case "strong": case "b": return `**${inner()}**`;
+    case "em": case "i": return `*${inner()}*`;
+    case "del": case "s": return `~~${inner()}~~`;
+    case "code":
+      if (el.closest("pre")) return el.textContent ?? "";
+      return `\`${el.textContent ?? ""}\``;
+    case "pre": {
+      const code = el.querySelector("code");
+      const lang = (code?.className ?? "").match(/language-(\w+)/)?.[1] ?? "";
+      return `\`\`\`${lang}\n${(code ?? el).textContent ?? ""}\n\`\`\``;
+    }
+    case "h1": return `# ${inner()}\n`;
+    case "h2": return `## ${inner()}\n`;
+    case "h3": return `### ${inner()}\n`;
+    case "h4": return `#### ${inner()}\n`;
+    case "h5": return `##### ${inner()}\n`;
+    case "h6": return `###### ${inner()}\n`;
+    case "p": return `${inner()}\n\n`;
+    case "br": return "\n";
+    case "ul": return Array.from(el.children).map(li => `- ${nodeToMd(li)}`).join("\n") + "\n";
+    case "ol": return Array.from(el.children).map((li, i) => `${i + 1}. ${nodeToMd(li)}`).join("\n") + "\n";
+    case "li": return inner();
+    case "a": return `[${inner()}](${el.getAttribute("href") ?? ""})`;
+    case "blockquote": return inner().split("\n").map(l => `> ${l}`).join("\n");
+    case "hr": return "---\n";
+    default: return inner();
   }
 }
 
