@@ -17,9 +17,52 @@ interface AnthropicLikeError {
 
 const RETRIABLE_TYPES = new Set(["overloaded_error", "rate_limit_error", "api_error"]);
 
+// Context-overflow errors arrive in many provider-specific phrasings, and for
+// OpenAI-compatible endpoints they're a plain (non-JSON) string the humanizer
+// would otherwise echo verbatim -- e.g. deepseek's "400 This model's maximum
+// context length is N tokens. However, you requested M tokens..." (issue #209).
+// Dumping that raw is alarming and unactionable, so we detect the signature and
+// point the user at the real lever (/compact). Patterns mirror pi-ai's
+// isContextOverflow() but stay self-contained so the renderer doesn't pull in
+// the brain's provider layer. request_too_large keeps its own case below.
+const CONTEXT_OVERFLOW_PATTERNS = [
+  /prompt is too long/i, // Anthropic token overflow
+  /exceeds the context window/i, // OpenAI
+  /maximum context length/i, // OpenAI / OpenRouter / LiteLLM proxies
+  /reduce the length of the messages/i, // Groq / deepseek tail
+  /maximum prompt length is \d+/i, // xAI (Grok)
+  /input token count.*exceeds the maximum/i, // Google (Gemini)
+  /too large for model with \d+ maximum context length/i, // Mistral
+  /is longer than the model'?s context length/i, // Together AI
+  /context[_ ]length[_ ]exceeded/i, // OpenAI error code / generic
+];
+
+// Rate-limit / throttling errors sometimes mention "tokens"; resending after a
+// pause is the right move for those, not /compact -- so never treat them as
+// overflow even when an overflow phrase coincidentally matches.
+const NOT_OVERFLOW_PATTERNS = [/rate limit/i, /too many requests/i, /throttl/i];
+
+function isContextOverflowError(text: string): boolean {
+  if (NOT_OVERFLOW_PATTERNS.some((p) => p.test(text))) return false;
+  return CONTEXT_OVERFLOW_PATTERNS.some((p) => p.test(text));
+}
+
 export function humanizeAgentError(raw: string | undefined | null): HumanizedError {
   if (!raw) return { text: "Unknown error", retriable: false };
   const trimmed = raw.trim();
+
+  // Check overflow first, against the whole string: the signature can be a bare
+  // string (OpenAI-compatible) or buried in a JSON error body, and either way
+  // /compact is the actionable answer.
+  if (isContextOverflowError(trimmed)) {
+    return {
+      text:
+        "This conversation is too long for the model's context window. " +
+        "Run /compact to compact it (or start a new session), then resend.",
+      retriable: false,
+    };
+  }
+
   if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
     return { text: raw, retriable: false };
   }

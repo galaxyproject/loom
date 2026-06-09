@@ -79,4 +79,64 @@ describe("humanizeAgentError", () => {
     expect(result.text).not.toContain("FAILED_PRECONDITION");
     expect(result.retriable).toBe(false);
   });
+
+  describe("context overflow", () => {
+    it("humanizes the OpenAI-compatible context-length 400 (deepseek-v4-flash) into a /compact nudge", () => {
+      // The verbatim string from issue #209 -- arrives as a plain string, not JSON.
+      const raw =
+        "400 This model's maximum context length is 1048565 tokens. However, you " +
+        "requested 1133502 tokens (1133502 in the messages, 0 in the completion). " +
+        "Please reduce the length of the messages or completion.";
+      const result = humanizeAgentError(raw);
+      expect(result.text).toMatch(/\/compact/);
+      expect(result.text.toLowerCase()).toContain("context");
+      // No raw provider noise (token counts / HTTP status) should leak through.
+      expect(result.text).not.toContain("1048565");
+      expect(result.text).not.toContain("1133502");
+      expect(result.text).not.toContain("400");
+      expect(result.retriable).toBe(false);
+    });
+
+    it("detects context overflow even when the provider wraps it in JSON", () => {
+      const raw = JSON.stringify({
+        error: {
+          message:
+            "This model's maximum context length is 1048565 tokens. However you requested 1133502 tokens.",
+          type: "invalid_request_error",
+          code: "context_length_exceeded",
+        },
+      });
+      const result = humanizeAgentError(raw);
+      expect(result.text).toMatch(/\/compact/);
+      expect(result.text).not.toContain("1133502");
+      expect(result.retriable).toBe(false);
+    });
+
+    it("detects an Anthropic-style prompt-too-long overflow", () => {
+      const raw = JSON.stringify({
+        type: "error",
+        error: {
+          type: "invalid_request_error",
+          message: "prompt is too long: 213462 tokens > 200000 maximum",
+        },
+      });
+      const result = humanizeAgentError(raw);
+      expect(result.text).toMatch(/\/compact/);
+      expect(result.retriable).toBe(false);
+    });
+
+    it("does not misfire on rate-limit errors that mention tokens", () => {
+      const raw = JSON.stringify({
+        type: "error",
+        error: {
+          type: "rate_limit_error",
+          message: "rate limit exceeded: too many tokens per minute",
+        },
+      });
+      const result = humanizeAgentError(raw);
+      // Should stay on the rate-limit path, not the overflow path.
+      expect(result.text).not.toMatch(/\/compact/);
+      expect(result.retriable).toBe(true);
+    });
+  });
 });
