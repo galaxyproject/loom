@@ -17,6 +17,7 @@ import { registerSessionLifecycle } from "./session-lifecycle";
 import { registerActivityHooks } from "./activity-hooks";
 import { registerExecutionCommands } from "./execution-commands";
 import { registerFeedbackCommand } from "./feedback-command";
+import { registerTesterIdCommand } from "./tester-id-command";
 import { registerTeamTools } from "./teams/tool";
 import { isTeamDispatchEnabled } from "./teams/is-enabled";
 import { registerSessionIndexTools } from "./session-index/tools";
@@ -58,6 +59,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   registerSyncCommand(pi);
   registerExecutionCommands(pi);
   registerFeedbackCommand(pi);
+  registerTesterIdCommand(pi);
   registerConfusablesHint(pi);
   if (isTeamDispatchEnabled()) {
     registerTeamTools(pi);

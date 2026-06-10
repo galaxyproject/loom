@@ -482,6 +482,16 @@ export GALAXY_API_KEY="your-api-key"
 
 Galaxy credentials can also be provided via environment variables (`GALAXY_URL`, `GALAXY_API_KEY`) for CI or testing, but `~/.loom/config.json` is the primary source.
 
+#### Beta tester ID
+
+If you have a tester ID, you can set it like this:
+
+```
+/tester-id orbit-007
+```
+
+Run `/tester-id` with no argument to see the current value. It writes only the `testerId` key to `~/.loom/config.json` (the rest of the file is left untouched), and Orbit attaches it to any feedback you send so reports can be traced back to your session. It can also be supplied via the `LOOM_TESTER_ID` environment variable.
+
 ### Local LLMs
 
 Loom works with any OpenAI-compatible API -- a hosted service like [Jetstream](https://docs.jetstream-cloud.org/inference-service/overview/), or a local backend like [LiteLLM](https://litellm.ai/) or [Ollama](https://ollama.com/).
