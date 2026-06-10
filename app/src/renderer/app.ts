@@ -1,6 +1,7 @@
 import { ChatPanel } from "./chat/chat-panel.js";
 import { detectCompactIntent } from "./chat/compact-intent.js";
 import { humanizeAgentError } from "./chat/error-humanizer.js";
+import { detectStopIntent } from "./chat/stop-intent.js";
 import { ShellPanel } from "./chat/shell-panel.js";
 import { ArtifactPanel } from "./artifacts/artifact-panel.js";
 import { FilesPanel } from "./files/files-panel.js";
@@ -1422,6 +1423,11 @@ messagesEl.addEventListener("click", (e) => {
   target.replaceWith(document.createTextNode("(dismissed)"));
 });
 
+function clearInput(): void {
+  inputEl.value = "";
+  inputEl.style.height = "auto";
+}
+
 function submit(): void {
   const text = inputEl.value.trim();
   if (!text) return;
@@ -1435,19 +1441,27 @@ function submit(): void {
   // Nudge plain-text "compact"/"reduce context" requests toward /compact (#171).
   maybeShowCompactIntentHint(text);
 
+  // A bare "stop"/"abort" typed during an active turn is a halt intent, not a
+  // prompt to queue behind the very turn the user is trying to kill (#225).
+  // Abort instead of enqueueing, and acknowledge so the intent isn't silent.
+  if (streaming && detectStopIntent(text)) {
+    abortCurrentTurn();
+    chat.addInfoMessage("<i>Stopping the current response...</i>");
+    clearInput();
+    return;
+  }
+
   // If the agent is mid-turn, queue the message and flush when agent_end fires.
   // Purely local slash commands still run immediately; slash commands that
   // prompt the agent must join the FIFO queue like any other LLM turn.
   if (streaming && !isLocalSlashCommand(text)) {
     enqueueMessage(text);
-    inputEl.value = "";
-    inputEl.style.height = "auto";
+    clearInput();
     return;
   }
 
   dispatchSubmittedText(text);
-  inputEl.value = "";
-  inputEl.style.height = "auto";
+  clearInput();
 }
 
 function dispatchSubmittedText(text: string): void {

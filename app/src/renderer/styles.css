@@ -1918,8 +1918,15 @@ body.platform-darwin #files-title {
   opacity: 0.85;
 }
 
+/* Stop carries a visible label (not just an icon) so it's unmistakable while a
+   slow turn is "thinking" -- the bare red square went unnoticed (#225). */
 #abort-btn {
   background: var(--error);
+  width: auto;
+  gap: 6px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .hidden {
