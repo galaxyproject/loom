@@ -13,7 +13,7 @@ import type {
 export type MessageRecord =
   | { role: "user"; text: string }
   | { role: "assistant"; text: string }
-  | { role: "tool"; name: string; status: string; result?: string }
+  | { role: "tool"; id: string; name: string; status: string; result?: string }
   | { role: "info"; text: string }
   | { role: "error"; text: string };
 
@@ -305,7 +305,7 @@ export class ChatPanel {
   }
 
   addToolCard(id: string, name: string): void {
-    this.history.push({ role: "tool", name, status: "running" });
+    this.history.push({ role: "tool", id, name, status: "running" });
     const card = document.createElement("div");
     card.className = "tool-card";
     card.innerHTML = `
@@ -350,6 +350,16 @@ export class ChatPanel {
     const dot = card.querySelector(".tool-status")!;
     dot.className = `tool-status ${status}`;
 
+    // Sync the export record up front, keyed by id. The team_dispatch branch
+    // below returns early, so doing this here keeps those records from being
+    // frozen at "running"; matching on id (not the rendered name) stops two
+    // same-named tools in a turn from clobbering each other.
+    const rec = this.history.findLast((r) => r.role === "tool" && r.id === id);
+    if (rec && rec.role === "tool") {
+      rec.status = status;
+      if (result) rec.result = result.slice(0, 2000);
+    }
+
     // Specialized branch: team_dispatch details render as a collapsible card.
     if (details && (details as { kind?: string }).kind === TEAM_DISPATCH_KIND) {
       const body = card.querySelector(".tool-card-body")!;
@@ -361,12 +371,6 @@ export class ChatPanel {
     if (result) {
       const body = card.querySelector(".tool-card-body")!;
       body.textContent = result.slice(0, 2000);
-    }
-
-    const rec = this.history.findLast(r => r.role === "tool" && r.name === card.querySelector("span:last-child")?.textContent);
-    if (rec && rec.role === "tool") {
-      rec.status = status;
-      if (result) rec.result = result.slice(0, 2000);
     }
   }
 
