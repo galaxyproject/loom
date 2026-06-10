@@ -13,7 +13,7 @@ import type {
 export type MessageRecord =
   | { role: "user"; text: string }
   | { role: "assistant"; text: string }
-  | { role: "tool"; name: string; status: string; result?: string }
+  | { role: "tool"; id: string; name: string; status: string; result?: string }
   | { role: "info"; text: string }
   | { role: "error"; text: string };
 
@@ -36,6 +36,10 @@ export class ChatPanel {
   private lastErrorText = "";
   private lastErrorCount = 0;
   private history: MessageRecord[] = [];
+  // Assistant text accumulated since the last export flush (message start or a
+  // tool card). Flushed as its own record so prose keeps its order around tool
+  // cards instead of all collapsing to one block pushed at message end.
+  private pendingSegment = "";
   private copyBtn: HTMLElement;
 
   constructor(container: HTMLElement) {
@@ -175,6 +179,7 @@ export class ChatPanel {
     this.container.innerHTML = "";
     this.currentMessage = null;
     this.currentText = "";
+    this.pendingSegment = "";
     this.pendingBlockBreak = false;
     this.toolCards.clear();
     this.thinkingEl = null;
@@ -259,6 +264,7 @@ export class ChatPanel {
 
   startAssistantMessage(): void {
     this.currentText = "";
+    this.pendingSegment = "";
     this.pendingBlockBreak = false;
     const el = document.createElement("div");
     el.className = "message assistant";
@@ -283,8 +289,10 @@ export class ChatPanel {
     if (this.pendingBlockBreak) {
       this.pendingBlockBreak = false;
       this.currentText = joinTextBlocks(this.currentText, delta);
+      this.pendingSegment = joinTextBlocks(this.pendingSegment, delta);
     } else {
       this.currentText += delta;
+      this.pendingSegment += delta;
     }
     this.renderCurrentMessage();
     this.scrollToBottom();
@@ -296,16 +304,26 @@ export class ChatPanel {
     }
     // Clean up any stray cursors across the whole container
     this.container.querySelectorAll(".cursor-blink").forEach((c) => c.remove());
-    if (this.currentText) {
-      this.history.push({ role: "assistant", text: this.currentText });
-    }
+    this.flushAssistantSegment();
     this.currentMessage = null;
     this.currentText = "";
     this.pendingBlockBreak = false;
   }
 
+  /**
+   * Push the assistant text accumulated since the last flush as one export
+   * record. Called at each tool card and at message end so prose keeps its
+   * position relative to tool cards.
+   */
+  private flushAssistantSegment(): void {
+    const segment = this.pendingSegment.trim();
+    if (segment) this.history.push({ role: "assistant", text: segment });
+    this.pendingSegment = "";
+  }
+
   addToolCard(id: string, name: string): void {
-    this.history.push({ role: "tool", name, status: "running" });
+    this.flushAssistantSegment();
+    this.history.push({ role: "tool", id, name, status: "running" });
     const card = document.createElement("div");
     card.className = "tool-card";
     card.innerHTML = `
@@ -350,6 +368,16 @@ export class ChatPanel {
     const dot = card.querySelector(".tool-status")!;
     dot.className = `tool-status ${status}`;
 
+    // Sync the export record up front, keyed by id. The team_dispatch branch
+    // below returns early, so doing this here keeps those records from being
+    // frozen at "running"; matching on id (not the rendered name) stops two
+    // same-named tools in a turn from clobbering each other.
+    const rec = this.history.findLast((r) => r.role === "tool" && r.id === id);
+    if (rec && rec.role === "tool") {
+      rec.status = status;
+      if (result) rec.result = result.slice(0, 2000);
+    }
+
     // Specialized branch: team_dispatch details render as a collapsible card.
     if (details && (details as { kind?: string }).kind === TEAM_DISPATCH_KIND) {
       const body = card.querySelector(".tool-card-body")!;
@@ -362,12 +390,6 @@ export class ChatPanel {
       const body = card.querySelector(".tool-card-body")!;
       body.textContent = result.slice(0, 2000);
     }
-
-    const rec = this.history.findLast(r => r.role === "tool" && r.name === card.querySelector("span:last-child")?.textContent);
-    if (rec && rec.role === "tool") {
-      rec.status = status;
-      if (result) rec.result = result.slice(0, 2000);
-    }
   }
 
   private resetErrorDedup(): void {
@@ -377,13 +399,18 @@ export class ChatPanel {
   }
 
   addErrorMessage(text: string): void {
-    this.history.push({ role: "error", text });
+    // Flush any prose streamed before this error so the export keeps order.
+    this.flushAssistantSegment();
     if (this.lastErrorEl && this.lastErrorText === text) {
       this.lastErrorCount += 1;
       this.lastErrorEl.textContent = `${text}  (x${this.lastErrorCount})`;
       this.scrollToBottom();
       return;
     }
+    // Record only when a new card is actually rendered -- duplicates collapse
+    // into the card above, so one record per visible card keeps the export in
+    // sync with what the user sees.
+    this.history.push({ role: "error", text });
     const el = document.createElement("div");
     el.className = "message assistant";
     el.style.color = "var(--error)";

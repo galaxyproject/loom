@@ -24,23 +24,23 @@ describe("historyToMarkdown", () => {
   });
 
   it("formats a tool call with done status and no result", () => {
-    const records: MessageRecord[] = [{ role: "tool", name: "bash", status: "done" }];
+    const records: MessageRecord[] = [{ role: "tool", id: "t1", name: "bash", status: "done" }];
     expect(historyToMarkdown(records)).toBe("*Tool call ✓: `bash`*\n");
   });
 
   it("formats a tool call with error status", () => {
-    const records: MessageRecord[] = [{ role: "tool", name: "bash", status: "error" }];
+    const records: MessageRecord[] = [{ role: "tool", id: "t1", name: "bash", status: "error" }];
     expect(historyToMarkdown(records)).toBe("*Tool call ✗: `bash`*\n");
   });
 
   it("formats a running tool call", () => {
-    const records: MessageRecord[] = [{ role: "tool", name: "bash", status: "running" }];
+    const records: MessageRecord[] = [{ role: "tool", id: "t1", name: "bash", status: "running" }];
     expect(historyToMarkdown(records)).toBe("*Tool call …: `bash`*\n");
   });
 
   it("includes tool result in a code fence when present", () => {
     const records: MessageRecord[] = [
-      { role: "tool", name: "bash", status: "done", result: "hello world" },
+      { role: "tool", id: "t1", name: "bash", status: "done", result: "hello world" },
     ];
     expect(historyToMarkdown(records)).toBe(
       "*Tool call ✓: `bash`*\n\n```\nhello world\n```\n",
