@@ -418,6 +418,7 @@ modelIndicatorEl.addEventListener("click", () => {
 // ── Artifact pane collapse/expand ────────────────────────────────────────────
 
 const ARTIFACT_COLLAPSED_KEY = "orbit.artifactCollapsed";
+const exportChatBtn = document.getElementById("export-chat-btn")!;
 const artifactToggleBtn = document.getElementById("artifact-toggle")!;
 
 // Apply visual state without persisting; used by responsive auto-collapse.
@@ -436,6 +437,18 @@ setArtifactCollapsed(savedCollapsed === null ? true : savedCollapsed === "1");
 
 artifactToggleBtn.addEventListener("click", () => {
   setArtifactCollapsed(!document.body.classList.contains("artifact-collapsed"));
+});
+
+exportChatBtn.addEventListener("click", () => {
+  const md = chat.exportAsMarkdown();
+  if (!md.trim()) return;
+  const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `orbit-chat-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-")}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
 });
 
 // Cmd/Ctrl+\ keyboard shortcut

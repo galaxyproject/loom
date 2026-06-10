@@ -453,6 +453,30 @@ body.files-collapsed #files-divider {
 
 /* Pane-toggle buttons (files/artifact) live in the chat-pane title bar.
    Subtle by default, brighten on hover, gold when their pane is open. */
+.chat-copy-btn {
+  position: fixed;
+  z-index: 200;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  background: var(--bg-surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  transition: background 0.1s, color 0.1s;
+  white-space: nowrap;
+}
+.chat-copy-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .pane-title-btn {
   appearance: none;
   background: transparent;

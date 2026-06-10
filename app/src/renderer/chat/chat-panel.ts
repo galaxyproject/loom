@@ -10,6 +10,13 @@ import type {
   ParameterSpec,
 } from "../../../../shared/loom-shell-contract.js";
 
+export type MessageRecord =
+  | { role: "user"; text: string }
+  | { role: "assistant"; text: string }
+  | { role: "tool"; name: string; status: string; result?: string }
+  | { role: "info"; text: string }
+  | { role: "error"; text: string };
+
 export class ChatPanel {
   private container: HTMLElement;
   private currentMessage: HTMLElement | null = null;
@@ -28,9 +35,23 @@ export class ChatPanel {
   private lastErrorEl: HTMLElement | null = null;
   private lastErrorText = "";
   private lastErrorCount = 0;
+  private history: MessageRecord[] = [];
+  private copyBtn: HTMLElement;
 
   constructor(container: HTMLElement) {
     this.container = container;
+    this.copyBtn = this.initCopyButton();
+
+    this.container.addEventListener("copy", (e) => {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const frag = sel.getRangeAt(0).cloneContents();
+      const tmp = document.createElement("div");
+      tmp.appendChild(frag);
+      const md = fragmentToMarkdown(tmp);
+      e.preventDefault();
+      e.clipboardData!.setData("text/plain", md);
+    });
 
     this.container.addEventListener("scroll", () => {
       const { scrollTop, scrollHeight, clientHeight } = this.container;
@@ -90,6 +111,7 @@ export class ChatPanel {
   }
 
   addUserMessage(text: string): void {
+    this.history.push({ role: "user", text });
     this.resetErrorDedup();
     const n = ++this.promptCounter;
     const turn = document.createElement("div");
@@ -122,6 +144,7 @@ export class ChatPanel {
    * counter equals the replay's count. Live numbers continue from there.
    */
   addReplayUserMessage(text: string, promptNum: number): void {
+    this.history.push({ role: "user", text });
     this.resetErrorDedup();
     this.promptCounter = promptNum;
     const turn = document.createElement("div");
@@ -155,6 +178,7 @@ export class ChatPanel {
     this.pendingBlockBreak = false;
     this.toolCards.clear();
     this.thinkingEl = null;
+    this.history = [];
   }
 
   showThinking(): void {
@@ -272,12 +296,16 @@ export class ChatPanel {
     }
     // Clean up any stray cursors across the whole container
     this.container.querySelectorAll(".cursor-blink").forEach((c) => c.remove());
+    if (this.currentText) {
+      this.history.push({ role: "assistant", text: this.currentText });
+    }
     this.currentMessage = null;
     this.currentText = "";
     this.pendingBlockBreak = false;
   }
 
   addToolCard(id: string, name: string): void {
+    this.history.push({ role: "tool", name, status: "running" });
     const card = document.createElement("div");
     card.className = "tool-card";
     card.innerHTML = `
@@ -334,6 +362,12 @@ export class ChatPanel {
       const body = card.querySelector(".tool-card-body")!;
       body.textContent = result.slice(0, 2000);
     }
+
+    const rec = this.history.findLast(r => r.role === "tool" && r.name === card.querySelector("span:last-child")?.textContent);
+    if (rec && rec.role === "tool") {
+      rec.status = status;
+      if (result) rec.result = result.slice(0, 2000);
+    }
   }
 
   private resetErrorDedup(): void {
@@ -343,6 +377,7 @@ export class ChatPanel {
   }
 
   addErrorMessage(text: string): void {
+    this.history.push({ role: "error", text });
     if (this.lastErrorEl && this.lastErrorText === text) {
       this.lastErrorCount += 1;
       this.lastErrorEl.textContent = `${text}  (x${this.lastErrorCount})`;
@@ -383,6 +418,78 @@ export class ChatPanel {
     this.scrollToBottom();
   }
 
+  /** Export the current conversation as a Markdown string. */
+  exportAsMarkdown(): string {
+    return historyToMarkdown(this.history);
+  }
+
+  private initCopyButton(): HTMLElement {
+    const btn = document.createElement("button");
+    btn.className = "chat-copy-btn";
+    btn.hidden = true;
+    btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy`;
+    document.body.appendChild(btn);
+
+    // selectionchange fires while a mousedown is still in progress and the old
+    // selection is still live, which would immediately re-show the button we
+    // just hid. Track mousedown state so selectionchange can't re-show it.
+    let mouseIsDown = false;
+
+    btn.addEventListener("mousedown", (e) => e.preventDefault()); // keep selection alive on button click
+
+    document.addEventListener("mousedown", (e) => {
+      // contains() so clicking the button's inner <svg> (a child) still counts
+      // as the button -- otherwise the icon hit hides it before the copy fires.
+      if (!btn.contains(e.target as Node)) { btn.hidden = true; mouseIsDown = true; }
+    });
+    document.addEventListener("mouseup", () => {
+      mouseIsDown = false;
+      updateBtn();
+    });
+    window.addEventListener("blur", () => { btn.hidden = true; });
+
+    btn.addEventListener("click", () => {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const frag = sel.getRangeAt(0).cloneContents();
+      const tmp = document.createElement("div");
+      tmp.appendChild(frag);
+      const md = fragmentToMarkdown(tmp);
+      navigator.clipboard.writeText(md).then(() => {
+        btn.textContent = "✓ Copied";
+        setTimeout(() => {
+          btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy`;
+          btn.hidden = true;
+          sel.removeAllRanges();
+        }, 1200);
+      });
+    });
+
+    // Keyboard selection (Shift+arrow, Ctrl+A, etc.) — selectionchange is safe
+    // here because there's no mousedown race.
+    document.addEventListener("selectionchange", () => {
+      if (mouseIsDown) return;
+      updateBtn();
+    });
+
+    const updateBtn = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) { btn.hidden = true; return; }
+      const range = sel.getRangeAt(0);
+      if (!this.container.contains(range.commonAncestorContainer)) { btn.hidden = true; return; }
+      const rect = range.getBoundingClientRect();
+      if (!rect.width && !rect.height) { btn.hidden = true; return; }
+      btn.hidden = false;
+      const bh = 28, bw = 80;
+      const top = rect.bottom + 6 + bh > window.innerHeight ? rect.top - bh - 4 : rect.bottom + 4;
+      const left = Math.max(4, Math.min(rect.right - bw, window.innerWidth - bw - 4));
+      btn.style.top = `${top}px`;
+      btn.style.left = `${left}px`;
+    };
+
+    return btn;
+  }
+
   private renderCurrentMessage(): void {
     if (!this.currentMessage) return;
 
@@ -411,6 +518,64 @@ export class ChatPanel {
         this.container.scrollTop = this.container.scrollHeight;
       });
     }
+  }
+}
+
+export function historyToMarkdown(records: MessageRecord[]): string {
+  const lines: string[] = [];
+  for (const rec of records) {
+    if (rec.role === "user") {
+      lines.push(`**You**\n\n${rec.text}\n`);
+    } else if (rec.role === "assistant") {
+      lines.push(`**Assistant**\n\n${rec.text}\n`);
+    } else if (rec.role === "tool") {
+      const badge = rec.status === "done" ? "✓" : rec.status === "error" ? "✗" : "…";
+      lines.push(`*Tool call ${badge}: \`${rec.name}\`*${rec.result ? `\n\n\`\`\`\n${rec.result}\n\`\`\`` : ""}\n`);
+    } else if (rec.role === "error") {
+      lines.push(`*Error: ${rec.text}*\n`);
+    }
+  }
+  return lines.join("\n---\n\n");
+}
+
+export function fragmentToMarkdown(el: HTMLElement): string {
+  return nodeToMd(el).trim();
+}
+
+function nodeToMd(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
+  if (node.nodeType !== Node.ELEMENT_NODE) return "";
+  const el = node as HTMLElement;
+  const tag = el.tagName.toLowerCase();
+  const inner = () => Array.from(el.childNodes).map(nodeToMd).join("");
+
+  switch (tag) {
+    case "strong": case "b": return `**${inner()}**`;
+    case "em": case "i": return `*${inner()}*`;
+    case "del": case "s": return `~~${inner()}~~`;
+    case "code":
+      if (el.closest("pre")) return el.textContent ?? "";
+      return `\`${el.textContent ?? ""}\``;
+    case "pre": {
+      const code = el.querySelector("code");
+      const lang = (code?.className ?? "").match(/language-(\w+)/)?.[1] ?? "";
+      return `\`\`\`${lang}\n${(code ?? el).textContent ?? ""}\n\`\`\``;
+    }
+    case "h1": return `# ${inner()}\n`;
+    case "h2": return `## ${inner()}\n`;
+    case "h3": return `### ${inner()}\n`;
+    case "h4": return `#### ${inner()}\n`;
+    case "h5": return `##### ${inner()}\n`;
+    case "h6": return `###### ${inner()}\n`;
+    case "p": return `${inner()}\n\n`;
+    case "br": return "\n";
+    case "ul": return Array.from(el.children).map(li => `- ${nodeToMd(li)}`).join("\n") + "\n";
+    case "ol": return Array.from(el.children).map((li, i) => `${i + 1}. ${nodeToMd(li)}`).join("\n") + "\n";
+    case "li": return inner();
+    case "a": return `[${inner()}](${el.getAttribute("href") ?? ""})`;
+    case "blockquote": return inner().split("\n").map(l => `> ${l}`).join("\n");
+    case "hr": return "---\n";
+    default: return inner();
   }
 }
 
