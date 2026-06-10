@@ -41,4 +41,22 @@ describe("getGalaxyConfig", () => {
     const config = getGalaxyConfig();
     expect(config!.url).toBe("https://usegalaxy.org");
   });
+
+  it("prepends https:// when the URL is scheme-less", () => {
+    // Config profiles / env often store the host without a scheme
+    // ("test.galaxyproject.org/"), which fetch() cannot parse.
+    process.env.GALAXY_URL = "test.galaxyproject.org/";
+    process.env.GALAXY_API_KEY = "key";
+
+    const config = getGalaxyConfig();
+    expect(config!.url).toBe("https://test.galaxyproject.org");
+  });
+
+  it("preserves an explicit http:// scheme", () => {
+    process.env.GALAXY_URL = "http://localhost:8080/";
+    process.env.GALAXY_API_KEY = "key";
+
+    const config = getGalaxyConfig();
+    expect(config!.url).toBe("http://localhost:8080");
+  });
 });

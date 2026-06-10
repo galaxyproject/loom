@@ -55,7 +55,12 @@ export function getGalaxyConfig(): GalaxyConfig | null {
   const url = process.env.GALAXY_URL;
   const apiKey = process.env.GALAXY_API_KEY;
   if (!url || !apiKey) return null;
-  return { url: url.replace(/\/+$/, ""), apiKey };
+  // Galaxy URLs from the config profile / env often arrive scheme-less
+  // (e.g. "test.galaxyproject.org/"). The MCP layer tolerates that, but
+  // fetch() can't parse a schemeless URL, so default to https here.
+  const trimmed = url.trim().replace(/\/+$/, "");
+  const normalized = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  return { url: normalized, apiKey };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
