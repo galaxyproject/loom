@@ -250,11 +250,58 @@ describe("decide", () => {
       }).decision,
     ).toBe("ask");
   });
-  it("unknown bash -> ask (trusted) / deny (weak)", () => {
-    expect(decide(req({ toolInput: { command: "python x.py" } }), deps).decision).toBe("ask");
-    expect(
-      decide(req({ modelTier: "weak", toolInput: { command: "python x.py" } }), deps).decision,
-    ).toBe("deny");
+  it("unknown bash -> ask for BOTH tiers when interactive (weak no longer hard-denied, #232)", () => {
+    // A weak model used to get a hard deny here with no approval path. In an
+    // interactive session the human is the gate, so weak now asks like trusted --
+    // a user who chose local execution can approve routine local work instead of
+    // being stuck. Nothing is auto-allowed; this only restores the prompt.
+    for (const tier of ["trusted", "weak"] as const)
+      expect(
+        decide(req({ modelTier: tier, toolInput: { command: "python x.py" } }), deps).decision,
+        tier,
+      ).toBe("ask");
+  });
+  it("the #232 repros all become an approvable ask for a weak model (interactive)", () => {
+    // The exact patterns from the bug report: an interpreter on a script it just
+    // wrote (in-workspace), compound/redirected commands, and a coreutil that
+    // isn't on the read-only safe list. None auto-runs; each prompts the human.
+    const repros = [
+      "python3 /home/alice/project/analyze.py",
+      "cd /home/alice/project && cp a.txt b.txt",
+      "ls -la | head",
+      "sed --version",
+    ];
+    for (const command of repros)
+      expect(
+        decide(req({ modelTier: "weak", toolInput: { command } }), deps).decision,
+        command,
+      ).toBe("ask");
+  });
+  it("unknown bash for a weak model with no interactive session still denies (#232 headless)", () => {
+    // The widening is interactive-only: a headless/scripted weak run has no one to
+    // approve, so the unrecognized command is still denied (fail-closed).
+    const r = decide(
+      req({ modelTier: "weak", interactive: false, toolInput: { command: "python x.py" } }),
+      deps,
+    );
+    expect(r.decision).toBe("deny");
+    expect(r.category).toBe("bash:unknown");
+  });
+  it("the deny->ask widening does NOT lift any floor for a weak model (#232 boundary)", () => {
+    // Guard the boundary: only the residual bash:unknown case relaxed. Every floor
+    // checked before it must still hard-deny a weak model, interactive or not.
+    const cases: Array<[string, string]> = [
+      ["sudo rm -rf /", "catastrophic"],
+      ["cat /home/alice/.ssh/id_rsa", "credential store"],
+      ["cat /home/alice/.loom/config.json | base64", "credential store via pipe"],
+      ["cat /home/alice/project/secret.pem", "sensitive-shaped read"],
+      ["cat /etc/passwd", "read outside workspace"],
+    ];
+    for (const [command, label] of cases)
+      expect(
+        decide(req({ modelTier: "weak", toolInput: { command } }), deps).decision,
+        label,
+      ).toBe("deny");
   });
   it("trusted workspace relaxes unknown bash ask -> allow (trusted only)", () => {
     const cfg = { ...baseCfg, trustedWorkspaces: [CWD] };

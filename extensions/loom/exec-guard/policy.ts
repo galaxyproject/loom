@@ -104,7 +104,24 @@ export function decide(req: PolicyRequest, deps: PolicyDeps): PolicyResult {
       }
       return { decision: "ask", category: "bash:trusted-workspace", reason: c.reason };
     }
-    return finalizeAsk(req, "bash:unknown", c.reason);
+    // Unrecognized command in an untrusted workspace. Both tiers get a human
+    // approval prompt when interactive -- a weak model is no longer hard-denied
+    // here, so a user who explicitly chose local execution can approve routine
+    // local work (run a script it just wrote, a compound/redirected command)
+    // instead of being stuck (#232). Nothing is auto-allowed: the silent pass
+    // stays reserved for a trusted model in a trusted workspace (above), and the
+    // catastrophic / credential-store / sensitive-read / jail floors are all
+    // enforced before this point, so this branch only governs the residual
+    // "command we can't reason about" case. A headless session still denies --
+    // there is no one to approve.
+    if (!req.interactive) {
+      return {
+        decision: "deny",
+        category: "bash:unknown",
+        reason: `${c.reason} (denied: no interactive session to approve)`,
+      };
+    }
+    return { decision: "ask", category: "bash:unknown", reason: c.reason };
   }
 
   if (FILE_READ_TOOLS.has(toolName)) {
