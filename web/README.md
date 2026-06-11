@@ -50,6 +50,44 @@ The working directory defaults to `~/.loom/analyses` (override with
 `defaultCwd` in `~/.loom/config.json`). The brain subprocess starts lazily on
 the first browser connection, so the page loads before any agent spins up.
 
+## Using it from another device (phone, tablet)
+
+The server binds to all interfaces, not just loopback, so once it's running you
+can reach it from another device on the same network. The renderer is
+responsive, so a phone browser works fine as a chat client.
+
+1. Start the server on your machine -- `npm run dev` (or `PORT=4000 npm run dev`).
+2. Find your machine's LAN IP -- `ipconfig getifaddr en0` on macOS,
+   `hostname -I` on Linux.
+3. On the other device, on the same Wi-Fi, open `http://<that-ip>:3000`.
+
+Reaching it by IP also sidesteps Vite's dev-server host check, so no extra
+config is needed.
+
+## Security: keep it on a trusted network, never expose it
+
+> [!WARNING]
+> This is an **unauthenticated** dev server. Anyone who can reach the port gets
+> a fully-capable agent running as you -- your LLM API keys, your Galaxy
+> credentials, your shell and filesystem. There is no login, no token, and no
+> per-user isolation. Treat "can reach the port" as "can act as me."
+
+So: keep it behind your home router/firewall on a network you trust, and never
+bind it to a public interface or forward the port in from the internet. The
+stubbed file tree (see below) is a renderer convenience that's missing -- it is
+**not** a capability limit. The underlying brain is the same one Orbit and the
+CLI run, with the same tool execution and Galaxy access.
+
+It also handles **one** browser connection at a time -- a second connection
+displaces the first. It's a single-user dev tool, full stop.
+
+If you genuinely need it from outside your network, put something that adds its
+own authentication in front -- a VPN/mesh like Tailscale, or a tunnel
+(cloudflared/ngrok) gated by access control -- rather than opening the raw port.
+The real multi-user/remote deployment shape (`LOOM_MODE=remote`, tool
+allowlists, path-gating, Docker) is a separate design (spec linked above); this
+dev server is not that and shouldn't be pressed into that role.
+
 ## How it works
 
 ```

@@ -10,6 +10,8 @@ The names trace real cosmology. The universe's large-scale structure is the _cos
 
 Future shells — a Galaxy-embedded web UI, a hosted server mode, anything else — talk to the same brain over RPC.
 
+That web shell already has a working seed today: a browser-served build of the Orbit renderer, running the same brain over RPC, reachable from another device on your LAN -- handy for chatting from a phone, and a natural home for Galaxy interactive tools later on. It's an unauthenticated single-user dev tool for now, so keep it on a trusted network; setup and the security caveats are in [`web/README.md`](web/README.md).
+
 ## How it works
 
 1. You open Orbit (or run `loom`) in an analysis directory. A `notebook.md` is created on first launch and committed to git.
