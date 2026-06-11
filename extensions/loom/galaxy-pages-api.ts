@@ -103,6 +103,42 @@ export async function listHistoryPages(
   );
 }
 
+/** A page entry trimmed to what the discovery tool surfaces. `history_id` is
+ *  the load-bearing field: a real history notebook has one, a workflow
+ *  *invocation report* has `null` -- only the former can be resumed and read
+ *  back as a bound history. */
+export interface RecentPage {
+  page_id: string;
+  title: string;
+  slug: string | null;
+  history_id: string | null;
+  update_time: string;
+}
+
+/**
+ * List the user's own pages, most-recently-updated first. Wraps the unscoped
+ * `GET /api/pages` (which Galaxy returns in ascending update order, so we sort
+ * client-side) and projects each entry down to the fields a cold-start resume
+ * needs to pick a page. `limit` caps the returned list; pass 0 / omit for all.
+ */
+export async function listRecentPages(
+  opts: { limit?: number } = {},
+  signal?: AbortSignal,
+): Promise<RecentPage[]> {
+  const pages = await galaxyGet<GalaxyPageSummary[]>("/pages", signal);
+  const sorted = [...pages].sort((a, b) =>
+    (b.update_time ?? "").localeCompare(a.update_time ?? ""),
+  );
+  const limited = opts.limit && opts.limit > 0 ? sorted.slice(0, opts.limit) : sorted;
+  return limited.map((p) => ({
+    page_id: p.id,
+    title: p.title,
+    slug: p.slug ?? null,
+    history_id: p.history_id ?? null,
+    update_time: p.update_time,
+  }));
+}
+
 export async function getPage(pageId: string, signal?: AbortSignal): Promise<GalaxyPage> {
   return galaxyGet<GalaxyPage>(`/pages/${encodeURIComponent(pageId)}`, signal);
 }

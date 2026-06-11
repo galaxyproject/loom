@@ -14,6 +14,7 @@ import {
   getPageRevisionDetails,
   getPageRevisions,
   listHistoryPages,
+  listRecentPages,
   updatePage,
   type GalaxyPage,
   type GalaxyPageRevisionDetails,
@@ -51,6 +52,66 @@ describe("listHistoryPages", () => {
       "/pages?history_id=hist%20with%20spaces%2Fand%20slashes",
       undefined,
     );
+  });
+});
+
+describe("listRecentPages", () => {
+  // Mirrors the live /api/pages shape: ascending update_time, a mix of
+  // history-bound notebooks and a history_id-null invocation report.
+  function fixture(): GalaxyPageSummary[] {
+    return [
+      {
+        id: "old-report",
+        title: "End-to-End Tissue Microarray Analysis",
+        slug: "invocation-abc",
+        history_id: null,
+        latest_revision_id: "r1",
+        create_time: "2025-06-02T17:00:00Z",
+        update_time: "2025-06-02T17:29:07Z",
+      },
+      {
+        id: "notebook-1",
+        title: "Untitled Notebook",
+        slug: null,
+        history_id: "hist-1",
+        latest_revision_id: "r2",
+        create_time: "2026-05-29T18:00:00Z",
+        update_time: "2026-05-29T18:09:07Z",
+      },
+    ];
+  }
+
+  it("hits the unscoped /pages endpoint", async () => {
+    const get = vi.spyOn(galaxyApi, "galaxyGet").mockResolvedValue([] as GalaxyPageSummary[]);
+    await listRecentPages();
+    expect(get).toHaveBeenCalledWith("/pages", undefined);
+  });
+
+  it("sorts most-recently-updated first and projects to RecentPage", async () => {
+    vi.spyOn(galaxyApi, "galaxyGet").mockResolvedValue(fixture());
+    const got = await listRecentPages();
+    expect(got.map((p) => p.page_id)).toEqual(["notebook-1", "old-report"]);
+    expect(got[0]).toEqual({
+      page_id: "notebook-1",
+      title: "Untitled Notebook",
+      slug: null,
+      history_id: "hist-1",
+      update_time: "2026-05-29T18:09:07Z",
+    });
+  });
+
+  it("preserves null history_id so invocation reports stay distinguishable", async () => {
+    vi.spyOn(galaxyApi, "galaxyGet").mockResolvedValue(fixture());
+    const got = await listRecentPages();
+    const report = got.find((p) => p.page_id === "old-report");
+    expect(report?.history_id).toBeNull();
+  });
+
+  it("caps the list to the given limit (after sorting)", async () => {
+    vi.spyOn(galaxyApi, "galaxyGet").mockResolvedValue(fixture());
+    const got = await listRecentPages({ limit: 1 });
+    expect(got).toHaveLength(1);
+    expect(got[0].page_id).toBe("notebook-1");
   });
 });
 

@@ -236,7 +236,28 @@ once — don't badger.
   return `
 ## Galaxy connection: ${galaxyUrl}
 
-Galaxy is connected. When drafting a plan, **first** consult Galaxy
+Galaxy is connected.
+
+### Resuming existing Galaxy work ("pick up where I left off")
+
+If the user asks to connect to, catch up on, or resume work they did in
+the Galaxy interface (a history notebook / Page) and hasn't handed you a
+page id:
+1. Call \`notebook_list_galaxy_pages\` — their pages, most-recent first.
+2. Prefer the most-recent entry that **has** a \`history_id\` (a real
+   history notebook you can read back). An entry with \`history_id: null\`
+   is a workflow *invocation report* — no bound history to read, so don't
+   resume it for "catch up" unless the user names it specifically.
+3. Echo your pick back and confirm before resuming ("Looks like you were
+   working on <title> — picking that up.").
+4. Call \`notebook_resume_from_galaxy\` with the chosen \`page_id\`. This
+   binds the notebook and pulls the Page body into \`notebook.md\`.
+5. Then read the bound history (its datasets/results) to see what actually
+   happened before proposing new analysis.
+
+### Drafting a new plan
+
+When drafting a plan, **first** consult Galaxy
 resources before deciding what runs where:
 
 1. Search the IWC workflow registry for matching workflows
