@@ -6,25 +6,28 @@ import {
   detectUploadFailure,
   resolveStoragePath,
   pickUploadedDataset,
+  GALAXY_UPLOAD_PACKAGE,
   type HistoryContentItem,
 } from "../extensions/loom/galaxy-upload";
 
 describe("buildGalaxyUploadArgs", () => {
-  it("builds the base command with --silent and no creds on argv", () => {
+  it("builds the base command with a pinned package, --no-auto-decompress, --silent, and no creds on argv", () => {
     const args = buildGalaxyUploadArgs({
       historyId: "h1",
       path: "/data/reads.fastq",
       storagePath: "/home/u/.loom/upload-resume.json",
     });
     expect(args).toEqual([
-      "galaxy-upload",
+      GALAXY_UPLOAD_PACKAGE,
       "--history-id",
       "h1",
       "--storage",
       "/home/u/.loom/upload-resume.json",
+      "--no-auto-decompress",
       "--silent",
       "/data/reads.fastq",
     ]);
+    expect(GALAXY_UPLOAD_PACKAGE).toMatch(/^galaxy-upload>=/);
     expect(args).not.toContain("--url");
     expect(args).not.toContain("--api-key");
   });

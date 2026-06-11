@@ -18,14 +18,24 @@ export interface GalaxyUploadArgsOpts {
   dbkey?: string;
 }
 
+/**
+ * uvx package spec for the upload CLI. Pinned to a floor (like galaxy-mcp in
+ * bin/loom.js) because detectUploadFailure couples to this CLI's stderr format
+ * and exit-code semantics -- an unpinned `uvx galaxy-upload` could drift under us.
+ */
+export const GALAXY_UPLOAD_PACKAGE = "galaxy-upload>=1.0.1";
+
 /** Build the `uvx` argv. Creds are passed via env, never here. */
 export function buildGalaxyUploadArgs(o: GalaxyUploadArgsOpts): string[] {
   const args = [
-    "galaxy-upload",
+    GALAXY_UPLOAD_PACKAGE,
     "--history-id",
     o.historyId,
     "--storage",
     o.storagePath,
+    // Galaxy auto-decompresses .gz/.zip on ingest by default; keep the bytes
+    // as-is so an uploaded fastqsanger.gz stays compressed.
+    "--no-auto-decompress",
     "--silent",
   ];
   if (o.fileType) args.push("--file-type", o.fileType);
