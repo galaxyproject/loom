@@ -134,7 +134,24 @@ export function tusUpload(opts: TusUploadOpts): Promise<TusUploadResult> {
     }
 
     opts.signal?.addEventListener("abort", onAbort, { once: true });
-    upload.start();
+
+    // tus-js-client only STORES resume state on its own -- it does not resume on
+    // start(). Look up a stored partial for this same file and continue it;
+    // otherwise start fresh. If the stored session is gone server-side (404),
+    // tus-js-client drops the stale entry and creates a new upload itself (we
+    // always set `endpoint`), so a stale resume transparently restarts.
+    upload
+      .findPreviousUploads()
+      .then((previous) => {
+        if (settled) return; // aborted while the resume lookup was in flight
+        if (previous.length > 0) upload.resumeFromPreviousUpload(previous[0]);
+        upload.start();
+      })
+      .catch(() => {
+        // A failed resume lookup (e.g. an unreadable store) must not strand the
+        // upload -- fall back to a fresh start.
+        if (!settled) upload.start();
+      });
   });
 }
 

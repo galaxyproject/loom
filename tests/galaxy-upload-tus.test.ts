@@ -63,7 +63,9 @@ import { tusUpload, type TusUploadOpts } from "../extensions/loom/galaxy-upload-
 const { FakeUpload, FakeFileUrlStorage } = vi.hoisted(() => {
   class FakeUpload {
     static lastInstance: FakeUpload | undefined;
+    static previousUploads: unknown[] = [];
     url: string | undefined;
+    resumedFrom: unknown | undefined;
     opts: Record<string, unknown>;
     abortCalled = false;
     startCalled = false;
@@ -75,6 +77,14 @@ const { FakeUpload, FakeFileUrlStorage } = vi.hoisted(() => {
 
     start() {
       this.startCalled = true;
+    }
+
+    findPreviousUploads(): Promise<unknown[]> {
+      return Promise.resolve(FakeUpload.previousUploads);
+    }
+
+    resumeFromPreviousUpload(prev: unknown) {
+      this.resumedFrom = prev;
     }
 
     abort(): Promise<void> {
@@ -123,6 +133,7 @@ vi.mock("fs", async () => {
 
 beforeEach(() => {
   FakeUpload.lastInstance = undefined;
+  FakeUpload.previousUploads = [];
 });
 
 describe("tusUpload", () => {
@@ -238,6 +249,41 @@ describe("tusUpload", () => {
     expect(settlementCount).toBe(1);
     expect(firstOutcome?.kind).toBe("reject");
     expect((firstOutcome?.value as Error).name).toBe("AbortError");
+  });
+
+  it("resumes from a stored previous upload when one exists for the file", async () => {
+    const prev = {
+      uploadUrl: "https://galaxy.test/api/upload/resumable_upload/OLD",
+      urlStorageKey: "tus::fp::1",
+    };
+    FakeUpload.previousUploads = [prev];
+
+    const uploadPromise = tusUpload(baseOpts);
+    await new Promise((r) => setTimeout(r, 0));
+
+    const inst = FakeUpload.lastInstance!;
+    // The stored partial must be handed to resumeFromPreviousUpload before start().
+    expect(inst.resumedFrom).toBe(prev);
+    expect(inst.startCalled).toBe(true);
+
+    inst.url = "https://galaxy.test/api/upload/resumable_upload/OLD";
+    inst.triggerSuccess();
+    await expect(uploadPromise).resolves.toEqual({ sessionId: "OLD" });
+  });
+
+  it("starts fresh (no resumeFromPreviousUpload) when there is no stored partial", async () => {
+    FakeUpload.previousUploads = [];
+
+    const uploadPromise = tusUpload(baseOpts);
+    await new Promise((r) => setTimeout(r, 0));
+
+    const inst = FakeUpload.lastInstance!;
+    expect(inst.resumedFrom).toBeUndefined();
+    expect(inst.startCalled).toBe(true);
+
+    inst.url = "https://galaxy.test/api/upload/resumable_upload/NEW";
+    inst.triggerSuccess();
+    await expect(uploadPromise).resolves.toEqual({ sessionId: "NEW" });
   });
 });
 
