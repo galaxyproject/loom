@@ -55,6 +55,31 @@ describe("classifyBash", () => {
       ).toBe(true);
     }
   });
+  it("strips quotes from path operands so a quoted external path still reaches the jail (#224)", () => {
+    // Without stripping, `ls "/x"` keeps the literal quotes, resolves as a
+    // cwd-relative path, and is silently allowed -- which defeats the whole fix.
+    for (const [cmd, target] of [
+      [`ls "/home/alice/Desktop/experiment"`, "/home/alice/Desktop/experiment"],
+      [`stat '/home/alice/Desktop/exp.csv'`, "/home/alice/Desktop/exp.csv"],
+      [`cat "/etc/passwd"`, "/etc/passwd"],
+    ] as const) {
+      const r = classifyBash(cmd);
+      expect(r.kind, cmd).toBe("safe");
+      expect(r.readPaths, cmd).toContain(target);
+    }
+  });
+  it("surfaces df's path operand so a disk query outside the workspace prompts (#224)", () => {
+    const r = classifyBash("df /home/alice/Desktop/experiment");
+    expect(r.kind).toBe("safe");
+    expect(r.readPaths).toContain("/home/alice/Desktop/experiment");
+  });
+  it("df with no path operand keeps empty read paths (lists all mounts)", () => {
+    for (const c of ["df", "df -h"]) {
+      const r = classifyBash(c);
+      expect(r.kind, c).toBe("safe");
+      expect(r.readPaths, c).toEqual([]);
+    }
+  });
   it("compound / redirect / substitution -> unknown", () => {
     for (const c of [
       "ls; rm -rf build",

@@ -383,4 +383,17 @@ describe("decide", () => {
     ])
       expect(decide(req({ toolInput: { command } }), deps).decision, command).toBe("allow");
   });
+  it("df pointed outside the workspace -> ask (#224)", () => {
+    expect(
+      decide(req({ toolInput: { command: "df /home/alice/Desktop/experiment" } }), deps).decision,
+    ).toBe("ask");
+  });
+  it("a quoted path operand is matched against the jail unquoted (#224)", () => {
+    // A quoted IN-workspace path must still be recognized as inside (no false
+    // prompt); without quote-stripping the literal-quoted token fails the
+    // workspace check -- the same gap that lets a quoted EXTERNAL path slip past.
+    expect(
+      decide(req({ toolInput: { command: `ls "/home/alice/project/data"` } }), deps).decision,
+    ).toBe("allow");
+  });
 });
