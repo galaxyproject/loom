@@ -252,4 +252,20 @@ describe("galaxy_upload_local_file handler", () => {
     expect(res.details.datasetId).toBe("ds1");
     expect(res.details.state).toBe("queued");
   });
+
+  it("ingest error state: bytes uploaded but Galaxy ingest failed -- not a tool error, state surfaces", async () => {
+    vi.mocked(waitForDataset).mockResolvedValue({
+      id: "ds1",
+      state: "error",
+      hid: 3,
+      name: "reads.fastq",
+    });
+    const res = await run(getTool(), { path: goodFile, history_id: "hist1" });
+    // The upload itself succeeded; this is NOT a tool-level error.
+    expect(res.details.error).toBeFalsy();
+    expect(res.details.datasetId).toBe("ds1");
+    expect(res.details.state).toBe("error");
+    // The JSON text should surface the dataset id so the model can follow up.
+    expect(res.content[0].text).toContain("ds1");
+  });
 });
