@@ -185,6 +185,60 @@ describe("tusUpload", () => {
       name: "AbortError",
     });
   });
+
+  it("rejects with 'no session id' when onSuccess fires with no url set", async () => {
+    const uploadPromise = tusUpload(baseOpts);
+    await new Promise((r) => setTimeout(r, 0));
+
+    const inst = FakeUpload.lastInstance!;
+    // url is undefined -- no path segment can be extracted
+    inst.url = undefined;
+    inst.triggerSuccess();
+
+    await expect(uploadPromise).rejects.toThrow(/no session id/i);
+  });
+
+  it("settles exactly once: late onError after abort does not produce a second rejection", async () => {
+    const ac = new AbortController();
+
+    // Track every call to the underlying resolve/reject so we can assert only
+    // one settlement occurs even when a second callback fires afterward.
+    let settlementCount = 0;
+    let firstOutcome: { kind: "resolve" | "reject"; value: unknown } | undefined;
+
+    const uploadPromise = tusUpload({ ...baseOpts, signal: ac.signal });
+
+    // Attach a .then handler that counts settlements -- do NOT re-throw so
+    // there is no secondary unhandled rejection from this tracking layer.
+    const trackedPromise = uploadPromise.then(
+      (v) => {
+        settlementCount++;
+        firstOutcome ??= { kind: "resolve", value: v };
+      },
+      (e: unknown) => {
+        settlementCount++;
+        firstOutcome ??= { kind: "reject", value: e };
+      },
+    );
+
+    await new Promise((r) => setTimeout(r, 0));
+    const inst = FakeUpload.lastInstance!;
+
+    // Abort first -- this settles the underlying promise
+    ac.abort();
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Fire onError after the promise has already settled -- the `settled`
+    // guard must swallow this silently (no second resolution, no throw)
+    inst.triggerError(new Error("late network error"));
+    await new Promise((r) => setTimeout(r, 0));
+
+    await trackedPromise;
+
+    expect(settlementCount).toBe(1);
+    expect(firstOutcome?.kind).toBe("reject");
+    expect((firstOutcome?.value as Error).name).toBe("AbortError");
+  });
 });
 
 // ---------------------------------------------------------------------------

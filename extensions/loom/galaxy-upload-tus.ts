@@ -77,11 +77,8 @@ const DEFAULT_CHUNK = 10 * 1024 * 1024;
 
 export function tusUpload(opts: TusUploadOpts): Promise<TusUploadResult> {
   return new Promise<TusUploadResult>((resolve, reject) => {
-    if (opts.signal?.aborted) {
-      reject(abortError());
-      return;
-    }
-
+    // Stream and finish() are created unconditionally so cleanup is always
+    // the same code path regardless of when abort is detected.
     const stream = createReadStream(opts.filePath);
     let settled = false;
 
@@ -92,6 +89,13 @@ export function tusUpload(opts: TusUploadOpts): Promise<TusUploadResult> {
       stream.destroy();
       fn();
     };
+
+    // Pre-flight abort: signal was already aborted before we even started.
+    // Route through finish() so stream cleanup is invariant.
+    if (opts.signal?.aborted) {
+      finish(() => reject(abortError()));
+      return;
+    }
 
     const upload = new Upload(stream as unknown as File, {
       endpoint: `${opts.baseUrl}/api/upload/resumable_upload`,
@@ -104,7 +108,15 @@ export function tusUpload(opts: TusUploadOpts): Promise<TusUploadResult> {
       onProgress: opts.onProgress,
       onError: (err: Error | tusClient.DetailedError) => finish(() => reject(err)),
       onSuccess: () => {
-        const sessionId = (upload.url ?? "").split("/").filter(Boolean).pop();
+        // Use the URL constructor to parse the upload URL so trailing slashes
+        // and query strings don't yield the wrong segment.
+        let sessionId: string | undefined;
+        try {
+          const parsed = new URL(upload.url ?? "");
+          sessionId = parsed.pathname.split("/").filter(Boolean).pop();
+        } catch {
+          // malformed or empty url -- sessionId stays undefined
+        }
         finish(() =>
           sessionId
             ? resolve({ sessionId })
@@ -161,6 +173,10 @@ export async function waitForDataset(datasetId: string, opts: WaitOpts): Promise
   const now = opts.now ?? (() => Date.now());
   const start = now();
 
+  // Timeout bounds time-between-terminal-states, not absolute wall time including
+  // individual get() calls. A hung get() is the caller's responsibility -- the
+  // caller passes an abort-aware getter, so an aborted get() rejects and breaks
+  // the loop.
   while (true) {
     const ds = await opts.get(datasetId);
     if (TERMINAL_DATASET_STATES.has(ds.state)) return ds;
