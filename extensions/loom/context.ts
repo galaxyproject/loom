@@ -159,6 +159,42 @@ opaque, non-secret code that rides along on feedback submissions.
 `;
 }
 
+/**
+ * Stamp the host's current date into the system prompt so the agent never has
+ * to guess "today" when it records a date in the durable notebook (issue #268:
+ * a model wrote `Analysis date: 2025-07-14` into notebook.md for a run that
+ * happened 2026-06-09). The date comes from the host clock, not the LLM.
+ *
+ * `now` is injectable so the value is deterministic under test. We read LOCAL
+ * calendar components rather than UTC: the "run date" a human expects is the
+ * host's wall-clock day, and an evening run in a behind-UTC timezone would
+ * otherwise stamp tomorrow. Recomputed fresh on each agent start -- the
+ * before_agent_start hook runs per turn (see the cache note in
+ * setupContextInjection), so a session that crosses midnight picks up the new
+ * date on the next turn rather than going stale.
+ */
+export function buildCurrentDateBlock(now: Date = new Date()): string {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  const date = `${y}-${m}-${d}`;
+  return `## Current date
+
+Today's date, from the host system clock, is **${date}**.
+
+When you stamp *today's* date -- an "Analysis date" or "Run date" header, a
+progress note you're writing now, a Galaxy page timestamp -- use this exact
+value. **Never guess, infer, or fabricate today's date**: your training data
+doesn't tell you what today is, so a date written from memory will be wrong and
+quietly corrupt the auditable record (issue #268).
+
+This applies only to dates that mean "now." Leave every other date as-is --
+dataset creation dates, publication dates, dates already written in the
+notebook, and dates the user gives you are recorded verbatim, never
+overwritten with today's.
+`;
+}
+
 function buildExecutionModeBlock(): string {
   const cfg = loadConfig();
   if (cfg.executionMode !== "local") return "";
@@ -1043,6 +1079,7 @@ export function setupContextInjection(pi: ExtensionAPI): void {
     const systemPrompt = [
       buildActiveModelBlock(),
       buildTesterIdBlock(),
+      buildCurrentDateBlock(),
       buildOperatingDisciplineBlock(),
       buildVerificationDisciplineBlock(),
       buildPlanConventionBlock({ omitAnchors }),
