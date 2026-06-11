@@ -33,7 +33,23 @@ export function setupUIBridge(pi: ExtensionAPI): void {
     if (getNotebookWidgetMode() === "hidden") return;
     const nbPath = getNotebookPath();
     const header = nbPath ? `> \`${nbPath}\`\n\n` : "";
-    latestCtx.ui.setWidget(LoomWidgetKey.Notebook, encodeMarkdownWidget(header + content));
+    try {
+      latestCtx.ui.setWidget(LoomWidgetKey.Notebook, encodeMarkdownWidget(header + content));
+    } catch (err) {
+      // A notebook write that lands after session teardown fires this callback
+      // with a ctx pi has since invalidated; touching ctx.ui throws "ctx is
+      // stale after session replacement or reload". Drop the captured ctx and
+      // no-op rather than spamming stderr. The deterministic fix closes the
+      // watcher on shutdown; this guards any late-firing callback. #271
+      //
+      // Only the stale-ctx throw is expected here; surface anything else so a
+      // genuine setWidget failure during an active session isn't hidden.
+      if (!(err instanceof Error && /ctx is stale/i.test(err.message))) {
+        console.error("notebook widget update failed:", err);
+      }
+      latestCtx = null;
+      return;
+    }
     setNotebookWidgetMode("open");
   });
 }

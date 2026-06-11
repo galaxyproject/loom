@@ -1,5 +1,10 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { resetState, initSessionArtifacts, getNotebookPath } from "./state.js";
+import {
+  resetState,
+  initSessionArtifacts,
+  getNotebookPath,
+  stopWatchingNotebook,
+} from "./state.js";
 import { startGalaxyPoller, stopGalaxyPoller } from "./galaxy-poller.js";
 import {
   appendSessionSummaryBlock,
@@ -55,6 +60,12 @@ export function registerSessionLifecycle(pi: ExtensionAPI): void {
 
   pi.on("session_shutdown", async () => {
     stopGalaxyPoller();
+    // Close the notebook FSWatcher before the summary write below. The watcher
+    // otherwise keeps the event loop alive (so --print never exits) and, since
+    // writeSessionSummary() writes to notebook.md, would fire its callback
+    // against a now-stale ctx. Closing first releases the loop and silences
+    // that fire. #271
+    stopWatchingNotebook();
     await writeSessionSummary();
     snapshotNotebook(pi);
   });
