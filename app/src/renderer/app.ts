@@ -1,4 +1,6 @@
 import { ChatPanel } from "./chat/chat-panel.js";
+import { renderMarkdown } from "./chat/markdown.js";
+import { runCostCommand, type Usage } from "./cost-table.js";
 import { detectCompactIntent } from "./chat/compact-intent.js";
 import { humanizeAgentError } from "./chat/error-humanizer.js";
 import { detectStopIntent } from "./chat/stop-intent.js";
@@ -157,13 +159,6 @@ let CONTEXT_WINDOWS: Record<string, Record<string, number>> = {
     "gemini-2.5-flash": 1_048_576,
   },
 };
-
-interface Usage {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-}
 
 const sessionUsage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const turnUsage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -1557,7 +1552,10 @@ const SLASH_COMMANDS: SlashCommand[] = [
     usage: "/summarize [N [M]]",
     description: "summarize prompts N–M into the notebook",
   },
-  { name: "cost", description: "append session token/cost breakdown to the notebook" },
+  {
+    name: "cost",
+    description: "show session token/cost breakdown (with opt-in append to notebook)",
+  },
   { name: "decisions", description: "show decision log" },
   { name: "connect", description: "open Galaxy connection settings" },
   { name: "help", description: "show this help" },
@@ -1747,73 +1745,48 @@ function handleSummarize(raw: string, argStr: string): void {
 }
 
 /**
- * /cost — snapshot session token usage per model, price it against the renderer's
- * pricing table, and ask the agent to append the breakdown to notebook.md.
- * The renderer is the authoritative source for usage numbers; the agent just
- * writes them out.
+ * /cost — render the session token/cost breakdown directly in chat from the
+ * renderer's own per-model usage counters, with zero model calls (issue #263).
+ *
+ * The breakdown is a snapshot of the counters at the moment /cost runs. Because
+ * the default path makes no model call, running /cost adds nothing to the
+ * session total — so this snapshot stays consistent with the footer. An opt-in
+ * "Append to notebook" button persists the same table via the agent (the only
+ * path that costs a model call).
  */
 function handleCost(raw: string): void {
-  if (perModelUsage.size === 0) {
-    chat.addUserMessage(raw);
-    chat.addErrorMessage("No billable assistant turns recorded yet in this renderer session.");
-    return;
-  }
-
-  const rows: string[] = [];
-  let totalCostKnown = true;
-  let grandCost = 0;
-  const totals: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-
-  for (const [model, u] of perModelUsage) {
-    totals.input += u.input;
-    totals.output += u.output;
-    totals.cacheRead += u.cacheRead;
-    totals.cacheWrite += u.cacheWrite;
-    const cost = computeCost(u, model);
-    const costStr = cost === null ? "unknown (no pricing entry)" : `$${cost.toFixed(4)}`;
-    if (cost === null) totalCostKnown = false;
-    else grandCost += cost;
-    rows.push(
-      `| \`${model}\` | ${u.input.toLocaleString()} | ${u.output.toLocaleString()} | ` +
-        `${u.cacheRead.toLocaleString()} | ${u.cacheWrite.toLocaleString()} | ${costStr} |`,
-    );
-  }
-
-  const totalCostStr = totalCostKnown
-    ? `$${grandCost.toFixed(4)}`
-    : `≥$${grandCost.toFixed(4)} (some models unpriced)`;
-  rows.push(
-    `| **Total** | **${totals.input.toLocaleString()}** | **${totals.output.toLocaleString()}** | ` +
-      `**${totals.cacheRead.toLocaleString()}** | **${totals.cacheWrite.toLocaleString()}** | **${totalCostStr}** |`,
-  );
-
-  const table =
-    `| Model | Input tokens | Output tokens | Cache read | Cache write | Cost (USD) |\n` +
-    `|-------|-------------:|--------------:|-----------:|------------:|-----------:|\n` +
-    rows.join("\n");
-
-  const heading = "## Session cost";
-  const prompt =
-    `Append the following session cost breakdown verbatim to the notebook file ` +
-    `(notebook.md) in the current working directory. Use Edit or Write to append — ` +
-    `do NOT regenerate, reformat, or wrap the table. The numbers below are authoritative ` +
-    `(captured from the renderer's usage counters, same source as the masthead), so ` +
-    `use them as-is.\n\n` +
-    `Use exactly this heading (H2, verbatim) on its own line, followed by a blank line, ` +
-    `then the table:\n` +
-    `    ${heading}\n\n` +
-    `--- Cost table ---\n` +
-    table +
-    `\n--- end table ---`;
-
-  chat.addUserMessage(raw);
-  chat.addInfoMessage(
-    `<i>Asking the agent to append the session cost breakdown to ` +
-      `<code>notebook.md</code>…</i>`,
-  );
-  chat.showThinking();
-  setStatusBadge("thinking", "thinking...");
-  promptAgent(prompt);
+  runCostCommand(raw, perModelUsage, computeCost, {
+    addUserMessage: (text) => chat.addUserMessage(text),
+    addErrorMessage: (text) => chat.addErrorMessage(text),
+    renderBreakdown: (table, onAppend) => {
+      const el = chat.addInfoMessage(
+        `<div class="cost-breakdown">` +
+          `<h3>Session cost</h3>` +
+          renderMarkdown(table) +
+          `<button type="button" class="cost-append-btn" data-cost-append>Append to notebook</button>` +
+          `</div>`,
+      );
+      const btn = el.querySelector<HTMLButtonElement>("[data-cost-append]");
+      btn?.addEventListener(
+        "click",
+        () => {
+          btn.disabled = true;
+          btn.textContent = "Appending to notebook…";
+          onAppend();
+        },
+        { once: true },
+      );
+    },
+    beginNotebookAppend: () => {
+      chat.addInfoMessage(
+        `<i>Asking the agent to append the session cost breakdown to ` +
+          `<code>notebook.md</code>…</i>`,
+      );
+      chat.showThinking();
+      setStatusBadge("thinking", "thinking...");
+    },
+    promptAgent: (message) => promptAgent(message),
+  });
 }
 
 /**

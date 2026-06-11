@@ -437,12 +437,13 @@ export class ChatPanel {
   }
 
   /** Add a system/info message with neutral styling and HTML support. */
-  addInfoMessage(html: string): void {
+  addInfoMessage(html: string): HTMLElement {
     const el = document.createElement("div");
     el.className = "message assistant system-info";
     el.innerHTML = html;
     this.container.appendChild(el);
     this.scrollToBottom();
+    return el;
   }
 
   /** Export the current conversation as a Markdown string. */

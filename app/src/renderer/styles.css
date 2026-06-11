@@ -467,8 +467,10 @@ body.files-collapsed #files-divider {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-  transition: background 0.1s, color 0.1s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition:
+    background 0.1s,
+    color 0.1s;
   white-space: nowrap;
 }
 .chat-copy-btn:hover {
@@ -1249,6 +1251,72 @@ body.platform-darwin #files-title {
   line-height: 1.5;
   color: var(--text);
   font-style: italic;
+}
+
+/* /cost breakdown rendered locally in chat (issue #263). The shared markdown
+   table rules are scoped to :not(.system-info), so re-style the table here. */
+.message.system-info .cost-breakdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0 10px;
+  font-family: var(--font);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  display: block;
+  overflow-x: auto;
+}
+
+.message.system-info .cost-breakdown table th,
+.message.system-info .cost-breakdown table td {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.message.system-info .cost-breakdown table th {
+  background: var(--bg-deep);
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.message.system-info .cost-breakdown table tbody tr:nth-child(even) td {
+  background: var(--bg-stripe);
+}
+
+.message.system-info .cost-breakdown table code {
+  font-family: var(--font);
+  font-size: 11.5px;
+  padding: 0 3px;
+  background: var(--bg-deep);
+  border-radius: 3px;
+  color: var(--accent);
+}
+
+.cost-append-btn {
+  margin-top: 4px;
+  padding: 5px 12px;
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.cost-append-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.cost-append-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* ── Thinking Indicator ────────────────────────────────────────────────────── */
