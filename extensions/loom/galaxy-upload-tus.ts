@@ -129,6 +129,8 @@ export function tusUpload(opts: TusUploadOpts): Promise<TusUploadResult> {
       // No shouldTerminate: true -- leaving the partial TUS session on the server
       // so it can be resumed if the user retries the same file (tus-js-client
       // matches by fingerprint). Terminating here would force a full re-upload.
+      // If abort fires during the findPreviousUploads() window (before start()),
+      // abort() is a safe no-op; the settled guard below is what skips start().
       void upload.abort();
       finish(() => reject(abortError()));
     }

@@ -64,6 +64,10 @@ const { FakeUpload, FakeFileUrlStorage } = vi.hoisted(() => {
   class FakeUpload {
     static lastInstance: FakeUpload | undefined;
     static previousUploads: unknown[] = [];
+    static resumeCalls = 0;
+    // When set, findPreviousUploads() returns this pending promise instead of
+    // resolving synchronously -- lets a test fire abort *during* the lookup.
+    static findPreviousDeferred: Promise<unknown[]> | null = null;
     url: string | undefined;
     resumedFrom: unknown | undefined;
     opts: Record<string, unknown>;
@@ -80,10 +84,11 @@ const { FakeUpload, FakeFileUrlStorage } = vi.hoisted(() => {
     }
 
     findPreviousUploads(): Promise<unknown[]> {
-      return Promise.resolve(FakeUpload.previousUploads);
+      return FakeUpload.findPreviousDeferred ?? Promise.resolve(FakeUpload.previousUploads);
     }
 
     resumeFromPreviousUpload(prev: unknown) {
+      FakeUpload.resumeCalls++;
       this.resumedFrom = prev;
     }
 
@@ -134,6 +139,8 @@ vi.mock("fs", async () => {
 beforeEach(() => {
   FakeUpload.lastInstance = undefined;
   FakeUpload.previousUploads = [];
+  FakeUpload.resumeCalls = 0;
+  FakeUpload.findPreviousDeferred = null;
 });
 
 describe("tusUpload", () => {
@@ -263,6 +270,7 @@ describe("tusUpload", () => {
 
     const inst = FakeUpload.lastInstance!;
     // The stored partial must be handed to resumeFromPreviousUpload before start().
+    expect(FakeUpload.resumeCalls).toBe(1);
     expect(inst.resumedFrom).toBe(prev);
     expect(inst.startCalled).toBe(true);
 
@@ -278,12 +286,40 @@ describe("tusUpload", () => {
     await new Promise((r) => setTimeout(r, 0));
 
     const inst = FakeUpload.lastInstance!;
-    expect(inst.resumedFrom).toBeUndefined();
+    // resumeFromPreviousUpload must NOT be called at all (not even with undefined).
+    expect(FakeUpload.resumeCalls).toBe(0);
     expect(inst.startCalled).toBe(true);
 
     inst.url = "https://galaxy.test/api/upload/resumable_upload/NEW";
     inst.triggerSuccess();
     await expect(uploadPromise).resolves.toEqual({ sessionId: "NEW" });
+  });
+
+  it("does not start() if the signal aborts during the resume lookup", async () => {
+    let resolveLookup!: (v: unknown[]) => void;
+    FakeUpload.findPreviousDeferred = new Promise<unknown[]>((res) => {
+      resolveLookup = res;
+    });
+
+    const ac = new AbortController();
+    const uploadPromise = tusUpload({ ...baseOpts, signal: ac.signal });
+    // Attach the rejection handler up front so the abort below never has a
+    // window where it looks like an unhandled rejection.
+    const rejection = expect(uploadPromise).rejects.toMatchObject({ name: "AbortError" });
+    await new Promise((r) => setTimeout(r, 0));
+
+    const inst = FakeUpload.lastInstance!;
+    // Lookup is still pending -- start() must not have run yet.
+    expect(inst.startCalled).toBe(false);
+
+    // Abort while the lookup is in flight, THEN let the lookup resolve.
+    ac.abort();
+    resolveLookup([]);
+    await new Promise((r) => setTimeout(r, 0));
+
+    // The settled guard must keep start() from firing after the abort.
+    expect(inst.startCalled).toBe(false);
+    await rejection;
   });
 });
 
