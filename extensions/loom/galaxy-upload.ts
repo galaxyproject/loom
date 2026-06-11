@@ -120,6 +120,8 @@ export function registerGalaxyUploadTool(pi: ExtensionAPI): void {
       const storagePath = resolveStoragePath();
       fs.mkdirSync(path.dirname(storagePath), { recursive: true });
 
+      // fileName comes from absPath (the link's own name), not realPath (the target) --
+      // the dataset should be named after what the user pointed at, not where the symlink leads.
       const fileName = (params.file_name as string | undefined) ?? path.basename(absPath);
 
       let sessionId: string;
@@ -150,6 +152,7 @@ export function registerGalaxyUploadTool(pi: ExtensionAPI): void {
           signal,
         );
       } catch (e) {
+        if (e instanceof Error && e.name === "AbortError") return err("Upload cancelled.");
         return err(`Galaxy rejected the upload: ${e instanceof Error ? e.message : String(e)}`);
       }
 
@@ -165,7 +168,9 @@ export function registerGalaxyUploadTool(pi: ExtensionAPI): void {
             get: (id) => galaxyGet<DatasetState>(`/datasets/${encodeURIComponent(id)}`, signal),
           });
         } catch {
-          // wait failed/timed out -- still return what we have, with its last-known state
+          // Abort or ingest-timeout while polling: the file is already uploaded and the
+          // dataset exists, so return it with its last-known state rather than claiming
+          // cancellation or failure -- the non-terminal state tells the model to follow up.
         }
       } else {
         // No outputs in the fetch response: fall back to the name-matched read-back.

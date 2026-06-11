@@ -237,4 +237,19 @@ describe("galaxy_upload_local_file handler", () => {
     expect(res.details.uploaded).toBe(true);
     expect(res.content[0].text).toMatch(/get_history_contents/);
   });
+
+  it("cancel during galaxyPost: returns cancel message", async () => {
+    vi.mocked(galaxyPost).mockRejectedValue(new DOMException("aborted", "AbortError"));
+    const res = await run(getTool(), { path: goodFile, history_id: "hist1" });
+    expect(res.content[0].text).toMatch(/cancel/i);
+    expect(res.details.error).toBe(true);
+  });
+
+  it("cancel/timeout during waitForDataset: returns last-known dataset state, not an error", async () => {
+    vi.mocked(waitForDataset).mockRejectedValue(new DOMException("aborted", "AbortError"));
+    const res = await run(getTool(), { path: goodFile, history_id: "hist1" });
+    expect(res.details.error).toBeFalsy();
+    expect(res.details.datasetId).toBe("ds1");
+    expect(res.details.state).toBe("queued");
+  });
 });
