@@ -117,7 +117,7 @@ function startWatchingNotebook(filePath: string, autoCommit = false): void {
   }
 }
 
-function stopWatchingNotebook(): void {
+export function stopWatchingNotebook(): void {
   if (currentWatcher) {
     try {
       currentWatcher.close();
