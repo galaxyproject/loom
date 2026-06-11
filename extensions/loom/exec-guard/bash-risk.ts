@@ -186,6 +186,21 @@ const SHELL_META = /[;&|`\n\r]|\$\(|\$\{|<\(|>>?|<|\\\n/;
 
 const READ_LIKE = new Set(["cat", "head", "tail", "less", "more", "grep", "rg"]);
 
+// Safe commands whose path operands the policy layer runs through the workspace
+// jail. Superset of READ_LIKE: the content readers above plus the enumeration /
+// metadata commands, which reveal the structure, filenames, sizes, or contents
+// of their target. A bare `ls`/`find` on the safe allowlist was previously
+// auto-allowed regardless of where it pointed, so `ls ~/Desktop` silently
+// inspected outside the workspace while the equivalent `ls` *tool* prompted
+// (#224). `df <path>` is here too: it reveals existence + the mount/capacity of
+// its argument. The remaining safe commands (echo/pwd/which/date/whoami/uname)
+// take no file-path operand, so they are deliberately excluded -- collecting
+// their args would manufacture spurious out-of-workspace prompts. Unlike
+// READ_LIKE, this set does NOT feed the sensitive-read pipe floor
+// (extractReadTargets): `ls ~/.ssh` lists names, it does not dump key contents,
+// so the jail's escape-ask is the right response, not the credential-store deny.
+const PATH_READING = new Set([...READ_LIKE, "ls", "find", "fd", "file", "stat", "du", "df", "wc"]);
+
 // Content-read targets across EVERY shell segment (split on the same separators
 // as the catastrophic-rm scan). For any segment whose verb is a content reader,
 // collect its non-flag args. This is what closes the pipe evasion: `cat secret |
@@ -245,9 +260,18 @@ export function classifyBash(commandRaw: string, home = ""): BashClass {
     };
   }
 
-  // Collect path-like args for read-style commands so the policy layer can apply
-  // the sensitive-read + jail floor (a "safe" cat must still not read ~/.ssh).
-  const readPaths = READ_LIKE.has(cmd) ? tokens.slice(1).filter((t) => !t.startsWith("-")) : [];
+  // Collect path-like args for read/enumerate commands so the policy layer can
+  // apply the workspace jail (a "safe" cat/ls/find must still not reach outside
+  // the workspace silently). See PATH_READING for why the set is broader than
+  // READ_LIKE and which safe commands are deliberately left out. Quotes are
+  // stripped first (mirroring extractReadTargets): without it `ls "/external"`
+  // keeps its quotes, resolves as a cwd-relative path, and silently auto-allows.
+  const readPaths = PATH_READING.has(cmd)
+    ? tokens
+        .slice(1)
+        .map(stripQuotes)
+        .filter((t) => t.length > 0 && !t.startsWith("-"))
+    : [];
   return {
     kind: "safe",
     reason: `read-only/analysis command '${cmd}'`,
