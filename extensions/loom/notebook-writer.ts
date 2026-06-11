@@ -331,15 +331,114 @@ export function renderSessionSummaryYaml(s: SessionSummaryYaml): string {
 }
 
 /**
- * Append a session summary block at the end of the notebook content.
- * Sessions are append-only (no upsert) -- each shutdown writes a fresh
- * block so the notebook keeps a chronological session log.
+ * Append a session summary block at the end of the notebook content. This is
+ * the low-level primitive used for a session id never seen before; callers
+ * that finalize a session should use `upsertSessionSummaryBlock`, which keys
+ * on `id` and routes here only for first-seen ids.
  */
 export function appendSessionSummaryBlock(content: string, s: SessionSummaryYaml): string {
   const block = renderSessionSummaryYaml(s).trimEnd();
   const trimmed = content.replace(/\s+$/, "");
   const sep = trimmed.length > 0 ? "\n\n" : "";
   return trimmed + sep + block + "\n";
+}
+
+/**
+ * Upsert a `loom-session` block keyed by `id`. A first-seen id appends a new
+ * block (chronological log of distinct sessions); a seen id collapses every
+ * block sharing that id, plus the new finalize, into a single merged block
+ * that spans the session id's full lifetime.
+ *
+ * Why upsert and not append (#260): Pi can hand back the *same* session id
+ * when an idle session is resumed, so a blind append wrote two blocks under
+ * one id and broke the id's role as a unique key. Collapsing keeps exactly
+ * one block per id -- and self-heals a notebook the old append path already
+ * left with duplicates.
+ *
+ * The merged block keeps the position of the id's first block, so blocks stay
+ * in first-seen order. That order can diverge from strict `ended_at` order if
+ * a non-latest session is resumed; no consumer relies on positional recency
+ * today, and keeping the slot avoids reshuffling the user's notebook.
+ */
+export function upsertSessionSummaryBlock(content: string, s: SessionSummaryYaml): string {
+  const matching = findSessionSummaryBlockRanges(content).filter((r) => r.summary.id === s.id);
+  if (matching.length === 0) {
+    return appendSessionSummaryBlock(content, s);
+  }
+  const merged = matching.reduce((acc, r) => mergeSessionSummary(acc, r.summary), s);
+  const newBlock = renderSessionSummaryYaml(merged).trimEnd().split("\n");
+  const drop = new Set<number>();
+  for (const r of matching) {
+    for (let li = r.start; li <= r.end; li++) drop.add(li);
+  }
+  const insertAt = matching[0].start;
+  const lines = content.split("\n");
+  const rebuilt: string[] = [];
+  for (let li = 0; li < lines.length; li++) {
+    if (li === insertAt) rebuilt.push(...newBlock);
+    if (drop.has(li)) continue;
+    rebuilt.push(lines[li]);
+  }
+  return rebuilt.join("\n");
+}
+
+/**
+ * Merge finalizes of the same session id into one record. Keep the earliest
+ * start and the latest end so the block spans the whole lifetime across
+ * resumes; carry the orphan count from whichever finalize ended later (the
+ * authoritative end state).
+ */
+function mergeSessionSummary(
+  prev: SessionSummaryYaml,
+  next: SessionSummaryYaml,
+): SessionSummaryYaml {
+  const nextEndsLater = compareTimestamps(next.endedAt, prev.endedAt) >= 0;
+  return {
+    id: next.id,
+    startedAt:
+      compareTimestamps(next.startedAt, prev.startedAt) < 0 ? next.startedAt : prev.startedAt,
+    endedAt: nextEndsLater ? next.endedAt : prev.endedAt,
+    notebook: next.notebook,
+    orphanedActiveSteps: nextEndsLater ? next.orphanedActiveSteps : prev.orphanedActiveSteps,
+  };
+}
+
+// Order two timestamps. The shutdown writer always emits valid ISO-8601 UTC,
+// which Date.parse compares correctly (including across offsets). Fall back to
+// a lexical compare only if a hand-edited value won't parse, so the result is
+// still deterministic rather than NaN-poisoned.
+function compareTimestamps(a: string, b: string): number {
+  const na = Date.parse(a);
+  const nb = Date.parse(b);
+  if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+interface SessionSummaryBlockRange {
+  summary: SessionSummaryYaml;
+  start: number;
+  end: number;
+}
+
+function findSessionSummaryBlockRanges(content: string): SessionSummaryBlockRange[] {
+  const result: SessionSummaryBlockRange[] = [];
+  const lines = content.split("\n");
+  let i = 0;
+  while (i < lines.length) {
+    if (lines[i].trim() === SESSION_FENCE_OPEN) {
+      const start = i;
+      let end = start + 1;
+      while (end < lines.length && lines[end].trim() !== SESSION_FENCE_CLOSE) {
+        end++;
+      }
+      const summary = parseSessionSummaryBlock(lines.slice(start + 1, end));
+      if (summary) result.push({ summary, start, end });
+      i = end + 1;
+    } else {
+      i++;
+    }
+  }
+  return result;
 }
 
 /**
