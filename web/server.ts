@@ -17,6 +17,10 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import { WebSocketServer, WebSocket } from "ws";
 
+import { buildBrainEnv } from "../shared/brain-env.js";
+import { evaluateBind, authorizeWsUpgrade } from "./auth.js";
+import { isForwardableUiResponse } from "./rpc-guard.js";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOOM_BIN = resolve(__dirname, "../bin/loom.js");
 const LOOM_CONFIG_DIR = join(homedir(), ".loom");
@@ -24,6 +28,14 @@ const LOOM_CONFIG_PATH = join(LOOM_CONFIG_DIR, "config.json");
 const DEFAULT_CWD = join(LOOM_CONFIG_DIR, "analyses");
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
+// Bind loopback by default; the WS is an authenticated-agent surface, so an
+// exposed bind requires a token (clients pass ?token=) or an explicit opt-out.
+const HOST = process.env.LOOM_WEB_HOST ?? "127.0.0.1";
+const WEB_TOKEN = process.env.LOOM_WEB_TOKEN;
+const ALLOW_INSECURE = process.env.LOOM_WEB_ALLOW_INSECURE === "1";
+
+const IS_REMOTE_MODE = process.env.LOOM_MODE === "remote";
+const REMOTE_SESSION_CWD = "/tmp/loom-session";
 
 function log(...args: unknown[]): void {
   console.log("[server]", ...args);
@@ -34,12 +46,13 @@ function log(...args: unknown[]): void {
 function loadConfig(): Record<string, unknown> {
   if (existsSync(LOOM_CONFIG_PATH)) {
     try {
-      return JSON.parse(readFileSync(LOOM_CONFIG_PATH, "utf-8"));
+      const cfg = JSON.parse(readFileSync(LOOM_CONFIG_PATH, "utf-8"));
+      return { ...cfg, _mode: "desktop" };
     } catch {
       /* */
     }
   }
-  return {};
+  return { _mode: "desktop" };
 }
 
 function saveConfig(config: Record<string, unknown>): void {
@@ -47,7 +60,42 @@ function saveConfig(config: Record<string, unknown>): void {
   writeFileSync(LOOM_CONFIG_PATH, JSON.stringify(config, null, 2) + "\n");
 }
 
+function synthesizedRemoteConfig(): Record<string, unknown> {
+  const provider = process.env.LOOM_LLM_PROVIDER ?? "anthropic";
+  // Mirror the nested masked shape the desktop renderer expects (active +
+  // providers / active + profiles) so the first-run welcome overlay stays
+  // suppressed and the Galaxy status dot reads "connected" from the env-injected
+  // creds. Creds are server-owned: only hasApiKey booleans ever cross to the
+  // renderer, never the key values themselves.
+  return {
+    _mode: "remote",
+    executionMode: "cloud",
+    galaxy: {
+      active: "remote",
+      profiles: {
+        remote: {
+          url: process.env.GALAXY_URL ?? null,
+          hasApiKey: Boolean(process.env.GALAXY_API_KEY),
+        },
+      },
+    },
+    llm: {
+      active: provider,
+      providers: {
+        [provider]: {
+          model: process.env.LOOM_LLM_MODEL ?? null,
+          hasApiKey: true,
+        },
+      },
+    },
+  };
+}
+
 function getCwd(): string {
+  if (IS_REMOTE_MODE) {
+    mkdirSync(REMOTE_SESSION_CWD, { recursive: true });
+    return REMOTE_SESSION_CWD;
+  }
   const cfg = loadConfig();
   let cwd = (cfg.defaultCwd as string) || DEFAULT_CWD;
   if (cwd.startsWith("~")) cwd = join(homedir(), cwd.slice(1));
@@ -64,12 +112,50 @@ let cwd = getCwd();
 function startLoom(): void {
   if (loomProcess) stopLoom();
 
-  log("starting loom subprocess", { bin: LOOM_BIN, cwd });
+  const args: string[] = [LOOM_BIN, "--mode", "rpc"];
+  // Curated env via shared/brain-env. Web mode -- remote or local dev --
+  // is env-authenticated by default (remote: operator injects at container
+  // launch; local: dev exports keys in their shell), so provider keys are
+  // forwarded unconditionally. The helper only forwards named provider
+  // keys, so AWS / Git / etc. still drop at this boundary.
+  const env: NodeJS.ProcessEnv = buildBrainEnv(process.env, {
+    includeProviderKeys: true,
+  });
+  // Both web modes serve the Orbit renderer, so the brain must treat this as
+  // an Orbit shell: skips the CLI-style whats-new/cli-update notices and the
+  // detached update-check ping at startup (a network call a restricted-network
+  // container shouldn't make).
+  env.LOOM_SHELL_KIND = "orbit";
 
-  loomProcess = spawn("node", [LOOM_BIN, "--mode", "rpc"], {
+  if (IS_REMOTE_MODE) {
+    const gatePath = resolve(__dirname, "extensions/web-mode-gate.ts");
+    args.push("--extension", gatePath);
+    if (process.env.LOOM_LLM_PROVIDER) {
+      args.push("--provider", process.env.LOOM_LLM_PROVIDER);
+    }
+    if (process.env.LOOM_LLM_MODEL) {
+      args.push("--model", process.env.LOOM_LLM_MODEL);
+    }
+    env.LOOM_NOTEBOOK_ALLOWLIST = join(cwd, "notebook.md");
+    // No local execution surface in the container: the web-mode-gate is the
+    // sole tool_call authority, so tell the brain to skip its local-exec guard
+    // (whose headless approval prompts would otherwise hang). See
+    // extensions/loom/index.ts.
+    env.LOOM_LOCAL_EXEC = "off";
+  } else {
+    // The local dev server DOES have a local execution surface, so pin the
+    // guard on authoritatively (same as agent.ts and bin/loom.js) -- the
+    // helper forwards LOOM_* wholesale, so an ambient LOOM_LOCAL_EXEC=off
+    // left in the dev's shell would otherwise silently disable exec-guard.
+    env.LOOM_LOCAL_EXEC = "on";
+  }
+
+  log("starting loom subprocess", { bin: LOOM_BIN, cwd, remote: IS_REMOTE_MODE });
+
+  loomProcess = spawn("node", args, {
     stdio: ["pipe", "pipe", "pipe"],
     cwd,
-    env: { ...process.env },
+    env,
   });
 
   const rl = createInterface({ input: loomProcess.stdout!, terminal: false });
@@ -143,7 +229,22 @@ function sendEvent(event: string, ...payload: unknown[]): void {
 
 const app = express();
 const httpServer = createServer(app);
-const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
+const wss = new WebSocketServer({
+  server: httpServer,
+  path: "/ws",
+  verifyClient: (info, done) => {
+    const auth = authorizeWsUpgrade(
+      { origin: info.origin, host: info.req.headers.host, url: info.req.url },
+      WEB_TOKEN,
+    );
+    if (auth.ok) {
+      done(true);
+    } else {
+      log("rejected WebSocket upgrade:", auth.reason);
+      done(false, 401, auth.reason ?? "unauthorized");
+    }
+  },
+});
 
 // Vite dev middleware (serves the renderer with HMR)
 async function setupVite(): Promise<void> {
@@ -207,10 +308,14 @@ wss.on("connection", (socket) => {
 
     // Channels that the server handles directly (not forwarded to loom)
     if (channel === "config:get") {
-      respond(id, loadConfig());
+      respond(id, IS_REMOTE_MODE ? synthesizedRemoteConfig() : loadConfig());
       return;
     }
     if (channel === "config:save") {
+      if (IS_REMOTE_MODE) {
+        respond(id, { success: false, error: "config is read-only in remote mode" });
+        return;
+      }
       saveConfig(args[0] as Record<string, unknown>);
       stopLoom();
       startLoom();
@@ -222,6 +327,10 @@ wss.on("connection", (socket) => {
       return;
     }
     if (channel === "agent:set-cwd") {
+      if (IS_REMOTE_MODE) {
+        respond(id, { error: "cwd is fixed in remote mode" });
+        return;
+      }
       cwd = args[0] as string;
       mkdirSync(cwd, { recursive: true });
       stopLoom();
@@ -268,7 +377,14 @@ wss.on("connection", (socket) => {
       return;
     }
     if (channel === "agent:ui-response") {
-      sendToLoom(args[0] as Record<string, unknown>);
+      // The brain trusts its stdin and dispatches by command.type, so only a
+      // genuine extension UI response may cross. See isForwardableUiResponse --
+      // this is what stops a client smuggling {type:"bash"} past the gate.
+      if (isForwardableUiResponse(args[0])) {
+        sendToLoom(args[0]);
+      } else {
+        log("dropped non-ui-response payload on agent:ui-response channel");
+      }
       return;
     }
 
@@ -287,11 +403,34 @@ wss.on("connection", (socket) => {
   }
 });
 
+async function setupRenderer(): Promise<void> {
+  if (process.env.NODE_ENV === "production") {
+    const distDir = resolve(__dirname, "dist");
+    log("serving static renderer from", distDir);
+    app.use(express.static(distDir));
+    app.get("/", (_req, res) => res.sendFile(resolve(distDir, "index.html")));
+    return;
+  }
+  await setupVite();
+}
+
 // ── Start ────────────────────────────────────────────────────────────────────
 
-await setupVite();
+const bind = evaluateBind(HOST, WEB_TOKEN, ALLOW_INSECURE);
+if (!bind.ok) {
+  console.error("[server]", bind.error);
+  process.exit(1);
+}
 
-httpServer.listen(PORT, () => {
-  log(`Orbit Web running at http://localhost:${PORT}`);
+await setupRenderer();
+
+httpServer.listen(PORT, HOST, () => {
+  log(`Orbit Web running at http://${HOST}:${PORT}`);
   log(`Working directory: ${cwd}`);
+  if (WEB_TOKEN) log("WebSocket auth: shared token required (?token=)");
+  else if (!isLoopbackBind()) log("WebSocket auth: DISABLED (insecure opt-out)");
 });
+
+function isLoopbackBind(): boolean {
+  return HOST === "127.0.0.1" || HOST === "::1" || HOST === "localhost";
+}

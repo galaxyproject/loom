@@ -43,9 +43,7 @@ describe("renderGalaxyPageBlock", () => {
   });
 
   it("emits null slug and revision as empty values", () => {
-    const out = renderGalaxyPageBlock(
-      binding({ pageSlug: null, lastSyncedRevision: null }),
-    );
+    const out = renderGalaxyPageBlock(binding({ pageSlug: null, lastSyncedRevision: null }));
     expect(out).toContain("page_slug: \n");
     expect(out).toContain("last_synced_revision: \n");
   });
@@ -145,8 +143,7 @@ describe("upsertGalaxyPageBlock", () => {
 
 describe("stripGalaxyPageBlocks", () => {
   it("removes a single block and its trailing blank line", () => {
-    const content =
-      "# heading\n\n" + renderGalaxyPageBlock(binding()) + "\nafter\n";
+    const content = "# heading\n\n" + renderGalaxyPageBlock(binding()) + "\nafter\n";
     const out = stripGalaxyPageBlocks(content);
     expect(out).not.toContain("loom-galaxy-page");
     expect(out).not.toContain("page_id");

@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+.git
+.worktrees
+app/dist
+app/test-results
+web/dist
+docs/superpowers
+*.log
+.env*
+.DS_Store
+.vscode
+.idea

@@ -3159,6 +3159,35 @@ body.platform-darwin #files-title {
   padding: 2px 8px;
 }
 
+/* Remote mode: hide local-filesystem affordances */
+body.remote-mode #files-pane,
+body.remote-mode #files-divider,
+body.remote-mode #files-toggle,
+body.remote-mode #files-show-hidden,
+body.remote-mode #files-refresh {
+  display: none !important;
+}
+
+/* Galaxy creds are server-injected; no local cwd in remote mode */
+body.remote-mode #prefs-section-galaxy,
+body.remote-mode #prefs-section-analysis {
+  display: none;
+}
+
+/* Credentials are server-injected and execution is cloud-forced in remote mode;
+   hide the credential/safety/cwd/update/feedback affordances the desktop UI
+   adds. The shim no-ops these anyway, but they have no business being shown. */
+body.remote-mode #welcome-overlay,
+body.remote-mode #update-banner,
+body.remote-mode #report-issue-btn,
+body.remote-mode #exec-mode-toggle,
+body.remote-mode #cwd-bar,
+body.remote-mode #prefs-section-llm,
+body.remote-mode #prefs-section-skills,
+body.remote-mode #prefs-section-safety {
+  display: none !important;
+}
+
 /* What's-new banner -- mirrors #update-banner; shown once per upgrade. */
 #whatsnew-banner {
   display: flex;

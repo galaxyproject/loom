@@ -30,6 +30,15 @@ declare global {
   }
 }
 
+// Apply remote-mode class as early as possible so CSS rules hit before paint.
+// The web shell's config:get response carries `_mode: "remote" | "desktop"`;
+// Electron's main-process config has no such field, so this is a no-op there.
+void window.orbit.getConfig().then((cfg: Record<string, unknown>) => {
+  if ((cfg as { _mode?: string })?._mode === "remote") {
+    document.body.classList.add("remote-mode");
+  }
+});
+
 // macOS uses titleBarStyle: 'hiddenInset', which insets the traffic lights
 // over the top-left of the content. Toggle a body class so we can pad the
 // leftmost masthead away from them and skip the padding on other platforms.
@@ -948,8 +957,12 @@ document.addEventListener("keydown", (e) => {
 
 async function checkFirstRun(): Promise<void> {
   const cfg = (await window.orbit.getConfig()) as {
+    _mode?: string;
     llm?: { active?: string; providers?: Record<string, { hasApiKey?: boolean }> };
   };
+  // Remote shells inject creds server-side; the first-run credential flow is N/A
+  // there and its OAuth/key controls aren't wired in the web shim.
+  if (cfg._mode === "remote") return;
   const active = cfg.llm?.active;
   // Treat an OAuth-only setup (no API key, but provider has a stored token)
   // as fully configured -- skip the welcome screen.

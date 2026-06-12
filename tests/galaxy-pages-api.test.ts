@@ -228,7 +228,7 @@ describe("updatePage", () => {
     );
   });
 
-  it("defaults edit_source to \"agent\" when the caller doesn't supply one", async () => {
+  it('defaults edit_source to "agent" when the caller doesn\'t supply one', async () => {
     // This client only sees Loom-authored sync writes, so making each
     // call site remember `edit_source: "agent"` is a footgun. Default it
     // here; callers can override with an explicit value if needed.

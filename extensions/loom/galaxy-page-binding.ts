@@ -115,10 +115,7 @@ export function findGalaxyPageBlocks(content: string): GalaxyPageBindingYaml[] {
  * if a block with the same page id exists; otherwise appends at the end
  * of the file with a leading blank line.
  */
-export function upsertGalaxyPageBlock(
-  content: string,
-  binding: GalaxyPageBindingYaml,
-): string {
+export function upsertGalaxyPageBlock(content: string, binding: GalaxyPageBindingYaml): string {
   const ranges = findGalaxyPageBlockRanges(content);
   const lines = content.split("\n");
   const newBlock = renderGalaxyPageBlock(binding).trimEnd().split("\n");

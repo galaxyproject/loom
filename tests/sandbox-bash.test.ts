@@ -17,7 +17,12 @@ describe("createSandboxedBashOps", () => {
     ac.abort();
     const ops = createSandboxedBashOps();
     await expect(
-      ops.exec("echo hi", "/tmp", { onData: () => {}, signal: ac.signal, timeout: 0, env: undefined }),
+      ops.exec("echo hi", "/tmp", {
+        onData: () => {},
+        signal: ac.signal,
+        timeout: 0,
+        env: undefined,
+      }),
     ).rejects.toThrow("aborted");
     expect(spawnMock).not.toHaveBeenCalled();
   });

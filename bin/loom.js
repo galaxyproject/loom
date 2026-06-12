@@ -62,6 +62,15 @@ if (userArgs.includes("--safe")) {
 if (userArgs.includes("--sandbox")) {
   process.env.LOOM_SANDBOX = "1";
 }
+// A bare interactive CLI always has a local execution surface, so the exec-guard
+// (brain side) must stay on regardless of any ambient LOOM_LOCAL_EXEC in the
+// launching env. The web/desktop shells run the brain with --mode rpc and set
+// LOOM_LOCAL_EXEC authoritatively themselves (off for the no-exec web container,
+// on for desktop), so only pin it here for the non-rpc CLI path.
+const isRpcMode = userArgs.includes("--mode") && userArgs[userArgs.indexOf("--mode") + 1] === "rpc";
+if (!isRpcMode) {
+  process.env.LOOM_LOCAL_EXEC = "on";
+}
 if (userArgs.includes("--no-update-check")) {
   process.env.LOOM_NO_UPDATE_CHECK = "1";
 }

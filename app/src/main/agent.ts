@@ -8,6 +8,7 @@ import { loadConfig } from "./config.js";
 import { resolveLlmApiKey, resolveGalaxyApiKey } from "./secure-config.js";
 import { loadSessionHistory, newestSessionFile } from "./session-replay.js";
 import { collectDescendantsOf } from "./proc-monitor.js";
+import { buildBrainEnv as buildBaseBrainEnv } from "../../../shared/brain-env.js";
 import { TurnWatchdog } from "./turn-watchdog.js";
 import { formatWindowTitle } from "./window-title.js";
 
@@ -115,69 +116,20 @@ function log(...args: unknown[]): void {
   console.log("[agent]", ...args);
 }
 
-/**
- * Variables explicitly forwarded from Orbit's launch env to the brain
- * subprocess. Forwarding `process.env` wholesale would leak unrelated
- * secrets (AWS_*, GITHUB_TOKEN, GOOGLE_APPLICATION_CREDENTIALS, etc.)
- * to every spawned MCP subprocess too; the brain only needs the small
- * set below plus its own LOOM_ / GALAXY_ / PI_ prefix vars (forwarded
- * by prefix in buildBrainEnv).
- */
-const BRAIN_ENV_PASSTHROUGH = new Set<string>([
-  // Process basics
-  "PATH",
-  "HOME",
-  "USER",
-  "LOGNAME",
-  "SHELL",
-  "TMPDIR",
-  "TMP",
-  "TEMP",
-  "TERM",
-  "PWD",
-  // Locale
-  "LANG",
-  "LC_ALL",
-  "LC_CTYPE",
-  "LC_MESSAGES",
-  // Display (rarely needed by the brain itself but tools spawned by
-  // the brain — e.g. matplotlib via the bash tool — sometimes need it)
-  "DISPLAY",
-  "WAYLAND_DISPLAY",
-  "XDG_RUNTIME_DIR",
-  // Node
-  "NODE_OPTIONS",
-  "NODE_TLS_REJECT_UNAUTHORIZED",
-  // Conda / mamba (per-analysis env activation in tools)
-  "CONDA_EXE",
-  "CONDA_PREFIX",
-  "CONDA_DEFAULT_ENV",
-  "MAMBA_EXE",
-  "MAMBA_ROOT_PREFIX",
-  // CA bundles (corporate proxies)
-  "SSL_CERT_FILE",
-  "SSL_CERT_DIR",
-  "REQUESTS_CA_BUNDLE",
-  "NODE_EXTRA_CA_CERTS",
-]);
-
 function buildBrainEnv(fresh: boolean): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {};
-  for (const key of BRAIN_ENV_PASSTHROUGH) {
-    const v = process.env[key];
-    if (v !== undefined) env[key] = v;
-  }
-  // Forward any LOOM_*/GALAXY_*/PI_* vars by prefix — these are the brain's
-  // own knobs (provider keys, MCP config dir, feature flags).
-  for (const [k, v] of Object.entries(process.env)) {
-    if (v === undefined) continue;
-    if (k.startsWith("LOOM_") || k.startsWith("GALAXY_") || k.startsWith("PI_")) {
-      env[k] = v;
-    }
-  }
-  // Set the shell-kind marker the extension reads, plus the optional
-  // fresh-session sentinel for /new flows.
+  // Base curation (named passthrough + LOOM_/GALAXY_/PI_ prefixes) lives in
+  // shared/brain-env.js so web/server.ts uses the same allowlist. Provider
+  // keys come from the OS keychain via buildSecretEnv on desktop, so we don't
+  // ask the base helper to forward them from shell env.
+  const env = buildBaseBrainEnv();
   env.LOOM_SHELL_KIND = "orbit";
+  // The desktop shell always has a local execution surface, so the brain's
+  // exec-guard must stay on. LOOM_LOCAL_EXEC is the shell->brain capability
+  // signal (extensions/loom/local-exec.ts); set it authoritatively here so an
+  // ambient LOOM_LOCAL_EXEC=off in the launching environment can't silently
+  // disable the guard. A future Windows remote-only desktop flips this to "off"
+  // when it resolves no local-exec capability.
+  env.LOOM_LOCAL_EXEC = "on";
   if (fresh) env.LOOM_FRESH_SESSION = "1";
   // Prepend the bundled uv directory to PATH when packaged so MCP servers
   // configured with `command: "uvx"` (Galaxy MCP) find the shipped binary.
