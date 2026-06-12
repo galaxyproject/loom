@@ -121,6 +121,11 @@ function startLoom(): void {
   const env: NodeJS.ProcessEnv = buildBrainEnv(process.env, {
     includeProviderKeys: true,
   });
+  // Both web modes serve the Orbit renderer, so the brain must treat this as
+  // an Orbit shell: skips the CLI-style whats-new/cli-update notices and the
+  // detached update-check ping at startup (a network call a restricted-network
+  // container shouldn't make).
+  env.LOOM_SHELL_KIND = "orbit";
 
   if (IS_REMOTE_MODE) {
     const gatePath = resolve(__dirname, "extensions/web-mode-gate.ts");
@@ -137,6 +142,12 @@ function startLoom(): void {
     // (whose headless approval prompts would otherwise hang). See
     // extensions/loom/index.ts.
     env.LOOM_LOCAL_EXEC = "off";
+  } else {
+    // The local dev server DOES have a local execution surface, so pin the
+    // guard on authoritatively (same as agent.ts and bin/loom.js) -- the
+    // helper forwards LOOM_* wholesale, so an ambient LOOM_LOCAL_EXEC=off
+    // left in the dev's shell would otherwise silently disable exec-guard.
+    env.LOOM_LOCAL_EXEC = "on";
   }
 
   log("starting loom subprocess", { bin: LOOM_BIN, cwd, remote: IS_REMOTE_MODE });
