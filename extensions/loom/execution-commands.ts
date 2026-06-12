@@ -39,18 +39,21 @@ export function registerExecutionCommands(pi: ExtensionAPI): void {
         `recent plan section that has unchecked steps (\`- [ ]\`), and execute ` +
         `the next pending step. For each step:\n` +
         `1. Decide local vs Galaxy per the plan's routing tag (see [local|hybrid|remote] in the section header).\n` +
-        `2. For Galaxy steps: invoke via Galaxy MCP, then call galaxy_invocation_record(...).\n` +
-        `3. For local steps: run via bash; capture results into the notebook.\n` +
-        `4. Verify the result using the step's \`Verification:\` sub-bullet when present, ` +
-        `or infer the appropriate check from the artifact just produced. ` +
-        `For Galaxy work, poll to a terminal state and inspect output datasets; ` +
-        `for generated workflows, upload/import and invoke on a small test input; ` +
-        `for local artifacts, read/parse/lint/smoke-test them.\n` +
+        `2. **Galaxy steps run in the BACKGROUND — this is the default.** Invoke via Galaxy MCP, call ` +
+        `galaxy_invocation_record({ invocationId, notebookAnchor, label }), then **hand control back to the user**: ` +
+        `say it's submitted and running in the background (the Activity tab shows live progress), and STOP. ` +
+        `Do NOT sit in this turn polling the invocation to completion — a background poller advances its status ` +
+        `automatically and the user is notified when it finishes. Leave the step's checkbox \`- [ ]\`. ` +
+        `Only wait in-turn if the user explicitly asked you to.\n` +
+        `3. For local steps: run via bash; capture results into the notebook (long local jobs use the launch-record-return background pattern; quick ones run synchronously).\n` +
+        `4. **Verify before claiming done — but only for work that has actually finished.** A *local* result: verify now ` +
+        `(read/parse/lint/smoke-test; use the step's \`Verification:\` sub-bullet). A *Galaxy* run: verification happens ` +
+        `LATER, on demand — when the user asks (or after the completion notification), call galaxy_invocation_check_all, ` +
+        `inspect the output datasets, record evidence, then flip the checkbox. Do not verify a Galaxy step in the submit turn; it isn't done yet.\n` +
         `5. Write the verification evidence into the notebook before changing status.\n` +
         `6. Only after verification succeeds, edit the markdown checkbox to \`- [x]\` (or \`- [!]\` on failure). ` +
         `If verification is blocked or inconclusive, leave the step pending, record the blocker, say "created but not verified" for created artifacts, ask for the missing input or approval to change scope, and stop.\n` +
-        `7. Periodically call galaxy_invocation_check_all to advance in-flight Galaxy work.\n` +
-        `Do NOT narrate progress in chat — the Notebook tab shows it. ` +
+        `Do NOT narrate progress in chat — the Notebook/Activity tabs show it. ` +
         `Do NOT claim the artifact or step is done in chat unless verification evidence is recorded. ` +
         `Stop on failure; do not auto-advance past errors or unverified results.`,
     );

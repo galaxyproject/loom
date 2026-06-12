@@ -810,6 +810,10 @@ export async function checkInvocations(
         text: JSON.stringify({ success: true, checked: results.length, results }, null, 2),
       },
     ],
-    details: { checked: results.length } as Record<string, unknown>,
+    // Expose the per-invocation results so the background poller can fire a
+    // completion notification for any invocation that just reached a terminal
+    // state (autoAction "completed"/"failed"). The agent-facing summary already
+    // travels in `content`; this is for the headless poller path.
+    details: { checked: results.length, results } as Record<string, unknown>,
   };
 }

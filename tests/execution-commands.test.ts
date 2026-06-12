@@ -54,8 +54,13 @@ describe("registerExecutionCommands", () => {
     await commands.get("execute")!.handler(undefined, { ui: { notify: vi.fn() } });
 
     const prompt = sendUserMessage.mock.calls[0][0] as string;
-    expect(prompt).toContain("Verify the result using the step's `Verification:` sub-bullet");
-    expect(prompt).toContain("or infer the appropriate check from the artifact just produced");
+    // Async-dominant: Galaxy steps submit and hand control back — no in-turn polling.
+    expect(prompt).toContain("Galaxy steps run in the BACKGROUND");
+    expect(prompt).toContain("hand control back to the user");
+    expect(prompt).toContain("Do NOT sit in this turn polling the invocation to completion");
+    // Verify-before-complete still enforced (local now; Galaxy on demand, later).
+    expect(prompt).toContain("use the step's `Verification:` sub-bullet");
+    expect(prompt).toContain("verification happens");
     expect(prompt).toContain("Write the verification evidence into the notebook");
     expect(prompt).toContain("Only after verification succeeds");
     expect(prompt).toContain("created but not verified");

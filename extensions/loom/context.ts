@@ -308,17 +308,27 @@ mode setting:
 
 ### Executing a Galaxy step
 
+**Galaxy invocations run in the background by default — submit and hand
+control back to the user.** Do NOT block the turn polling a Galaxy job to
+completion; the user wants to keep working with you while it runs.
+
 After invoking via Galaxy MCP and getting an \`invocationId\` back:
 1. Call \`galaxy_invocation_record({ invocationId, notebookAnchor, label })\`.
    The \`notebookAnchor\` is a stable id like \`plan-1-step-3\` that
    matches an anchor you wrote in the markdown plan section.
-2. Periodically call \`galaxy_invocation_check_all\` to advance in-flight
-   invocations. The tool auto-transitions YAML status (all-jobs-ok →
-   completed, any-error → failed) and writes results back to the
-   notebook. After a successful transition, inspect the output datasets,
-   record verification evidence in the notebook, then edit the markdown
-   checkbox for the step from \`- [ ]\` to \`- [x]\`. On failure, record
-   the error evidence and use \`- [!]\`.
+2. **Return to the user now.** Tell them it's submitted and running in the
+   background (the Activity tab shows live progress), and stop. Leave the
+   step's checkbox \`- [ ]\`. A background poller advances the invocation's
+   YAML status automatically (all-jobs-ok → completed, any-error → failed)
+   and the user is notified when it reaches a terminal state — you do not
+   need to sit here calling \`galaxy_invocation_check_all\` in a loop. Only
+   wait in-turn if the user explicitly asked you to.
+3. **Verify later, on demand.** When the user asks (or after the completion
+   notification), call \`galaxy_invocation_check_all\`, inspect the output
+   datasets, record verification evidence in the notebook, then edit the
+   markdown checkbox from \`- [ ]\` to \`- [x]\`. On failure, record the error
+   evidence and use \`- [!]\`. Do not verify or check off a Galaxy step in the
+   submit turn — it isn't done yet.
 `;
 }
 
@@ -565,10 +575,12 @@ or telling the user the work is done.
 
 Match the verification check to the artifact or action being completed:
 
-- **Galaxy workflow or tool run** — poll the invocation/job to a terminal
-  state with \`galaxy_invocation_check_all\` or the relevant Galaxy MCP
+- **Galaxy workflow or tool run** — verification is on demand, once the run
+  has reached a terminal state (the background poller gets it there). Confirm
+  terminal state with \`galaxy_invocation_check_all\` or the relevant Galaxy MCP
   inspection call, then inspect resulting datasets/collections enough to
-  confirm they exist and look plausible for the request.
+  confirm they exist and look plausible for the request. Don't block a turn
+  waiting for an in-progress invocation just to verify it.
 - **Authored Galaxy workflow** (\`.ga\` or workflow JSON) —
   upload/import it to Galaxy, invoke it on a small
   appropriate test input, poll to completion, and inspect outputs.

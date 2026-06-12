@@ -41,6 +41,19 @@ const POLL_INTERVAL_MS = 15_000;
 let timer: ReturnType<typeof setInterval> | null = null;
 let inFlight = false;
 
+/** Surface a toast to the shell when a background invocation finishes. */
+type PollerNotify = (text: string, level: "info" | "warning" | "error") => void;
+let notify: PollerNotify | null = null;
+
+/** Subset of a checkInvocations result entry the poller needs for notifications. */
+interface PollResultEntry {
+  invocationId: string;
+  notebookAnchor?: string;
+  label?: string;
+  jobSummary?: { ok?: number; error?: number };
+  autoAction?: string;
+}
+
 async function hasInProgressInvocations(): Promise<boolean> {
   const nbPath = getNotebookPath();
   if (!nbPath) return false;
@@ -64,7 +77,28 @@ async function tick(): Promise<void> {
       // this tick; if creds come back the next tick picks up.
       return;
     }
-    await checkInvocations(undefined);
+    const result = await checkInvocations(undefined);
+    // Fire a completion toast for any invocation that JUST reached a terminal
+    // state this tick. The poller only checks blocks that were in_progress, so
+    // an autoAction of completed/failed is a fresh transition that won't recur
+    // (the block is terminal next tick and no longer checked) — notify once.
+    const results = (result.details as { results?: PollResultEntry[] } | undefined)?.results;
+    if (notify && Array.isArray(results)) {
+      for (const r of results) {
+        const label = r.label || r.notebookAnchor || r.invocationId;
+        if (r.autoAction === "completed") {
+          notify(
+            `✅ Galaxy: "${label}" finished (${r.jobSummary?.ok ?? 0} jobs ok) — ask me to verify the outputs.`,
+            "info",
+          );
+        } else if (r.autoAction === "failed") {
+          notify(
+            `❌ Galaxy: "${label}" failed (${r.jobSummary?.error ?? 0} job error(s)) — ask me to investigate.`,
+            "warning",
+          );
+        }
+      }
+    }
   } catch (err) {
     // Don't kill the timer on a single bad poll — Galaxy may be
     // briefly unreachable. Log and try again on the next tick.
@@ -74,7 +108,10 @@ async function tick(): Promise<void> {
   }
 }
 
-export function startGalaxyPoller(): void {
+export function startGalaxyPoller(notifyFn?: PollerNotify): void {
+  // Capture the shell notifier (from the session_start ctx) so a completed
+  // background invocation can toast the user. Refreshed each session_start.
+  notify = notifyFn ?? null;
   // Idempotent: a brain restart triggers a new session_start without
   // session_shutdown firing first in some failure modes. Stop any
   // pre-existing timer so we don't double-poll.

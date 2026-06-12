@@ -33,8 +33,10 @@ export function registerSessionLifecycle(pi: ExtensionAPI): void {
     initSessionArtifacts(process.cwd());
 
     // Background poller for in-flight Galaxy invocations (#67 part 2).
-    // Idempotent — start() stops any prior timer first.
-    startGalaxyPoller();
+    // Idempotent — start() stops any prior timer first. Pass the shell
+    // notifier so a backgrounded invocation toasts the user on completion
+    // (async-by-default execution: submit, hand back, notify-on-finish).
+    startGalaxyPoller((text, level) => ctx.ui.notify(text, level));
 
     sessionStart = {
       id: ctx.sessionManager?.getSessionId?.() ?? `session-${Date.now()}`,
