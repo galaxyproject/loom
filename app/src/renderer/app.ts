@@ -607,26 +607,31 @@ window.orbit.onFilesChanged(() => {
 const galaxyStatus = document.getElementById("galaxy-status")!;
 
 async function refreshGalaxyStatus(): Promise<void> {
-  const cfg = (await window.orbit.getConfig()) as Record<string, unknown>;
-  // getConfig returns the *masked* config — Galaxy profiles carry
-  // `hasApiKey: boolean`, never the plaintext apiKey. Checking
-  // `profile.apiKey` here used to make the dot stay red even when a key
-  // was set, because the field is undefined in the masked shape.
-  const galaxy = cfg.galaxy as
-    | { active?: string; profiles?: Record<string, { url?: string; hasApiKey?: boolean }> }
-    | undefined;
-  const active = galaxy?.active;
-  const profile = active ? galaxy?.profiles?.[active] : undefined;
-  const connected = !!(profile?.url && profile?.hasApiKey);
+  // Reflect the *effective* connection the brain sees -- a usable URL + API key
+  // whether they came from a saved profile or exported GALAXY_URL/GALAXY_API_KEY
+  // env vars. Deriving "connected" from the masked config alone missed the
+  // env-driven / auto-connect path, leaving the dot red even though the URL was
+  // known and tool calls worked (#284).
+  const { connected, url } = await window.orbit.getGalaxyStatus();
 
   if (connected) {
     galaxyStatus.classList.add("status-dot-connected");
     galaxyStatus.classList.remove("status-dot-disconnected");
-    galaxyStatus.title = `Galaxy: ${profile.url}`;
+    galaxyStatus.title = `Galaxy: ${url}`;
+    // Keep the accessible name in sync -- the issue's "not configured" string
+    // is the aria-label, which previously never tracked connection state.
+    galaxyStatus.setAttribute(
+      "aria-label",
+      `Galaxy connection: ${url}. Click to open Preferences.`,
+    );
   } else {
     galaxyStatus.classList.add("status-dot-disconnected");
     galaxyStatus.classList.remove("status-dot-connected");
     galaxyStatus.title = "Galaxy: not configured (open Preferences to add a profile)";
+    galaxyStatus.setAttribute(
+      "aria-label",
+      "Galaxy connection: not configured. Click to open Preferences.",
+    );
   }
 
   // The Galaxy history section is driven off the same connection signal so it

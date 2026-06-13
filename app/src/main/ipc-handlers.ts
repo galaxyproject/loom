@@ -6,7 +6,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { loadConfig, saveConfig, type LoomConfig } from "./config.js";
-import { encryptSecret, isAvailable as safeStorageAvailable } from "./secure-config.js";
+import {
+  encryptSecret,
+  isAvailable as safeStorageAvailable,
+  resolveGalaxyApiKey,
+} from "./secure-config.js";
+import { resolveGalaxyStatus } from "./galaxy-status.js";
 import { getProviders, getModels } from "@earendil-works/pi-ai";
 import { isDeprecatedModelId } from "./model-catalog.js";
 import { checkLatestVersion } from "./version-check.js";
@@ -295,6 +300,13 @@ export function registerIpcHandlers(agent: AgentManager): void {
 
   ipcMain.handle("config:get", () => {
     return maskConfig(loadConfig());
+  });
+
+  // Effective Galaxy connection for the footer dot -- reflects the brain's own
+  // GALAXY_URL/GALAXY_API_KEY view (profile or exported env), not just the
+  // masked config, so env-driven sessions read connected (#284).
+  ipcMain.handle("galaxy:status", () => {
+    return resolveGalaxyStatus(loadConfig(), process.env, resolveGalaxyApiKey);
   });
 
   ipcMain.handle(

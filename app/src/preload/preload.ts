@@ -154,6 +154,7 @@ export interface OrbitAPI {
   getVersion(): Promise<{ version: string; isPackaged: boolean }>;
   openReleasePage(url?: string): Promise<{ opened: boolean }>;
   openGalaxyHistory(url: string): Promise<{ opened: boolean }>;
+  getGalaxyStatus(): Promise<{ connected: boolean; url: string | null }>;
   restartToUpdate(): Promise<{ restarting: boolean }>;
   onUpdateDownloaded(cb: (info: { version: string }) => void): void;
   onUpdateError(cb: (info: { message: string }) => void): void;
@@ -262,6 +263,7 @@ const api: OrbitAPI = {
   getVersion: () => ipcRenderer.invoke("version:current"),
   openReleasePage: (url) => ipcRenderer.invoke("version:open-release", url),
   openGalaxyHistory: (url) => ipcRenderer.invoke("galaxy:open-history", url),
+  getGalaxyStatus: () => ipcRenderer.invoke("galaxy:status"),
   restartToUpdate: () => ipcRenderer.invoke("update:restart"),
   onUpdateDownloaded: (cb) => {
     ipcRenderer.on("update:downloaded", (_e, info) => cb(info));
