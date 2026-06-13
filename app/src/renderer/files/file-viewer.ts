@@ -6,8 +6,10 @@
  * file being text and dirty.
  */
 
+import type { Marked } from "marked";
 import { renderMarkdown } from "../chat/markdown.js";
 import { extOf, imagePreviewBlob } from "./image-preview.js";
+import { buildPreviewMarked, previewImageBaseDir } from "./markdown-preview.js";
 
 type FileKind = "text" | "image" | "pdf" | "binary";
 
@@ -98,6 +100,9 @@ export class FileViewer {
   private dirty = false;
   private editor: HTMLTextAreaElement | null = null;
   private preview: HTMLDivElement | null = null;
+  // Per-file Marked instance that rewrites relative image srcs against the
+  // markdown file's directory (#283). Undefined → renderMarkdown's default.
+  private previewMarked: Marked | undefined;
   private saveBtn: HTMLButtonElement | null = null;
   private statusEl: HTMLElement | null = null;
   private editBtn: HTMLButtonElement | null = null;
@@ -142,6 +147,7 @@ export class FileViewer {
     this.dirty = false;
     this.editor = null;
     this.preview = null;
+    this.previewMarked = undefined;
     this.saveBtn = null;
     this.statusEl = null;
     this.editBtn = null;
@@ -201,7 +207,7 @@ export class FileViewer {
         this.editor.setSelectionRange(Math.min(selStart, cap), Math.min(selEnd, cap));
         // Re-render markdown preview if it's the currently visible pane.
         if (this.preview && !this.preview.classList.contains("hidden")) {
-          this.preview.innerHTML = renderMarkdown(newText);
+          this.preview.innerHTML = renderMarkdown(newText, this.previewMarked);
         }
       }
     } else if (this.currentKind === "image") {
@@ -236,7 +242,7 @@ export class FileViewer {
         this.statusEl.className = "file-viewer-status saved";
       }
       if (this.preview && !this.preview.classList.contains("hidden")) {
-        this.preview.innerHTML = renderMarkdown(newText);
+        this.preview.innerHTML = renderMarkdown(newText, this.previewMarked);
       }
       banner.remove();
     });
@@ -279,6 +285,7 @@ export class FileViewer {
     this.dirty = false;
     this.editor = null;
     this.preview = null;
+    this.previewMarked = undefined;
     this.saveBtn = null;
     this.statusEl = null;
     this.editBtn = null;
@@ -306,6 +313,12 @@ export class FileViewer {
     const ext = extOf(relPath);
     const isMarkdown = ext === ".md";
     const text = new TextDecoder("utf-8").decode(bytes);
+
+    // Resolve relative image srcs in the preview against the markdown file's
+    // own directory, served over the cwd-jailed orbit-artifact:// scheme (#283).
+    if (isMarkdown) {
+      this.previewMarked = buildPreviewMarked(previewImageBaseDir(relPath));
+    }
 
     // Head-preview path: render read-only with a banner. Skip the
     // editor + Save toolbar + markdown preview toggle entirely — the
@@ -417,7 +430,7 @@ export class FileViewer {
     if (!this.editor || !this.preview) return;
     if (mode === "preview") {
       // Render preview from current (possibly dirty) editor contents.
-      const html = renderMarkdown(this.editor.value);
+      const html = renderMarkdown(this.editor.value, this.previewMarked);
       this.preview.innerHTML = html;
       this.editor.classList.add("hidden");
       this.preview.classList.remove("hidden");
