@@ -45,7 +45,7 @@ export function registerExecutionCommands(pi: ExtensionAPI): void {
         `Do NOT sit in this turn polling the invocation to completion — a background poller advances its status ` +
         `automatically and the user is notified when it finishes. Leave the step's checkbox \`- [ ]\`. ` +
         `Only wait in-turn if the user explicitly asked you to.\n` +
-        `3. For local steps: run via bash; capture results into the notebook (long local jobs use the launch-record-return background pattern; quick ones run synchronously).\n` +
+        `3. For local steps: run via bash synchronously; capture results into the notebook.\n` +
         `4. **Verify before claiming done — but only for work that has actually finished.** A *local* result: verify now ` +
         `(read/parse/lint/smoke-test; use the step's \`Verification:\` sub-bullet). A *Galaxy* run: verification happens ` +
         `LATER, on demand — when the user asks (or after the completion notification), call galaxy_invocation_check_all, ` +
