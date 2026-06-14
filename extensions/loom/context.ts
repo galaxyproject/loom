@@ -226,18 +226,17 @@ export function buildGalaxyContextBlock(): string {
   const connected = Boolean(galaxyUrl && apiKey);
 
   if (!connected) {
-    // With no local shell there is no local fallback -- claiming "all
-    // execution is local" here would contradict buildNoLocalShellBlock in
-    // the same prompt. The only actionable fact is that Galaxy isn't
-    // connected yet.
+    // buildNoLocalShellBlock already explains the remote-only model in this
+    // same prompt (both fire on isLocalShellDisabled), so here just flag that
+    // Galaxy isn't connected -- don't restate "all execution is local", which
+    // would contradict it.
     if (isLocalShellDisabled()) {
       return `
 ## Galaxy connection: NOT CONNECTED
 
-No Galaxy credentials configured (\`GALAXY_URL\` / \`GALAXY_API_KEY\`), and this
-build has no local execution path, so nothing can run yet. Ask the user to
-connect a Galaxy server via \`/connect\` before proposing analysis steps, and
-don't suggest local alternatives.
+No Galaxy credentials configured (\`GALAXY_URL\` / \`GALAXY_API_KEY\`). Nothing can
+run until a Galaxy server is connected -- ask the user to run \`/connect\` before
+proposing analysis steps.
 `;
     }
     return `
