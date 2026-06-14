@@ -45,6 +45,7 @@ const TEXT_EXTS = new Set([
   ".csv",
   ".tsv",
   ".tab",
+  ".tabular",
   // bioinformatics text formats
   ".fa",
   ".fasta",
@@ -53,8 +54,13 @@ const TEXT_EXTS = new Set([
   ".ffn",
   ".fastq",
   ".fq",
+  ".fastqsanger",
+  ".fastqillumina",
+  ".fastqsolexa",
+  ".fastqcssanger",
   ".vcf",
   ".bed",
+  ".interval",
   ".bedgraph",
   ".wig",
   ".gff",
@@ -74,7 +80,7 @@ const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"]);
 
 const PDF_EXTS = new Set([".pdf"]);
 
-function kindOf(path: string): FileKind {
+export function kindOf(path: string): FileKind {
   const ext = extOf(path);
   if (!ext) return "text"; // no extension → treat as text
   if (TEXT_EXTS.has(ext)) return "text";

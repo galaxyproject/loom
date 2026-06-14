@@ -80,6 +80,7 @@ const TEXT_PREVIEW_EXTS = new Set([
   ".csv",
   ".tsv",
   ".tab",
+  ".tabular",
   ".fa",
   ".fasta",
   ".fna",
@@ -87,8 +88,13 @@ const TEXT_PREVIEW_EXTS = new Set([
   ".ffn",
   ".fastq",
   ".fq",
+  ".fastqsanger",
+  ".fastqillumina",
+  ".fastqsolexa",
+  ".fastqcssanger",
   ".vcf",
   ".bed",
+  ".interval",
   ".bedgraph",
   ".wig",
   ".gff",
@@ -104,7 +110,7 @@ const TEXT_PREVIEW_EXTS = new Set([
   ".phylip",
 ]);
 
-function isTextLikeForPreview(name: string): boolean {
+export function isTextLikeForPreview(name: string): boolean {
   const dot = name.lastIndexOf(".");
   // No extension -- the renderer treats these as text (READMEs, configs).
   if (dot <= 0) return true;
