@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isLocalExecDisabled } from "../extensions/loom/local-exec.js";
+import { isLocalExecDisabled, isLocalShellDisabled } from "../extensions/loom/local-exec.js";
 
 describe("isLocalExecDisabled", () => {
   it("disables local-exec safety only for the exact off signal", () => {
@@ -18,4 +18,22 @@ describe("isLocalExecDisabled", () => {
   ])("keeps the guard on for env %p", (env) => {
     expect(isLocalExecDisabled(env as NodeJS.ProcessEnv)).toBe(false);
   });
+});
+
+describe("isLocalShellDisabled", () => {
+  it("reports no local shell only for the exact off signal", () => {
+    expect(isLocalShellDisabled({ LOOM_LOCAL_SHELL: "off" })).toBe(true);
+  });
+
+  // Fail-safe the same way isLocalExecDisabled does: anything not exactly "off"
+  // leaves the local shell "available", so mac/linux/web (var unset) keep
+  // running local-tagged plans. The actual no-bash guarantee on Windows is the
+  // removed bash tool, not this flag -- this only drives the friendly init-gate
+  // "re-tag your plan" message.
+  it.each([{}, { LOOM_LOCAL_SHELL: "on" }, { LOOM_LOCAL_SHELL: "" }, { LOOM_LOCAL_SHELL: "OFF" }])(
+    "treats the shell as available for env %p",
+    (env) => {
+      expect(isLocalShellDisabled(env as NodeJS.ProcessEnv)).toBe(false);
+    },
+  );
 });

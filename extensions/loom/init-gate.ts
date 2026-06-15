@@ -18,6 +18,7 @@
 
 import * as fs from "fs";
 import { getNotebookPath, isGalaxyConnected, getCurrentHistoryId } from "./state.js";
+import { isLocalShellDisabled } from "./local-exec.js";
 
 export type Routing = "local" | "galaxy" | "hybrid" | "remote" | "unknown";
 
@@ -28,7 +29,7 @@ export interface ParsedPlanRef {
 }
 
 export interface GateFailure {
-  name: "notebook" | "plan" | "galaxy_connection" | "history" | "acceptance";
+  name: "notebook" | "plan" | "galaxy_connection" | "history" | "acceptance" | "local_exec";
   severity: "hard" | "soft";
   remediation: string;
 }
@@ -186,6 +187,23 @@ export function checkPreconditions(): GateResult {
     plan.routing === "galaxy" || plan.routing === "hybrid" || plan.routing === "remote";
 
   let hardFailed = false;
+
+  // A plan whose routing requires a local execution leg can't run when the
+  // shell removed bash (Windows remote-only). unknown is included because an
+  // untagged plan falls back to local. galaxy/remote have no local leg and pass
+  // untouched. This is the user-facing "re-tag your plan" affordance -- the
+  // actual containment is the removed bash tool, not this gate.
+  const needsLocalShell =
+    plan.routing === "local" || plan.routing === "hybrid" || plan.routing === "unknown";
+  if (needsLocalShell && isLocalShellDisabled()) {
+    hardFailed = true;
+    failures.push({
+      name: "local_exec",
+      severity: "hard",
+      remediation: `Plan "${plan.title}" needs local execution, unavailable on Windows (remote-only) -- re-tag the plan \`[galaxy]\`/\`[remote]\`, or enable local power mode (future).`,
+    });
+  }
+
   if (needsGalaxy && !isGalaxyConnected()) {
     hardFailed = true;
     failures.push({

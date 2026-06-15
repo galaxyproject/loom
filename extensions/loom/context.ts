@@ -15,6 +15,7 @@ import { isSessionIndexEnabled } from "./session-index/is-enabled";
 import { loadConfig } from "./config";
 import { listEnabledSkillRepos } from "./skills";
 import { findGalaxyPageBlocks } from "./galaxy-page-binding";
+import { isLocalShellDisabled } from "./local-exec.js";
 
 const NOTEBOOK_HEAD_MAX_CHARS = 2000;
 const NOTEBOOK_TAIL_MAX_CHARS = 4000;
@@ -195,7 +196,9 @@ overwritten with today's.
 `;
 }
 
-function buildExecutionModeBlock(): string {
+export function buildExecutionModeBlock(): string {
+  // With no local shell there is no Local execution mode to describe.
+  if (isLocalShellDisabled()) return "";
   const cfg = loadConfig();
   if (cfg.executionMode !== "local") return "";
   return `## Execution mode: LOCAL
@@ -212,7 +215,7 @@ flip the toggle to Cloud if they want Galaxy back.
  * Galaxy connection status block — replaces the old Local|Remote toggle
  * with agent-side per-plan routing decisions.
  */
-function buildGalaxyContextBlock(): string {
+export function buildGalaxyContextBlock(): string {
   const cfg = loadConfig();
   // Local mode short-circuits — no Galaxy guidance, even if connected.
   if (cfg.executionMode === "local") {
@@ -223,6 +226,19 @@ function buildGalaxyContextBlock(): string {
   const connected = Boolean(galaxyUrl && apiKey);
 
   if (!connected) {
+    // buildNoLocalShellBlock already explains the remote-only model in this
+    // same prompt (both fire on isLocalShellDisabled), so here just flag that
+    // Galaxy isn't connected -- don't restate "all execution is local", which
+    // would contradict it.
+    if (isLocalShellDisabled()) {
+      return `
+## Galaxy connection: NOT CONNECTED
+
+No Galaxy credentials configured (\`GALAXY_URL\` / \`GALAXY_API_KEY\`). Nothing can
+run until a Galaxy server is connected -- ask the user to run \`/connect\` before
+proposing analysis steps.
+`;
+    }
     return `
 ## Galaxy connection: NOT CONNECTED
 
@@ -336,7 +352,10 @@ After invoking via Galaxy MCP and getting an \`invocationId\` back:
  * Local-tool environment convention — per-analysis conda env rooted in
  * the analysis cwd. Always relevant; no longer mode-gated.
  */
-function buildLocalEnvContext(): string {
+export function buildLocalEnvContext(): string {
+  // No local shell (Windows remote-only): the conda/bash local-tool path does
+  // not exist here -- don't coach the model to use a shell it can't reach.
+  if (isLocalShellDisabled()) return "";
   return `
 ## Local-tool environment (per-analysis conda env)
 
@@ -470,6 +489,24 @@ minutes, or you can ask me to check now." Append a brief
 \`## Background jobs\` breadcrumb to \`notebook.md\` with the job name,
 start time, and log path so the work is recoverable across renderer
 reloads (skip the PID — it's meaningless after a restart).
+`;
+}
+
+/**
+ * Remote-only execution note -- injected when there is no local shell
+ * (LOOM_LOCAL_SHELL=off, i.e. Windows remote-only desktop). Replaces the
+ * conda/bash blocks that are suppressed by the early returns above.
+ */
+export function buildNoLocalShellBlock(): string {
+  if (!isLocalShellDisabled()) return "";
+  return `
+## Execution: remote-only (Galaxy)
+
+This build has no local shell. All computation runs on Galaxy via the Galaxy
+MCP tools -- there is no bash, conda, or local-pipeline path here. Route every
+plan step \`[galaxy]\` or \`[remote]\`; do not propose local shell or conda
+steps. You can still read and write files in the workspace (the notebook and
+its inputs/outputs).
 `;
 }
 
@@ -1123,6 +1160,7 @@ export function setupContextInjection(pi: ExtensionAPI): void {
       buildGalaxyContextBlock(),
       buildSkillsContext(),
       buildLocalEnvContext(),
+      buildNoLocalShellBlock(),
       buildTeamDispatchContext(),
       buildSessionIndexContext(),
     ]

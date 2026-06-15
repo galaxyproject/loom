@@ -332,3 +332,51 @@ describe("checkPreconditions handles unreadable notebook", () => {
     expect(result.failures[0].name).toBe("notebook");
   });
 });
+
+describe("checkPreconditions -- local-shell gate", () => {
+  let savedShell: string | undefined;
+
+  beforeEach(() => {
+    savedShell = process.env.LOOM_LOCAL_SHELL;
+  });
+  afterEach(() => {
+    if (savedShell === undefined) delete process.env.LOOM_LOCAL_SHELL;
+    else process.env.LOOM_LOCAL_SHELL = savedShell;
+  });
+
+  const localExecFailure = (failures: { name: string; severity: string }[]) =>
+    failures.find((f) => f.name === "local_exec");
+
+  it.each(["local", "hybrid"])("hard-fails a [%s] plan when the local shell is gone", (routing) => {
+    process.env.LOOM_LOCAL_SHELL = "off";
+    writeNotebook(
+      `## Plan A: Thing [${routing}]\n\n- [ ] 1. **Do it** -- with enough description\n`,
+    );
+    const gate = checkPreconditions();
+    expect(gate.hardFailed).toBe(true);
+    const f = localExecFailure(gate.failures);
+    expect(f?.severity).toBe("hard");
+    expect(f?.remediation).toContain("needs local execution");
+  });
+
+  it("hard-fails an untagged (unknown) plan when the local shell is gone", () => {
+    process.env.LOOM_LOCAL_SHELL = "off";
+    writeNotebook(`## Plan A: Thing\n\n- [ ] 1. **Do it** -- with enough description\n`);
+    const gate = checkPreconditions();
+    expect(localExecFailure(gate.failures)?.severity).toBe("hard");
+  });
+
+  it.each(["galaxy", "remote"])("never local_exec-fails a [%s] plan", (routing) => {
+    process.env.LOOM_LOCAL_SHELL = "off";
+    writeNotebook(
+      `## Plan A: Thing [${routing}]\n\n- [ ] 1. **Do it** -- with enough description\n`,
+    );
+    expect(localExecFailure(checkPreconditions().failures)).toBeUndefined();
+  });
+
+  it("does not local_exec-fail when the shell is available (mac/linux unaffected)", () => {
+    delete process.env.LOOM_LOCAL_SHELL;
+    writeNotebook(`## Plan A: Thing [local]\n\n- [ ] 1. **Do it** -- with enough description\n`);
+    expect(localExecFailure(checkPreconditions().failures)).toBeUndefined();
+  });
+});

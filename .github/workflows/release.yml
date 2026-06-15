@@ -7,7 +7,7 @@ name: release
 # GitHub Release (promote the draft manually), and publishes the @galaxyproject/loom
 # npm package via OIDC trusted publishing (no token, no 2FA prompt).
 #
-# All four installer legs (arm64 mac, Intel mac, linux x64/arm64) build in one
+# All five installer legs (arm64 mac, Intel mac, linux x64/arm64, win32 x64) build in one
 # matrix that `publish` waits on. The Intel leg used to run decoupled off to the
 # side: GitHub's now-retired macos-13 Intel fleet was small and could sit queued
 # for hours (~19h on the alpha.1 cut), which would have held the draft Release
@@ -65,6 +65,13 @@ jobs:
           - os: ubuntu-24.04-arm
             arch: arm64
             platform: linux
+          # Native Windows (x64). Ships remote-only (Galaxy I/O; no local bash).
+          # Squirrel .exe, unsigned for beta -- SmartScreen "Unknown publisher"
+          # is accepted (Authenticode cert is a fast-follow). maker-squirrel is
+          # already configured in app/forge.config.ts.
+          - os: windows-latest
+            arch: x64
+            platform: win32
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -116,6 +123,7 @@ jobs:
             artifacts/**/*.zip
             artifacts/**/*.deb
             artifacts/**/*.rpm
+            artifacts/**/*.exe
           fail_on_unmatched_files: true
 
   # Publish the @galaxyproject/loom npm package (the Loom CLI -- not Orbit) via

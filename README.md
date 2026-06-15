@@ -225,7 +225,7 @@ Three paths, depending on what you want.
 
 ### Desktop app (Orbit)
 
-Orbit ships as a native installer that bundles its own Node runtime, `uv`, and Loom -- no separate prerequisites. The macOS (Apple Silicon) build is Developer ID signed + notarized, so it opens with a normal double-click; Linux ships `.deb`/`.rpm`/`.zip`. Both are attached to each [release](https://github.com/galaxyproject/loom/releases). Windows runs via WSL2. See [INSTALL.md](INSTALL.md) for per-platform steps and [RELEASING.md](RELEASING.md) for how a release is cut. Intel Macs and other unpackaged targets can use the developer install below.
+Orbit ships as a native installer that bundles its own Node runtime, `uv`, and Loom -- no separate prerequisites. The macOS (Apple Silicon) build is Developer ID signed + notarized, so it opens with a normal double-click; Linux ships `.deb`/`.rpm`/`.zip`; Windows ships a native `Orbit-<version> Setup.exe` (remote-only -- no local bash shell). All installers are attached to each [release](https://github.com/galaxyproject/loom/releases). See [INSTALL.md](INSTALL.md) for per-platform steps and [RELEASING.md](RELEASING.md) for how a release is cut. Intel Macs and other unpackaged targets can use the developer install below.
 
 ### Loom CLI from npm
 
@@ -311,9 +311,18 @@ brew install node git uv
 
 Then the developer install steps above.
 
-#### Windows (WSL2)
+#### Windows
 
-Orbit runs on Windows inside WSL2. From an elevated PowerShell:
+Download the native Orbit installer (`Orbit-<version> Setup.exe`) from the
+[releases page](https://github.com/galaxyproject/loom/releases). It ships
+**remote-only**: all execution routes to Galaxy, and there is no local bash
+shell. The beta is unsigned, so SmartScreen shows "Unknown publisher" -- choose
+**More info -> Run anyway**. WSL2 (with WSLg) remains the path for _local_
+execution until a native local power mode lands.
+
+##### Windows local execution (WSL2)
+
+For local bash execution today, run Orbit inside WSL2. From an elevated PowerShell:
 
 ```powershell
 wsl --install --web-download -d Ubuntu
@@ -335,7 +344,7 @@ cd ~/loom/app && npm start
 > curl -fsSL https://raw.githubusercontent.com/galaxyproject/loom/main/scripts/setup-wsl.sh | bash
 > ```
 
-Keep your analysis data inside `~/` (the Linux filesystem) — `/mnt/c/` paths are significantly slower across the filesystem boundary.
+Keep your analysis data inside `~/` (the Linux filesystem) -- `/mnt/c/` paths are significantly slower across the filesystem boundary.
 
 ### After installation
 

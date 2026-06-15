@@ -37,6 +37,11 @@ void window.orbit.getConfig().then((cfg: Record<string, unknown>) => {
   if ((cfg as { _mode?: string })?._mode === "remote") {
     document.body.classList.add("remote-mode");
   }
+  // Native remote-only desktop (Windows): keep real config + cwd, hide only the
+  // local-exec affordances. Distinct class from web's remote-mode on purpose.
+  if ((cfg as { localShellAvailable?: boolean })?.localShellAvailable === false) {
+    document.body.classList.add("remote-desktop");
+  }
 });
 
 // macOS uses titleBarStyle: 'hiddenInset', which insets the traffic lights

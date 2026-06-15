@@ -32,6 +32,16 @@ Before drafting a plan, consult Galaxy resources:
 All execution is local. Suggest connecting via `/connect` once if the
 plan would benefit from Galaxy compute, but don't badger.
 
+## When there is no local shell (remote-only builds)
+
+Some builds have no local shell at all -- notably the native Windows
+desktop, which removes the `bash` tool entirely. There, every step must
+run on Galaxy: route plans **remote** (or per-step Galaxy). A plan that
+needs a local leg (**local** or **hybrid**) is rejected by the init-gate
+at `/execute` with a "re-tag `[galaxy]`/`[remote]`" message, so draft for
+Galaxy from the start. File read/write in the workspace still works; only
+shell/`bash` execution is unavailable.
+
 ## Invocation tracking
 
 After invoking a Galaxy workflow and getting an `invocationId` back:

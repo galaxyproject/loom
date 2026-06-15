@@ -17,6 +17,11 @@ describe("shouldEnableAutoUpdate", () => {
       false,
     );
   });
+  it("is off on win32 (uses the notify-link banner; in-place Squirrel is a fast-follow)", () => {
+    expect(shouldEnableAutoUpdate({ platform: "win32", isPackaged: true, updateCheck: true })).toBe(
+      false,
+    );
+  });
   it("is off when the user opted out", () => {
     expect(
       shouldEnableAutoUpdate({ platform: "darwin", isPackaged: true, updateCheck: false }),

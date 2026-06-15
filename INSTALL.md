@@ -5,8 +5,9 @@ Installers ship from the
 latest release and download the artifact for your machine.
 
 The macOS build is Developer ID signed and notarized by Apple, so it opens
-with a normal double-click. Linux ships `.deb` / `.rpm` / `.zip`. Windows runs
-via WSL2 — see the [Windows (via WSL2)](#windows-via-wsl2) section below.
+with a normal double-click. Linux ships `.deb` / `.rpm` / `.zip`. Windows ships
+a native `Setup.exe` installer (remote-only) -- see the
+[Windows (native, remote-only)](#windows-native-remote-only) section below.
 
 ## macOS
 
@@ -102,16 +103,51 @@ Per-user state lives under `~/.orbit/` and `~/.loom/` — remove those to fully 
 
 ---
 
-## Windows (via WSL2)
+## Windows (native, remote-only)
 
-Native Windows builds are not yet available. Windows 11 users with
-**WSL2 + WSLg** can run the Linux `.deb` build directly — WSLg provides
-native GUI support with no X server setup required.
+Download `Orbit-<version> Setup.exe` from the
+[Releases page](https://github.com/galaxyproject/loom/releases) and run it.
+The installer is a standard Squirrel setup -- it installs and launches Orbit
+automatically.
+
+### SmartScreen warning
+
+The beta build is unsigned. Windows SmartScreen will show "Windows protected
+your PC -- Unknown publisher". This is expected.
+
+1. Click **More info**.
+2. Click **Run anyway**.
+
+Signing the installer with an Authenticode certificate (planned, not yet in
+place) would remove this prompt.
+
+### What works
+
+- Connect to a Galaxy server and run tools and workflows via the Galaxy provider.
+- Read and write workspace files from your Windows filesystem.
+
+### What doesn't (yet)
+
+- **No local bash shell.** There is no local execution path -- all computation
+  routes to Galaxy. A native local power mode is planned.
+
+### Updates
+
+Orbit shows a banner when a newer release is available. Click the link to go
+to the Releases page, download the new `Setup.exe`, and run it to update.
+
+---
+
+## Windows local execution (WSL2)
+
+For local bash execution today, run the Linux `.deb` build inside WSL2 --
+WSLg provides native GUI support with no X server setup required. This remains
+the path for local execution until a native Windows local power mode lands.
 
 ### Prerequisites
 
-1. **WSL2** — run `wsl --install` in an elevated PowerShell if not already set up.
-2. **WSLg** — bundled with WSL2 on Windows 11 (build 22000+). Run `wsl --update` to ensure it's current.
+1. **WSL2** -- run `wsl --install` in an elevated PowerShell if not already set up.
+2. **WSLg** -- bundled with WSL2 on Windows 11 (build 22000+). Run `wsl --update` to ensure it's current.
 3. **Ubuntu** (or another Debian-based distro) inside WSL2.
 
 ### Install inside WSL2
@@ -125,11 +161,11 @@ sudo apt-get install -f
 orbit
 ```
 
-The Orbit window opens on your Windows desktop via WSLg — no further configuration needed.
+The Orbit window opens on your Windows desktop via WSLg -- no further configuration needed.
 
 ### Notes
 
-- File paths inside WSL2 are at `/mnt/c/...` from within the terminal. Point Orbit's working directory at a path inside WSL2 (`~/analyses/`) for best performance — cross-filesystem I/O over `/mnt/c` is slower.
+- File paths inside WSL2 are at `/mnt/c/...` from within the terminal. Point Orbit's working directory at a path inside WSL2 (`~/analyses/`) for best performance -- cross-filesystem I/O over `/mnt/c` is slower.
 - Keychain-based API key encryption is not available in WSL2 (no `safeStorage`). API keys are stored in plaintext in `~/.loom/config.json` inside the WSL2 filesystem. Use filesystem permissions (`chmod 600`) to restrict access.
 
 ---

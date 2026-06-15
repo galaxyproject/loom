@@ -3188,6 +3188,18 @@ body.remote-mode #prefs-section-safety {
   display: none !important;
 }
 
+/* Native remote-only desktop (Windows): no local shell, so hide the local/cloud
+   execution toggle, the bash sandbox banner, and the Safety + Analysis prefs
+   (sandbox/bypass and the local default-cwd + conda picker are all local-exec
+   concerns). KEEP the files pane, Galaxy/LLM config, the cwd bar, and first-run
+   -- the desktop owns a real machine and real credentials. */
+body.remote-desktop #exec-mode-toggle,
+body.remote-desktop #sandbox-banner,
+body.remote-desktop #prefs-section-safety,
+body.remote-desktop #prefs-section-analysis {
+  display: none !important;
+}
+
 /* What's-new banner -- mirrors #update-banner; shown once per upgrade. */
 #whatsnew-banner {
   display: flex;
