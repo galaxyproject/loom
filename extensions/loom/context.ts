@@ -325,8 +325,29 @@ mode setting:
 ### Uploading local data
 
 To upload a file from the user's machine, call \`galaxy_upload_local_file\`
-(resumable; handles large files without timing out). For data already at a
-public URL, use \`galaxy_upload_file_from_url\` (Galaxy fetches it server-side).
+(resumable; handles large files without timing out).
+
+### Getting data into a Galaxy history
+
+When a history needs a file that lives at a **public URL** (reference
+genomes, model weights, SRA/ENA accessions, released datasets, anything
+addressable by http/https/ftp), hand Galaxy the URL and let its server
+fetch it directly. Do **not** download the file to this machine and then
+re-upload it. A local download followed by a local→Galaxy upload doubles
+the transfer, burns the user's upstream bandwidth, fills local disk, and
+blocks the turn: a 2.3 GB local→Galaxy upload took 8+ minutes on a normal
+connection, where a server-side fetch runs at datacenter bandwidth.
+
+- **Preferred:** the Galaxy MCP fetch-by-URL tool
+  \`galaxy_upload_file_from_url({ url, history_id })\` (optional
+  \`file_name\`, \`file_type\`, \`dbkey\`). One hop, no local copy.
+- **Scripting bioblend instead?** Use the URL-fetch path
+  \`gi.tools.put_url(url, history_id)\` (one URL per line for several),
+  which Galaxy fetches server-side. Never call \`gi.tools.upload_file()\`
+  on a path you just downloaded from that same URL.
+- **Local→upload is the exception.** Reach for it only when the source is
+  genuinely local: a file the user created, or one that exists only on
+  this machine with no URL Galaxy can reach itself.
 
 ### Executing a Galaxy step
 

@@ -27,6 +27,27 @@ Before drafting a plan, consult Galaxy resources:
      scripts) — mark it local.
 3. Document each routing decision inline in the markdown plan section.
 
+## Getting remote data into a history
+
+When a history needs a file that lives at a public URL (reference
+genomes, model weights, SRA/ENA accessions, released datasets, anything
+addressable by http/https/ftp), hand Galaxy the URL and let its server
+fetch it directly. Do **not** download the file locally and re-upload it.
+A local download plus a local→Galaxy upload doubles the transfer, spends
+the user's upstream bandwidth, fills local disk, and blocks the turn (a
+2.3 GB local→Galaxy upload took 8+ minutes on a normal connection, where a
+server-side fetch runs at datacenter bandwidth).
+
+- Preferred: the Galaxy MCP fetch-by-URL tool
+  `galaxy_upload_file_from_url({ url, history_id })` (optional `file_name`,
+  `file_type`, `dbkey`).
+- Scripting bioblend instead: use `gi.tools.put_url(url, history_id)` (one
+  URL per line for several), which Galaxy fetches server-side. Don't call
+  `gi.tools.upload_file()` on a path you just downloaded from that URL.
+- Local→upload is the exception, used only when the source is genuinely
+  local: a file the user created, or one that exists only on this machine
+  with no URL Galaxy can reach itself.
+
 ## When Galaxy is not connected
 
 All execution is local. Suggest connecting via `/connect` once if the
