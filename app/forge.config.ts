@@ -333,6 +333,12 @@ const config: ForgeConfig = {
       name: "@electron-forge/maker-squirrel",
       config: {
         name: "Orbit",
+        // electron-winstaller writes this into the generated Orbit.nuspec as the
+        // required <authors> field (and it's the publisher shown in Windows'
+        // installed-programs list). package.json has no `author`, so without this
+        // the Squirrel maker hard-fails with "Authors is required". Matches the
+        // maintainer string the deb maker uses.
+        authors: "Galaxy Project contributors",
         setupIcon: "resources/icon.ico",
         // Squirrel is happy unsigned for dev/internal builds; production
         // distribution will need a code-signing cert configured here.
