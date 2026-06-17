@@ -172,10 +172,14 @@ export interface DatasetState {
   name?: string;
 }
 
-// These are the Galaxy dataset states from which no further transitions occur.
-// Polling stops (successfully or otherwise) once one of these is seen.
+// Galaxy's terminal dataset states -- those from which no further transitions
+// occur, so polling stops (successfully or otherwise) once one is seen. Mirrors
+// Dataset.terminal_states in galaxy's lib/galaxy/model/__init__.py. "empty"
+// (a successfully-uploaded but zero-byte dataset) belongs here too -- omitting
+// it left an empty-file upload polling all the way to the ingest timeout.
 export const TERMINAL_DATASET_STATES = new Set([
   "ok",
+  "empty",
   "error",
   "discarded",
   "failed_metadata",

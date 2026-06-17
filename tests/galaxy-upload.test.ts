@@ -7,6 +7,8 @@ import * as pathMod from "path";
 import {
   resolveStoragePath,
   pickUploadedDataset,
+  isUnusableDatasetState,
+  ingestFailureMessage,
   type HistoryContentItem,
 } from "../extensions/loom/galaxy-upload";
 
@@ -14,6 +16,34 @@ describe("resolveStoragePath", () => {
   it("is under ~/.loom and stable", () => {
     const p = resolveStoragePath();
     expect(p).toBe(path.join(os.homedir(), ".loom", "upload-resume.json"));
+  });
+});
+
+describe("isUnusableDatasetState", () => {
+  // Mirrors the complement of Galaxy's Dataset.valid_input_states.
+  it("flags the states Galaxy rejects as a tool input", () => {
+    for (const s of ["error", "discarded", "failed_metadata"]) {
+      expect(isUnusableDatasetState(s)).toBe(true);
+    }
+  });
+
+  it("does not flag usable terminal states or transient states", () => {
+    for (const s of ["ok", "empty", "deferred", "queued", "running", "new"]) {
+      expect(isUnusableDatasetState(s)).toBe(false);
+    }
+  });
+});
+
+describe("ingestFailureMessage", () => {
+  it("tells the agent to set the datatype for the recoverable failed_metadata case", () => {
+    const msg = ingestFailureMessage("failed_metadata", "reads.fastq");
+    expect(msg).toMatch(/datatype/i);
+    expect(msg).toMatch(/no need to re-upload/i);
+  });
+
+  it("tells the agent to re-upload / inspect the job for the hard-failure cases", () => {
+    expect(ingestFailureMessage("discarded", "reads.fastq")).toMatch(/re-upload/i);
+    expect(ingestFailureMessage("error", "reads.fastq")).toMatch(/job/i);
   });
 });
 
@@ -253,7 +283,7 @@ describe("galaxy_upload_local_file handler", () => {
     expect(res.details.state).toBe("queued");
   });
 
-  it("ingest error state: bytes uploaded but Galaxy ingest failed -- not a tool error, state surfaces", async () => {
+  it("ingest error state: bytes uploaded but Galaxy ingest failed -- reported as a tool failure", async () => {
     vi.mocked(waitForDataset).mockResolvedValue({
       id: "ds1",
       state: "error",
@@ -261,11 +291,39 @@ describe("galaxy_upload_local_file handler", () => {
       name: "reads.fastq",
     });
     const res = await run(getTool(), { path: goodFile, history_id: "hist1" });
-    // The upload itself succeeded; this is NOT a tool-level error.
-    expect(res.details.error).toBeFalsy();
+    // The transfer completed but the dataset isn't a valid Galaxy tool input, so
+    // the tool reports failure rather than a successful upload -- the agent must
+    // not build on it. The id/state still surface in the text for follow-up.
+    expect(res.details.error).toBe(true);
     expect(res.details.datasetId).toBe("ds1");
     expect(res.details.state).toBe("error");
-    // The JSON text should surface the dataset id so the model can follow up.
     expect(res.content[0].text).toContain("ds1");
+    expect(res.content[0].text).toContain('"uploaded": false');
+  });
+
+  it("failed_metadata: reported as a failure but with recoverable set-the-datatype guidance", async () => {
+    vi.mocked(waitForDataset).mockResolvedValue({
+      id: "ds1",
+      state: "failed_metadata",
+      hid: 3,
+      name: "reads.fastq",
+    });
+    const res = await run(getTool(), { path: goodFile, history_id: "hist1" });
+    expect(res.details.error).toBe(true);
+    expect(res.details.state).toBe("failed_metadata");
+    expect(res.content[0].text).toMatch(/datatype/i);
+  });
+
+  it("empty dataset: a zero-byte upload is a valid input state -- treated as success", async () => {
+    vi.mocked(waitForDataset).mockResolvedValue({
+      id: "ds1",
+      state: "empty",
+      hid: 3,
+      name: "reads.fastq",
+    });
+    const res = await run(getTool(), { path: goodFile, history_id: "hist1" });
+    expect(res.details.error).toBeFalsy();
+    expect(res.details.state).toBe("empty");
+    expect(res.content[0].text).toContain('"uploaded": true');
   });
 });

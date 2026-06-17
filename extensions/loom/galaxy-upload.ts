@@ -48,6 +48,30 @@ function err(text: string) {
   return { content: [{ type: "text" as const, text }], details: { error: true } };
 }
 
+// Galaxy's Dataset.valid_input_states is "every state EXCEPT these three" -- a
+// dataset that lands in one of them cannot be selected as input to a downstream
+// tool (galaxy: lib/galaxy/model/__init__.py valid_input_states, enforced in
+// tools/parameters/dataset_matcher.py). So an upload ending here transferred the
+// bytes but did NOT produce a dataset the agent can actually use; report it as a
+// failure rather than a success. (ok/empty/deferred are usable -> success.)
+const UNUSABLE_DATASET_STATES = new Set(["error", "discarded", "failed_metadata"]);
+
+export function isUnusableDatasetState(state: string): boolean {
+  return UNUSABLE_DATASET_STATES.has(state);
+}
+
+// State-specific guidance: failed_metadata is recoverable (set the datatype),
+// while error/discarded mean the data did not survive ingest.
+export function ingestFailureMessage(state: string, fileName: string): string {
+  if (state === "failed_metadata") {
+    return `"${fileName}" transferred, but Galaxy could not detect its metadata (state "failed_metadata"), so it isn't usable as a tool input yet. Set the dataset's datatype in Galaxy and it becomes usable -- no need to re-upload.`;
+  }
+  if (state === "discarded") {
+    return `"${fileName}" transferred, but Galaxy discarded the dataset (state "discarded") without retaining the data. Re-upload to try again.`;
+  }
+  return `"${fileName}" transferred, but Galaxy's ingest failed (state "error"). Inspect the dataset's job for details before retrying.`;
+}
+
 export function registerGalaxyUploadTool(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "galaxy_upload_local_file",
@@ -187,6 +211,31 @@ export function registerGalaxyUploadTool(pi: ExtensionAPI): void {
       }
 
       if (dataset) {
+        if (isUnusableDatasetState(dataset.state)) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    uploaded: false,
+                    history_id: historyId,
+                    dataset: {
+                      id: dataset.id,
+                      hid: dataset.hid,
+                      name: dataset.name,
+                      state: dataset.state,
+                    },
+                    error: ingestFailureMessage(dataset.state, fileName),
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+            details: { error: true, historyId, datasetId: dataset.id, state: dataset.state },
+          };
+        }
         return {
           content: [
             {
