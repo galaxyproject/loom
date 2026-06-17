@@ -531,6 +531,7 @@ export class ChatPanel {
       }
       const range = sel.getRangeAt(0);
       const rect = range.getBoundingClientRect();
+      const crect = this.container.getBoundingClientRect();
       const placement = computeCopyButtonPlacement({
         isCollapsed: sel.isCollapsed,
         rangeCount: sel.rangeCount,
@@ -542,6 +543,7 @@ export class ChatPanel {
           width: rect.width,
           height: rect.height,
         },
+        container: { top: crect.top, bottom: crect.bottom },
         viewport: { width: window.innerWidth, height: window.innerHeight },
       });
       if (placement.hidden) {

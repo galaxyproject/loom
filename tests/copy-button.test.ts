@@ -12,6 +12,7 @@ function input(overrides: Partial<CopyButtonInput> = {}): CopyButtonInput {
     rangeCount: 1,
     inContainer: true,
     rect: { top: 100, bottom: 120, right: 300, width: 200, height: 20 },
+    container: { top: 0, bottom: 800 },
     viewport: VIEWPORT,
     ...overrides,
   };
@@ -85,5 +86,26 @@ describe("computeCopyButtonPlacement", () => {
     );
     expect(before).toEqual({ hidden: false, top: 404, left: 220 });
     expect(after).toEqual({ hidden: false, top: 204, left: 220 });
+  });
+
+  // #299: the chat container is the scroller, so a live selection can scroll
+  // out of the visible scrollport. The button must hide rather than strand at a
+  // stale position over the rest of the pane.
+  it("hides when the selection has scrolled above the chat scrollport", () => {
+    const container = { top: 100, bottom: 700 };
+    const rect = { top: 30, bottom: 50, right: 300, width: 200, height: 20 };
+    expect(computeCopyButtonPlacement(input({ container, rect }))).toEqual({ hidden: true });
+  });
+
+  it("hides when the selection has scrolled below the chat scrollport", () => {
+    const container = { top: 100, bottom: 700 };
+    const rect = { top: 740, bottom: 760, right: 300, width: 200, height: 20 };
+    expect(computeCopyButtonPlacement(input({ container, rect }))).toEqual({ hidden: true });
+  });
+
+  it("stays shown when the selection straddles the scrollport's top edge (still partly visible)", () => {
+    const container = { top: 100, bottom: 700 };
+    const rect = { top: 80, bottom: 140, right: 300, width: 200, height: 60 };
+    expect(computeCopyButtonPlacement(input({ container, rect }))).toMatchObject({ hidden: false });
   });
 });
