@@ -11,6 +11,7 @@ import { parseLatestPlan } from "./notebook-parser.js";
 import type {
   AnyEvent,
   Assertions,
+  Dimension,
   NotebookAssertions,
   PlanAssertions,
   ScenarioFailure,
@@ -25,6 +26,7 @@ export function evaluate(run: ScenarioRun): ScenarioFailure[] {
     failures.push({
       assertion: "exitCode",
       detail: `expected ${a.exitCode}, got ${run.exitCode}`,
+      dimension: "other",
     });
   }
 
@@ -48,6 +50,7 @@ function evaluateToolCalls(events: AnyEvent[], a: Assertions, failures: Scenario
       failures.push({
         assertion: "toolCalls.mustNotInclude",
         detail: `banned tool '${banned}' was called`,
+        dimension: "other",
       });
     }
   }
@@ -60,6 +63,7 @@ function evaluateToolCalls(events: AnyEvent[], a: Assertions, failures: Scenario
         failures.push({
           assertion: "toolCalls.mustInclude",
           detail: `expected tool '${expected.name}' not found in remaining sequence`,
+          dimension: "other",
         });
         break;
       }
@@ -97,6 +101,7 @@ function evaluateEvents(events: AnyEvent[], a: Assertions, failures: ScenarioFai
       failures.push({
         assertion: "events.mustInclude",
         detail: `expected event type '${required}' was not emitted`,
+        dimension: "other",
       });
     }
   }
@@ -105,6 +110,7 @@ function evaluateEvents(events: AnyEvent[], a: Assertions, failures: ScenarioFai
       failures.push({
         assertion: "events.mustNotInclude",
         detail: `banned event type '${banned}' was emitted`,
+        dimension: "other",
       });
     }
   }
@@ -125,6 +131,7 @@ function evaluateChatText(
       failures.push({
         assertion: "chatText.mustInclude",
         detail: `chat text did not include '${needle}'`,
+        dimension: "other",
       });
     }
   }
@@ -133,6 +140,7 @@ function evaluateChatText(
       failures.push({
         assertion: "chatText.mustNotInclude",
         detail: `chat text included banned '${needle}'`,
+        dimension: "other",
       });
     }
   }
@@ -167,6 +175,7 @@ function evaluateNotebook(
       failures.push({
         assertion: "notebook.exists",
         detail: `expected exists=${a.exists}, got ${present}`,
+        dimension: "other",
       });
     }
   }
@@ -177,6 +186,7 @@ function evaluateNotebook(
       failures.push({
         assertion: "notebook",
         detail: "notebook.md was not present at end of run",
+        dimension: "other",
       });
     }
     return;
@@ -187,6 +197,7 @@ function evaluateNotebook(
       failures.push({
         assertion: "notebook.contains",
         detail: `notebook did not contain '${needle}'`,
+        dimension: "other",
       });
     }
   }
@@ -195,6 +206,7 @@ function evaluateNotebook(
       failures.push({
         assertion: "notebook.mustNotContain",
         detail: `notebook contained banned '${needle}'`,
+        dimension: "other",
       });
     }
   }
@@ -234,6 +246,7 @@ function evaluatePlan(
       failures.push({
         assertion: `${prefix}.exists`,
         detail: `no \`## Plan X: <title> [routing]\` heading found in ${surfaceLabel}`,
+        dimension: "validity",
       });
     }
     return;
@@ -243,6 +256,7 @@ function evaluatePlan(
     failures.push({
       assertion: `${prefix}.exists`,
       detail: `expected no plan heading in ${surfaceLabel} but found "${plan.title}"`,
+      dimension: "validity",
     });
     return;
   }
@@ -251,6 +265,7 @@ function evaluatePlan(
     failures.push({
       assertion: `${prefix}.routingIn`,
       detail: `plan routing '${plan.routing}' not in [${a.routingIn.join(", ")}]`,
+      dimension: "routing",
     });
   }
 
@@ -258,6 +273,7 @@ function evaluatePlan(
     failures.push({
       assertion: `${prefix}.minPendingSteps`,
       detail: `expected >= ${a.minPendingSteps} pending steps, got ${plan.pendingSteps.length}`,
+      dimension: "validity",
     });
   }
 
@@ -269,6 +285,7 @@ function evaluatePlan(
         detail: `${skinny.length} step(s) lack a description >= 8 chars (lines ${skinny
           .map((s) => s.line + 1)
           .join(", ")})`,
+        dimension: "validity",
       });
     }
   }

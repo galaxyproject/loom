@@ -90,9 +90,16 @@ export interface Scenario {
   assertions: Assertions;
 }
 
+/**
+ * Which decision-correctness axis a failure belongs to. Lets the report
+ * group results into a model x dimension leaderboard.
+ */
+export type Dimension = "validity" | "routing" | "tools" | "behavior" | "other";
+
 export interface ScenarioFailure {
   assertion: string;
   detail: string;
+  dimension?: Dimension;
 }
 
 /**
