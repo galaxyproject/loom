@@ -126,8 +126,7 @@ function evaluateChatText(
   failures: ScenarioFailure[],
 ): void {
   if (!a.chatText) return;
-  let text = collectChatText(events);
-  if (stripThinkingTags) text = stripThinking(text);
+  const text = getChatText(events, stripThinkingTags);
 
   for (const needle of a.chatText.mustInclude ?? []) {
     if (!text.includes(needle)) {
@@ -165,6 +164,11 @@ function stripThinking(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
 }
 
+function getChatText(events: AnyEvent[], stripThinkingTags: boolean): string {
+  const text = collectChatText(events);
+  return stripThinkingTags ? stripThinking(text) : text;
+}
+
 function evaluateBehavior(
   run: ScenarioRun,
   a: BehaviorAssertions | undefined,
@@ -173,8 +177,7 @@ function evaluateBehavior(
 ): void {
   if (!a) return;
   if (a.asksClarifyingQuestion) {
-    let chat = collectChatText(run.events);
-    if (stripThinkingTags) chat = stripThinking(chat);
+    const chat = getChatText(run.events, stripThinkingTags);
     const askedQuestion = chat.includes("?");
     const chatPlan = parseLatestPlan(chat);
     const notebookPlan = run.notebookContent ? parseLatestPlan(run.notebookContent) : null;
@@ -262,8 +265,7 @@ function evaluateChatPlan(
   failures: ScenarioFailure[],
 ): void {
   if (!a) return;
-  let text = collectChatText(events);
-  if (stripThinkingTags) text = stripThinking(text);
+  const text = getChatText(events, stripThinkingTags);
   evaluatePlan(text, a, failures, "chatPlan", "chat text");
 }
 
@@ -275,8 +277,7 @@ function evaluateUnifiedPlan(
 ): void {
   if (!a) return;
   const source = a.source ?? "any";
-  let chat = collectChatText(run.events);
-  if (stripThinkingTags) chat = stripThinking(chat);
+  const chat = getChatText(run.events, stripThinkingTags);
   const notebook = run.notebookContent ?? "";
 
   let content: string;
