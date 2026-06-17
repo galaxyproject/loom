@@ -1,9 +1,11 @@
 # Loom evals -- harness findings log
 
 What we learned by iterating on the eval suite against the TACC SambaNova
-matrix (Llama-3.3-70B, Llama-4-Maverick, Qwen3-32B). Useful both as a
-record of why the suite is shaped the way it is, and as a starter list
-for future runs.
+matrix. Started as the 3-model lineup (Llama-3.3-70B, Llama-4-Maverick,
+Qwen3-32B); now 7 (added MiniMax-M2.7, gpt-oss-120b, Llama-3.1-8B,
+gemma-4-31B). Useful both as a record of why the suite is shaped the way it
+is, and as a starter list for future runs. Entries are roughly chronological;
+the newest section is at the bottom.
 
 ## Loom-side bugs surfaced by the matrix
 
@@ -177,3 +179,73 @@ Maverick especially shows nondeterminism on tool-call format.)
    (skipping chat-draft) and picks `[local]` routing despite the
    Galaxy-first prompt. Worth a focused prompt-tightening cycle if we
    want it to score above 2/5.
+
+## 2026-06-17: decision-correctness layer + 7-model matrix
+
+We stopped grading *shape* and started grading *decisions*. Every scenario
+now carries the correct answer (tightened `routingIn`, a `mentionsOneOf` tool
+allow-set), failures are tagged with a dimension (validity / routing / tools /
+behavior), each (scenario, model) cell runs n=3, and the runner prints a
+`model x dimension` leaderboard and persists per-run JSONL to
+`evals/results/`. This closes suggested-iterations #1 (n=3) and #3 (results
+artifact) above. Matrix expanded from 3 to 7 TACC models: added MiniMax-M2.7,
+gpt-oss-120b, Llama-3.1-8B, gemma-4-31B.
+
+### The eval surfaced its own grading bug (now fixed)
+
+The first live `plan-creation-rnaseq` matrix run showed gpt-oss-120b,
+Llama-3.1-8B, and gemma -- all of which emitted *no plan at all* -- scoring
+`routing 3/3, tools 3/3` on the leaderboard. Cause: `evaluatePlan`'s
+no-plan branch pushed only a `validity` failure and returned, so the
+declared routing/tools dimensions recorded no failure and the aggregator
+read them as green. The plan's own intent is "validity is the gate -- a
+model that can't emit a parseable plan fails everything downstream," so the
+fix makes the no-plan branch also fail every other declared dimension. After
+the fix the three no-plan models correctly read `0/0/0`. Good reminder that a
+leaderboard's green cells need the same scrutiny as its red ones.
+
+### gpt-oss-120b returns empty content through Pi
+
+gpt-oss-120b fails `smoke-echo` 3/3 -- it never emits the echo token -- and
+produces no plan on `plan-creation-rnaseq`. Its chain-of-thought lands in
+`reasoning_content`; Pi (or the litellm adapter under it) doesn't surface a
+usable assistant `content`, so from Loom's side the model says nothing. The
+matrix entry is flagged `reasoningModel: true` and given `maxTokens: 8192`,
+but that alone doesn't fix it -- this needs Loom/Pi to read `reasoning_content`
+(or strip-and-promote it) before gpt-oss-120b is usable as a Loom driver. Left
+in the matrix so the regression is visible; it shows red until handled.
+
+### Live leaderboard (plan-creation-rnaseq, n=3, post-fix)
+
+| model            | validity | routing | tools | notes                                                            |
+| ---------------- | -------- | ------- | ----- | ---------------------------------------------------------------- |
+| Llama-4-Maverick | 3/3      | 3/3     | 3/3   | cleanest run this round                                          |
+| MiniMax-M2.7     | 3/3      | 1/3     | 3/3   | routed `[local]` on 2 of 3 runs -- variance n=1 would have hidden |
+| Qwen3-32B        | 2/3      | 2/3     | 2/3   | one run emitted no plan; the other two routed `[galaxy]` cleanly  |
+| Llama-3.3-70B    | 0/3      | 3/3     | 3/3   | right decisions, wrong format (see below)                        |
+| gpt-oss-120b     | 0/3      | 0/3     | 0/3   | empty content (reasoning_content; see above)                     |
+| Llama-3.1-8B     | 0/3      | 0/3     | 0/3   | no plan; one run hit the 150s timeout                            |
+| gemma-4-31B      | 0/3      | 0/3     | 0/3   | no plan                                                          |
+
+Two findings worth their own follow-up:
+
+- **Llama-3.3-70B makes the right calls but won't use checkbox steps.** It
+  routes `[galaxy]` and names fastp/STAR/featureCounts/DESeq2 every run
+  (routing + tools 3/3), but writes its steps as a `1.`-numbered list rather
+  than `- [ ]` checkboxes, so `minPendingSteps` sees 0 pending steps and
+  validity fails 0/3. That's a real format-adherence gap -- the init-gate
+  parser and step tracking both key off `- [ ]`. Either tighten the prompt's
+  step format or decide the parser should also count numbered steps; the eval
+  is correctly flagging a divergence, not a false negative.
+- **Routing is genuinely noisy across models and runs.** MiniMax flips between
+  `[galaxy]` and `[local]` run-to-run; Qwen3 routed `[local]` in an earlier
+  run and `[galaxy]` here. Routing judgment on a clearly-Galaxy task is not
+  yet reliable on the open matrix -- the single most actionable prompt-tuning
+  target, and exactly what n=3 + the routing dimension are built to track.
+
+### What's deliberately still out of scope
+
+No LLM-judge plan-*quality* scoring (tool allow-sets stay coarse
+substring heuristics -- a model naming a tool in surrounding prose can pass
+`mentionsOneOf`), no end-to-end execution, no recorded/live Galaxy MCP. The
+assertion library leaves seams for each.
