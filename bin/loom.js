@@ -320,6 +320,10 @@ if (!isInformationalCommand) {
       command: "uvx",
       args: ["galaxy-mcp>=1.8.0"],
       directTools: true,
+      // Local-path upload over MCP times out on large files (-32001); the
+      // loom-native galaxy_upload_local_file tool handles those instead. URL
+      // upload (upload_file_from_url) and the rest stay exposed.
+      excludeTools: ["upload_file"],
       env: {
         GALAXY_URL: galaxyUrl,
         GALAXY_API_KEY: galaxyApiKey,

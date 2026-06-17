@@ -44,6 +44,7 @@
     "node-html-parser": "^7.1.0",
     "pi-mcp-adapter": "^2.4.0",
     "pi-web-access": "^0.10.6",
+    "tus-js-client": "^3.1.0",
     "uuid": "^14.0.0",
     "yaml": "^2.8.2"
   },

@@ -322,6 +322,12 @@ mode setting:
 - **hybrid** — some local, some Galaxy
 - **remote** — entire plan is a Galaxy workflow invocation
 
+### Uploading local data
+
+To upload a file from the user's machine, call \`galaxy_upload_local_file\`
+(resumable; handles large files without timing out). For data already at a
+public URL, use \`galaxy_upload_file_from_url\` (Galaxy fetches it server-side).
+
 ### Executing a Galaxy step
 
 **Galaxy invocations run in the background by default — submit and hand
