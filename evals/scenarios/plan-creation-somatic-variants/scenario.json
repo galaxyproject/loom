@@ -11,14 +11,12 @@
   "timeoutMs": 150000,
   "assertions": {
     "events": { "mustInclude": ["agent_start", "turn_end"] },
-    "notebook": {
+    "plan": {
       "exists": true,
-      "plan": {
-        "exists": true,
-        "routingIn": ["galaxy", "hybrid", "local", "remote"],
-        "minPendingSteps": 5,
-        "eachStepHasDescription": true
-      }
+      "routingIn": ["galaxy", "hybrid"],
+      "minPendingSteps": 5,
+      "eachStepHasDescription": true,
+      "mentionsOneOf": ["Mutect", "VarScan", "Strelka", "GATK", "FreeBayes", "bcftools"]
     }
   }
 }

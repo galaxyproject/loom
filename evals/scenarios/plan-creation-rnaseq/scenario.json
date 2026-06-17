@@ -13,14 +13,12 @@
     "events": {
       "mustInclude": ["agent_start", "turn_end"]
     },
-    "notebook": {
+    "plan": {
       "exists": true,
-      "plan": {
-        "exists": true,
-        "routingIn": ["galaxy", "hybrid", "local", "remote"],
-        "minPendingSteps": 4,
-        "eachStepHasDescription": true
-      }
+      "routingIn": ["galaxy", "hybrid"],
+      "minPendingSteps": 4,
+      "eachStepHasDescription": true,
+      "mentionsOneOf": ["HISAT2", "STAR", "salmon", "kallisto", "DESeq2", "edgeR", "limma", "featureCounts"]
     }
   }
 }
