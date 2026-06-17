@@ -89,3 +89,36 @@ describe("evals assertions: tool mentions", () => {
     expect(f[0].assertion).toContain("mentionsNoneOf");
   });
 });
+
+describe("evals assertions: source-aware plan (Assertions.plan)", () => {
+  it("reads the notebook plan when source defaults to 'any' and notebook has one", () => {
+    const run = makeRun({
+      events: textEvents("Here is a draft idea, no formal plan."),
+      notebookContent: "## Plan 1: Real [galaxy]\n- [ ] 1. **Align** -- HISAT2 over hg38 reads",
+      assertions: { plan: { routingIn: ["galaxy"], mentionsOneOf: ["HISAT2"] } },
+    });
+    expect(evaluate(run)).toHaveLength(0);
+  });
+
+  it("falls back to chat when no notebook plan exists", () => {
+    const run = makeRun({
+      events: textEvents("## Plan 1: Chatted [local]\n- [ ] 1. **Rename** -- tidy the files up"),
+      notebookContent: null,
+      assertions: { plan: { routingIn: ["local"] } },
+    });
+    expect(evaluate(run)).toHaveLength(0);
+  });
+
+  it("honors an explicit source: 'chat' and does not read the notebook", () => {
+    const run = makeRun({
+      events: textEvents("## Plan 1: Chatted [hybrid]\n- [ ] 1. **Step** -- do the thing here"),
+      notebookContent: "## Plan 1: Notebook [galaxy]\n- [ ] 1. **Step** -- other thing here",
+      assertions: { plan: { source: "chat", routingIn: ["galaxy"] } },
+    });
+    // chat routing is hybrid; expected galaxy -> exactly one routing failure.
+    // If `plan` is unimplemented this yields 0 failures and the test fails.
+    const f = evaluate(run);
+    expect(f).toHaveLength(1);
+    expect(f[0].dimension).toBe("routing");
+  });
+});

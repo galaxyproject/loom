@@ -35,6 +35,7 @@ export function evaluate(run: ScenarioRun): ScenarioFailure[] {
   evaluateEvents(run.events, a, failures);
   evaluateChatText(run.events, a, stripThink, failures);
   evaluateChatPlan(run.events, a.chatPlan, stripThink, failures);
+  evaluateUnifiedPlan(run, a.plan, stripThink, failures);
   evaluateNotebook(run.notebookContent, a.notebook, failures);
 
   return failures;
@@ -224,6 +225,35 @@ function evaluateChatPlan(
   let text = collectChatText(events);
   if (stripThinkingTags) text = stripThinking(text);
   evaluatePlan(text, a, failures, "chatPlan", "chat text");
+}
+
+function evaluateUnifiedPlan(
+  run: ScenarioRun,
+  a: PlanAssertions | undefined,
+  stripThinkingTags: boolean,
+  failures: ScenarioFailure[],
+): void {
+  if (!a) return;
+  const source = a.source ?? "any";
+  let chat = collectChatText(run.events);
+  if (stripThinkingTags) chat = stripThinking(chat);
+  const notebook = run.notebookContent ?? "";
+
+  let content: string;
+  let label: string;
+  if (source === "notebook") {
+    content = notebook;
+    label = "notebook";
+  } else if (source === "chat") {
+    content = chat;
+    label = "chat text";
+  } else {
+    const notebookHasPlan = notebook.length > 0 && parseLatestPlan(notebook) !== null;
+    content = notebookHasPlan ? notebook : chat;
+    label = notebookHasPlan ? "notebook" : "chat text";
+  }
+
+  evaluatePlan(content, a, failures, "plan", label);
 }
 
 /**

@@ -37,6 +37,12 @@ export interface Assertions {
    * the galaxy/brc Python harnesses with LLMJudge.
    */
   notebook?: NotebookAssertions;
+  /**
+   * Source-aware plan check. Unlike `chatPlan` / `notebook.plan` (which are
+   * pinned to one surface), this reads the latest plan from wherever it landed
+   * per `source` (default "any"). Preferred for decision-correctness scenarios.
+   */
+  plan?: PlanAssertions;
   exitCode?: number;
 }
 
@@ -54,6 +60,12 @@ export interface NotebookAssertions {
 export interface PlanAssertions {
   /** at least one `## Plan X: ... [routing]` heading must exist */
   exists?: boolean;
+  /**
+   * Where to read the plan from. "any" (default) = notebook.md if it contains
+   * a plan, else the chat text. Models don't reliably follow Loom's
+   * draft-in-chat-then-write gate, so "any" is the right default for grading.
+   */
+  source?: "chat" | "notebook" | "any";
   /** routing tag in the heading must be one of these */
   routingIn?: ("local" | "galaxy" | "hybrid" | "remote")[];
   /** plan section must have at least N pending (`- [ ]`) steps */
