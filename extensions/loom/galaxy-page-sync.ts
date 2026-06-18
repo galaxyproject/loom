@@ -31,13 +31,15 @@ import { getNotebookPath, onNotebookChange } from "./state.js";
 import { readNotebook } from "./notebook-writer.js";
 import { getGalaxyConfig, galaxyGetMostRecentHistory } from "./galaxy-api.js";
 import { pushNotebookToGalaxy, resumeGalaxyPage } from "./galaxy-pages-sync.js";
+import { listHistoryPages } from "./galaxy-pages-api.js";
 
 export interface PageSyncDeps {
   mode: "auto" | "off";
   hasGalaxy: () => boolean;
   getHistoryId: () => Promise<string | null>;
   readBody: () => Promise<string>;
-  resume: (slug: string) => Promise<void>;
+  findPageId: (historyId: string, slug: string) => Promise<string | null>;
+  resume: (pageId: string) => Promise<void>;
   push: (o: { historyId: string; slug: string; title: string }) => Promise<void>;
   subscribe: (cb: () => void) => () => void;
   debounceMs: number;
@@ -70,10 +72,22 @@ export function createPageSyncEngine(deps: PageSyncDeps) {
     historyId = resolved;
     if (!historyId) return;
     slug = pageSlugForHistory(historyId);
+    // Galaxy's GET /pages/{id} takes a page id, not a slug, so resolve the
+    // per-history page id by listing the history's pages and matching the
+    // derived slug, then resume by id. A fresh container has no local binding,
+    // so listing is the only way to rediscover the page.
+    let existingPageId: string | null = null;
     try {
-      await deps.resume(slug); // refreshes notebook from the prior page if it exists
+      existingPageId = await deps.findPageId(historyId, slug);
     } catch {
-      /* no prior page (404) — fresh notebook; created on first push */
+      /* listing failed — treat as no prior page; created on first push */
+    }
+    if (existingPageId) {
+      try {
+        await deps.resume(existingPageId); // refresh notebook from the prior page
+      } catch (err) {
+        console.error("[page-sync] resume failed:", err);
+      }
     }
     lastBody = await deps.readBody();
     active = true;
@@ -128,8 +142,13 @@ function realDeps(): PageSyncDeps {
       if (!p) return "";
       return strippedNotebookBody(await readNotebook(p));
     },
-    resume: async (slug) => {
-      await resumeGalaxyPage(slug);
+    findPageId: async (historyId, slug) => {
+      const pages = await listHistoryPages(historyId);
+      const match = pages.find((p) => p.slug === slug);
+      return match ? match.id : null;
+    },
+    resume: async (pageId) => {
+      await resumeGalaxyPage(pageId);
     },
     push: async ({ historyId, slug, title }) => {
       await pushNotebookToGalaxy({ historyId, slug, title });

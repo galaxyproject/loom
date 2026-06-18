@@ -56,6 +56,7 @@ function makeDeps(over: Partial<PageSyncDeps> = {}): PageSyncDeps & {
     hasGalaxy: () => true,
     getHistoryId: async () => "h1",
     readBody: async () => body,
+    findPageId: vi.fn(async () => "page-h1"),
     resume: vi.fn(async () => {}),
     push: vi.fn(async (o) => {
       pushes.push(o);
@@ -82,11 +83,19 @@ describe("createPageSyncEngine", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it("resumes on init using the per-history slug", async () => {
+  it("resolves the page id by slug and resumes by id", async () => {
     const deps = makeDeps();
     const engine = createPageSyncEngine(deps);
     await engine.init();
-    expect(deps.resume).toHaveBeenCalledWith("orbit-h1");
+    expect(deps.findPageId).toHaveBeenCalledWith("h1", "orbit-h1");
+    expect(deps.resume).toHaveBeenCalledWith("page-h1");
+  });
+
+  it("does not resume when no page exists for the history (fresh)", async () => {
+    const deps = makeDeps({ findPageId: vi.fn(async () => null) });
+    const engine = createPageSyncEngine(deps);
+    await engine.init();
+    expect(deps.resume).not.toHaveBeenCalled();
   });
 
   it("is a no-op when mode is off", async () => {
