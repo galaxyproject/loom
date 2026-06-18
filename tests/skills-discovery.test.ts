@@ -19,6 +19,7 @@ import {
   BUILTIN_CATALOG,
   refreshAllCatalogs,
 } from "../extensions/loom/skills-discovery";
+import { listEnabledSkillRepos } from "../extensions/loom/skills";
 
 describe("parseFrontmatter", () => {
   it("reads name, description, when_to_use, and a surfaces list", () => {
@@ -91,6 +92,10 @@ describe("githubRawBase", () => {
   });
   it("returns null for non-github urls", () => {
     expect(githubRawBase("https://example.com/x/y", "main")).toBeNull();
+  });
+  it("rejects a branch with path traversal (literal or %2e-escaped)", () => {
+    expect(githubRawBase(REPO.url, "../../other/repo/main")).toBeNull();
+    expect(githubRawBase(REPO.url, "%2e%2e/%2e%2e/other/repo/main")).toBeNull();
   });
 });
 
@@ -240,6 +245,22 @@ describe("discoverCatalog", () => {
       },
     ]);
   });
+
+  it("throws on a partial walk rather than persisting a fail-open catalog", async () => {
+    // Tree lists two skills but one 404s. Skipping it would leave a partial
+    // catalog whose missing entry might be the only loom-tagged one.
+    vi.stubGlobal(
+      "fetch",
+      mockGithub(
+        [
+          { path: "a/SKILL.md", type: "blob" },
+          { path: "b/SKILL.md", type: "blob" },
+        ],
+        { "a/SKILL.md": "---\nname: a\ndescription: d\nmetadata:\n  surfaces: [loom]\n---\n" },
+      ),
+    );
+    await expect(discoverCatalog(REPO)).rejects.toThrow(/b\/SKILL\.md/);
+  });
 });
 
 describe("catalog cache", () => {
@@ -260,6 +281,15 @@ describe("catalog cache", () => {
     const cat = readCatalog(REPO);
     expect(cat?.skills).toEqual(entries);
     expect(typeof cat?.generatedAt).toBe("number");
+  });
+
+  it("preserves the last-known-good catalog when a forced refresh fails", async () => {
+    const good = [{ path: "old/SKILL.md", name: "old", description: "d", surfaces: ["loom"] }];
+    writeCatalog(REPO, good);
+    // Tree lists a file that 404s -> discoverCatalog throws -> writeCatalog never runs.
+    vi.stubGlobal("fetch", mockGithub([{ path: "x/SKILL.md", type: "blob" }], {}));
+    await expect(refreshCatalog(REPO, { force: true })).rejects.toThrow();
+    expect(readCatalog(REPO)?.skills).toEqual(good);
   });
 
   it("returns null for a missing, corrupt, or wrong-shape catalog", () => {
@@ -378,5 +408,35 @@ describe("refreshAllCatalogs", () => {
     expect(summary[0].repo).toBe("galaxy-skills");
     expect(summary[0].ok).toBe(false);
     expect(summary[0].error).toMatch(/403/);
+  });
+});
+
+describe("listEnabledSkillRepos", () => {
+  let tmp: string;
+  function writeConfig(repos: unknown): void {
+    fs.mkdirSync(path.join(tmp, ".loom"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, ".loom", "config.json"),
+      JSON.stringify({ skills: { repos } }),
+      "utf-8",
+    );
+  }
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "loom-repos-"));
+    vi.spyOn(os, "homedir").mockReturnValue(tmp);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("drops a duplicate repo name, keeping the first entry", () => {
+    writeConfig([
+      { name: "galaxy-skills", url: REPO.url, branch: "main", enabled: true },
+      { name: "galaxy-skills", url: "https://github.com/galaxyproject/other", enabled: true },
+    ]);
+    const repos = listEnabledSkillRepos();
+    expect(repos).toHaveLength(1);
+    expect(repos[0].url).toBe(REPO.url);
   });
 });

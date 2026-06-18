@@ -211,14 +211,22 @@ export async function discoverCatalog(
   force = false,
 ): Promise<SkillEntry[]> {
   const paths = await treeWalkSkillPaths(repo, signal);
+  // Fetch all SKILL.md files concurrently -- they're independent URLs.
+  const results = await Promise.all(paths.map((p) => fetchSkillFile(repo, p, signal, force)));
   const entries: SkillEntry[] = [];
-  for (const p of paths) {
-    const res = await fetchSkillFile(repo, p, signal, force);
-    if (!res.ok) continue; // skip files we can't fetch; keep the rest
+  for (let i = 0; i < paths.length; i++) {
+    const res = results[i];
+    if (!res.ok) {
+      // All-or-nothing: a partial catalog is dangerous. If the files that failed
+      // are the surface-tagged ones, selectSkills sees zero tags and falls back
+      // to tag-or-all -- surfacing skills that should be hidden. Throw so the
+      // caller (refreshCatalog) keeps the last-known-good catalog instead.
+      throw new Error(`fetch failed for ${paths[i]}: ${res.error ?? `HTTP ${res.status}`}`);
+    }
     const fm = parseFrontmatter(res.text);
     entries.push({
-      path: p,
-      name: fm.name ?? p,
+      path: paths[i],
+      name: fm.name ?? paths[i],
       description: fm.description ?? "",
       when_to_use: fm.when_to_use,
       surfaces: fm.surfaces ?? [],
@@ -282,21 +290,23 @@ export interface CatalogRefreshResult {
 
 /** Force-refresh every enabled repo (the manual path). Per-repo errors are reported, not thrown. */
 export async function refreshAllCatalogs(): Promise<CatalogRefreshResult[]> {
-  const out: CatalogRefreshResult[] = [];
-  for (const repo of listEnabledSkillRepos()) {
-    try {
-      const skills = await refreshCatalog(repo, { force: true });
-      out.push({ repo: repo.name, count: skills.length, ok: true });
-    } catch (e) {
-      out.push({
-        repo: repo.name,
-        count: 0,
-        ok: false,
-        error: e instanceof Error ? e.message : String(e),
-      });
-    }
-  }
-  return out;
+  // Repos are independent (separate trees + cache dirs) -- refresh concurrently.
+  // Per-repo try/catch so one failure doesn't sink the rest.
+  return Promise.all(
+    listEnabledSkillRepos().map(async (repo): Promise<CatalogRefreshResult> => {
+      try {
+        const skills = await refreshCatalog(repo, { force: true });
+        return { repo: repo.name, count: skills.length, ok: true };
+      } catch (e) {
+        return {
+          repo: repo.name,
+          count: 0,
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        };
+      }
+    }),
+  );
 }
 
 /** Current cached catalog counts without refreshing (the status path). */
@@ -309,13 +319,15 @@ export function catalogSummary(): CatalogRefreshResult[] {
 
 /** For each enabled repo: refresh on start if stale/missing. Errors are swallowed (keep cache). */
 export async function backgroundRefreshSkills(): Promise<void> {
-  for (const repo of listEnabledSkillRepos()) {
-    try {
-      await refreshCatalog(repo);
-    } catch (err) {
-      console.warn(`[skills] background refresh failed for ${repo.name}:`, err);
-    }
-  }
+  await Promise.all(
+    listEnabledSkillRepos().map(async (repo) => {
+      try {
+        await refreshCatalog(repo);
+      } catch (err) {
+        console.warn(`[skills] background refresh failed for ${repo.name}:`, err);
+      }
+    }),
+  );
 }
 
 const MCP_REFERENCE_WHEN_TO_USE =
