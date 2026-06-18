@@ -78,6 +78,19 @@ container is not otherwise reachable, and a Galaxy-controlled entry-point URL
 can't carry `LOOM_WEB_TOKEN`. The agent receives a **scoped** per-user key
 (`inject="api_key"`), never the user's personal key.
 
+## Known requirements / gotchas (found in live testing)
+
+- **`TMPDIR=/tmp` in the command.** Galaxy injects the _host's_ `TMPDIR` into the
+  container; if it points somewhere not writable in the container (e.g. a macOS
+  `/var/folders/...` path), `tsx`'s IPC setup fails with `EACCES`. The tool
+  command forces `TMPDIR=/tmp`.
+- **The image needs `uvx` (Python) for galaxy-mcp.** `node:22-slim` has no
+  `uvx`, so the agent's Galaxy _tool/workflow execution_ surface (galaxy-mcp)
+  fails to start in the container (`spawn uvx ENOENT`). The notebook -> Galaxy
+  Page persistence still works (it uses the brain's direct Galaxy API, not MCP).
+  To get full in-Galaxy tool/workflow execution, add `uv`/`uvx` (and a Python)
+  to the runtime image. Tracked as a follow-up.
+
 ## 5. What the user gets
 
 Tools/workflows run in their Galaxy (outputs are history datasets); the analysis
