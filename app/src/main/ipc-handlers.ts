@@ -17,6 +17,8 @@ import {
   resolveGalaxyServerUrl,
   resolveGalaxyHistoryOpenUrl,
 } from "./galaxy-status.js";
+import { fetchGalaxyCurrentUser, type GalaxyUserStatus } from "./galaxy-user.js";
+import { normalizeGalaxyUrl, validateGalaxyUrl } from "./galaxy-url.js";
 import { getProviders, getModels } from "@earendil-works/pi-ai";
 import { isDeprecatedModelId } from "./model-catalog.js";
 import { checkLatestVersion } from "./version-check.js";
@@ -149,7 +151,15 @@ function reconcileIncomingConfig(incoming: Record<string, unknown>): LoomConfig 
     for (const [name, p] of Object.entries(incomingGalaxy.profiles || {})) {
       const existing = current.galaxy?.profiles?.[name];
       const rawKey = p.apiKey;
-      const profile: (typeof mergedProfiles)[string] = { url: p.url };
+      // Normalize + validate before the decrypted key is ever sent here -- the
+      // main process is the trust boundary, so a compromised renderer that
+      // reaches config:save still can't repoint the key at an http/attacker URL.
+      const url = p.url ? normalizeGalaxyUrl(p.url) : p.url;
+      if (url) {
+        const v = validateGalaxyUrl(url);
+        if (!v.ok) throw new Error(`Galaxy profile "${name}": ${v.reason}`);
+      }
+      const profile: (typeof mergedProfiles)[string] = { url };
       if (rawKey === UNCHANGED_SECRET || rawKey === undefined) {
         if (existing?.apiKeyEncrypted) profile.apiKeyEncrypted = existing.apiKeyEncrypted;
         if (existing?.apiKey) profile.apiKey = existing.apiKey;
@@ -321,6 +331,21 @@ export function registerIpcHandlers(agent: AgentManager): void {
   // masked config, so env-driven sessions read connected (#284).
   ipc.handle("galaxy:status", () => {
     return resolveGalaxyStatus(loadConfig(), process.env, resolveGalaxyApiKey);
+  });
+
+  // Who does the active Galaxy key authenticate as? The renderer can't ask
+  // Galaxy itself -- it never sees the plaintext key (config:get is masked) --
+  // so main resolves the active profile's url + decrypted key and asks Galaxy.
+  // Used to show the connected account in the status tooltip. Registered via the
+  // idempotent ipc wrapper (#327) so reopen doesn't throw on a duplicate handler.
+  ipc.handle("galaxy:current-user", async (): Promise<GalaxyUserStatus> => {
+    const cfg = loadConfig();
+    const active = cfg.galaxy?.active;
+    const profile = active ? cfg.galaxy?.profiles?.[active] : undefined;
+    const url = profile?.url;
+    const key = resolveGalaxyApiKey(cfg);
+    if (!url || !key) return { ok: false, authFailed: false };
+    return fetchGalaxyCurrentUser(url, key);
   });
 
   ipc.handle(

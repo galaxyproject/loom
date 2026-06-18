@@ -18,6 +18,11 @@ describe("validateGalaxyUrl", () => {
     if (!r.ok) expect(r.reason).toMatch(/https/);
   });
 
+  it("rejects a resolvable hostname masquerading as loopback (127.x must be numeric)", () => {
+    expect(validateGalaxyUrl("http://127.evil.example").ok).toBe(false);
+    expect(validateGalaxyUrl("http://127.0.0.1.evil.example").ok).toBe(false);
+  });
+
   it("rejects malformed URLs", () => {
     expect(validateGalaxyUrl("not a url").ok).toBe(false);
     expect(validateGalaxyUrl("").ok).toBe(false);

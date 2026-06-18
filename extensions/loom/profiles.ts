@@ -10,8 +10,8 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import * as os from "os";
 import { loadConfig, saveConfig } from "./config";
+import { piAgentDir } from "./agent-dir.js";
 
 export interface GalaxyProfile {
   url: string;
@@ -115,6 +115,15 @@ export function normalizeGalaxyUrl(url: string): string {
   return `https://${trimmed}`;
 }
 
+/**
+ * True for an IPv4 loopback (127.0.0.0/8), localhost, or IPv6 ::1. A bare
+ * `startsWith("127.")` would wrongly accept a resolvable hostname like
+ * `127.evil.example`, which over http would leak the API key in cleartext.
+ */
+function isLoopbackHost(host: string): boolean {
+  return host === "localhost" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) || host === "::1";
+}
+
 export function validateGalaxyUrl(url: string): { ok: true } | { ok: false; reason: string } {
   let parsed: URL;
   try {
@@ -124,7 +133,7 @@ export function validateGalaxyUrl(url: string): { ok: true } | { ok: false; reas
   }
   if (parsed.protocol === "http:") {
     const host = parsed.hostname.toLowerCase();
-    if (host === "localhost" || host.startsWith("127.") || host === "::1") {
+    if (isLoopbackHost(host)) {
       // Loopback HTTP is fine for local Galaxy installs.
       return { ok: true };
     }
@@ -153,11 +162,7 @@ export function saveProfile(name: string, url: string, apiKey: string): void {
   if (!v.ok) throw new Error(v.reason);
   const host = new URL(url).hostname.toLowerCase();
   const trusted =
-    host === "localhost" ||
-    host.startsWith("127.") ||
-    host === "::1" ||
-    host === "galaxyproject.org" ||
-    host.endsWith(".galaxyproject.org");
+    isLoopbackHost(host) || host === "galaxyproject.org" || host.endsWith(".galaxyproject.org");
   if (!trusted) {
     console.warn(
       `[galaxy] Profile "${name}" points at ${host} (not a galaxyproject.org subdomain).`,
@@ -286,8 +291,7 @@ export function deleteProfile(name: string): boolean {
  */
 export function syncMcpConfig(url: string): void {
   try {
-    const agentDir = process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".pi", "agent");
-    const mcpPath = path.join(agentDir, "mcp.json");
+    const mcpPath = path.join(piAgentDir(), "mcp.json");
     if (!fs.existsSync(mcpPath)) return;
 
     const config = JSON.parse(fs.readFileSync(mcpPath, "utf-8"));

@@ -12,6 +12,7 @@ import { shouldRefreshOpenFile } from "./files/file-change-match.js";
 import { FeedbackConfirmation } from "./feedback-confirmation.js";
 import { refreshGalaxyInvocations } from "./galaxy-invocations.js";
 import { refreshGalaxyHistory } from "./galaxy-history.js";
+import { formatGalaxyTooltip } from "./galaxy-tooltip.js";
 import { PromptQueue, queuedPreview } from "./prompt-queue.js";
 import { FeedbackDraftStore } from "./feedback-draft.js";
 import { caretVisualLineFlags, shouldRecallOnArrow } from "./input-history-nav.js";
@@ -618,32 +619,46 @@ window.orbit.onFilesChanged((changedPaths) => {
 
 const galaxyStatus = document.getElementById("galaxy-status")!;
 
+// Bumped on every refresh so a superseded refresh (profile switch / disconnect)
+// can't clobber the latest tooltip -- captured before the first await, so a
+// late-resolving getConfig also can't overwrite newer state.
+let galaxyStatusSeq = 0;
+
+function setGalaxyTooltip(text: string): void {
+  galaxyStatus.title = text;
+  galaxyStatus.setAttribute("aria-label", `${text}. Click to open Preferences.`);
+}
+
 async function refreshGalaxyStatus(): Promise<void> {
+  const seq = ++galaxyStatusSeq;
   // Reflect the *effective* connection the brain sees -- a usable URL + API key
   // whether they came from a saved profile or exported GALAXY_URL/GALAXY_API_KEY
   // env vars. Deriving "connected" from the masked config alone missed the
   // env-driven / auto-connect path, leaving the dot red even though the URL was
   // known and tool calls worked (#284).
   const { connected, url } = await window.orbit.getGalaxyStatus();
+  // A newer refresh started while we awaited -- let it win.
+  if (seq !== galaxyStatusSeq) return;
 
-  if (connected) {
+  if (connected && url) {
     galaxyStatus.classList.add("status-dot-connected");
     galaxyStatus.classList.remove("status-dot-disconnected");
-    galaxyStatus.title = `Galaxy: ${url}`;
-    // Keep the accessible name in sync -- the issue's "not configured" string
-    // is the aria-label, which previously never tracked connection state.
-    galaxyStatus.setAttribute(
-      "aria-label",
-      `Galaxy connection: ${url}. Click to open Preferences.`,
-    );
+    // Show the server immediately, then upgrade to "(username)" once we've
+    // asked Galaxy who the key authenticates as. The key lives only in main,
+    // so the lookup round-trips through the galaxy:current-user IPC.
+    setGalaxyTooltip(formatGalaxyTooltip(url));
+    void window.orbit
+      .getGalaxyUser()
+      .then((user) => {
+        if (seq === galaxyStatusSeq) setGalaxyTooltip(formatGalaxyTooltip(url, user));
+      })
+      .catch(() => {
+        /* leave the url-only tooltip in place */
+      });
   } else {
     galaxyStatus.classList.add("status-dot-disconnected");
     galaxyStatus.classList.remove("status-dot-connected");
-    galaxyStatus.title = "Galaxy: not configured (open Preferences to add a profile)";
-    galaxyStatus.setAttribute(
-      "aria-label",
-      "Galaxy connection: not configured. Click to open Preferences.",
-    );
+    setGalaxyTooltip("Galaxy: not configured (open Preferences to add a profile)");
   }
 
   // The Galaxy history section is driven off the same connection signal so it

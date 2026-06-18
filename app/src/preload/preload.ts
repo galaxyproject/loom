@@ -76,6 +76,7 @@ export interface OrbitAPI {
   onFilesChanged(callback: (changedPaths: string[] | null) => void): () => void;
   getConfig(): Promise<Record<string, unknown>>;
   saveConfig(config: Record<string, unknown>): Promise<{ success: boolean; error?: string }>;
+  getGalaxyUser(): Promise<import("../main/galaxy-user.js").GalaxyUserStatus>;
   setBypassPermissions(
     enabled: boolean,
   ): Promise<{ ok: boolean; enabled: boolean; cancelled?: boolean }>;
@@ -180,6 +181,7 @@ const api: OrbitAPI = {
   },
   getConfig: () => ipcRenderer.invoke("config:get"),
   saveConfig: (config) => ipcRenderer.invoke("config:save", config),
+  getGalaxyUser: () => ipcRenderer.invoke("galaxy:current-user"),
   setBypassPermissions: (enabled) => ipcRenderer.invoke("guardian:set-bypass", enabled),
   validateApiKey: (provider, key, baseUrl) =>
     ipcRenderer.invoke("apiKey:validate", provider, key, baseUrl),

@@ -14,6 +14,7 @@ import {
   type SessionSummaryYaml,
 } from "./notebook-writer.js";
 import { activeGalaxyStatus, type ActiveGalaxyStatus } from "./profiles.js";
+import { maybeNudgeGalaxyReconnect } from "./galaxy-cred-drift.js";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -54,8 +55,16 @@ export function registerSessionLifecycle(pi: ExtensionAPI): void {
     };
 
     const freshSession = process.env.LOOM_FRESH_SESSION === "1";
+    const isResume = process.argv.includes("--continue");
 
-    if (freshSession || process.argv.includes("--continue")) {
+    // Galaxy credential drift: on a resume the startup greeting -- the only
+    // thing that prompts galaxy_connect() -- is suppressed, so a key/server
+    // change made while this session was idle would leave the model believing
+    // it's still connected as the old account. Refresh the per-cwd credential
+    // baseline and, on a resume where it changed, nudge a reconnect.
+    maybeNudgeGalaxyReconnect(pi, { isResume });
+
+    if (freshSession || isResume) {
       return;
     }
 

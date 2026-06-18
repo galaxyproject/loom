@@ -15,6 +15,7 @@ import { registerSyncCommand } from "./sync-command";
 import { setupContextInjection, formatConnectionStatus } from "./context";
 import { setupUIBridge } from "./ui-bridge";
 import { registerSessionLifecycle } from "./session-lifecycle";
+import { recordGalaxyConnected } from "./galaxy-cred-drift";
 import { registerActivityHooks } from "./activity-hooks";
 import { registerExecutionCommands } from "./execution-commands";
 import { registerFeedbackCommand } from "./feedback-command";
@@ -377,6 +378,12 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
     }
 
     if (event.toolName === "galaxy_connect" && !event.isError) {
+      // A non-error galaxy_connect means we're now bound to the current env
+      // creds (galaxy-mcp raises on failure -> isError), so advance the
+      // credential-drift baseline. Keyed off isError, not the loose success
+      // string below, which both false-matches ("unsuccessful") and would miss
+      // a success that omits the literal.
+      recordGalaxyConnected();
       try {
         const resultText =
           typeof event.result === "string" ? event.result : JSON.stringify(event.result);
