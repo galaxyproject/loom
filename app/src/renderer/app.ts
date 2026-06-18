@@ -8,6 +8,7 @@ import { ShellPanel } from "./chat/shell-panel.js";
 import { ArtifactPanel } from "./artifacts/artifact-panel.js";
 import { FilesPanel } from "./files/files-panel.js";
 import { FileViewer } from "./files/file-viewer.js";
+import { shouldRefreshOpenFile } from "./files/file-change-match.js";
 import { FeedbackConfirmation } from "./feedback-confirmation.js";
 import { refreshGalaxyInvocations } from "./galaxy-invocations.js";
 import { refreshGalaxyHistory } from "./galaxy-history.js";
@@ -600,9 +601,14 @@ document.addEventListener("mouseup", () => {
 void filesPanel.refresh();
 void refreshGalaxyInvocations(window.orbit);
 void refreshGalaxyHistory(window.orbit);
-window.orbit.onFilesChanged(() => {
+window.orbit.onFilesChanged((changedPaths) => {
   void filesPanel.refresh();
-  void fileViewer.refreshFromDisk();
+  // Only re-read the open file when it's actually among the changed paths.
+  // Refreshing on every event popped the stale-on-disk banner whenever any
+  // unrelated file changed, because a dirty editor always differs from disk (#313).
+  if (shouldRefreshOpenFile(fileViewer.getCurrentPath(), changedPaths)) {
+    void fileViewer.refreshFromDisk();
+  }
   void refreshGalaxyInvocations(window.orbit);
   void refreshGalaxyHistory(window.orbit);
 });

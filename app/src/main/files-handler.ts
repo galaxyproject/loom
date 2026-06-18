@@ -197,12 +197,29 @@ async function walkDir(
 let watcher: fs.FSWatcher | null = null;
 let watchedCwd: string | null = null;
 let debounceTimer: NodeJS.Timeout | null = null;
+let pendingPaths = new Set<string>();
+let pendingUnknown = false;
 
-function emitChange(window: BrowserWindow | null): void {
+function emitChange(window: BrowserWindow | null, filename: string | null): void {
+  // Accumulate the paths changed during the debounce window. The watcher
+  // coalesces a burst of fs events into one renderer notification, so we ship
+  // the whole batch — the renderer needs every changed path to decide whether
+  // the open file is among them (#313). A null filename means the OS didn't
+  // name what changed; flag the batch unknown so the renderer refreshes anyway
+  // instead of wrongly assuming the open file is untouched.
+  if (filename) {
+    pendingPaths.add(toPosix(filename));
+  } else {
+    pendingUnknown = true;
+  }
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
+    const paths = pendingUnknown ? null : [...pendingPaths];
+    pendingPaths = new Set();
+    pendingUnknown = false;
+    debounceTimer = null;
     if (window && !window.isDestroyed()) {
-      window.webContents.send("files:changed");
+      window.webContents.send("files:changed", paths);
     }
   }, 200);
 }
@@ -217,7 +234,7 @@ export function startFilesWatcher(window: BrowserWindow, cwd: string): void {
         const firstSegment = String(filename).split(/[\\/]/)[0];
         if (FS_BLOCKLIST.has(firstSegment)) return;
       }
-      emitChange(window);
+      emitChange(window, filename ? String(filename) : null);
     });
     watcher.on("error", (err) => {
       console.warn("[files] watcher error:", err.message);
@@ -246,6 +263,8 @@ export function stopFilesWatcher(): void {
     clearTimeout(debounceTimer);
     debounceTimer = null;
   }
+  pendingPaths = new Set();
+  pendingUnknown = false;
 }
 
 // --- IPC registration ---------------------------------------------------

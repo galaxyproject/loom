@@ -71,7 +71,9 @@ export interface OrbitAPI {
     | { ok: false; error: string; size?: number }
   >;
   writeFile(relPath: string, content: string): Promise<{ ok: true } | { ok: false; error: string }>;
-  onFilesChanged(callback: () => void): () => void;
+  // changedPaths is the batch of changed cwd-relative paths, or null when the
+  // watcher couldn't name what changed (#313).
+  onFilesChanged(callback: (changedPaths: string[] | null) => void): () => void;
   getConfig(): Promise<Record<string, unknown>>;
   saveConfig(config: Record<string, unknown>): Promise<{ success: boolean; error?: string }>;
   setBypassPermissions(
@@ -172,7 +174,7 @@ const api: OrbitAPI = {
   readFile: (relPath, opts) => ipcRenderer.invoke("files:read", relPath, opts),
   writeFile: (relPath, content) => ipcRenderer.invoke("files:write", relPath, content),
   onFilesChanged: (callback) => {
-    const handler = () => callback();
+    const handler = (_e: unknown, changedPaths: string[] | null) => callback(changedPaths ?? null);
     ipcRenderer.on("files:changed", handler);
     return () => ipcRenderer.removeListener("files:changed", handler);
   },
