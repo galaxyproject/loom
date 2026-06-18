@@ -6,6 +6,7 @@ import {
   stopWatchingNotebook,
 } from "./state.js";
 import { startGalaxyPoller, stopGalaxyPoller } from "./galaxy-poller.js";
+import { initGalaxyPageSync, flushNotebookToGalaxy } from "./galaxy-page-sync.js";
 import {
   upsertSessionSummaryBlock,
   readNotebook,
@@ -32,6 +33,10 @@ export function registerSessionLifecycle(pi: ExtensionAPI): void {
     syncSessionJsonlSymlink(ctx);
 
     initSessionArtifacts(process.cwd());
+
+    // Resume the per-history Galaxy page and arm debounce auto-push (no-op
+    // unless LOOM_GALAXY_PAGE_SYNC=auto and Galaxy creds are present).
+    await initGalaxyPageSync();
 
     // Background poller for in-flight Galaxy invocations (#67 part 2).
     // Idempotent — start() stops any prior timer first. Pass the shell
@@ -89,6 +94,8 @@ export function registerSessionLifecycle(pi: ExtensionAPI): void {
     stopWatchingNotebook();
     await writeSessionSummary();
     snapshotNotebook(pi);
+    // Best-effort final push (debounce already pushed recent changes).
+    await flushNotebookToGalaxy();
   });
 }
 
