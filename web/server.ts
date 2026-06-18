@@ -142,6 +142,9 @@ function startLoom(): void {
     // (whose headless approval prompts would otherwise hang). See
     // extensions/loom/index.ts.
     env.LOOM_LOCAL_EXEC = "off";
+    // Deterministic notebook -> Galaxy Page persistence: resume on launch,
+    // debounce-push on change, flush on shutdown. Brain-side, env-gated.
+    env.LOOM_GALAXY_PAGE_SYNC = "auto";
   } else {
     // The local dev server DOES have a local execution surface, so pin the
     // guard on authoritatively (same as agent.ts and bin/loom.js) -- the
@@ -208,6 +211,36 @@ function stopLoom(): void {
     loomProcess.kill("SIGTERM");
     loomProcess = null;
   }
+}
+
+/**
+ * SIGTERM the brain and wait for it to exit so its session_shutdown hook can
+ * flush the notebook to Galaxy. SIGKILL backstop after timeoutMs (kept under
+ * the container orchestrator's grace window).
+ */
+function stopLoomGracefully(timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const proc = loomProcess;
+    if (!proc) return resolve();
+    const timer = setTimeout(() => {
+      try {
+        proc.kill("SIGKILL");
+      } catch {
+        /* already gone */
+      }
+      resolve();
+    }, timeoutMs);
+    proc.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    try {
+      proc.kill("SIGTERM");
+    } catch {
+      clearTimeout(timer);
+      resolve();
+    }
+  });
 }
 
 function sendToLoom(obj: Record<string, unknown>): void {
@@ -434,3 +467,20 @@ httpServer.listen(PORT, HOST, () => {
 function isLoopbackBind(): boolean {
   return HOST === "127.0.0.1" || HOST === "::1" || HOST === "localhost";
 }
+
+let shuttingDown = false;
+async function gracefulShutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  log("received", signal, "-- draining");
+  try {
+    wss.close();
+    httpServer.close();
+  } catch {
+    /* */
+  }
+  await stopLoomGracefully(parseInt(process.env.LOOM_SHUTDOWN_GRACE_MS ?? "8000", 10));
+  process.exit(0);
+}
+process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => void gracefulShutdown("SIGINT"));
