@@ -84,12 +84,15 @@ can't carry `LOOM_WEB_TOKEN`. The agent receives a **scoped** per-user key
   container; if it points somewhere not writable in the container (e.g. a macOS
   `/var/folders/...` path), `tsx`'s IPC setup fails with `EACCES`. The tool
   command forces `TMPDIR=/tmp`.
-- **The image needs `uvx` (Python) for galaxy-mcp.** `node:22-slim` has no
-  `uvx`, so the agent's Galaxy _tool/workflow execution_ surface (galaxy-mcp)
-  fails to start in the container (`spawn uvx ENOENT`). The notebook -> Galaxy
-  Page persistence still works (it uses the brain's direct Galaxy API, not MCP).
-  To get full in-Galaxy tool/workflow execution, add `uv`/`uvx` (and a Python)
-  to the runtime image. Tracked as a follow-up.
+- **galaxy-mcp (`uvx`) is bundled and pre-warmed.** The agent's Galaxy
+  _tool/workflow execution_ surface runs through `uvx galaxy-mcp` (a Python MCP
+  server), and `node:22-slim` ships no Python or `uvx`. The runtime image now
+  copies `uv` from Astral's published image and pre-warms `galaxy-mcp` plus a
+  managed Python into a node-owned uv cache at build time, so the server
+  resolves from that baked cache at launch -- verified to start fully offline
+  (`--network none`). Earlier images failed here with `spawn uvx ENOENT`, and
+  Galaxy tools silently vanished (notebook -> Page persistence kept working,
+  since it uses the brain's direct Galaxy API rather than MCP).
 
 ## 5. What the user gets
 
