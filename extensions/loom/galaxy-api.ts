@@ -139,3 +139,19 @@ export async function galaxyGetJobDetails(
 ): Promise<GalaxyJobDetailsResponse> {
   return galaxyGet<GalaxyJobDetailsResponse>(`/jobs/${encodeURIComponent(jobId)}`, signal);
 }
+
+export interface GalaxyHistorySummary {
+  id: string;
+  name?: string;
+}
+
+/**
+ * The user's current (most-recently-used) history, resolved from just
+ * GALAXY_URL + GALAXY_API_KEY. Returns null when Galaxy reports none.
+ */
+export async function galaxyGetMostRecentHistory(
+  signal?: AbortSignal,
+): Promise<GalaxyHistorySummary | null> {
+  const res = await galaxyGet<GalaxyHistorySummary | null>("/histories/most_recently_used", signal);
+  return res && typeof res.id === "string" && res.id.length > 0 ? res : null;
+}
