@@ -22,6 +22,7 @@ import { migratePlaintextSecrets, isAvailable as safeStorageAvailable } from "./
 import { getConfigDir, getConfigPath } from "../../../shared/loom-config.js";
 import { parseCliArgs, type CliArgs } from "./cli-args.js";
 import { initAutoUpdate } from "./auto-update.js";
+import { resolveStartupCwd } from "./startup-cwd.js";
 
 // Workaround for systems where chrome-sandbox isn't suid root
 app.commandLine.appendSwitch("no-sandbox");
@@ -133,17 +134,24 @@ function startConfigWatcher(): void {
 
 function getDefaultCwd(cliArgs?: CliArgs): string {
   // Priority: --cwd CLI arg > LOOM_CWD env > brain config.defaultCwd > hardcoded.
-  let cwd = cliArgs?.cwd || process.env.LOOM_CWD;
-  if (!cwd) {
+  // config.defaultCwd is rewritten by AgentManager.switchCwd on every in-app
+  // directory change, so a clean restart reopens the last-used directory (#312).
+  let configDefaultCwd: string | undefined;
+  if (!cliArgs?.cwd && !process.env.LOOM_CWD) {
     try {
       const configPath = path.join(LOOM_DIR, "config.json");
       if (fs.existsSync(configPath)) {
         const cfg = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-        if (cfg.defaultCwd) cwd = cfg.defaultCwd;
+        if (cfg.defaultCwd) configDefaultCwd = cfg.defaultCwd;
       }
     } catch {}
   }
-  cwd = cwd || DEFAULT_CWD;
+  let cwd = resolveStartupCwd({
+    cliCwd: cliArgs?.cwd,
+    envCwd: process.env.LOOM_CWD,
+    configDefaultCwd,
+    fallback: DEFAULT_CWD,
+  });
   if (cwd.startsWith("~")) cwd = path.join(os.homedir(), cwd.slice(1));
   mkdirSync(cwd, { recursive: true });
   return cwd;
@@ -540,7 +548,10 @@ app.whenReady().then(() => {
     if (resolvedCwd === agentManager.getCwd()) return;
     const ok = await confirmCwdChange(mainWindow ?? undefined, resolvedCwd);
     if (!ok) return;
-    if (agentManager.switchCwd(resolvedCwd)) {
+    // A `--cwd` override is a transient session choice, not a new default:
+    // don't persist it, mirroring first-instance startup (getDefaultCwd reads
+    // --cwd at construction without writing it back).
+    if (agentManager.switchCwd(resolvedCwd, { persist: false })) {
       log("switched cwd from second instance to:", resolvedCwd);
       mainWindow?.webContents.send("agent:cwd-changed", resolvedCwd);
       if (mainWindow) startFilesWatcher(mainWindow, resolvedCwd);

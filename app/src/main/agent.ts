@@ -4,7 +4,7 @@ import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
 import { app, type BrowserWindow } from "electron";
-import { loadConfig } from "./config.js";
+import { loadConfig, saveConfig, getConfigPath } from "./config.js";
 import { resolveLlmApiKey, resolveGalaxyApiKey } from "./secure-config.js";
 import { loadSessionHistory, newestSessionFile } from "./session-replay.js";
 import { collectDescendantsOf } from "./proc-monitor.js";
@@ -222,7 +222,17 @@ export class AgentManager {
     log("cwd set to", cwd);
   }
 
-  switchCwd(cwd: string): boolean {
+  /**
+   * Switch to a new analysis directory and restart the brain there.
+   *
+   * `persist` (default true) writes the new directory to config.defaultCwd so a
+   * clean restart reopens it (#312). In-app directory picks (File > Open, the
+   * top-bar change button) persist; pass `persist: false` for transient `--cwd`
+   * overrides so a one-off CLI launch never becomes the permanent default --
+   * matching the first-instance path, which routes `--cwd` through getDefaultCwd
+   * at construction and likewise doesn't persist it.
+   */
+  switchCwd(cwd: string, opts: { persist?: boolean } = {}): boolean {
     if (cwd === this.cwd) return false;
     this.cwd = cwd;
     this.refreshWindowTitle();
@@ -234,11 +244,44 @@ export class AgentManager {
     this.nextStartSkipContinue = false;
     this.nextStartIsFresh = false;
     log("switching cwd to", cwd);
+    if (opts.persist !== false) this.persistCwd(cwd);
     if (this.process) {
       this.stop();
       this.start();
     }
     return true;
+  }
+
+  /**
+   * Persist the active analysis directory so a clean restart reopens it (#312).
+   * Reads-merges-writes through the shared config so unrelated keys (creds,
+   * skills, ...) survive. Best-effort: a config-write failure must not abort
+   * the in-progress directory switch, so log and move on rather than throw.
+   *
+   * Fails closed when config.json exists but won't parse: loadConfig() silently
+   * returns {} on a read/parse error, so writing that back would wipe stored
+   * credentials. Refuse rather than clobber -- a genuinely absent file is still
+   * fine to create. Mirrors setTesterId() in extensions/loom/tester-id-command.ts.
+   */
+  private persistCwd(cwd: string): void {
+    try {
+      const configPath = getConfigPath();
+      if (fs.existsSync(configPath)) {
+        try {
+          JSON.parse(fs.readFileSync(configPath, "utf-8"));
+        } catch {
+          log("skipped persisting cwd -- ~/.loom/config.json is unreadable");
+          return;
+        }
+      }
+      const cfg = loadConfig();
+      if (cfg.defaultCwd === cwd) return;
+      cfg.defaultCwd = cwd;
+      saveConfig(cfg);
+      log("persisted defaultCwd:", cwd);
+    } catch (err) {
+      log("failed to persist cwd:", err);
+    }
   }
 
   getCwd(): string {
