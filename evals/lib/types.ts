@@ -37,7 +37,23 @@ export interface Assertions {
    * the galaxy/brc Python harnesses with LLMJudge.
    */
   notebook?: NotebookAssertions;
+  /**
+   * Source-aware plan check. Unlike `chatPlan` / `notebook.plan` (which are
+   * pinned to one surface), this reads the latest plan from wherever it landed
+   * per `source` (default "any"). Preferred for decision-correctness scenarios.
+   */
+  plan?: PlanAssertions;
   exitCode?: number;
+  behavior?: BehaviorAssertions;
+}
+
+export interface BehaviorAssertions {
+  /**
+   * The agent should ask a clarifying question rather than fabricate a plan.
+   * Passes iff the final chat contains a `?` AND no plan heading was emitted
+   * in chat or notebook.
+   */
+  asksClarifyingQuestion?: boolean;
 }
 
 export interface NotebookAssertions {
@@ -54,6 +70,12 @@ export interface NotebookAssertions {
 export interface PlanAssertions {
   /** at least one `## Plan X: ... [routing]` heading must exist */
   exists?: boolean;
+  /**
+   * Where to read the plan from. "any" (default) = notebook.md if it contains
+   * a plan, else the chat text. Models don't reliably follow Loom's
+   * draft-in-chat-then-write gate, so "any" is the right default for grading.
+   */
+  source?: "chat" | "notebook" | "any";
   /** routing tag in the heading must be one of these */
   routingIn?: ("local" | "galaxy" | "hybrid" | "remote")[];
   /** plan section must have at least N pending (`- [ ]`) steps */
@@ -63,6 +85,14 @@ export interface PlanAssertions {
    * Mirrors init-gate's >= 8 chars heuristic (number/title/anchor stripped).
    */
   eachStepHasDescription?: boolean;
+  /**
+   * The plan-source text must mention at least one of these (case-insensitive
+   * substring). Used as a coarse tool/approach-appropriateness check -- a
+   * heuristic, not an oracle. Curate generously to limit false negatives.
+   */
+  mentionsOneOf?: string[];
+  /** The plan-source text must mention none of these (case-insensitive). */
+  mentionsNoneOf?: string[];
 }
 
 export interface Scenario {
@@ -76,6 +106,9 @@ export interface Scenario {
    * path (slash-command preflight, etc.) leave it false and run once.
    */
   requiresModel?: boolean;
+  /** How many times to run each (scenario, model) cell. Default 3 when
+   *  requiresModel, else 1. Lets flaky models surface as pass-rates. */
+  runs?: number;
   inputs: string[];
   env?: Record<string, string>;
   /**
@@ -90,9 +123,16 @@ export interface Scenario {
   assertions: Assertions;
 }
 
+/**
+ * Which decision-correctness axis a failure belongs to. Lets the report
+ * group results into a model x dimension leaderboard.
+ */
+export type Dimension = "validity" | "routing" | "tools" | "behavior" | "other";
+
 export interface ScenarioFailure {
   assertion: string;
   detail: string;
+  dimension?: Dimension;
 }
 
 /**
@@ -132,6 +172,12 @@ export interface ModelEntry {
    * thinking-mode models (Qwen3-32B) emit them by default.
    */
   stripThinkingTags?: boolean;
+  /**
+   * Reasoning models (gpt-oss-120b) emit chain-of-thought in `reasoning_content`
+   * rather than inline. Surface that to Pi so it gives the model room and reads
+   * the field instead of returning empty `content`.
+   */
+  reasoningModel?: boolean;
 }
 
 export interface ModelMatrix {
@@ -143,6 +189,8 @@ export interface ScenarioRun {
   scenario: Scenario;
   /** null for Tier 1 scenarios that don't traverse the matrix. */
   model: ModelEntry | null;
+  /** 0-based index of this run within its (scenario, model) cell. */
+  runIndex?: number;
   exitCode: number;
   events: AnyEvent[];
   stdout: string;
@@ -156,4 +204,17 @@ export interface ScenarioRun {
 export interface AnyEvent {
   type: string;
   [k: string]: unknown;
+}
+
+export interface CellDimension {
+  pass: number;
+  total: number;
+  verdict: boolean;
+}
+
+export interface Cell {
+  scenarioName: string;
+  modelId: string;
+  runs: number;
+  dimensions: Partial<Record<Dimension, CellDimension>>;
 }

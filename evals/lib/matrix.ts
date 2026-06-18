@@ -61,7 +61,7 @@ export function writePiModelsConfig(model: ModelEntry, agentDir: string): void {
           {
             id: model.model,
             name: model.model,
-            reasoning: false,
+            reasoning: model.reasoningModel ?? false,
             input: ["text"],
             contextWindow: cfg.contextWindow ?? 32000,
             maxTokens: cfg.maxTokens ?? 4096,

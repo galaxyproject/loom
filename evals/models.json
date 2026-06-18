@@ -43,6 +43,64 @@
         "contextWindow": 32000,
         "maxTokens": 4096
       }
+    },
+    {
+      "id": "tacc:minimax-m2.7",
+      "provider": "tacc-sambanova",
+      "model": "MiniMax-M2.7",
+      "stripThinkingTags": true,
+      "envRequires": ["PROXY_URL", "PROXY_API_KEY"],
+      "providerConfig": {
+        "type": "openai-compatible",
+        "baseUrl": "PROXY_URL",
+        "baseUrlIsEnvVar": true,
+        "apiKeyEnvVar": "PROXY_API_KEY",
+        "contextWindow": 128000,
+        "maxTokens": 4096
+      }
+    },
+    {
+      "id": "tacc:gpt-oss-120b",
+      "provider": "tacc-sambanova",
+      "model": "gpt-oss-120b",
+      "reasoningModel": true,
+      "envRequires": ["PROXY_URL", "PROXY_API_KEY"],
+      "providerConfig": {
+        "type": "openai-compatible",
+        "baseUrl": "PROXY_URL",
+        "baseUrlIsEnvVar": true,
+        "apiKeyEnvVar": "PROXY_API_KEY",
+        "contextWindow": 128000,
+        "maxTokens": 8192
+      }
+    },
+    {
+      "id": "tacc:llama-3.1-8b",
+      "provider": "tacc-sambanova",
+      "model": "Meta-Llama-3.1-8B-Instruct",
+      "envRequires": ["PROXY_URL", "PROXY_API_KEY"],
+      "providerConfig": {
+        "type": "openai-compatible",
+        "baseUrl": "PROXY_URL",
+        "baseUrlIsEnvVar": true,
+        "apiKeyEnvVar": "PROXY_API_KEY",
+        "contextWindow": 128000,
+        "maxTokens": 4096
+      }
+    },
+    {
+      "id": "tacc:gemma-4-31b",
+      "provider": "tacc-sambanova",
+      "model": "gemma-4-31B-it",
+      "envRequires": ["PROXY_URL", "PROXY_API_KEY"],
+      "providerConfig": {
+        "type": "openai-compatible",
+        "baseUrl": "PROXY_URL",
+        "baseUrlIsEnvVar": true,
+        "apiKeyEnvVar": "PROXY_API_KEY",
+        "contextWindow": 128000,
+        "maxTokens": 4096
+      }
     }
   ]
 }

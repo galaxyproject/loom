@@ -1,0 +1,21 @@
+{
+  "name": "routing: a plainly local task should not be routed to Galaxy",
+  "description": "A small file-wrangling task with no bioinformatics compute. The correct routing is local (or hybrid) -- a model that reflexively sends everything to Galaxy fails the routing dimension. Tests routing restraint, the inverse of the bioinformatics scenarios.",
+  "tier": 2,
+  "requiresModel": true,
+  "loomArgs": ["--tools", "read,write,edit"],
+  "inputs": [
+    "I have a folder of about 200 scanned PDFs with messy inconsistent filenames on my laptop. Help me draft a plan to rename them into a consistent scheme. Don't run anything yet.",
+    "Yes, that scheme is fine. Go ahead and draft the formal plan now."
+  ],
+  "timeoutMs": 150000,
+  "assertions": {
+    "events": { "mustInclude": ["agent_start", "turn_end"] },
+    "plan": {
+      "exists": true,
+      "routingIn": ["local", "hybrid"],
+      "minPendingSteps": 2,
+      "eachStepHasDescription": true
+    }
+  }
+}

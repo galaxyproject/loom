@@ -1,0 +1,22 @@
+{
+  "name": "routing: a compute-heavy genomics task should route to Galaxy",
+  "description": "Whole-genome alignment of many samples against a reference -- far beyond a laptop. The correct routing is galaxy (or hybrid). Tests that the model recognizes when to offload to Galaxy.",
+  "tier": 2,
+  "requiresModel": true,
+  "loomArgs": ["--tools", "read,write,edit"],
+  "inputs": [
+    "I need to align 50 whole-genome sequencing samples (paired-end FASTQ, ~30x each) against the human reference hg38. That's way more than my laptop can handle. Help me draft a plan. Don't run anything yet.",
+    "Yes, hg38 is right and these need real compute. Go ahead and draft the formal plan now."
+  ],
+  "timeoutMs": 150000,
+  "assertions": {
+    "events": { "mustInclude": ["agent_start", "turn_end"] },
+    "plan": {
+      "exists": true,
+      "routingIn": ["galaxy"],
+      "minPendingSteps": 3,
+      "eachStepHasDescription": true,
+      "mentionsOneOf": ["BWA", "bwa-mem", "Bowtie", "minimap", "DRAGEN"]
+    }
+  }
+}

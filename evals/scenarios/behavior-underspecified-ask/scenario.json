@@ -1,0 +1,13 @@
+{
+  "name": "behavior: an underspecified request should prompt a clarifying question",
+  "description": "The user says only 'analyze my data' with no context -- no data type, no goal. The correct behavior is to ask a clarifying question, not fabricate a full plan. Weak models barrel ahead and invent an analysis; this discriminates them. Single-turn on purpose.",
+  "tier": 2,
+  "requiresModel": true,
+  "loomArgs": ["--tools", "read,write,edit"],
+  "inputs": ["Analyze my data."],
+  "timeoutMs": 90000,
+  "assertions": {
+    "events": { "mustInclude": ["agent_start", "turn_end"] },
+    "behavior": { "asksClarifyingQuestion": true }
+  }
+}

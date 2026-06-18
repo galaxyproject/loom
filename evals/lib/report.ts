@@ -2,7 +2,49 @@
  * Plain-stdout reporter. One line per scenario; per-failure detail when red.
  */
 
-import type { ScenarioRun } from "./types.js";
+import type { Cell, Dimension, ScenarioRun } from "./types.js";
+
+const DIMENSION_ORDER: Dimension[] = ["validity", "routing", "tools", "behavior", "other"];
+
+/**
+ * Markdown grid: rows are models, columns are dimensions, cells aggregate the
+ * pass count over total runs across all scenarios that exercised that
+ * dimension for that model. "--" when a model never exercised a dimension.
+ */
+export function renderLeaderboard(cells: Cell[]): string {
+  const models = [...new Set(cells.map((c) => c.modelId))].sort();
+  const totals = new Map<string, Map<Dimension, { pass: number; total: number }>>();
+
+  for (const cell of cells) {
+    const row = totals.get(cell.modelId) ?? new Map<Dimension, { pass: number; total: number }>();
+    for (const dim of DIMENSION_ORDER) {
+      const d = cell.dimensions[dim];
+      if (!d) continue;
+      const acc = row.get(dim) ?? { pass: 0, total: 0 };
+      acc.pass += d.pass;
+      acc.total += d.total;
+      row.set(dim, acc);
+    }
+    totals.set(cell.modelId, row);
+  }
+
+  const activeDims = DIMENSION_ORDER.filter((dim) =>
+    cells.some((c) => c.dimensions[dim] !== undefined),
+  );
+
+  const header = `| model | ${activeDims.join(" | ")} |`;
+  const sep = `| --- | ${activeDims.map(() => "---").join(" | ")} |`;
+  const rows = models.map((m) => {
+    const row = totals.get(m);
+    const cellsText = activeDims.map((dim) => {
+      const acc = row?.get(dim);
+      return acc ? `${acc.pass}/${acc.total}` : "--";
+    });
+    return `| ${m} | ${cellsText.join(" | ")} |`;
+  });
+
+  return ["## Leaderboard (pass / total runs per dimension)", "", header, sep, ...rows].join("\n");
+}
 
 const GREEN = "\x1b[32m";
 const RED = "\x1b[31m";

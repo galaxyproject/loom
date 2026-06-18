@@ -19,7 +19,9 @@ import { fileURLToPath } from "url";
 import { evaluate } from "./lib/assertions.js";
 import { loadDotEnv } from "./lib/env.js";
 import { loadMatrix } from "./lib/matrix.js";
-import { report } from "./lib/report.js";
+import { aggregateCells } from "./lib/aggregate.js";
+import { renderLeaderboard, report } from "./lib/report.js";
+import { writeResultsJsonl } from "./lib/persist.js";
 import { runScenario } from "./lib/runner.js";
 import type { ModelEntry, Scenario, ScenarioRun } from "./lib/types.js";
 
@@ -46,26 +48,67 @@ async function main() {
   }
 
   const matrix = loadMatrix(args.modelFilter);
+
+  // Guard 1: --model filter matched nothing in models.json at all.
+  if (
+    args.modelFilter &&
+    matrix.available.length === 0 &&
+    matrix.skipped.length === 0
+  ) {
+    console.error(
+      `error: --model filter matched no models in models.json: ${args.modelFilter.join(", ")}`,
+    );
+    process.exit(2);
+  }
+
   for (const { model, missing } of matrix.skipped) {
     console.warn(`[skip] ${model.id} -- missing env: ${missing.join(", ")}`);
   }
 
   const runs: ScenarioRun[] = [];
+  let hasRequiresModel = false;
+  let modelCellsRun = 0;
   for (const dir of scenarioDirs) {
     const scenario = readScenario(dir);
     const cells: (ModelEntry | null)[] = scenario.requiresModel ? [...matrix.available] : [null];
+    if (scenario.requiresModel) {
+      hasRequiresModel = true;
+    }
     for (const model of cells) {
-      const run = await runScenario(dir, model);
-      run.failures = evaluate(run);
-      runs.push(run);
+      if (model !== null) modelCellsRun++;
+      const runCount = scenario.requiresModel ? (scenario.runs ?? 3) : (scenario.runs ?? 1);
+      for (let i = 0; i < runCount; i++) {
+        const run = await runScenario(dir, model);
+        run.runIndex = i;
+        run.failures = evaluate(run);
+        runs.push(run);
+      }
     }
     if (scenario.requiresModel && matrix.available.length === 0) {
       console.warn(`[skip] ${scenario.name} -- requiresModel but no available models in matrix`);
     }
   }
 
-  const { failed } = report(runs);
-  process.exit(failed === 0 ? 0 : 1);
+  // Guard 2: had requiresModel scenarios but no model actually ran (no creds).
+  if (hasRequiresModel && modelCellsRun === 0) {
+    console.error("error: no models available; graded 0 model evals -- check credentials");
+    process.exit(1);
+  }
+
+  report(runs);
+
+  const cells = aggregateCells(runs);
+  if (cells.some((c) => c.modelId !== "(none)")) {
+    console.log("");
+    console.log(renderLeaderboard(cells));
+  }
+
+  const resultsDir = path.join(evalsDir, "results");
+  const written = writeResultsJsonl(runs, resultsDir);
+  if (written) console.log(`\nresults: ${path.relative(process.cwd(), written)}`);
+
+  const anyDimFailed = cells.some((c) => Object.values(c.dimensions).some((d) => d && !d.verdict));
+  process.exit(anyDimFailed ? 1 : 0);
 }
 
 function readScenario(dir: string): Scenario {

@@ -34,15 +34,64 @@ PROXY_API_KEY=<your-key>
 (Variable names match `~/work/tacc-inference/.env` so symlinking that file
 straight in works: `ln -s ~/work/tacc-inference/.env evals/.env`.)
 
-## Tier today
+## Dimensions and the leaderboard
 
-Phase 2: matrix runner + TACC-only Tier 2 (Llama-3.3-70B, Llama-4-Maverick,
-Qwen3-32B). One smoke-test scenario verifies the matrix wiring end-to-end.
+Tier 2 scenarios are graded on up to four decision-correctness dimensions.
+Every assertion failure carries a `dimension`, and the runner aggregates a
+per-model leaderboard from them:
 
-Phase 3+ fills out the scenario set (init-gate variants, plan navigation,
-notebook discipline, confusables hint, session lifecycle), with Tier 2
-scenarios automatically running across the matrix. See the plan for the
-full sequencing.
+- **validity** -- a well-formed `## Plan X: <title> [routing]` block with
+  enough described steps. The gate: a model that can't emit a parseable plan
+  fails everything downstream.
+- **routing** -- did the plan pick the correct routing tag? Scenarios set
+  `plan.routingIn` to the *correct* answer(s) (e.g. metagenomics -> `[galaxy,
+  hybrid]`, consumer pharmacogenomics -> `[local, hybrid]`), so an incorrect
+  route is graded as wrong rather than waved through.
+- **tools** -- did the plan name a sane analysis tool? `plan.mentionsOneOf`
+  is a curated, generous allow-set per assay (a coarse heuristic, not an
+  oracle; nuance is left to a future judge layer).
+- **behavior** -- Loom-contract checks that need no Galaxy. Today:
+  `behavior.asksClarifyingQuestion` -- an underspecified prompt should make
+  the agent ask, not fabricate a plan.
+
+Plans are read from wherever they land (`plan.source` defaults to `"any"` =
+notebook if it has a plan, else chat), because the matrix models don't
+reliably follow Loom's draft-in-chat-then-write gate.
+
+Each (scenario, model) cell runs **n=3** times by default (`scenario.runs`
+overrides; Tier 1 runs once). A dimension's cell verdict is a majority of the
+runs (`pass >= ceil(total/2)`), so a flaky model shows as a pass-rate rather
+than a coin-flip. The runner prints a `model x dimension` leaderboard grid
+and writes one JSON line per run to `evals/results/<date>-<sha>.jsonl`
+(gitignored) for diffing models over time and across Loom prompt changes.
+
+## Model matrix
+
+`evals/models.json` is the 7-model TACC matrix (all on the one SambaNova
+proxy): MiniMax-M2.7, gpt-oss-120b, Qwen3-32B, Llama-3.3-70B,
+Llama-4-Maverick, Llama-3.1-8B, gemma-4-31B. gpt-oss-120b is flagged
+`reasoningModel` (its chain-of-thought lands in `reasoning_content`; see the
+findings log for the live caveat). To add a paid reference baseline
+(Anthropic/OpenAI/Google), append an entry with that provider and the right
+`envRequires` -- the matrix design makes it a one-line config change.
+
+## Out of scope (for now)
+
+LLM-judge plan-*quality* scoring (the same scenarios with a rubric pass),
+end-to-end execution against a recorded/live Galaxy MCP, and notebook
+discipline / session-lifecycle scenarios. The assertion library leaves seams
+for each. See the plan for sequencing.
+
+## Known issue
+
+Loom does not exit cleanly under `--mode json` after a single slash-command
+invocation -- the Galaxy poller's `setInterval` keeps the event loop alive
+even when print mode finishes. The runner SIGTERMs each scenario at its
+`timeoutMs`, so this doesn't break evals, but it bloats wall-clock and is
+worth fixing Loom-side (either `unref()` the poller's timer or wire
+`stopGalaxyPoller` into print-mode dispose). Scenarios with no Galaxy
+configured (smoke-echo, plan-creation) exit cleanly in ~2s, so this only
+bites Galaxy-connected scenarios.
 
 ## Known issue
 
