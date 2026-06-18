@@ -17,6 +17,14 @@ interface AnthropicLikeError {
 
 const RETRIABLE_TYPES = new Set(["overloaded_error", "rate_limit_error", "api_error"]);
 
+// A retriable provider error surfaces at the end of an assistant message, which
+// means the turn stopped before finishing -- any task that was in progress (a
+// figure write, a Galaxy run) may be half-done. The bare "Try again." left the
+// user unable to tell what state things were in (issue #316), so every transient
+// termination spells that out and points at the actionable check.
+const INTERRUPTED_TASK_NOTE =
+  "The turn was interrupted before finishing, so any task in progress may be incomplete -- check what completed before resending.";
+
 // Context-overflow errors arrive in many provider-specific phrasings, and for
 // OpenAI-compatible endpoints they're a plain (non-JSON) string the humanizer
 // would otherwise echo verbatim -- e.g. deepseek's "400 This model's maximum
@@ -111,21 +119,21 @@ export function humanizeAgentError(raw: string | undefined | null): HumanizedErr
   switch (errType) {
     case "overloaded_error":
       return {
-        text: "Anthropic is overloaded right now -- give it a moment and resend.",
+        text: `Anthropic is overloaded right now. ${INTERRUPTED_TASK_NOTE}`,
         retriable: true,
       };
     case "rate_limit_error":
       return {
         text: errMsg
-          ? `Rate limited by the API: ${errMsg}. Try again shortly.`
-          : "Rate limited by the API. Try again shortly.",
+          ? `Rate limited by the API: ${errMsg}. ${INTERRUPTED_TASK_NOTE}`
+          : `Rate limited by the API. ${INTERRUPTED_TASK_NOTE}`,
         retriable: true,
       };
     case "api_error":
       return {
         text: errMsg
-          ? `Upstream API error: ${errMsg}. Try again.`
-          : "Upstream API error. Try again.",
+          ? `Upstream API error: ${errMsg}. ${INTERRUPTED_TASK_NOTE}`
+          : `Upstream API error. ${INTERRUPTED_TASK_NOTE}`,
         retriable: true,
       };
     case "authentication_error":
