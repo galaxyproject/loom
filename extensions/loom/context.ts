@@ -294,7 +294,9 @@ resources before deciding what runs where:
   \`galaxy_delete_user_tool\`. **Do not generate old-style XML tool
   wrappers locally when the user asks for a UDT** — that's a different
   concept (legacy ToolShed tools). Reach for the MCP tools rather than
-  inventing a local workaround.
+  inventing a local workaround. When authoring the UDT definition, fetch
+  the \`udt-authoring\` skill first (see Skills repositories below) rather
+  than writing the YAML from memory.
 - **Workflow invocation**: a single run of a Galaxy workflow on a
   history. Tracked in the notebook via \`loom-invocation\` blocks.
 - **IWC**: Intergalactic Workflow Commission — registry of curated
@@ -965,6 +967,22 @@ function buildSkillsContext(): string {
   \`nf-to-galaxy/check-tool-availability.md\`,
   \`nf-to-galaxy/testing-and-validation.md\`,
   \`tool-dev/references/testing.md\` (Planemo).
+
+- **Authoring a User-Defined Tool** (the \`class: GalaxyUserTool\` YAML a
+  non-admin user creates and runs via \`galaxy_create_user_tool\` /
+  \`galaxy_run_user_tool\` — wrapping a container + command as their own
+  tool; the preferred way to fill glue gaps between Galaxy steps) →
+  \`skills_fetch({ path: "udt-authoring/SKILL.md" })\`. **Fetch this before
+  drafting any UDT YAML — don't hand-write the definition from memory.**
+  References:
+  - \`udt-authoring/references/templating.md\` — \`$(...)\` ECMAScript
+    templating, \`$GALAXY_SLOTS\` for threads (pass it as the flag's value,
+    don't just echo it), shell escaping.
+  - \`udt-authoring/references/schema-reference.md\` — UserToolSource
+    fields, input/output types, the validators.
+  - \`udt-authoring/references/common-mistakes.md\` — pre-submit checklist.
+  - \`udt-authoring/examples/\` — seven complete, validated UDTs.
+  This is the \`GalaxyUserTool\` YAML format, NOT classic XML \`tool-dev\`.
 
 - **Galaxy tool development** (XML wrappers, packaging, testing, where to
   put tools) → \`skills_fetch({ path: "tool-dev/SKILL.md" })\`. Sub-skill:
