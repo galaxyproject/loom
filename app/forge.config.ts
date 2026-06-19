@@ -92,6 +92,37 @@ function pruneLoomNodeModules(platform: string, arch: string): void {
     path.join(LOOM_STAGE_DIR, "node_modules", "@earendil-works", "pi-coding-agent", "examples"),
     { recursive: true, force: true },
   );
+
+  // Windows only: the Squirrel maker packages the app with `nuget pack`, whose
+  // source-file enumeration throws PathTooLongException at the 260-char Win32
+  // MAX_PATH. The staged bundle's deepest entries -- @mistralai/mistralai's
+  // auto-generated SDK operation files, nested under pi-coding-agent -- reach
+  // ~261 chars once the runner's appDir prefix (D:\a\loom\loom\app\out\
+  // Orbit-win32-x64\resources\) is added. TypeScript declarations/sources and
+  // source maps are never loaded at runtime, so dropping them pulls the deepest
+  // path safely back under the limit (and shrinks the installer). Scoped to
+  // win32 so the already-working mac/linux artifacts are byte-for-byte
+  // unchanged.
+  if (platform === "win32") {
+    stripNonRuntimeSourceFiles(path.join(LOOM_STAGE_DIR, "node_modules"));
+  }
+}
+
+// Recursively remove TypeScript declarations/sources (.ts/.tsx/.mts/.cts,
+// which includes .d.ts) and source maps (.map) from a node_modules tree.
+// None are resolved at runtime -- Node loads .js/.cjs/.mjs/.json/.node -- so
+// they're pure path-depth (and size) overhead. Everything else is kept,
+// including package.json, which drives module resolution.
+function stripNonRuntimeSourceFiles(root: string): void {
+  if (!fs.existsSync(root)) return;
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const full = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      stripNonRuntimeSourceFiles(full);
+    } else if (/\.(ts|tsx|mts|cts|map)$/.test(entry.name)) {
+      fs.rmSync(full, { force: true });
+    }
+  }
 }
 
 function findKoffiBuildDirs(root: string): string[] {
