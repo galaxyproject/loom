@@ -112,12 +112,18 @@ runs:
     # primary fix is pruning runtime-irrelevant files in forge.config.ts; this
     # also flips the OS + git long-path switches in case a future dep pushes a
     # path back over the edge.
-    - name: Enable Windows long paths
+    - name: Enable Windows long paths + short temp for Squirrel/nuget
       if: inputs.platform == 'win32'
       shell: pwsh
       run: |
         reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f
         git config --system core.longpaths true
+        # electron-winstaller stages the nupkg under os.tmpdir() (honors $TEMP).
+        # The default runner temp is deep; a short root keeps nuget's working
+        # paths well under MAX_PATH on the destination side.
+        New-Item -ItemType Directory -Force -Path C:\t | Out-Null
+        "TEMP=C:\t" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        "TMP=C:\t"  | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     - name: Make Orbit (${{ inputs.platform }}-${{ inputs.arch }})
       shell: bash

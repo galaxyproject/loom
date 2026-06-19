@@ -348,6 +348,27 @@ const config: ForgeConfig = {
       await stageNodeBundle(platform, arch);
       await stageUvBundle(platform, arch);
     },
+    // TEMP DIAGNOSTIC (win32 MAX_PATH hunt): log the deepest absolute paths in
+    // the packaged app -- exactly what the Squirrel maker's `nuget pack` will
+    // enumerate. Remove once the Windows installer builds.
+    postPackage: async (_forgeConfig, packageResult) => {
+      if (packageResult.platform !== "win32") return;
+      for (const out of packageResult.outputPaths) {
+        const all: string[] = [];
+        const walk = (d: string): void => {
+          for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+            const full = path.join(d, e.name);
+            if (e.isDirectory()) walk(full);
+            else all.push(full);
+          }
+        };
+        walk(out);
+        all.sort((a, b) => b.length - a.length);
+        console.log(`[diag] packaged dir: ${out}`);
+        console.log(`[diag] file count: ${all.length}, longest 8 absolute paths:`);
+        for (const p of all.slice(0, 8)) console.log(`[diag]   ${p.length}  ${p}`);
+      }
+    },
   },
   makers: [
     {
