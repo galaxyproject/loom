@@ -329,15 +329,32 @@ const config: ForgeConfig = {
         format: "ULFO",
       },
     },
-    {
-      name: "@electron-forge/maker-squirrel",
-      config: {
-        name: "Orbit",
-        setupIcon: "resources/icon.ico",
-        // Squirrel is happy unsigned for dev/internal builds; production
-        // distribution will need a code-signing cert configured here.
-      },
-    },
+    // The Windows Squirrel installer is deferred. The first real run of the
+    // win32 leg (in the 0.5.0 release) showed electron-winstaller's `nuget pack`
+    // tripping the Win32 260-char MAX_PATH on the deeply-nested staged Loom
+    // bundle -- @mistralai/mistralai's auto-generated SDK files under
+    // pi-coding-agent. The Loom CLI ships as real (non-asar) files because it's
+    // spawned as a subprocess, so that depth is unavoidable, and even with the
+    // deepest path pruned to 254 chars nuget's internal staging still exceeds
+    // 260. Windows ships as the portable maker-zip .zip until the installer's
+    // path problem is solved; set LOOM_WIN_SQUIRREL=1 to build the installer
+    // while iterating on it.
+    ...(process.env.LOOM_WIN_SQUIRREL === "1"
+      ? [
+          {
+            name: "@electron-forge/maker-squirrel",
+            config: {
+              name: "Orbit",
+              // electron-winstaller writes this into the generated nuspec as the
+              // required <authors> field; without it the maker fails outright.
+              authors: "Galaxy Project contributors",
+              setupIcon: "resources/icon.ico",
+              // Squirrel is happy unsigned for dev/internal builds; production
+              // distribution will need a code-signing cert configured here.
+            },
+          },
+        ]
+      : []),
     {
       name: "@electron-forge/maker-deb",
       config: {

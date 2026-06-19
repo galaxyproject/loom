@@ -118,12 +118,15 @@ jobs:
           draft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
+          # No *.exe yet: the Windows Squirrel installer is deferred (see
+          # app/forge.config.ts), so win32 ships the .zip. Re-add
+          # artifacts/**/*.exe when the Squirrel maker is re-enabled, or
+          # fail_on_unmatched_files will fail the publish on the empty glob.
           files: |
             artifacts/**/*.dmg
             artifacts/**/*.zip
             artifacts/**/*.deb
             artifacts/**/*.rpm
-            artifacts/**/*.exe
           fail_on_unmatched_files: true
 
   # Publish the @galaxyproject/loom npm package (the Loom CLI -- not Orbit) via
