@@ -20,6 +20,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { buildBrainEnv } from "../shared/brain-env.js";
 import { evaluateBind, authorizeWsUpgrade } from "./auth.js";
 import { isForwardableUiResponse } from "./rpc-guard.js";
+import { providerKeyVar, hasProviderKey } from "./llm-credentials.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOOM_BIN = resolve(__dirname, "../bin/loom.js");
@@ -61,7 +62,7 @@ function saveConfig(config: Record<string, unknown>): void {
 }
 
 function synthesizedRemoteConfig(): Record<string, unknown> {
-  const provider = process.env.LOOM_LLM_PROVIDER ?? "anthropic";
+  const provider = activeProvider();
   // Mirror the nested masked shape the desktop renderer expects (active +
   // providers / active + profiles) so the first-run welcome overlay stays
   // suppressed and the Galaxy status dot reads "connected" from the env-injected
@@ -84,7 +85,7 @@ function synthesizedRemoteConfig(): Record<string, unknown> {
       providers: {
         [provider]: {
           model: process.env.LOOM_LLM_MODEL ?? null,
-          hasApiKey: true,
+          hasApiKey: llmKeyPresent(),
         },
       },
     },
@@ -109,6 +110,23 @@ let loomProcess: ChildProcess | null = null;
 let activeSocket: WebSocket | null = null;
 let cwd = getCwd();
 
+// BYO-key: a provider key supplied by the user at runtime (held in memory for
+// the process lifetime only -- never persisted, logged, or sent to the renderer).
+let providedLlmKey: string | null = null;
+let providedProvider: string | null = null;
+
+function activeProvider(): string {
+  return providedProvider ?? process.env.LOOM_LLM_PROVIDER ?? "anthropic";
+}
+
+function llmKeyPresent(): boolean {
+  return hasProviderKey({
+    env: process.env,
+    provider: activeProvider(),
+    providedKey: providedLlmKey,
+  });
+}
+
 function startLoom(): void {
   if (loomProcess) stopLoom();
 
@@ -130,11 +148,18 @@ function startLoom(): void {
   if (IS_REMOTE_MODE) {
     const gatePath = resolve(__dirname, "extensions/web-mode-gate.ts");
     args.push("--extension", gatePath);
-    if (process.env.LOOM_LLM_PROVIDER) {
-      args.push("--provider", process.env.LOOM_LLM_PROVIDER);
+    const prov = activeProvider();
+    if (providedProvider || process.env.LOOM_LLM_PROVIDER) {
+      args.push("--provider", prov);
     }
     if (process.env.LOOM_LLM_MODEL) {
       args.push("--model", process.env.LOOM_LLM_MODEL);
+    }
+    // BYO-key: inject the user-supplied key into the brain's env (env var name
+    // per the active provider). Never logged.
+    const keyVar = providerKeyVar(prov);
+    if (providedLlmKey && keyVar) {
+      env[keyVar] = providedLlmKey;
     }
     env.LOOM_NOTEBOOK_ALLOWLIST = join(cwd, "notebook.md");
     // No local execution surface in the container: the web-mode-gate is the
@@ -142,6 +167,9 @@ function startLoom(): void {
     // (whose headless approval prompts would otherwise hang). See
     // extensions/loom/index.ts.
     env.LOOM_LOCAL_EXEC = "off";
+    // Deterministic notebook -> Galaxy Page persistence: resume on launch,
+    // debounce-push on change, flush on shutdown. Brain-side, env-gated.
+    env.LOOM_GALAXY_PAGE_SYNC = "auto";
   } else {
     // The local dev server DOES have a local execution surface, so pin the
     // guard on authoritatively (same as agent.ts and bin/loom.js) -- the
@@ -208,6 +236,36 @@ function stopLoom(): void {
     loomProcess.kill("SIGTERM");
     loomProcess = null;
   }
+}
+
+/**
+ * SIGTERM the brain and wait for it to exit so its session_shutdown hook can
+ * flush the notebook to Galaxy. SIGKILL backstop after timeoutMs (kept under
+ * the container orchestrator's grace window).
+ */
+function stopLoomGracefully(timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const proc = loomProcess;
+    if (!proc) return resolve();
+    const timer = setTimeout(() => {
+      try {
+        proc.kill("SIGKILL");
+      } catch {
+        /* already gone */
+      }
+      resolve();
+    }, timeoutMs);
+    proc.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    try {
+      proc.kill("SIGTERM");
+    } catch {
+      clearTimeout(timer);
+      resolve();
+    }
+  });
 }
 
 function sendToLoom(obj: Record<string, unknown>): void {
@@ -292,7 +350,11 @@ wss.on("connection", (socket) => {
   log("browser connected");
   activeSocket = socket;
 
-  if (!loomProcess) startLoom();
+  // In remote mode with no resolvable provider key, hold off spawning: the
+  // renderer's key-entry screen drives agent:provide-llm-key, which spawns.
+  // Non-remote (desktop/dev) is unchanged -- the brain reads its own
+  // ~/.loom/config.json key, which never reaches this env-only check.
+  if (!loomProcess && (!IS_REMOTE_MODE || llmKeyPresent())) startLoom();
 
   socket.on("message", (raw) => {
     let msg: Record<string, unknown>;
@@ -320,6 +382,20 @@ wss.on("connection", (socket) => {
       stopLoom();
       startLoom();
       respond(id, { success: true });
+      return;
+    }
+    if (channel === "agent:provide-llm-key") {
+      const payload = (args[0] ?? {}) as { provider?: unknown; key?: unknown };
+      if (typeof payload.key === "string" && payload.key.length > 0) {
+        providedLlmKey = payload.key; // never logged
+        if (typeof payload.provider === "string" && payload.provider.length > 0) {
+          providedProvider = payload.provider;
+        }
+        if (!loomProcess) startLoom();
+        respond(id, { ok: true });
+      } else {
+        respond(id, { ok: false, error: "missing provider key" });
+      }
       return;
     }
     if (channel === "agent:get-cwd") {
@@ -434,3 +510,24 @@ httpServer.listen(PORT, HOST, () => {
 function isLoopbackBind(): boolean {
   return HOST === "127.0.0.1" || HOST === "::1" || HOST === "localhost";
 }
+
+let shuttingDown = false;
+async function gracefulShutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  log("received", signal, "-- draining");
+  try {
+    wss.close();
+    httpServer.close();
+  } catch {
+    /* */
+  }
+  // Guard the env override: a non-numeric LOOM_SHUTDOWN_GRACE_MS would parse to
+  // NaN, and setTimeout(NaN) fires immediately -> the SIGKILL backstop would
+  // race the notebook flush. Fall back to 8s on any non-finite/negative value.
+  const graceMs = parseInt(process.env.LOOM_SHUTDOWN_GRACE_MS ?? "8000", 10);
+  await stopLoomGracefully(Number.isFinite(graceMs) && graceMs >= 0 ? graceMs : 8000);
+  process.exit(0);
+}
+process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => void gracefulShutdown("SIGINT"));
