@@ -143,6 +143,8 @@ async function fetchMode(): Promise<"remote" | "desktop"> {
   },
   getConfig: () => invoke("config:get"),
   saveConfig: (config: unknown) => invoke("config:save", config),
+  provideLlmKey: (provider: string, key: string) =>
+    invoke("agent:provide-llm-key", { provider, key }),
   respondToUiRequest: (id: string, response: Record<string, unknown>) => {
     send({
       channel: "agent:ui-response",

@@ -78,6 +78,10 @@ export interface OrbitAPI {
   saveConfig(config: Record<string, unknown>): Promise<{ success: boolean; error?: string }>;
   refreshSkills: () => Promise<{ ok: boolean; error?: string }>;
   getGalaxyUser(): Promise<import("../main/galaxy-user.js").GalaxyUserStatus>;
+  // Remote (web/GxIT) only: hand a user-supplied LLM key to the server, which
+  // holds it in memory and spawns the brain. The Electron shell uses saveConfig
+  // instead, so this is optional on the shared API.
+  provideLlmKey?(provider: string, key: string): Promise<unknown>;
   setBypassPermissions(
     enabled: boolean,
   ): Promise<{ ok: boolean; enabled: boolean; cancelled?: boolean }>;
