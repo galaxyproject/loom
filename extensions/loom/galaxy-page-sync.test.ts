@@ -139,6 +139,32 @@ describe("createPageSyncEngine", () => {
     expect(deps.pushes).toHaveLength(1);
   });
 
+  it("serializes pushes: flush coalesces with an in-flight push (no concurrent overlap)", async () => {
+    let releasePush: () => void = () => {};
+    let calls = 0;
+    const deps = makeDeps({
+      push: vi.fn(async () => {
+        calls += 1;
+        await new Promise<void>((resolve) => {
+          releasePush = () => resolve();
+        });
+      }),
+    });
+    const engine = createPageSyncEngine(deps);
+    await engine.init(); // lastBody baseline = "first"
+    (deps as unknown as { setBody: (b: string) => void }).setBody("changed");
+    deps.fire();
+    await vi.advanceTimersByTimeAsync(150); // debounce fires -> push #1 starts and hangs
+    expect(calls).toBe(1);
+    // The body is unchanged since push #1 started; flush must await the in-flight
+    // push, not launch a second concurrent one (the pre-fix code did, because
+    // lastBody is only set after the await).
+    const flushP = engine.flush();
+    releasePush(); // let push #1 complete
+    await flushP;
+    expect(calls).toBe(1);
+  });
+
   it("does not throw when getHistoryId rejects (fail-open hardening)", async () => {
     const deps = makeDeps({
       getHistoryId: async () => {
