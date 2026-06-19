@@ -42,9 +42,16 @@ export function listEnabledSkillRepos(): ConfiguredSkillRepo[] {
     enabled?: boolean;
   }>;
   const enabled: ConfiguredSkillRepo[] = [];
+  const seenNames = new Set<string>();
   for (const r of repos) {
     if (r?.enabled === false) continue;
     if (typeof r?.name !== "string" || typeof r?.url !== "string") continue;
+    // Names key the catalog map and findSkillRepo() lookups, so a duplicate
+    // would shadow the earlier repo and mis-route skills_fetch. Keep the first.
+    if (seenNames.has(r.name)) {
+      console.warn(`[skills] Dropping duplicate repo name "${r.name}" — keeping the first entry`);
+      continue;
+    }
     if (!isSafeSkillName(r.name)) {
       console.warn(
         `[skills] Dropping repo with unsafe name "${r.name}" — ` +
@@ -64,6 +71,7 @@ export function listEnabledSkillRepos(): ConfiguredSkillRepo[] {
       url: r.url,
       branch: typeof r.branch === "string" && r.branch ? r.branch : "main",
     });
+    seenNames.add(r.name);
   }
   return enabled;
 }

@@ -157,7 +157,11 @@ describe("AgentManager", () => {
         const proc = makeProcess(101);
         spawnMock.mockReturnValue(proc);
         const { AgentManager, TURN_SILENCE_TIMEOUT_MS } = await import("../app/src/main/agent.js");
-        const window = { isDestroyed: () => false, setTitle: vi.fn(), webContents: { send: vi.fn() } };
+        const window = {
+          isDestroyed: () => false,
+          setTitle: vi.fn(),
+          webContents: { send: vi.fn() },
+        };
         const manager = new AgentManager(window as any, "/analysis");
         manager.start();
 
@@ -184,7 +188,11 @@ describe("AgentManager", () => {
         const proc = makeProcess(101);
         spawnMock.mockReturnValue(proc);
         const { AgentManager, TURN_SILENCE_TIMEOUT_MS } = await import("../app/src/main/agent.js");
-        const window = { isDestroyed: () => false, setTitle: vi.fn(), webContents: { send: vi.fn() } };
+        const window = {
+          isDestroyed: () => false,
+          setTitle: vi.fn(),
+          webContents: { send: vi.fn() },
+        };
         const manager = new AgentManager(window as any, "/analysis");
         manager.start();
 
@@ -207,7 +215,11 @@ describe("AgentManager", () => {
         const proc = makeProcess(101);
         spawnMock.mockReturnValue(proc);
         const { AgentManager, TURN_SILENCE_TIMEOUT_MS } = await import("../app/src/main/agent.js");
-        const window = { isDestroyed: () => false, setTitle: vi.fn(), webContents: { send: vi.fn() } };
+        const window = {
+          isDestroyed: () => false,
+          setTitle: vi.fn(),
+          webContents: { send: vi.fn() },
+        };
         const manager = new AgentManager(window as any, "/analysis");
         manager.start();
 

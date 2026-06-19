@@ -18,7 +18,16 @@
       "routingIn": ["galaxy", "hybrid"],
       "minPendingSteps": 4,
       "eachStepHasDescription": true,
-      "mentionsOneOf": ["HISAT2", "STAR", "salmon", "kallisto", "DESeq2", "edgeR", "limma", "featureCounts"]
+      "mentionsOneOf": [
+        "HISAT2",
+        "STAR",
+        "salmon",
+        "kallisto",
+        "DESeq2",
+        "edgeR",
+        "limma",
+        "featureCounts"
+      ]
     }
   }
 }

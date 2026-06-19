@@ -3165,6 +3165,22 @@ prefsSkillsAddBtn.addEventListener("click", () => {
   renderSkillsRows();
 });
 
+const prefsSkillsRefreshBtn = document.getElementById("prefs-skills-refresh") as HTMLButtonElement;
+prefsSkillsRefreshBtn.addEventListener("click", async () => {
+  prefsSkillsRefreshBtn.disabled = true;
+  try {
+    const res = await window.orbit.refreshSkills();
+    closePreferences();
+    if (res.ok) {
+      chat.addInfoMessage("<i>Skills refreshing — skill catalogs cleared, agent restarted.</i>");
+    } else {
+      chat.addInfoMessage(`<i>Skills refresh failed: ${res.error ?? "unknown error"}</i>`);
+    }
+  } finally {
+    prefsSkillsRefreshBtn.disabled = false;
+  }
+});
+
 /** Sentinel mirrors UNCHANGED_SECRET in main/ipc-handlers.ts. */
 const UNCHANGED_SECRET = "__loom_unchanged_secret__";
 /** Per-provider in-memory state while Preferences is open. */

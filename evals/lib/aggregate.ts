@@ -5,7 +5,14 @@
  * dimension would read as a vacuous 100% pass.
  */
 
-import type { Assertions, Cell, Dimension, PlanAssertions, Scenario, ScenarioRun } from "./types.js";
+import type {
+  Assertions,
+  Cell,
+  Dimension,
+  PlanAssertions,
+  Scenario,
+  ScenarioRun,
+} from "./types.js";
 
 export function declaredDimensions(scenario: Scenario): Set<Dimension> {
   const a = scenario.assertions;
@@ -14,7 +21,8 @@ export function declaredDimensions(scenario: Scenario): Set<Dimension> {
 
   for (const p of planLikes) {
     if (!p) continue;
-    if (p.exists !== undefined || p.minPendingSteps !== undefined || p.eachStepHasDescription) dims.add("validity");
+    if (p.exists !== undefined || p.minPendingSteps !== undefined || p.eachStepHasDescription)
+      dims.add("validity");
     if (p.routingIn) dims.add("routing");
     if (p.mentionsOneOf || p.mentionsNoneOf) dims.add("tools");
   }
@@ -26,12 +34,12 @@ export function declaredDimensions(scenario: Scenario): Set<Dimension> {
 function otherDeclared(a: Assertions): boolean {
   return Boolean(
     a.exitCode !== undefined ||
-      a.toolCalls ||
-      a.events ||
-      a.chatText ||
-      a.notebook?.contains?.length ||
-      a.notebook?.mustNotContain?.length ||
-      a.notebook?.exists !== undefined,
+    a.toolCalls ||
+    a.events ||
+    a.chatText ||
+    a.notebook?.contains?.length ||
+    a.notebook?.mustNotContain?.length ||
+    a.notebook?.exists !== undefined,
   );
 }
 

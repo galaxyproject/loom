@@ -45,7 +45,12 @@ describe("galaxy-poller completion notifications", () => {
   it("fires a completed toast once when an invocation reaches a terminal ok state", async () => {
     mockCheck.mockResolvedValue(
       resultWith([
-        { invocationId: "inv1", label: "RNA-seq run", jobSummary: { ok: 3 }, autoAction: "completed" },
+        {
+          invocationId: "inv1",
+          label: "RNA-seq run",
+          jobSummary: { ok: 3 },
+          autoAction: "completed",
+        },
       ]),
     );
     const notify = vi.fn();
@@ -62,7 +67,12 @@ describe("galaxy-poller completion notifications", () => {
   it("fires a failed toast at warning level with the error count", async () => {
     mockCheck.mockResolvedValue(
       resultWith([
-        { invocationId: "inv1", label: "Variant call", jobSummary: { ok: 1, error: 2 }, autoAction: "failed" },
+        {
+          invocationId: "inv1",
+          label: "Variant call",
+          jobSummary: { ok: 1, error: 2 },
+          autoAction: "failed",
+        },
       ]),
     );
     const notify = vi.fn();
@@ -79,7 +89,12 @@ describe("galaxy-poller completion notifications", () => {
   it("falls back to notebookAnchor then invocationId when no label is present", async () => {
     mockCheck.mockResolvedValue(
       resultWith([
-        { invocationId: "inv-xyz", notebookAnchor: "plan-1-step-3", jobSummary: { ok: 1 }, autoAction: "completed" },
+        {
+          invocationId: "inv-xyz",
+          notebookAnchor: "plan-1-step-3",
+          jobSummary: { ok: 1 },
+          autoAction: "completed",
+        },
       ]),
     );
     const notify = vi.fn();
@@ -92,7 +107,14 @@ describe("galaxy-poller completion notifications", () => {
 
   it("does not notify for invocations that are still in progress (no autoAction)", async () => {
     mockCheck.mockResolvedValue(
-      resultWith([{ invocationId: "inv1", label: "Still running", jobSummary: { ok: 1 }, autoAction: undefined }]),
+      resultWith([
+        {
+          invocationId: "inv1",
+          label: "Still running",
+          jobSummary: { ok: 1 },
+          autoAction: undefined,
+        },
+      ]),
     );
     const notify = vi.fn();
 
@@ -120,7 +142,9 @@ describe("galaxy-poller completion notifications", () => {
 
   it("swallows a throwing notifier so the poll loop's catch keeps the timer alive", async () => {
     mockCheck.mockResolvedValue(
-      resultWith([{ invocationId: "inv1", label: "x", jobSummary: { ok: 1 }, autoAction: "completed" }]),
+      resultWith([
+        { invocationId: "inv1", label: "x", jobSummary: { ok: 1 }, autoAction: "completed" },
+      ]),
     );
     const notify = vi.fn(() => {
       throw new Error("UI is gone");

@@ -4,6 +4,7 @@ import type { AgentManager } from "./agent.js";
 import { startFilesWatcher, resolveWithin } from "./files-handler.js";
 import { loadSessionHistory } from "./session-replay.js";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { loadConfig, saveConfig, type LoomConfig } from "./config.js";
@@ -416,6 +417,49 @@ export function registerIpcHandlers(agent: AgentManager): void {
     } catch (err) {
       log("config:save failed:", err);
       return { success: false, error: String(err) };
+    }
+  });
+
+  ipc.handle("skills:refresh", async () => {
+    try {
+      // Don't yank the agent out from under an in-flight turn -- stop()/start()
+      // would silently kill active work. Make the user stop the turn first.
+      if (agent.getStatusSnapshot().turnActive) {
+        return {
+          ok: false,
+          error: "The agent is mid-task -- stop the current turn before refreshing skills.",
+        };
+      }
+      const config = loadConfig();
+      const repos = (config.skills?.repos ?? []) as Array<{
+        name?: string;
+        url?: string;
+        branch?: string;
+      }>;
+      const base = path.join(os.homedir(), ".loom", "cache", "skills");
+      for (const r of repos) {
+        // Skills code only ever uses filesystem-safe names; validate here too
+        // since this builds a path and deletes files (defense in depth).
+        if (!r?.name || !/^[A-Za-z0-9._-]+$/.test(r.name)) continue;
+        // Clear the whole resolved cache dir (catalog + per-file frontmatter) so the
+        // restarted agent re-walks AND re-fetches fresh, not just the tree listing.
+        try {
+          for (const dir of fs.readdirSync(base)) {
+            if (dir.startsWith(`${r.name}@`)) {
+              fs.rmSync(path.join(base, dir), { recursive: true, force: true });
+            }
+          }
+        } catch {
+          // base dir may not exist yet -- nothing to clear
+        }
+      }
+      agent.stop();
+      agent.start();
+      log("skills cache cleared; agent restarted");
+      return { ok: true };
+    } catch (err) {
+      log("skills:refresh failed:", err);
+      return { ok: false, error: String(err) };
     }
   });
 

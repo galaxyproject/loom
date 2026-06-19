@@ -50,11 +50,7 @@ async function main() {
   const matrix = loadMatrix(args.modelFilter);
 
   // Guard 1: --model filter matched nothing in models.json at all.
-  if (
-    args.modelFilter &&
-    matrix.available.length === 0 &&
-    matrix.skipped.length === 0
-  ) {
+  if (args.modelFilter && matrix.available.length === 0 && matrix.skipped.length === 0) {
     console.error(
       `error: --model filter matched no models in models.json: ${args.modelFilter.join(", ")}`,
     );

@@ -196,7 +196,7 @@ what lets the pass/fail track capability cleanly.
 
 ## 2026-06-17: decision-correctness layer + 7-model matrix
 
-We stopped grading *shape* and started grading *decisions*. Every scenario
+We stopped grading _shape_ and started grading _decisions_. Every scenario
 now carries the correct answer (tightened `routingIn`, a `mentionsOneOf` tool
 allow-set), failures are tagged with a dimension (validity / routing / tools /
 behavior), each (scenario, model) cell runs n=3, and the runner prints a
@@ -208,7 +208,7 @@ gpt-oss-120b, Llama-3.1-8B, gemma-4-31B.
 ### The eval surfaced its own grading bug (now fixed)
 
 The first live `plan-creation-rnaseq` matrix run showed gpt-oss-120b,
-Llama-3.1-8B, and gemma -- all of which emitted *no plan at all* -- scoring
+Llama-3.1-8B, and gemma -- all of which emitted _no plan at all_ -- scoring
 `routing 3/3, tools 3/3` on the leaderboard. Cause: `evaluatePlan`'s
 no-plan branch pushed only a `validity` failure and returned, so the
 declared routing/tools dimensions recorded no failure and the aggregator
@@ -231,15 +231,15 @@ in the matrix so the regression is visible; it shows red until handled.
 
 ### Live leaderboard (plan-creation-rnaseq, n=3, post-fix)
 
-| model            | validity | routing | tools | notes                                                            |
-| ---------------- | -------- | ------- | ----- | ---------------------------------------------------------------- |
-| Llama-4-Maverick | 3/3      | 3/3     | 3/3   | cleanest run this round                                          |
+| model            | validity | routing | tools | notes                                                             |
+| ---------------- | -------- | ------- | ----- | ----------------------------------------------------------------- |
+| Llama-4-Maverick | 3/3      | 3/3     | 3/3   | cleanest run this round                                           |
 | MiniMax-M2.7     | 3/3      | 1/3     | 3/3   | routed `[local]` on 2 of 3 runs -- variance n=1 would have hidden |
 | Qwen3-32B        | 2/3      | 2/3     | 2/3   | one run emitted no plan; the other two routed `[galaxy]` cleanly  |
-| Llama-3.3-70B    | 0/3      | 3/3     | 3/3   | right decisions, wrong format (see below)                        |
-| gpt-oss-120b     | 0/3      | 0/3     | 0/3   | empty content (reasoning_content; see above)                     |
-| Llama-3.1-8B     | 0/3      | 0/3     | 0/3   | no plan; one run hit the 150s timeout                            |
-| gemma-4-31B      | 0/3      | 0/3     | 0/3   | no plan                                                          |
+| Llama-3.3-70B    | 0/3      | 3/3     | 3/3   | right decisions, wrong format (see below)                         |
+| gpt-oss-120b     | 0/3      | 0/3     | 0/3   | empty content (reasoning_content; see above)                      |
+| Llama-3.1-8B     | 0/3      | 0/3     | 0/3   | no plan; one run hit the 150s timeout                             |
+| gemma-4-31B      | 0/3      | 0/3     | 0/3   | no plan                                                           |
 
 Two findings worth their own follow-up:
 
@@ -259,7 +259,7 @@ Two findings worth their own follow-up:
 
 ### What's deliberately still out of scope
 
-No LLM-judge plan-*quality* scoring (tool allow-sets stay coarse
+No LLM-judge plan-_quality_ scoring (tool allow-sets stay coarse
 substring heuristics -- a model naming a tool in surrounding prose can pass
 `mentionsOneOf`), no end-to-end execution, no recorded/live Galaxy MCP. The
 assertion library leaves seams for each.

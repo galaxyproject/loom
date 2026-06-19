@@ -41,9 +41,9 @@ describe("formatWindowTitle", () => {
   it("abbreviates with the original separator (Windows-style paths)", () => {
     // The helper must not key off the runner's path.sep -- a backslash path
     // abbreviates on any OS, and the backslash separator is preserved.
-    expect(
-      formatWindowTitle("C:\\Users\\dannon\\work\\projectA", "C:\\Users\\dannon"),
-    ).toBe("~\\work\\projectA — Orbit");
+    expect(formatWindowTitle("C:\\Users\\dannon\\work\\projectA", "C:\\Users\\dannon")).toBe(
+      "~\\work\\projectA — Orbit",
+    );
   });
 
   it("falls back to bare Orbit when no cwd is set", () => {

@@ -42,9 +42,7 @@ describe("historyToMarkdown", () => {
     const records: MessageRecord[] = [
       { role: "tool", id: "t1", name: "bash", status: "done", result: "hello world" },
     ];
-    expect(historyToMarkdown(records)).toBe(
-      "*Tool call ✓: `bash`*\n\n```\nhello world\n```\n",
-    );
+    expect(historyToMarkdown(records)).toBe("*Tool call ✓: `bash`*\n\n```\nhello world\n```\n");
   });
 
   it("formats an error message", () => {
@@ -110,15 +108,13 @@ describe("fragmentToMarkdown", () => {
   });
 
   it("converts <pre><code> with language", () => {
-    expect(
-      fragmentToMarkdown(html('<pre><code class="language-python">x = 1</code></pre>')),
-    ).toBe("```python\nx = 1\n```");
+    expect(fragmentToMarkdown(html('<pre><code class="language-python">x = 1</code></pre>'))).toBe(
+      "```python\nx = 1\n```",
+    );
   });
 
   it("converts <pre><code> without language", () => {
-    expect(fragmentToMarkdown(html("<pre><code>x = 1</code></pre>"))).toBe(
-      "```\nx = 1\n```",
-    );
+    expect(fragmentToMarkdown(html("<pre><code>x = 1</code></pre>"))).toBe("```\nx = 1\n```");
   });
 
   it("does not double-wrap <code> inside <pre>", () => {
@@ -175,9 +171,7 @@ describe("fragmentToMarkdown", () => {
   });
 
   it("handles nested formatting: bold inside paragraph", () => {
-    expect(fragmentToMarkdown(html("<p><strong>bold</strong> plain</p>"))).toBe(
-      "**bold** plain",
-    );
+    expect(fragmentToMarkdown(html("<p><strong>bold</strong> plain</p>"))).toBe("**bold** plain");
   });
 
   it("handles nested formatting: italic inside bold", () => {

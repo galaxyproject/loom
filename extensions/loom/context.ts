@@ -13,7 +13,14 @@ import { getState, getNotebookPath } from "./state";
 import { isTeamDispatchEnabled } from "./teams/is-enabled";
 import { isSessionIndexEnabled } from "./session-index/is-enabled";
 import { loadConfig } from "./config";
-import { listEnabledSkillRepos } from "./skills";
+import { listEnabledSkillRepos, type ConfiguredSkillRepo } from "./skills";
+import {
+  readCatalog,
+  selectSkills,
+  backgroundRefreshSkills,
+  BUILTIN_CATALOG,
+  type SkillEntry,
+} from "./skills-discovery";
 import { findGalaxyPageBlocks } from "./galaxy-page-binding";
 import { isLocalShellDisabled } from "./local-exec.js";
 import { GALAXY_PAGE_MARKDOWN_GUIDANCE } from "./galaxy-page-markdown-guidance";
@@ -962,34 +969,23 @@ answers, and turn-by-turn dialogue that doesn't need persistence.
 `;
 }
 
-/**
- * Router for configured skills repos. The agent fetches SKILL.md / reference
- * docs on demand via \`skills_fetch({ repo?, path })\`. galaxy-skills ships
- * by default (seeded into config); users add repos in Preferences → Skills.
- *
- * The galaxy-skills section here is hardcoded because it's the default and
- * we want first-class guidance. For other configured repos we just list
- * them and tell the agent to start at \`AGENTS.md\` or \`README.md\`.
- */
-function buildSkillsContext(): string {
-  // Single source of truth — the same allowlist filter that gates
-  // the skills_fetch tool. If a hand-edited config sneaks in a
-  // disallowed repo, it doesn't reach the system prompt either.
-  const repos = listEnabledSkillRepos();
+/** Pure render of the skills system-prompt section from resolved catalog data. Exported for tests. */
+export function renderSkillsSection(
+  repos: ConfiguredSkillRepo[],
+  entriesByRepo: Map<string, SkillEntry[]>,
+): string {
   if (repos.length === 0) return "";
-
   const sections: string[] = [];
   sections.push(`## Skills repositories (operational know-how)`);
   sections.push("");
   sections.push(
     `Use the \`skills_fetch({ repo, path })\` tool to load a skill on demand. ` +
-      `**Don't guess operational patterns from training data — fetch the ` +
-      `relevant skill first.** Each fetch is cached locally for 24h. ` +
-      `When \`repo\` is omitted, the first enabled repo is used.`,
+      `**Don't guess operational patterns from training data — fetch the relevant ` +
+      `skill first.** The catalog below refreshes each session; deep reference docs ` +
+      `cache for 24h. When \`repo\` is omitted, the first enabled repo is used.`,
   );
   sections.push("");
 
-  // Configured repos (one-line each).
   sections.push(`### Configured repos`);
   sections.push("");
   for (const r of repos) {
@@ -997,104 +993,40 @@ function buildSkillsContext(): string {
   }
   sections.push("");
 
-  // Hardcoded galaxy-skills router if it's enabled, mirroring upstream
-  // AGENTS.md so the agent doesn't have to fetch the router itself.
-  if (repos.some((r) => r.name === "galaxy-skills")) {
-    sections.push(`### When to fetch which galaxy-skills skill`);
+  const defaultRepo = repos[0]?.name;
+  for (const r of repos) {
+    const entries = entriesByRepo.get(r.name) ?? [];
+    if (entries.length === 0) continue;
+    sections.push(`### ${r.name} skills`);
     sections.push("");
-    sections.push(`Always pass \`repo: "galaxy-skills"\` (or omit if it's the default).`);
-    sections.push("");
-    sections.push(`- **Manipulating dataset collections** (filter, sort, relabel, restructure,
-  flatten, nest, merge; building paired collections from PE FASTQ; mapping
-  a tool over a collection) →
-  \`skills_fetch({ path: "collection-manipulation/SKILL.md" })\`. Deep
-  references when you need them:
-  - \`collection-manipulation/references/tools.md\` — catalog of 26
-    collection-operation tools with IDs and parameter shapes.
-  - \`collection-manipulation/references/apply-rules.md\` — Apply Rules
-    DSL deep-dive.
-  - \`collection-manipulation/references/api-patterns.md\` — Galaxy Tools
-    API patterns (the \`{"src": "hdca", "id": ...}\` shape, the \`values\`
-    wrapper, etc.).
-  - \`collection-manipulation/references/test-patterns.md\` — real test
-    patterns from the Galaxy test suite.
-
-  **CRITICAL**: every collection operation MUST go through Galaxy's native
-  tools (not ad-hoc per-file processing) for reproducibility and workflow
-  extractability. PE FASTQ → build a paired collection FIRST, then run
-  downstream tools against the collection (one invocation per pair, not
-  per file).
-
-- **Galaxy MCP tool usage / common gotchas** →
-  \`skills_fetch({ path: "galaxy-integration/mcp-reference/SKILL.md" })\`
-  and \`skills_fetch({ path: "galaxy-integration/mcp-reference/gotchas.md" })\`.
-  Other refs: \`galaxy-integration/galaxy-integration.md\` (BioBlend
-  patterns), \`galaxy-integration/mcp-reference/history-access.md\`.
-
-- **Workflow report templates** (Workflow Editor's Report tab,
-  markdown directives) →
-  \`skills_fetch({ path: "workflow-reports/SKILL.md" })\`. References:
-  \`workflow-reports/references/directives.md\`, plus worked examples
-  under \`workflow-reports/examples/\`.
-
-- **Nextflow → Galaxy conversion** (pipelines / modules / processes →
-  Galaxy tools / workflows) →
-  \`skills_fetch({ path: "nf-to-galaxy/SKILL.md" })\` (router). Sub-skills:
-  \`nf-to-galaxy/nf-process-to-galaxy-tool/SKILL.md\`,
-  \`nf-to-galaxy/nf-subworkflow-to-galaxy-workflow/SKILL.md\`,
-  \`nf-to-galaxy/nf-pipeline-to-galaxy-workflow/SKILL.md\`. Shared:
-  \`nf-to-galaxy/check-tool-availability.md\`,
-  \`nf-to-galaxy/testing-and-validation.md\`,
-  \`tool-dev/references/testing.md\` (Planemo).
-
-- **Authoring a User-Defined Tool** (the \`class: GalaxyUserTool\` YAML a
-  non-admin user creates and runs via \`galaxy_create_user_tool\` /
-  \`galaxy_run_user_tool\` — wrapping a container + command as their own
-  tool; the preferred way to fill glue gaps between Galaxy steps) →
-  \`skills_fetch({ path: "udt-authoring/SKILL.md" })\`. **Fetch this before
-  drafting any UDT YAML — don't hand-write the definition from memory.**
-  References:
-  - \`udt-authoring/references/templating.md\` — \`$(...)\` ECMAScript
-    templating, \`$GALAXY_SLOTS\` for threads (pass it as the flag's value,
-    don't just echo it), shell escaping.
-  - \`udt-authoring/references/schema-reference.md\` — UserToolSource
-    fields, input/output types, the validators.
-  - \`udt-authoring/references/common-mistakes.md\` — pre-submit checklist.
-  - \`udt-authoring/examples/\` — seven complete, validated UDTs.
-  This is the \`GalaxyUserTool\` YAML format, NOT classic XML \`tool-dev\`.
-
-- **Galaxy tool development** (XML wrappers, packaging, testing, where to
-  put tools) → \`skills_fetch({ path: "tool-dev/SKILL.md" })\`. Sub-skill:
-  \`tool-dev/tool-selection-diagram/SKILL.md\` for selection-diagram
-  generation.
-
-- **Updating ToolShed tool revisions in usegalaxy-tools** →
-  \`skills_fetch({ path: "update-usegalaxy-tool/SKILL.md" })\`.
-
-- **Hub news posts** → \`skills_fetch({ path: "hub-news-posts/SKILL.md" })\`.
-
-Skills follow planning/approval checkpoints internally — read the SKILL.md
-fully before acting on what it teaches.`);
-    sections.push("");
-  }
-
-  // For non-default repos, instruct the agent to discover paths via AGENTS.md.
-  const otherRepos = repos.filter((r) => r.name !== "galaxy-skills");
-  if (otherRepos.length > 0) {
-    sections.push(`### Other configured repos`);
-    sections.push("");
-    sections.push(
-      `For repos other than galaxy-skills, fetch \`AGENTS.md\` (or \`README.md\` ` +
-        `if AGENTS.md is missing) first to discover the available skill paths:`,
-    );
-    sections.push("");
-    for (const r of otherRepos) {
-      sections.push(`- \`skills_fetch({ repo: "${r.name}", path: "AGENTS.md" })\``);
+    for (const e of entries) {
+      const repoArg = r.name === defaultRepo ? "" : `repo: "${r.name}", `;
+      sections.push(
+        `- **${e.name}** — ${e.description} → \`skills_fetch({ ${repoArg}path: "${e.path}" })\``,
+      );
+      if (e.when_to_use) sections.push(`  When to use: ${e.when_to_use}`);
     }
     sections.push("");
   }
 
+  sections.push(`Read the SKILL.md fully before acting on what it teaches.`);
+  sections.push("");
   return sections.join("\n");
+}
+
+function buildSkillsContext(): string {
+  const repos = listEnabledSkillRepos();
+  const entriesByRepo = new Map<string, SkillEntry[]>();
+  for (const r of repos) {
+    const entries = readCatalog(r)?.skills ?? BUILTIN_CATALOG[r.name] ?? [];
+    entriesByRepo.set(r.name, selectSkills(entries));
+  }
+  // Don't emit a contentless skills section. If nothing resolved (e.g. a
+  // user-added repo whose catalog hasn't been fetched yet, no builtin), stay
+  // silent until the background refresh populates it next session.
+  const hasAny = [...entriesByRepo.values()].some((e) => e.length > 0);
+  if (!hasAny) return "";
+  return renderSkillsSection(repos, entriesByRepo);
 }
 
 /**
@@ -1214,6 +1146,10 @@ export function setupContextInjection(pi: ExtensionAPI): void {
     ]
       .filter(Boolean)
       .join("\n");
+
+    // Refresh skill catalogs in the background so new/edited upstream skills
+    // appear next session. Non-blocking: this turn already rendered from cache.
+    void backgroundRefreshSkills();
 
     return { systemPrompt };
   });

@@ -22,21 +22,9 @@ import {
   type InvocationYaml,
 } from "./notebook-writer";
 import { getGalaxyConfig, galaxyGet, type GalaxyInvocationResponse } from "./galaxy-api";
-import { type ConfiguredSkillRepo, listEnabledSkillRepos, findSkillRepo } from "./skills";
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
-import * as crypto from "crypto";
+import { listEnabledSkillRepos, findSkillRepo } from "./skills";
+import { fetchSkillFile, githubRawBase } from "./skills-discovery";
 import { parse as parseHtml } from "node-html-parser";
-
-/**
- * Short stable tag derived from `${url}@${branch}` for the skills-cache
- * directory. 8 hex chars is comfortably more than the namespace needs to
- * distinguish a handful of repos, and short enough to keep paths tidy.
- */
-function createSkillsCacheTag(url: string, branch: string): string {
-  return crypto.createHash("sha256").update(`${url}@${branch}`).digest("hex").slice(0, 8);
-}
 
 /**
  * Strip a GTN tutorial HTML document down to readable plain text.
@@ -75,30 +63,6 @@ function stripGtnHtml(html: string): string {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
   return text;
-}
-
-/**
- * Resolve a GitHub repo URL like
- * \`https://github.com/galaxyproject/galaxy-skills\`
- * into the matching raw.githubusercontent.com base URL plus a branch.
- * Returns null if the URL doesn't match the expected GitHub shape — callers
- * surface the error to the agent instead of attempting an arbitrary fetch.
- */
-function githubRawBase(repoUrl: string, branch: string): string | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(repoUrl);
-  } catch {
-    return null;
-  }
-  if (parsed.hostname !== "github.com") return null;
-  const segs = parsed.pathname.replace(/^\/+|\/+$/g, "").split("/");
-  if (segs.length < 2) return null;
-  const [owner, repo] = segs;
-  if (!owner || !repo) return null;
-  const cleanRepo = repo.replace(/\.git$/i, "");
-  const cleanBranch = (branch || "main").replace(/^\/+|\/+$/g, "");
-  return `https://raw.githubusercontent.com/${owner}/${cleanRepo}/${cleanBranch}`;
 }
 
 export function registerPlanTools(pi: ExtensionAPI): void {
@@ -401,69 +365,30 @@ omitted, the first enabled repo is used (typically \`galaxy-skills\`).`,
         };
       }
 
-      // Cache key includes a hash of url@branch so changing either invalidates
-      // the cache implicitly. Without this, a repo whose URL was edited (or
-      // whose branch was switched) keeps serving 24h of stale content from
-      // the old upstream because cache lookup keyed only on repo.name.
-      const cacheTag = createSkillsCacheTag(repo.url, repo.branch);
-      const cacheDir = path.join(
-        os.homedir(),
-        ".loom",
-        "cache",
-        "skills",
-        `${repo.name}@${cacheTag}`,
-      );
-      const cachePath = path.join(cacheDir, cleanPath);
-      const ttlMs = 24 * 60 * 60 * 1000;
-      try {
-        const stat = fs.statSync(cachePath);
-        if (Date.now() - stat.mtimeMs < ttlMs) {
-          const cached = fs.readFileSync(cachePath, "utf-8");
-          return {
-            content: [{ type: "text", text: cached }],
-            details: { repo: repo.name, path: cleanPath, length: cached.length, cached: true },
-          };
-        }
-      } catch {
-        // No cache hit — fall through to fetch.
-      }
-
-      const url = `${rawBase}/${cleanPath}`;
-      try {
-        const response = await fetch(url, { signal });
-        if (!response.ok) {
+      const res = await fetchSkillFile(repo, cleanPath, signal);
+      if (!res.ok) {
+        if (res.status) {
           return {
             content: [
               {
                 type: "text",
                 text:
-                  `Error: Failed to fetch "${cleanPath}" from ${repo.name} (HTTP ${response.status}). ` +
+                  `Error: Failed to fetch "${cleanPath}" from ${repo.name} (HTTP ${res.status}). ` +
                   `Check the path against the skills router in the system prompt.`,
               },
             ],
             details: { error: true, repo: repo.name, path: cleanPath },
           };
         }
-        const text = await response.text();
-
-        try {
-          fs.mkdirSync(path.dirname(cachePath), { recursive: true });
-          fs.writeFileSync(cachePath, text, "utf-8");
-        } catch (err) {
-          console.error("[skills_fetch] cache write failed:", err);
-        }
-
         return {
-          content: [{ type: "text", text }],
-          details: { repo: repo.name, path: cleanPath, length: text.length, cached: false },
-        };
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        return {
-          content: [{ type: "text", text: `Error fetching skill: ${msg}` }],
+          content: [{ type: "text", text: `Error fetching skill: ${res.error}` }],
           details: { error: true, repo: repo.name, path: cleanPath },
         };
       }
+      return {
+        content: [{ type: "text", text: res.text }],
+        details: { repo: repo.name, path: cleanPath, length: res.text.length, cached: res.cached },
+      };
     },
     renderResult: (result) => {
       const d = result.details as

@@ -298,10 +298,9 @@ describe("decide", () => {
       ["cat /etc/passwd", "read outside workspace"],
     ];
     for (const [command, label] of cases)
-      expect(
-        decide(req({ modelTier: "weak", toolInput: { command } }), deps).decision,
-        label,
-      ).toBe("deny");
+      expect(decide(req({ modelTier: "weak", toolInput: { command } }), deps).decision, label).toBe(
+        "deny",
+      );
   });
   it("trusted workspace relaxes unknown bash ask -> allow (trusted only)", () => {
     const cfg = { ...baseCfg, trustedWorkspaces: [CWD] };

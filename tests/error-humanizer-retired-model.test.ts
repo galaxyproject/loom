@@ -25,7 +25,8 @@ describe("humanizeAgentError -- retired/unavailable model", () => {
   it("explains an OpenAI deprecated/model_not_found error", () => {
     const raw = JSON.stringify({
       error: {
-        message: "The model `gpt-4-turbo-preview` has been deprecated. Learn more at https://example",
+        message:
+          "The model `gpt-4-turbo-preview` has been deprecated. Learn more at https://example",
         type: "invalid_request_error",
         code: "model_not_found",
       },
@@ -38,7 +39,11 @@ describe("humanizeAgentError -- retired/unavailable model", () => {
 
   it("does not misfire on the region geo-block message", () => {
     const raw = JSON.stringify({
-      error: { code: 400, status: "FAILED_PRECONDITION", message: "User location is not supported for the API use." },
+      error: {
+        code: 400,
+        status: "FAILED_PRECONDITION",
+        message: "User location is not supported for the API use.",
+      },
     });
     const result = humanizeAgentError(raw);
     expect(result.text).toMatch(/region/i);

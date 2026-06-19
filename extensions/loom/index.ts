@@ -12,6 +12,7 @@ import { registerPlanTools } from "./tools";
 import { registerGalaxyUploadTool } from "./galaxy-upload";
 import { registerNotebookSyncTools } from "./tools-sync";
 import { registerSyncCommand } from "./sync-command";
+import { registerSkillsCommand } from "./skills-command";
 import { setupContextInjection, formatConnectionStatus } from "./context";
 import { setupUIBridge } from "./ui-bridge";
 import { registerSessionLifecycle } from "./session-lifecycle";
@@ -75,6 +76,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   registerGalaxyUploadTool(pi);
   registerNotebookSyncTools(pi);
   registerSyncCommand(pi);
+  registerSkillsCommand(pi);
   registerExecutionCommands(pi);
   registerFeedbackCommand(pi);
   registerTesterIdCommand(pi);

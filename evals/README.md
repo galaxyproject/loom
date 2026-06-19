@@ -44,8 +44,8 @@ per-model leaderboard from them:
   enough described steps. The gate: a model that can't emit a parseable plan
   fails everything downstream.
 - **routing** -- did the plan pick the correct routing tag? Scenarios set
-  `plan.routingIn` to the *correct* answer(s) (e.g. metagenomics -> `[galaxy,
-  hybrid]`, consumer pharmacogenomics -> `[local, hybrid]`), so an incorrect
+  `plan.routingIn` to the _correct_ answer(s) (e.g. metagenomics -> `[galaxy,
+hybrid]`, consumer pharmacogenomics -> `[local, hybrid]`), so an incorrect
   route is graded as wrong rather than waved through.
 - **tools** -- did the plan name a sane analysis tool? `plan.mentionsOneOf`
   is a curated, generous allow-set per assay (a coarse heuristic, not an
@@ -77,7 +77,7 @@ findings log for the live caveat). To add a paid reference baseline
 
 ## Out of scope (for now)
 
-LLM-judge plan-*quality* scoring (the same scenarios with a rubric pass),
+LLM-judge plan-_quality_ scoring (the same scenarios with a rubric pass),
 end-to-end execution against a recorded/live Galaxy MCP, and notebook
 discipline / session-lifecycle scenarios. The assertion library leaves seams
 for each. See the plan for sequencing.

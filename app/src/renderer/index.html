@@ -162,10 +162,17 @@
               title="Export chat as Markdown"
               aria-label="Export chat as Markdown"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
             </button>
             <button
@@ -578,6 +585,14 @@
             </table>
             <div class="prefs-row">
               <button id="prefs-skills-add" class="plan-btn">+ Add repo</button>
+              <button
+                id="prefs-skills-refresh"
+                type="button"
+                class="plan-btn"
+                title="Re-fetch skill catalogs from GitHub and restart the agent"
+              >
+                Refresh skills
+              </button>
             </div>
           </section>
 

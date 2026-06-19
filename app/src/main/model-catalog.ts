@@ -15,7 +15,16 @@ const LEGACY_MODEL_PATTERNS: Record<string, RegExp[]> = {
   // Note: bare ids with no version suffix (e.g. plain `gpt-4`) deliberately
   // slip through here rather than risk matching a still-current family -- the
   // backstop catches them at send time. Don't "tighten" this to grab them.
-  openai: [/^gpt-3\.5/i, /^gpt-4-turbo/i, /^gpt-4-32k/i, /^gpt-4-\d{3,}/i, /^o1(?:-|$)/i, /^text-/i, /^davinci/i, /^babbage/i],
+  openai: [
+    /^gpt-3\.5/i,
+    /^gpt-4-turbo/i,
+    /^gpt-4-32k/i,
+    /^gpt-4-\d{3,}/i,
+    /^o1(?:-|$)/i,
+    /^text-/i,
+    /^davinci/i,
+    /^babbage/i,
+  ],
 };
 
 export function isDeprecatedModelId(provider: string, id: string): boolean {
