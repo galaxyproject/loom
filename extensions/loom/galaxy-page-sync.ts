@@ -52,6 +52,10 @@ export function createPageSyncEngine(deps: PageSyncDeps) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let unsubscribe: (() => void) | null = null;
   let active = false;
+  // Serialize pushes: at most one in flight; a change arriving mid-push queues
+  // exactly one follow-up so the latest body still lands. flush() awaits this.
+  let inFlight: Promise<void> | null = null;
+  let pendingAgain = false;
 
   async function doPush(): Promise<void> {
     if (!historyId) return;
@@ -59,6 +63,29 @@ export function createPageSyncEngine(deps: PageSyncDeps) {
     if (!hasBodyChanged(lastBody, body)) return; // dedupe + self-trigger guard
     await deps.push({ historyId, slug, title: pageTitleForHistory(historyId) });
     lastBody = body;
+  }
+
+  // Run pushes one at a time. A change that lands while a push is in flight sets
+  // pendingAgain, so the loop runs doPush once more afterward -- never two
+  // concurrent pushes (which raced on lastBody and could double-create the
+  // page), and the latest body always wins. Returns the in-flight promise so
+  // flush() can await whatever is already running plus the queued follow-up.
+  function requestPush(): Promise<void> {
+    if (inFlight) {
+      pendingAgain = true;
+      return inFlight;
+    }
+    inFlight = (async () => {
+      try {
+        do {
+          pendingAgain = false;
+          await doPush();
+        } while (pendingAgain);
+      } finally {
+        inFlight = null;
+      }
+    })();
+    return inFlight;
   }
 
   async function init(): Promise<void> {
@@ -95,7 +122,7 @@ export function createPageSyncEngine(deps: PageSyncDeps) {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         timer = null;
-        void doPush().catch((err) => console.error("[page-sync] push failed:", err));
+        void requestPush().catch((err) => console.error("[page-sync] push failed:", err));
       }, deps.debounceMs);
     });
   }
@@ -107,7 +134,7 @@ export function createPageSyncEngine(deps: PageSyncDeps) {
       timer = null;
     }
     try {
-      await doPush();
+      await requestPush();
     } catch (err) {
       console.error("[page-sync] flush push failed:", err);
     }
@@ -121,6 +148,7 @@ export function createPageSyncEngine(deps: PageSyncDeps) {
     active = false;
     historyId = null;
     lastBody = null;
+    pendingAgain = false;
   }
 
   return { init, flush, dispose };
