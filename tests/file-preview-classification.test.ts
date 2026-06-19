@@ -1,14 +1,8 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi } from "vitest";
-
-// files-handler.ts imports { ipcMain, BrowserWindow } from "electron" at module
-// top-level. In a clean checkout app/node_modules/electron isn't installed, so
-// vitest needs the named exports stubbed -- the functions under test never call
-// into them.
-vi.mock("electron", () => ({ ipcMain: {}, BrowserWindow: {} }));
+import { describe, it, expect } from "vitest";
 
 import { kindOf } from "../app/src/renderer/files/file-viewer.js";
-import { isTextLikeForPreview } from "../app/src/main/files-handler.js";
+import { isTextLikeForPreview } from "../app/src/main/file-preview-classification.js";
 
 // Regression coverage for #269: Galaxy downloads tabular datasets as *.tabular,
 // but the file viewer's text-extension allowlist only knew .tsv/.csv/.tab, so
