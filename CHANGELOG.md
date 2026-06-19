@@ -4,6 +4,16 @@ Notable, user-facing changes to Loom and Orbit. Each release lists a short set o
 highlights; the full commit-level notes live on the GitHub release pages. Add a
 new `## [<version>] - <date>` block with a `### Highlights` list at release time.
 
+## [0.5.0] - 2026-06-19
+
+### Highlights
+
+- Orbit now runs on Windows as a remote-only desktop build, and a containerized `LOOM_MODE=remote` web shell brings Orbit to the browser
+- Galaxy data and jobs move faster: jobs run in the background by default and notify you when they finish, large local files upload over a native resumable path (no more MCP timeouts), and remote data is fetched server-side by URL instead of round-tripping through your machine
+- Galaxy connection state is now reflected live in the footer, reconnects when your credentials change, and surfaces the connected user plus a history panel even for env-driven sessions
+- The skills router is generated from skill frontmatter tags instead of a hardcoded list, and surfaces the udt-authoring skill for writing Galaxy user-defined tools
+- Stability and polish: Orbit no longer crashes when reopened, opaque "unknown error" provider messages are humanized (and a transient API failure now flags that the task was left incomplete), plus File-pane and chat fixes -- the Copy button stays put mid-stream, relative images and .tabular/fastq datatypes preview correctly, and the active analysis directory persists across restarts
+
 ## [0.4.1] - 2026-06-11
 
 ### Highlights
