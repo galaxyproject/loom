@@ -522,7 +522,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
   } catch {
     /* */
   }
-  await stopLoomGracefully(parseInt(process.env.LOOM_SHUTDOWN_GRACE_MS ?? "8000", 10));
+  // Guard the env override: a non-numeric LOOM_SHUTDOWN_GRACE_MS would parse to
+  // NaN, and setTimeout(NaN) fires immediately -> the SIGKILL backstop would
+  // race the notebook flush. Fall back to 8s on any non-finite/negative value.
+  const graceMs = parseInt(process.env.LOOM_SHUTDOWN_GRACE_MS ?? "8000", 10);
+  await stopLoomGracefully(Number.isFinite(graceMs) && graceMs >= 0 ? graceMs : 8000);
   process.exit(0);
 }
 process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"));
