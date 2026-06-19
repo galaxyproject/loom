@@ -55,6 +55,23 @@ function isContextOverflowError(text: string): boolean {
   return CONTEXT_OVERFLOW_PATTERNS.some((p) => p.test(text));
 }
 
+// pi-ai's provider streams (google, anthropic, mistral, bedrock, openai-*, ...)
+// all throw a bare `new Error("An unknown error occurred")` when a turn ends
+// with stopReason "error"/"aborted". For Gemini that maps from finishReasons
+// like SAFETY, RECITATION, MALFORMED_FUNCTION_CALL and OTHER (#320) -- the
+// specific reason is discarded upstream, so by the time we see this sentinel
+// there's nothing left to classify. Echoing it verbatim is unactionable; detect
+// the fixed phrase and point the user at the moves that actually help.
+// Anchored to the whole (already-trimmed) message: the sentinel arrives
+// context-less, so a bare string that merely embeds the phrase (e.g. "stream
+// failed: an unknown error occurred mid-response") keeps its own, more useful
+// text instead of being swallowed into the generic nudge.
+const UNKNOWN_PROVIDER_ERROR = /^an unknown error occurred[.!?]*$/i;
+
+function isOpaqueProviderError(text: string): boolean {
+  return UNKNOWN_PROVIDER_ERROR.test(text);
+}
+
 export function humanizeAgentError(raw: string | undefined | null): HumanizedError {
   if (!raw) return { text: "Unknown error", retriable: false };
   const trimmed = raw.trim();
@@ -72,6 +89,21 @@ export function humanizeAgentError(raw: string | undefined | null): HumanizedErr
   }
 
   if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    // The opaque provider sentinel is always a bare string (pi throws
+    // `new Error("An unknown error occurred")`), so only catch it here -- a
+    // structured error that merely embeds the phrase should still get the typed
+    // handling below rather than being swallowed by this catch.
+    if (isOpaqueProviderError(trimmed)) {
+      return {
+        text:
+          "The model stopped before finishing and the provider gave no details -- " +
+          "often a safety/recitation filter, a malformed tool call, or a cut-off " +
+          "response. Try rephrasing and resending. Asking the model to reproduce a " +
+          "lot of text verbatim (e.g. the whole chat history) is a common trigger, " +
+          "so ask for a summary or a smaller chunk, or switch models.",
+        retriable: false,
+      };
+    }
     return { text: raw, retriable: false };
   }
 

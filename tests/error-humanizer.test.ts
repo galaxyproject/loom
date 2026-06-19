@@ -144,6 +144,55 @@ describe("humanizeAgentError", () => {
     });
   });
 
+  describe("opaque provider 'An unknown error occurred' (#320)", () => {
+    // pi-ai's provider streams throw a bare `new Error("An unknown error
+    // occurred")` whenever a turn ends with stopReason "error"/"aborted" -- for
+    // Gemini that covers SAFETY, RECITATION, MALFORMED_FUNCTION_CALL, OTHER, etc.
+    // (google-shared.ts mapStopReason). The detail is gone by the time it
+    // reaches us, so the sentinel must become an actionable nudge instead of
+    // being echoed verbatim.
+    it("replaces the bare sentinel with an actionable message", () => {
+      const result = humanizeAgentError("An unknown error occurred");
+      expect(result.text).not.toBe("An unknown error occurred");
+      expect(result.text.toLowerCase()).toMatch(/rephras|resend|summary|switch/);
+      expect(result.retriable).toBe(false);
+    });
+
+    it("matches case-insensitively and tolerates a trailing period", () => {
+      const result = humanizeAgentError("an unknown error occurred.");
+      expect(result.text).not.toMatch(/^an unknown error occurred/i);
+      expect(result.text.toLowerCase()).toMatch(/rephras|resend|summary|switch/);
+    });
+
+    it("does not misfire on a different, more specific error", () => {
+      const raw = "Connection reset by peer";
+      expect(humanizeAgentError(raw).text).toBe(raw);
+    });
+
+    it("does not swallow a bare string that merely embeds the phrase", () => {
+      // The real sentinel is context-less. A bare error that happens to contain
+      // the phrase carries its own detail, so it must pass through unchanged
+      // rather than be relabeled with the generic nudge (regex is anchored).
+      const raw = "Stream failed: an unknown error occurred mid-response";
+      const result = humanizeAgentError(raw);
+      expect(result.text).toBe(raw);
+      expect(result.text.toLowerCase()).not.toMatch(/rephras|resend|summary|switch/);
+    });
+
+    it("defers to typed JSON handling when a structured error merely contains the phrase", () => {
+      // The real pi-ai sentinel is always a bare string. A structured provider
+      // error that happens to embed the phrase should still get its typed
+      // treatment, not be swallowed by the sentinel catch.
+      const raw = JSON.stringify({
+        type: "error",
+        error: { type: "api_error", message: "An unknown error occurred upstream" },
+      });
+      const result = humanizeAgentError(raw);
+      expect(result.text).toMatch(/upstream api error/i);
+      expect(result.retriable).toBe(true);
+    });
+  });
+
   describe("context overflow", () => {
     it("humanizes the OpenAI-compatible context-length 400 (deepseek-v4-flash) into a /compact nudge", () => {
       // The verbatim string from issue #209 -- arrives as a plain string, not JSON.
