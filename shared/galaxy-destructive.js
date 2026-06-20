@@ -39,6 +39,7 @@ const DESTRUCTIVE_OPS = {
  * @param {unknown} toolName @returns {string} */
 function normalize(toolName) {
   return String(toolName == null ? "" : toolName)
+    .trim()
     .toLowerCase()
     .replace(/^galaxy_/, "");
 }
@@ -119,12 +120,12 @@ export function describeGalaxyDestructive(op) {
   };
 }
 
-// A `purge`/`purged` flag set true, in a URL query (?purge=true) or a JSON/body field
-// ("purge": true / purge=true / 'purged': True). Case-insensitive, so Python `True` in a
-// code script matches too.
+// A `purge`/`purged` flag set true, in a URL query (?purge=true) or a JSON/body/kwarg field
+// ("purge": true / purge=true / 'purged': True / "purge": "true"). Case-insensitive (so
+// Python `True` matches) and tolerant of a quoted boolean value (JSON-string / coerced bool).
 /** @param {string} s @returns {boolean} */
 function hasPurge(s) {
-  return /[?&]purged?=true\b/i.test(s) || /["']?purged?["']?\s*[:=]\s*true\b/i.test(s);
+  return /[?&]purged?=true\b/i.test(s) || /["']?purged?["']?\s*[:=]\s*["']?true\b/i.test(s);
 }
 
 // A clean literal id only -- never surface a shell variable / interpolation as the "id".
@@ -170,9 +171,11 @@ export function isGalaxyDestructiveCurl(command) {
  */
 function classifyCode(code) {
   const s = String(code == null ? "" : code);
-  if (!/call_tool\(\s*["']update_history["']/.test(s)) return null;
+  // Tolerate the tool name appearing as a positional or kwarg, with or without the
+  // galaxy_ prefix: call_tool('update_history', ...) / call_tool(name="galaxy_update_history", ...).
+  if (!/call_tool\([^)]*["'](?:galaxy_)?update_history["']/.test(s)) return null;
   const purge = hasPurge(s);
-  if (!purge && !/["']?deleted["']?\s*[:=]\s*true\b/i.test(s)) return null;
+  if (!purge && !/["']?deleted["']?\s*[:=]\s*["']?true\b/i.test(s)) return null;
   /** @type {GalaxyDestructiveOp} */
   const op = {
     kind: purge ? "history-purge" : "history-delete",

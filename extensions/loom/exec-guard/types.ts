@@ -33,7 +33,8 @@ export interface PolicyDeps {
 
 export interface PolicyResult {
   decision: Decision;
-  // e.g. "bypass", "bash:safe", "bash:catastrophic", "write:in-jail", "read:sensitive", "default:ask"
+  // e.g. "bypass", "bash:safe", "bash:catastrophic", "write:in-jail", "read:sensitive",
+  // "galaxy:destructive", "default:ask"
   category: string;
   reason: string; // human-facing
 }

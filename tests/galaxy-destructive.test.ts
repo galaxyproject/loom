@@ -106,6 +106,61 @@ describe("classifyGalaxyDestructive -- code mode run_galaxy_tool({code}) (#338 F
   });
 });
 
+describe("classifyGalaxyDestructive -- post-review hardening", () => {
+  it("flags a direct purged=true (defensive, irreversible)", () => {
+    expect(
+      classifyGalaxyDestructive("galaxy_update_history", { purged: true, history_id: "h" }),
+    ).toMatchObject({ kind: "history-purge", irreversible: true });
+  });
+
+  it("flags a purge issued in code mode", () => {
+    expect(
+      classifyGalaxyDestructive("galaxy_run_galaxy_tool", {
+        code: "call_tool('update_history', {'purged': True})",
+      }),
+    ).toMatchObject({ kind: "history-purge", irreversible: true });
+  });
+
+  it("catches the code-mode kwargs form call_tool(name=...)", () => {
+    expect(
+      classifyGalaxyDestructive("galaxy_run_galaxy_tool", {
+        code: "call_tool(name='update_history', params={'deleted': True})",
+      }),
+    ).toMatchObject({ kind: "history-delete" });
+  });
+
+  it("catches a galaxy_-prefixed tool name inside the code script", () => {
+    expect(
+      classifyGalaxyDestructive("galaxy_run_galaxy_tool", {
+        code: "call_tool('galaxy_update_history', {'deleted': True})",
+      }),
+    ).toMatchObject({ kind: "history-delete" });
+  });
+
+  it("catches a string-quoted boolean in code (deleted='True')", () => {
+    expect(
+      classifyGalaxyDestructive("galaxy_run_galaxy_tool", {
+        code: "call_tool('update_history', {'deleted': 'True'})",
+      }),
+    ).toMatchObject({ kind: "history-delete" });
+  });
+
+  it("unwraps a whitespace-padded proxied tool name", () => {
+    expect(
+      classifyGalaxyDestructive("mcp", {
+        tool: " galaxy_update_history ",
+        args: JSON.stringify({ deleted: true, history_id: "h" }),
+      }),
+    ).toMatchObject({ kind: "history-delete" });
+  });
+
+  it("reads a string-quoted purge in a curl JSON body (#338 hardening)", () => {
+    expect(
+      isGalaxyDestructiveCurl(`curl -X DELETE https://g/api/histories/h --json '{"purge":"true"}'`),
+    ).toMatchObject({ kind: "history-purge", irreversible: true });
+  });
+});
+
 describe("describeGalaxyDestructive", () => {
   it("purge wording is honest about irreversibility and names the history", () => {
     const { headline } = describeGalaxyDestructive({
