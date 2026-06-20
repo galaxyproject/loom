@@ -4,6 +4,14 @@ Notable, user-facing changes to Loom and Orbit. Each release lists a short set o
 highlights; the full commit-level notes live on the GitHub release pages. Add a
 new `## [<version>] - <date>` block with a `### Highlights` list at release time.
 
+## [0.5.1] - 2026-06-20
+
+### Highlights
+
+- Destructive Galaxy deletes now ask first: deleting or purging a history, dataset, or collection prompts for confirmation before anything is removed (and the web shell blocks it outright)
+- Require the Galaxy MCP 1.9 server (up from 1.8): the agent can now work with Galaxy Pages -- creating, reading, and updating the notebook and report documents that pair an analysis with its narrative -- plus reliability fixes for workflow invocation and Galaxy auth
+- The text-selection Copy button stays put within the chat panel instead of drifting into the sidebar on wide or scrollable messages
+
 ## [0.5.0] - 2026-06-19
 
 ### Highlights
