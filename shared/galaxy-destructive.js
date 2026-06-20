@@ -16,7 +16,8 @@
 // `destructiveHint` metadata (galaxy-mcp PR #61) instead of being hand-maintained here.
 
 /**
- * @typedef {{ kind: "history-delete" | "history-purge" | "dataset-delete" | "dataset-purge", historyId?: string, datasetId?: string, irreversible: boolean }} GalaxyDestructiveOp
+ * @typedef {"history-delete" | "history-purge" | "dataset-delete" | "dataset-purge" | "collection-delete" | "collection-purge"} GalaxyDestructiveKind
+ * @typedef {{ kind: GalaxyDestructiveKind, historyId?: string, datasetId?: string, collectionId?: string, irreversible: boolean }} GalaxyDestructiveOp
  */
 
 // Op-name -> predicate over its input args, returning the destructive shape or null.
@@ -106,6 +107,19 @@ export function classifyGalaxyDestructive(toolName, input) {
  * @param {GalaxyDestructiveOp} op @returns {{ headline: string }}
  */
 export function describeGalaxyDestructive(op) {
+  if (op.kind === "collection-delete" || op.kind === "collection-purge") {
+    const target = op.collectionId ? `collection ${op.collectionId}` : "this collection";
+    if (op.irreversible) {
+      return {
+        headline: `Permanently PURGE ${target} -- this deletes all of its datasets and cannot be undone.`,
+      };
+    }
+    return {
+      headline:
+        `Mark ${target} (and all of its datasets) as deleted. ` +
+        `Recoverable via Undelete on most Galaxy servers.`,
+    };
+  }
   const dataset = op.kind === "dataset-delete" || op.kind === "dataset-purge";
   if (dataset) {
     const target = op.datasetId ? `dataset ${op.datasetId}` : "this dataset";
@@ -131,12 +145,22 @@ export function describeGalaxyDestructive(op) {
   };
 }
 
-// A `purge`/`purged` flag set true, in a URL query (?purge=true) or a JSON/body/kwarg field
-// ("purge": true / purge=true / 'purged': True / "purge": "true"). Case-insensitive (so
-// Python `True` matches) and tolerant of a quoted boolean value (JSON-string / coerced bool).
+// Whether a `purge`/`purged` flag is set to a non-falsy value -- in a URL query
+// (?purge=true|1|yes|on), a JSON/body/kwarg field ("purge": true / 'purged': True / purge=1),
+// or carried in a request-body file we can't read (-d @file). Galaxy treats true/1/yes/on as
+// truthy; only an explicit false/0/no/off (or no purge token at all) is a recoverable soft
+// delete. An UNKNOWABLE value (shell variable, file body) is treated as a purge -- the safe,
+// honest direction: over-warn rather than mislabel an irreversible purge as recoverable.
 /** @param {string} s @returns {boolean} */
 function hasPurge(s) {
-  return /[?&]purged?=true\b/i.test(s) || /["']?purged?["']?\s*[:=]\s*["']?true\b/i.test(s);
+  const falsy = /^(false|0|no|off)$/i;
+  const q = s.match(/[?&]purged?=([^&\s"']*)/i);
+  if (q) return !falsy.test(q[1]);
+  const b = s.match(/["']?purged?["']?\s*[:=]\s*["']?([\w$.{}]+)/i);
+  if (b) return !falsy.test(b[1]);
+  // A DELETE whose body comes from a file we can't inspect could carry {"purge": true}.
+  if (/(?:-d|--data(?:-raw|-binary|-urlencode)?|--json)[=\s]+@/i.test(s)) return true;
+  return false;
 }
 
 // A clean literal id only -- never surface a shell variable / interpolation as the "id".
@@ -147,11 +171,14 @@ function literalId(raw) {
 
 /**
  * BEST-EFFORT guardrail for the raw-bash path: an HTTP DELETE issued by curl/wget against a
- * Galaxy history or a dataset within one. A dataset-level `/contents/{dsid}` sub-path is
- * reported as a dataset op (with dataset-scoped wording); the bare `/api/histories/{id}` is
- * the whole-history op. Reversibility is read from a purge flag in the query or the request
- * body. Requires an actual curl/wget verb so a stray URL in `echo`/text doesn't trip it; ids
- * are surfaced only when literal (a `$VAR` is matched but not echoed as a fake id).
+ * Galaxy history, a dataset, or a dataset collection. Targets are checked most-severe first
+ * so a less-severe URL in the same command can't conceal a worse one (a whole-history delete
+ * wins over a dataset URL). Covers the history (`/api/histories/{id}`), contents
+ * (`/contents[/datasets|/dataset_collections]/{id}`), and singleton/batch dataset
+ * (`/api/datasets[/{id}]`) routes. Reversibility is read from a purge flag (query, body, or
+ * an unreadable body file). Requires an actual curl/wget verb so a stray URL in `echo`/text
+ * doesn't trip it; ids are surfaced only when literal (a `$VAR` is matched but not echoed as
+ * a fake id).
  * @param {string} command @returns {GalaxyDestructiveOp | null}
  */
 export function isGalaxyDestructiveCurl(command) {
@@ -163,25 +190,46 @@ export function isGalaxyDestructiveCurl(command) {
     /--method[=\s]+["']?DELETE\b/i.test(cmd);
   if (!isDelete) return null;
   const irreversible = hasPurge(cmd);
-  // Dataset-level delete first (more specific): /api/histories/{hid}/contents/{dsid}.
-  const ds = cmd.match(/\/api\/histories\/([^/\s"'?]+)\/contents\/([^/\s"'?]+)/);
-  if (ds) {
+
+  // Whole-history delete wins (most severe): a bare /api/histories/{id} -- one NOT followed
+  // by a sub-resource path. The lookahead requires a query/space/quote/end after the id, so
+  // the history prefix of a /contents/... URL does not match here.
+  const wholeHistory = cmd.match(/\/api\/histories\/([^/\s"'?]+)(?=[?\s"']|$)/);
+  if (wholeHistory) {
     /** @type {GalaxyDestructiveOp} */
-    const op = { kind: irreversible ? "dataset-purge" : "dataset-delete", irreversible };
-    const hid = literalId(ds[1]);
-    const dsid = literalId(ds[2]);
-    if (hid) op.historyId = hid;
-    if (dsid) op.datasetId = dsid;
+    const op = { kind: irreversible ? "history-purge" : "history-delete", irreversible };
+    const id = literalId(wholeHistory[1]);
+    if (id) op.historyId = id;
     return op;
   }
-  // Whole-history delete: /api/histories/{id} (no /contents/ sub-path).
-  const m = cmd.match(/\/api\/histories\/([^/\s"'?]+)/);
-  if (!m) return null;
-  /** @type {GalaxyDestructiveOp} */
-  const op = { kind: irreversible ? "history-purge" : "history-delete", irreversible };
-  const id = literalId(m[1]);
-  if (id) op.historyId = id;
-  return op;
+
+  // A dataset COLLECTION (a recursive container -- understating it would be dishonest):
+  // /api/histories/{hid}/contents/dataset_collections/{cid}.
+  const coll = cmd.match(
+    /\/api\/histories\/[^/\s"'?]+\/contents\/dataset_collections\/([^/\s"'?]+)/,
+  );
+  if (coll) {
+    /** @type {GalaxyDestructiveOp} */
+    const op = { kind: irreversible ? "collection-purge" : "collection-delete", irreversible };
+    const id = literalId(coll[1]);
+    if (id) op.collectionId = id;
+    return op;
+  }
+
+  // A single dataset: in-history contents (legacy /contents/{id} or typed
+  // /contents/datasets/{id}) or the top-level singleton/batch /api/datasets[/{id}] routes.
+  const inHistory = cmd.match(/\/api\/histories\/[^/\s"'?]+\/contents\/(?:datasets\/)?([^/\s"'?]+)/);
+  const singleton = inHistory ? null : cmd.match(/\/api\/datasets\/([^/\s"'?]+)/);
+  const batch = inHistory || singleton ? false : /\/api\/datasets(?=[?\s"']|$)/.test(cmd);
+  if (inHistory || singleton || batch) {
+    /** @type {GalaxyDestructiveOp} */
+    const op = { kind: irreversible ? "dataset-purge" : "dataset-delete", irreversible };
+    const id = literalId(inHistory ? inHistory[1] : singleton ? singleton[1] : undefined);
+    if (id) op.datasetId = id;
+    return op;
+  }
+
+  return null;
 }
 
 /**
