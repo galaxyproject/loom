@@ -2,15 +2,16 @@
 FROM node:22-slim AS builder
 
 WORKDIR /app
-COPY package.json package-lock.json ./
-COPY app/package.json app/package-lock.json ./app/
+COPY CHANGELOG.md README.md ./
+COPY bin ./bin
+COPY extensions ./extensions
+COPY shared ./shared
+COPY app ./app
 COPY web/package.json web/package-lock.json ./web/
-RUN npm ci
-RUN cd app && npm ci
 RUN cd web && npm ci
-
-COPY . .
-RUN cd web && npm run build
+COPY web ./web
+RUN cd web && npm run build && npx tsc server.ts --outDir build --module ESNext --moduleResolution bundler --target ES2022 --skipLibCheck --resolveJsonModule --esModuleInterop
+RUN cd web && npm prune --production --no-optional
 
 FROM node:22-slim AS runner
 
@@ -23,21 +24,17 @@ ENV PORT=3000
 ENV LOOM_WEB_HOST=0.0.0.0
 
 WORKDIR /app
-
-# Copy runtime artifacts only
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/node_modules ./node_modules
+COPY package.json package-lock.json ./
 COPY --from=builder /app/bin ./bin
 COPY --from=builder /app/extensions ./extensions
 COPY --from=builder /app/shared ./shared
-COPY --from=builder /app/web/server.ts ./web/server.ts
-COPY --from=builder /app/web/auth.ts ./web/auth.ts
-COPY --from=builder /app/web/rpc-guard.ts ./web/rpc-guard.ts
-COPY --from=builder /app/web/orbit-shim.ts ./web/orbit-shim.ts
-COPY --from=builder /app/web/extensions ./web/extensions
+COPY --from=builder /app/web/build ./web/build
 COPY --from=builder /app/web/dist ./web/dist
-COPY --from=builder /app/web/node_modules ./web/node_modules
 COPY --from=builder /app/web/package.json ./web/package.json
+COPY --from=builder /app/web/package-lock.json ./web/package-lock.json
+COPY --from=builder /app/web/extensions ./web/extensions
+
+RUN npm ci --production --omit=dev --no-optional && cd web && npm ci --production --omit=dev --no-optional
 
 # Galaxy's tool/workflow execution surface runs through `uvx galaxy-mcp` (a
 # Python MCP server). node:slim ships no Python or uv, so bring uv -- which
@@ -70,4 +67,4 @@ USER node
 # cache so the runtime `uvx galaxy-mcp>=1.8.0` launch resolves from cache.
 RUN uv tool install "galaxy-mcp>=1.8.0"
 
-CMD ["node", "web/node_modules/.bin/tsx", "web/server.ts"]
+CMD ["node", "web/build/server.js"]
