@@ -16,6 +16,7 @@ import { registerSkillsCommand } from "./skills-command";
 import { setupContextInjection, formatConnectionStatus } from "./context";
 import { setupUIBridge } from "./ui-bridge";
 import { setupEmbedTokenBridge } from "./embed-token-bridge";
+import { setupAutoPushBridge, isAutoPushEnabled } from "./auto-push-bridge";
 import { registerSessionLifecycle } from "./session-lifecycle";
 import { recordGalaxyConnected } from "./galaxy-cred-drift";
 import { registerActivityHooks } from "./activity-hooks";
@@ -71,6 +72,9 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
 
   setupUIBridge(pi);
   setupEmbedTokenBridge(pi);
+  if (isAutoPushEnabled()) {
+    setupAutoPushBridge(pi);
+  }
   registerSessionLifecycle(pi);
   registerActivityHooks(pi);
 
