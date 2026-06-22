@@ -4,6 +4,7 @@ import {
   appendSessionSummaryBlock,
   upsertSessionSummaryBlock,
   findSessionSummaryBlocks,
+  stripSessionSummaryBlocks,
   type SessionSummaryYaml,
 } from "../extensions/loom/notebook-writer";
 
@@ -205,5 +206,33 @@ orphaned_active_steps: not-a-number
     const blocks = findSessionSummaryBlocks(content);
     expect(blocks).toHaveLength(1);
     expect(blocks[0].orphanedActiveSteps).toBe(0);
+  });
+});
+
+describe("stripSessionSummaryBlocks", () => {
+  it("removes loom-session blocks while leaving narrative intact", () => {
+    const content = appendSessionSummaryBlock("# Analysis\n\nBody content.\n", sample);
+    const stripped = stripSessionSummaryBlocks(content);
+    expect(stripped).not.toContain("loom-session");
+    expect(stripped).not.toContain("sess_abc123");
+    expect(stripped).toContain("# Analysis");
+    expect(stripped).toContain("Body content.");
+  });
+
+  it("removes every block when multiple are present", () => {
+    let content = "# nb\n";
+    for (const s of [
+      { ...sample, id: "s1" },
+      { ...sample, id: "s2" },
+    ]) {
+      content = appendSessionSummaryBlock(content, s);
+    }
+    const stripped = stripSessionSummaryBlocks(content);
+    expect(findSessionSummaryBlocks(stripped)).toEqual([]);
+  });
+
+  it("is a no-op when there are no loom-session blocks", () => {
+    const content = "# Analysis\n\nJust prose.\n";
+    expect(stripSessionSummaryBlocks(content)).toBe(content);
   });
 });

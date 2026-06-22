@@ -10,7 +10,12 @@
 
 import { getNotebookPath } from "./state";
 import { getGalaxyConfig, type GalaxyConfig } from "./galaxy-api";
-import { readNotebook, writeNotebook, withNotebookLock } from "./notebook-writer";
+import {
+  readNotebook,
+  writeNotebook,
+  withNotebookLock,
+  stripSessionSummaryBlocks,
+} from "./notebook-writer";
 import { createPage, updatePage, getPage } from "./galaxy-pages-api";
 import {
   loomToGalaxyMarkdownRich,
@@ -241,6 +246,12 @@ export async function pushNotebookToGalaxy(opts: PushOptions = {}): Promise<Push
     // persist `stripped` as-is, so notebook.md never holds the projected
     // (carrier/directive) form.
     const stripped = stripUntrustedMarkers(stripGalaxyPageBlocks(content));
+    // `galaxyBody` additionally drops `loom-session` housekeeping blocks, which
+    // Galaxy markdown would otherwise read as an unknown cell directive ("This
+    // cell type `loom-session` is not available"). They're durable local session
+    // history, so they stay in `stripped` (the local re-persist) and are removed
+    // only from what we send to Galaxy.
+    const galaxyBody = stripSessionSummaryBlocks(stripped);
 
     if (existing) {
       if (existing.galaxyServerUrl !== config.url) {
@@ -251,7 +262,7 @@ export async function pushNotebookToGalaxy(opts: PushOptions = {}): Promise<Push
         );
       }
       const updated = await updatePage(existing.pageId, {
-        content: await loomToGalaxyMarkdownRich(stripped, galaxyInvocationValidator),
+        content: await loomToGalaxyMarkdownRich(galaxyBody, galaxyInvocationValidator),
         content_format: "markdown",
         edit_source: "agent",
       });
@@ -277,7 +288,7 @@ export async function pushNotebookToGalaxy(opts: PushOptions = {}): Promise<Push
       title: opts.title ?? "Untitled notebook",
       slug: opts.slug,
       annotation: opts.annotation,
-      content: await loomToGalaxyMarkdownRich(stripped, galaxyInvocationValidator),
+      content: await loomToGalaxyMarkdownRich(galaxyBody, galaxyInvocationValidator),
       content_format: "markdown",
     });
     const binding: GalaxyPageBindingYaml = {
