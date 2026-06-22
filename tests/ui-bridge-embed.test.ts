@@ -25,9 +25,10 @@ vi.mock("../extensions/loom/state.js", () => ({
   readCurrentNotebook: () => currentNotebook.value,
 }));
 
-import { setupUIBridge } from "../extensions/loom/ui-bridge";
+import { setupUIBridge, stripHousekeepingBlocks } from "../extensions/loom/ui-bridge";
 import { renderGalaxyPageBlock } from "../extensions/loom/galaxy-page-binding";
-import { decodeNotebookEmbed } from "../shared/loom-shell-contract.js";
+import { renderSessionSummaryYaml } from "../extensions/loom/notebook-writer";
+import { decodeNotebookEmbed, decodeMarkdownWidget } from "../shared/loom-shell-contract.js";
 
 function fakePi() {
   const handlers: Record<string, (...args: any[]) => any> = {};
@@ -55,6 +56,22 @@ function bindingBlock(overrides: Record<string, unknown> = {}): string {
 function embedOf(setWidget: ReturnType<typeof vi.fn>) {
   const call = [...setWidget.mock.calls].reverse().find((c) => c[0] === "notebook-embed");
   return call ? decodeNotebookEmbed(call[1]) : null;
+}
+
+/** Last markdown pushed under the `notebook` widget key, decoded. */
+function notebookOf(setWidget: ReturnType<typeof vi.fn>) {
+  const call = [...setWidget.mock.calls].reverse().find((c) => c[0] === "notebook");
+  return call ? decodeMarkdownWidget(call[1]) : null;
+}
+
+function sessionBlock(): string {
+  return renderSessionSummaryYaml({
+    id: "sess_abc",
+    startedAt: "2026-06-22T07:36:24.076Z",
+    endedAt: "2026-06-22T12:27:29.434Z",
+    notebook: "notebook.md",
+    orphanedActiveSteps: 0,
+  });
 }
 
 function start() {
@@ -149,5 +166,35 @@ describe("ui-bridge embed emission", () => {
     expect(keys).toContain("notebook-embed");
     expect(keys).not.toContain("notebook"); // notebook pane stays closed
     expect(setNotebookWidgetMode).not.toHaveBeenCalled();
+  });
+
+  it("hides housekeeping blocks from the rendered Notebook pane (display projection)", () => {
+    const setWidget = start();
+    const raw = `${sessionBlock()}\n\nRandom test note.\n\n${bindingBlock()}`;
+    captured.listener!(raw);
+
+    const shown = notebookOf(setWidget)!;
+    // Narrative survives; both housekeeping blocks are gone.
+    expect(shown).toContain("Random test note.");
+    expect(shown).not.toContain("loom-session");
+    expect(shown).not.toContain("loom-galaxy-page");
+    expect(shown).not.toContain("page_id");
+    // The embed payload is still derived from the (unstripped) binding block.
+    expect(embedOf(setWidget)).toMatchObject({ bound: true, pageId: "adb5f5c93f827949" });
+  });
+});
+
+describe("stripHousekeepingBlocks", () => {
+  it("removes loom-session and loom-galaxy-page blocks but keeps the narrative", () => {
+    const raw = `${sessionBlock()}\n\nReal content here.\n\n${bindingBlock()}`;
+    const out = stripHousekeepingBlocks(raw);
+    expect(out).toContain("Real content here.");
+    expect(out).not.toContain("loom-session");
+    expect(out).not.toContain("loom-galaxy-page");
+  });
+
+  it("is a no-op on content with no housekeeping blocks", () => {
+    const raw = "# Title\n\nJust prose.\n";
+    expect(stripHousekeepingBlocks(raw)).toBe(raw);
   });
 });

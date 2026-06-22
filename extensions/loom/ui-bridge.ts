@@ -20,8 +20,23 @@ import {
   encodeMarkdownWidget,
   encodeNotebookEmbed,
 } from "../../shared/loom-shell-contract.js";
-import { findGalaxyPageBlocks } from "./galaxy-page-binding.js";
+import { findGalaxyPageBlocks, stripGalaxyPageBlocks } from "./galaxy-page-binding.js";
+import { stripSessionSummaryBlocks } from "./notebook-writer.js";
 import { buildNotebookEmbed } from "./galaxy-embed.js";
+
+/**
+ * Project notebook.md to its human-facing display form by removing the
+ * machine-housekeeping blocks: `loom-session` (durable session-lifecycle
+ * history) and `loom-galaxy-page` (the Galaxy page binding). These are local
+ * state, not content; the server-side Galaxy view already strips them on push
+ * (galaxy-pages-sync.ts), so strip them here too — every shell that renders the
+ * Notebook widget then shows only the narrative, not the bookkeeping. The blocks
+ * stay on disk; only the rendered view hides them, and the binding is surfaced
+ * separately via the NotebookEmbed widget.
+ */
+export function stripHousekeepingBlocks(content: string): string {
+  return stripGalaxyPageBlocks(stripSessionSummaryBlocks(content));
+}
 
 /**
  * A notebook write that lands after session teardown fires the watcher
@@ -92,8 +107,11 @@ export function setupUIBridge(pi: ExtensionAPI): void {
     if (getNotebookWidgetMode() === "hidden") return;
     const nbPath = getNotebookPath();
     const header = nbPath ? `> \`${nbPath}\`\n\n` : "";
+    // Display projection: hide housekeeping blocks from the rendered Notebook
+    // pane (the binding/session metadata is bookkeeping, not content).
+    const displayContent = stripHousekeepingBlocks(content);
     try {
-      latestCtx.ui.setWidget(LoomWidgetKey.Notebook, encodeMarkdownWidget(header + content));
+      latestCtx.ui.setWidget(LoomWidgetKey.Notebook, encodeMarkdownWidget(header + displayContent));
     } catch (err) {
       // Only the stale-ctx throw is expected here; surface anything else so a
       // genuine setWidget failure during an active session isn't hidden.
