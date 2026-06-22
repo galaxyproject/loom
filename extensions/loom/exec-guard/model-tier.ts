@@ -6,8 +6,9 @@ export interface TierInput {
   cost?: { input: number; output: number };
 }
 
-// Substrings that mark a model as weak/cheap regardless of cost. Matched
-// case-insensitively against the model id. Conservative: when unsure -> weak.
+// Tokens that mark a model as weak/cheap regardless of cost. Matched as whole
+// dash/dot-delimited tokens of the lowercased id (NOT substrings) so "mini"
+// flags gpt-4o-mini but not gemini. Conservative: when unsure -> weak.
 const WEAK_ID_MARKERS = ["haiku", "mini", "flash", "small", "lite", "8b", "7b", "1b", "3b", "nano"];
 
 // Frontier id markers that are trusted even if a custom price table is wrong.
@@ -25,7 +26,8 @@ const TRUSTED_ID_MARKERS = [
 export function classifyModelTier(model: TierInput | undefined): ModelTier {
   if (!model || !model.id) return "weak";
   const id = model.id.toLowerCase();
-  if (WEAK_ID_MARKERS.some((m) => id.includes(m))) return "weak";
+  const idTokens = id.split(/[^a-z0-9]+/);
+  if (idTokens.some((tok) => WEAK_ID_MARKERS.includes(tok))) return "weak";
   if (TRUSTED_ID_MARKERS.some((m) => id.includes(m))) return "trusted";
   // Fall back to price: frontier output pricing is well above cheap tiers.
   // Threshold chosen so Haiku ($5 out) is weak and Sonnet ($15 out) is trusted.
