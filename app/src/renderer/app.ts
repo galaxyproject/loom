@@ -16,7 +16,11 @@ import { formatGalaxyTooltip } from "./galaxy-tooltip.js";
 import { PromptQueue, queuedPreview } from "./prompt-queue.js";
 import { FeedbackDraftStore } from "./feedback-draft.js";
 import { caretVisualLineFlags, shouldRecallOnArrow } from "./input-history-nav.js";
-import { LoomWidgetKey, decodeMarkdownWidget } from "../../../shared/loom-shell-contract.js";
+import {
+  LoomWidgetKey,
+  decodeMarkdownWidget,
+  decodeNotebookEmbed,
+} from "../../../shared/loom-shell-contract.js";
 import { ALLOWED_SKILLS_PREFIX, isAllowedSkillUrl } from "../../../shared/loom-config.js";
 import {
   SCHEMA_VERSION,
@@ -639,6 +643,9 @@ async function refreshGalaxyStatus(): Promise<void> {
   const { connected, url } = await window.orbit.getGalaxyStatus();
   // A newer refresh started while we awaited -- let it win.
   if (seq !== galaxyStatusSeq) return;
+
+  // Gate the notebook pane's Galaxy view on the same connection signal.
+  artifacts.setGalaxyConnected(connected);
 
   if (connected && url) {
     galaxyStatus.classList.add("status-dot-connected");
@@ -2696,6 +2703,12 @@ window.orbit.onUiRequest((request) => {
     if (key === LoomWidgetKey.Notebook && lines) {
       artifacts.setNotebookMarkdown(decodeMarkdownWidget(lines));
       setArtifactCollapsed(false);
+    }
+    // Binding/embed state for the server-side Galaxy notebook view. The embed
+    // token is delivered out of band to main (EmbedToken key) and never reaches
+    // here, so this payload carries only the URL + binding identity.
+    if (key === LoomWidgetKey.NotebookEmbed && lines) {
+      artifacts.setNotebookEmbed(decodeNotebookEmbed(lines));
     }
   }
 });

@@ -12,10 +12,15 @@
     lets the renderer reach the Vite dev server (ws:) when running `npm start`.
     object-src + frame-src allow blob: for the file-viewer PDF preview —
     Chromium's built-in PDF viewer creates an inner frame at the blob URL.
+    frame-src also allows https: for the server-side Galaxy notebook iframe: the
+    target host is dynamic (any usegalaxy/custom deployment), so a static meta
+    CSP can't pin it. The real containment is the dedicated `persist:galaxy-embed`
+    partition + onBeforeRequest origin-allowlist (embed-partition-session.ts),
+    which only ever loads the embed URL we set and blocks off-origin navigation.
   -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' orbit-artifact: data: blob:; connect-src 'self' http://localhost:* ws://localhost:*; font-src 'self' data:; object-src blob:; frame-src blob:; base-uri 'self'; form-action 'none';"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' orbit-artifact: data: blob:; connect-src 'self' http://localhost:* ws://localhost:*; font-src 'self' data:; object-src blob:; frame-src blob: https:; base-uri 'self'; form-action 'none';"
     />
     <title>orbit</title>
     <link rel="stylesheet" href="./styles.css" />
@@ -278,16 +283,33 @@
           </div>
           <div id="artifact-content">
             <div id="notebook-view" class="pane-body">
-              <div class="empty-state">
-                <p>
-                  The notebook is the running log of your analysis — plan, steps, decisions, and
-                  Galaxy references — persisted to a markdown file in your working directory and
-                  committed to git on every change.
-                </p>
-                <p>
-                  It'll appear here once the agent writes to <code>notebook.md</code>, or you can
-                  ask it to summarize the conversation so far.
-                </p>
+              <div id="notebook-view-toolbar" class="notebook-view-toolbar hidden">
+                <div class="seg-control" role="group" aria-label="Notebook view mode">
+                  <button
+                    type="button"
+                    id="nb-mode-markdown"
+                    class="seg-btn active"
+                    data-nb-mode="markdown"
+                  >
+                    Markdown
+                  </button>
+                  <button type="button" id="nb-mode-galaxy" class="seg-btn" data-nb-mode="galaxy">
+                    Galaxy
+                  </button>
+                </div>
+              </div>
+              <div id="notebook-view-content" class="notebook-view-content">
+                <div class="empty-state">
+                  <p>
+                    The notebook is the running log of your analysis — plan, steps, decisions, and
+                    Galaxy references — persisted to a markdown file in your working directory and
+                    committed to git on every change.
+                  </p>
+                  <p>
+                    It'll appear here once the agent writes to <code>notebook.md</code>, or you can
+                    ask it to summarize the conversation so far.
+                  </p>
+                </div>
               </div>
             </div>
             <div id="activity-view" class="pane-body hidden">
