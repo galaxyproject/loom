@@ -14,11 +14,28 @@ import {
   getNotebookWidgetMode,
   setNotebookWidgetMode,
 } from "./state.js";
-import { LoomWidgetKey, encodeMarkdownWidget } from "../../shared/loom-shell-contract.js";
+import {
+  LoomWidgetKey,
+  encodeMarkdownWidget,
+  encodeNotebookEmbed,
+} from "../../shared/loom-shell-contract.js";
+import { findGalaxyPageBlocks } from "./galaxy-page-binding.js";
+import { buildNotebookEmbed } from "./galaxy-embed.js";
+
+/**
+ * A notebook write that lands after session teardown fires the watcher
+ * callback with a ctx pi has since invalidated; touching `ctx.ui` throws
+ * "ctx is stale after session replacement or reload". Callers drop the
+ * captured ctx and no-op on this. The deterministic fix closes the watcher on
+ * shutdown; this guards any late-firing callback. #271
+ */
+function isStaleCtxError(err: unknown): boolean {
+  return err instanceof Error && /ctx is stale/i.test(err.message);
+}
 
 export function setupUIBridge(pi: ExtensionAPI): void {
   let latestCtx: ExtensionContext | null = null;
-  const last = { notebookMd: "" };
+  const last = { notebookMd: "", embed: "" };
 
   pi.on("before_agent_start", async (_event, ctx) => {
     latestCtx = ctx;
@@ -28,6 +45,31 @@ export function setupUIBridge(pi: ExtensionAPI): void {
     if (!latestCtx) return;
     if (content === last.notebookMd) return;
     last.notebookMd = content;
+
+    // Embed widget — binding/embed state for the server-side Galaxy iframe
+    // view. Derived purely from the notebook's `loom-galaxy-page` block (one
+    // per notebook today; take the first, null → unbound). Emitted on every
+    // distinct notebook write, which covers connect / change / sync since each
+    // routes through this same watcher. Independent of the Notebook pane's
+    // hidden state — separate panes — so it runs before that gate. Shell-
+    // neutral: no `embed_origin` baked in (the shell appends its own origin),
+    // and the embed token is never in this payload (delivered out of band).
+    const binding = findGalaxyPageBlocks(content)[0] ?? null;
+    const embedLines = encodeNotebookEmbed(buildNotebookEmbed(binding));
+    const embedKey = embedLines.join("\n");
+    if (embedKey !== last.embed) {
+      try {
+        latestCtx.ui.setWidget(LoomWidgetKey.NotebookEmbed, embedLines);
+        last.embed = embedKey;
+      } catch (err) {
+        if (!isStaleCtxError(err)) {
+          console.error("notebook embed widget update failed:", err);
+        }
+        latestCtx = null;
+        return;
+      }
+    }
+
     // Respect an explicit close: if the user hid the panel via /notebook,
     // don't reopen it on the next notebook write.
     if (getNotebookWidgetMode() === "hidden") return;
@@ -36,15 +78,9 @@ export function setupUIBridge(pi: ExtensionAPI): void {
     try {
       latestCtx.ui.setWidget(LoomWidgetKey.Notebook, encodeMarkdownWidget(header + content));
     } catch (err) {
-      // A notebook write that lands after session teardown fires this callback
-      // with a ctx pi has since invalidated; touching ctx.ui throws "ctx is
-      // stale after session replacement or reload". Drop the captured ctx and
-      // no-op rather than spamming stderr. The deterministic fix closes the
-      // watcher on shutdown; this guards any late-firing callback. #271
-      //
       // Only the stale-ctx throw is expected here; surface anything else so a
       // genuine setWidget failure during an active session isn't hidden.
-      if (!(err instanceof Error && /ctx is stale/i.test(err.message))) {
+      if (!isStaleCtxError(err)) {
         console.error("notebook widget update failed:", err);
       }
       latestCtx = null;
