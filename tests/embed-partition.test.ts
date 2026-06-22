@@ -6,10 +6,13 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  COOKIE_HEADER,
   EMBED_TOKEN_HEADER,
+  SET_COOKIE_HEADER,
   sameGalaxyOrigin,
   shouldBlockNavigation,
   stripFrameHeaders,
+  stripHeader,
 } from "../app/src/main/embed-partition";
 
 const GALAXY = "https://usegalaxy.org";
@@ -84,6 +87,43 @@ describe("stripFrameHeaders", () => {
       "Content-Type": ["text/html"],
     });
     expect(stripFrameHeaders(undefined)).toEqual({});
+  });
+});
+
+describe("stripHeader (stateless embed partition — LOOM Bug 1)", () => {
+  it("removes the Cookie request header case-insensitively (single-value form)", () => {
+    const stripped = stripHeader(
+      { "X-Galaxy-Embed-Token": "abc", cookie: "galaxysession=anon" },
+      COOKIE_HEADER,
+    );
+    expect(stripped).toEqual({ "X-Galaxy-Embed-Token": "abc" });
+  });
+
+  it("removes the Set-Cookie response header case-insensitively (array form)", () => {
+    const stripped = stripHeader(
+      { "Content-Type": ["text/html"], "set-cookie": ["galaxysession=anon; Path=/"] },
+      SET_COOKIE_HEADER,
+    );
+    expect(stripped).toEqual({ "Content-Type": ["text/html"] });
+  });
+
+  it("is a no-op when the header is absent, and tolerates undefined", () => {
+    expect(stripHeader({ "X-Galaxy-Embed-Token": "abc" }, COOKIE_HEADER)).toEqual({
+      "X-Galaxy-Embed-Token": "abc",
+    });
+    expect(stripHeader(undefined, COOKIE_HEADER)).toEqual({});
+  });
+
+  it("composes with stripFrameHeaders to drop frame + cookie headers together", () => {
+    const stripped = stripHeader(
+      stripFrameHeaders({
+        "Content-Type": ["text/html"],
+        "X-Frame-Options": ["DENY"],
+        "Set-Cookie": ["galaxysession=anon"],
+      }),
+      SET_COOKIE_HEADER,
+    );
+    expect(stripped).toEqual({ "Content-Type": ["text/html"] });
   });
 });
 

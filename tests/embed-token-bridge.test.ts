@@ -6,9 +6,10 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { captured, connected } = vi.hoisted(() => ({
+const { captured, connected, currentNotebook } = vi.hoisted(() => ({
   captured: { listener: null as null | ((content: string) => void) },
   connected: { value: true },
+  currentNotebook: { value: null as string | null },
 }));
 
 vi.mock("../extensions/loom/state.js", () => ({
@@ -16,7 +17,8 @@ vi.mock("../extensions/loom/state.js", () => ({
     captured.listener = listener;
     return () => {};
   },
-  isGalaxyConnected: () => connected.value,
+  isGalaxyEffectivelyConnected: () => connected.value,
+  readCurrentNotebook: () => currentNotebook.value,
 }));
 
 import { setupEmbedTokenBridge } from "../extensions/loom/embed-token-bridge";
@@ -31,6 +33,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date("2026-06-20T12:00:00Z"));
   captured.listener = null;
   connected.value = true;
+  currentNotebook.value = null;
 });
 
 afterEach(() => {
@@ -66,7 +69,7 @@ function start(mint = echoMint()) {
   setupEmbedTokenBridge(pi, { mint });
   const setWidget = vi.fn();
   handlers["before_agent_start"]({}, { ui: { setWidget } });
-  return { setWidget, mint };
+  return { setWidget, mint, handlers };
 }
 
 const flush = () => vi.advanceTimersByTimeAsync(0);
@@ -107,6 +110,37 @@ describe("embed token bridge", () => {
 
     expect(mint).not.toHaveBeenCalled();
     expect(lastToken(setWidget)).toBeNull();
+  });
+
+  it("mints on session_start for an already-bound notebook (resume — Bug 3)", async () => {
+    // No notebook change fires on a --continue resume; the manager must pick up
+    // the inherited binding from the current notebook content.
+    currentNotebook.value = bindingBlock("page-resumed");
+    const mint = echoMint();
+    const { pi, handlers } = fakePi();
+    setupEmbedTokenBridge(pi, { mint });
+    const setWidget = vi.fn();
+    handlers["session_start"]({}, { ui: { setWidget } });
+    await flush();
+
+    expect(mint).toHaveBeenCalledWith("page-resumed", expect.any(AbortSignal));
+    expect(lastToken(setWidget)).toMatchObject({
+      pageId: "page-resumed",
+      token: "tok-page-resumed",
+    });
+  });
+
+  it("does not mint on session_start while disconnected", async () => {
+    connected.value = false;
+    currentNotebook.value = bindingBlock("page-resumed");
+    const mint = echoMint();
+    const { pi, handlers } = fakePi();
+    setupEmbedTokenBridge(pi, { mint });
+    const setWidget = vi.fn();
+    handlers["session_start"]({}, { ui: { setWidget } });
+    await flush();
+
+    expect(mint).not.toHaveBeenCalled();
   });
 
   it("re-points at the new page when the binding changes", async () => {

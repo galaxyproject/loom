@@ -104,17 +104,33 @@ export function buildNotebookEmbed(
 export const DEFAULT_REFRESH_SKEW_MS = 60_000;
 
 /**
- * Whether a token whose stated expiry is `expiresAt` (ISO 8601 UTC, as returned
- * by `POST /api/pages/{id}/embed_token`) should be refreshed at `nowMs`. True
- * once we are within `skewMs` of expiry — or if `expiresAt` is unparseable, in
- * which case we treat the token as suspect and refresh.
+ * Parse Galaxy's `expires_at` to epoch ms, treating a timezone-less ISO
+ * datetime as UTC. Galaxy serializes the column as **naive UTC with no
+ * offset** (e.g. `2026-06-22T07:19:26.134849`); `Date.parse` reads a tz-less
+ * datetime as *local* time, so on a UTC+N host the computed expiry lands hours
+ * in the past and the refresh delay floors to the manager's minimum — a hot
+ * re-mint loop, one server-side token row per second. Appending `Z` when no
+ * `Z`/offset is present pins it to UTC. Returns `NaN` for unparseable input
+ * (callers treat that as refresh-now).
+ */
+function parseExpiryMs(expiresAt: string): number {
+  const hasTimezone = /[zZ]$|[+-]\d\d:?\d\d$/.test(expiresAt);
+  const normalized = expiresAt.includes("T") && !hasTimezone ? `${expiresAt}Z` : expiresAt;
+  return Date.parse(normalized);
+}
+
+/**
+ * Whether a token whose stated expiry is `expiresAt` (ISO 8601, naive UTC as
+ * returned by `POST /api/pages/{id}/embed_token`) should be refreshed at
+ * `nowMs`. True once we are within `skewMs` of expiry — or if `expiresAt` is
+ * unparseable, in which case we treat the token as suspect and refresh.
  */
 export function shouldRefreshToken(
   expiresAt: string,
   nowMs: number,
   skewMs: number = DEFAULT_REFRESH_SKEW_MS,
 ): boolean {
-  const expiryMs = Date.parse(expiresAt);
+  const expiryMs = parseExpiryMs(expiresAt);
   if (Number.isNaN(expiryMs)) return true;
   return nowMs >= expiryMs - skewMs;
 }
@@ -129,7 +145,7 @@ export function refreshDelayMs(
   nowMs: number,
   skewMs: number = DEFAULT_REFRESH_SKEW_MS,
 ): number {
-  const expiryMs = Date.parse(expiresAt);
+  const expiryMs = parseExpiryMs(expiresAt);
   if (Number.isNaN(expiryMs)) return 0;
   return Math.max(0, expiryMs - skewMs - nowMs);
 }

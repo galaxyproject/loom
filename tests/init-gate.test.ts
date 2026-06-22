@@ -12,16 +12,28 @@ import { setNotebookPath, setGalaxyConnection, resetState } from "../extensions/
 
 let tmpDir: string;
 let nbPath: string;
+let savedGalaxyEnv: { url?: string; key?: string };
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "loom-init-gate-"));
   nbPath = path.join(tmpDir, "notebook.md");
   resetState();
+  // The galaxy_connection gate now reads isGalaxyEffectivelyConnected(), which
+  // also honors GALAXY_URL/GALAXY_API_KEY env creds. Clear them so the
+  // connection assertions below depend only on setGalaxyConnection() and don't
+  // flake on a dev shell that exports them.
+  savedGalaxyEnv = { url: process.env.GALAXY_URL, key: process.env.GALAXY_API_KEY };
+  delete process.env.GALAXY_URL;
+  delete process.env.GALAXY_API_KEY;
 });
 
 afterEach(() => {
   resetState();
   fs.rmSync(tmpDir, { recursive: true, force: true });
+  if (savedGalaxyEnv.url === undefined) delete process.env.GALAXY_URL;
+  else process.env.GALAXY_URL = savedGalaxyEnv.url;
+  if (savedGalaxyEnv.key === undefined) delete process.env.GALAXY_API_KEY;
+  else process.env.GALAXY_API_KEY = savedGalaxyEnv.key;
 });
 
 function writeNotebook(contents: string) {
@@ -192,6 +204,23 @@ describe("checkPreconditions -- hard failures", () => {
     const result = checkPreconditions();
     expect(result.hardFailed).toBe(true);
     expect(result.failures.find((f) => f.name === "galaxy_connection")).toBeTruthy();
+  });
+
+  it("does not hard-fail a galaxy plan when env creds are present (env-creds resume)", () => {
+    // isGalaxyEffectivelyConnected() trusts GALAXY_URL+GALAXY_API_KEY (what the
+    // API client resolves), so a [galaxy] plan must not be blocked on an
+    // env-creds resume even before a galaxy_connect tool flips the in-session
+    // flag. Mirrors the embed-mint gate fix.
+    writeNotebook(`
+## Plan A: Run remotely [galaxy]
+
+- [ ] 1. **Heavy alignment** -- bwa-mem on big WGS
+`);
+    setGalaxyConnection(false);
+    process.env.GALAXY_URL = "http://localhost:8080";
+    process.env.GALAXY_API_KEY = "k";
+    const result = checkPreconditions();
+    expect(result.failures.find((f) => f.name === "galaxy_connection")).toBeFalsy();
   });
 
   it("does not hard-fail on missing connection for a local plan", () => {

@@ -7,10 +7,11 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { captured, setNotebookWidgetMode, widgetMode } = vi.hoisted(() => ({
+const { captured, setNotebookWidgetMode, widgetMode, currentNotebook } = vi.hoisted(() => ({
   captured: { listener: null as null | ((content: string) => void) },
   setNotebookWidgetMode: vi.fn(),
   widgetMode: { value: "open" as "auto" | "open" | "hidden" },
+  currentNotebook: { value: null as string | null },
 }));
 
 vi.mock("../extensions/loom/state.js", () => ({
@@ -21,6 +22,7 @@ vi.mock("../extensions/loom/state.js", () => ({
   getNotebookPath: () => "/work/notebook.md",
   getNotebookWidgetMode: () => widgetMode.value,
   setNotebookWidgetMode,
+  readCurrentNotebook: () => currentNotebook.value,
 }));
 
 import { setupUIBridge } from "../extensions/loom/ui-bridge";
@@ -66,6 +68,7 @@ function start() {
 describe("ui-bridge embed emission", () => {
   beforeEach(() => {
     captured.listener = null;
+    currentNotebook.value = null;
     setNotebookWidgetMode.mockClear();
     widgetMode.value = "open";
   });
@@ -122,6 +125,18 @@ describe("ui-bridge embed emission", () => {
     // Notebook markdown re-emits both times; the embed only once.
     expect(setWidget.mock.calls.filter((c) => c[0] === "notebook-embed")).toHaveLength(1);
     expect(setWidget.mock.calls.filter((c) => c[0] === "notebook")).toHaveLength(2);
+  });
+
+  it("emits the embed on session_start for an already-bound notebook (resume — Bug 3)", () => {
+    // A --continue resume fires no notebook change; the bridge must replay the
+    // current notebook content when it captures ctx on session_start.
+    currentNotebook.value = `# Resumed\n\n${bindingBlock()}`;
+    const { pi, handlers } = fakePi();
+    setupUIBridge(pi);
+    const setWidget = vi.fn();
+    handlers["session_start"]({}, { ui: { setWidget } });
+
+    expect(embedOf(setWidget)).toMatchObject({ bound: true, pageId: "adb5f5c93f827949" });
   });
 
   it("emits the embed even when the Notebook pane is hidden (separate panes)", () => {

@@ -138,6 +138,22 @@ export function getNotebookPath(): string | null {
   return state.notebookPath;
 }
 
+/**
+ * Current notebook content, or null when no notebook is loaded or it can't be
+ * read. Lets a bridge that captures ctx on session_start replay an already-bound
+ * notebook's widgets on resume: the watcher uses `ignoreInitial`, so a resumed
+ * (`--continue`) session never re-fires a change for the notebook it inherits.
+ */
+export function readCurrentNotebook(): string | null {
+  const p = state.notebookPath;
+  if (!p) return null;
+  try {
+    return fs.readFileSync(p, "utf-8");
+  } catch {
+    return null;
+  }
+}
+
 export function setNotebookPath(notebookFile: string | null): void {
   state.notebookPath = notebookFile;
   state.notebookLoaded = notebookFile !== null;
@@ -220,4 +236,18 @@ export function getCurrentHistoryId(): string | null {
 
 export function isGalaxyConnected(): boolean {
   return state.galaxyConnected;
+}
+
+/**
+ * Whether Galaxy is effectively reachable for API calls — either env creds are
+ * present (`GALAXY_URL` + `GALAXY_API_KEY`, exactly what the API client resolves
+ * in `getGalaxyConfig`) or a `galaxy_connect` tool flipped the in-session flag.
+ * Single source of truth shared by the status bar (`context.ts`), the
+ * embed-token mint gate (`embed-token-bridge.ts`), and the `/execute`
+ * precondition gate (`init-gate.ts`); the raw `state.galaxyConnected` flag alone
+ * is false on an env-creds resume until a Galaxy tool runs, which would wrongly
+ * report disconnected / suppress the mint / block a `[galaxy]` plan.
+ */
+export function isGalaxyEffectivelyConnected(): boolean {
+  return Boolean(process.env.GALAXY_URL && process.env.GALAXY_API_KEY) || state.galaxyConnected;
 }

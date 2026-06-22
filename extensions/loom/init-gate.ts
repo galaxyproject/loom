@@ -17,7 +17,7 @@
  */
 
 import * as fs from "fs";
-import { getNotebookPath, isGalaxyConnected, getCurrentHistoryId } from "./state.js";
+import { getNotebookPath, isGalaxyEffectivelyConnected, getCurrentHistoryId } from "./state.js";
 import { isLocalShellDisabled } from "./local-exec.js";
 
 export type Routing = "local" | "galaxy" | "hybrid" | "remote" | "unknown";
@@ -204,7 +204,7 @@ export function checkPreconditions(): GateResult {
     });
   }
 
-  if (needsGalaxy && !isGalaxyConnected()) {
+  if (needsGalaxy && !isGalaxyEffectivelyConnected()) {
     hardFailed = true;
     failures.push({
       name: "galaxy_connection",

@@ -3,7 +3,12 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { execFileSync } from "child_process";
-import { initSessionArtifacts, resetState } from "../extensions/loom/state";
+import {
+  initSessionArtifacts,
+  resetState,
+  isGalaxyEffectivelyConnected,
+  setGalaxyConnection,
+} from "../extensions/loom/state";
 
 function git(args: string[], cwd: string): string {
   return execFileSync("git", args, {
@@ -38,5 +43,42 @@ describe("initSessionArtifacts", () => {
     expect(existsSync(join(dir, "notebook.md"))).toBe(true);
     expect(git(["rev-list", "--count", "HEAD"], dir)).toBe("1");
     expect(git(["status", "--short"], dir)).toContain("?? notebook.md");
+  });
+});
+
+describe("isGalaxyEffectivelyConnected", () => {
+  const saved = { url: process.env.GALAXY_URL, key: process.env.GALAXY_API_KEY };
+
+  afterEach(() => {
+    resetState();
+    if (saved.url === undefined) delete process.env.GALAXY_URL;
+    else process.env.GALAXY_URL = saved.url;
+    if (saved.key === undefined) delete process.env.GALAXY_API_KEY;
+    else process.env.GALAXY_API_KEY = saved.key;
+  });
+
+  it("is true when both env creds are present, even with the in-session flag false", () => {
+    resetState();
+    setGalaxyConnection(false);
+    process.env.GALAXY_URL = "http://localhost:8080";
+    process.env.GALAXY_API_KEY = "k";
+    expect(isGalaxyEffectivelyConnected()).toBe(true);
+  });
+
+  it("falls back to the in-session flag when env creds are absent", () => {
+    resetState();
+    delete process.env.GALAXY_URL;
+    delete process.env.GALAXY_API_KEY;
+    expect(isGalaxyEffectivelyConnected()).toBe(false);
+    setGalaxyConnection(true);
+    expect(isGalaxyEffectivelyConnected()).toBe(true);
+  });
+
+  it("is false when only one env cred is present", () => {
+    resetState();
+    setGalaxyConnection(false);
+    process.env.GALAXY_URL = "http://localhost:8080";
+    delete process.env.GALAXY_API_KEY;
+    expect(isGalaxyEffectivelyConnected()).toBe(false);
   });
 });

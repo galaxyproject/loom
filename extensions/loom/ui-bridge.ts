@@ -13,6 +13,7 @@ import {
   getNotebookPath,
   getNotebookWidgetMode,
   setNotebookWidgetMode,
+  readCurrentNotebook,
 } from "./state.js";
 import {
   LoomWidgetKey,
@@ -41,7 +42,23 @@ export function setupUIBridge(pi: ExtensionAPI): void {
     latestCtx = ctx;
   });
 
-  onNotebookChange((content) => {
+  // Resume gap (Bug 3): an already-bound notebook (e.g. a `--continue` resume)
+  // must paint without waiting for a change. The root cause was ctx timing:
+  // `initSessionArtifacts` already replays via `notifyNotebookChange` on every
+  // session_start, but that fired before any ctx was captured (we only set it in
+  // before_agent_start) so `emitNotebook` early-returned on `!latestCtx`.
+  // Capturing ctx here lets that init-driven replay land. The explicit
+  // `emitNotebook(readCurrentNotebook())` is the order-independent belt: if this
+  // handler runs before init (notebookPath not yet set) it no-ops and init's
+  // later replay emits; if it runs after, it emits and init's replay is deduped
+  // (`last`). Either way the embed widget + Notebook pane paint exactly once.
+  pi.on("session_start", async (_event, ctx) => {
+    latestCtx = ctx;
+    const content = readCurrentNotebook();
+    if (content !== null) emitNotebook(content);
+  });
+
+  function emitNotebook(content: string): void {
     if (!latestCtx) return;
     if (content === last.notebookMd) return;
     last.notebookMd = content;
@@ -87,5 +104,7 @@ export function setupUIBridge(pi: ExtensionAPI): void {
       return;
     }
     setNotebookWidgetMode("open");
-  });
+  }
+
+  onNotebookChange(emitNotebook);
 }

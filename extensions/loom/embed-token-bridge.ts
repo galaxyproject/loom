@@ -15,7 +15,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { onNotebookChange, isGalaxyConnected } from "./state.js";
+import { onNotebookChange, isGalaxyEffectivelyConnected, readCurrentNotebook } from "./state.js";
 import { LoomWidgetKey, encodeEmbedToken } from "../../shared/loom-shell-contract.js";
 import { findGalaxyPageBlocks } from "./galaxy-page-binding.js";
 import {
@@ -53,10 +53,25 @@ export function setupEmbedTokenBridge(pi: ExtensionAPI, opts: EmbedTokenBridgeOp
     latestCtx = ctx;
   });
 
-  onNotebookChange((content) => {
+  // Resume gap (Bug 3): mint for an already-bound notebook (e.g. a `--continue`
+  // resume) without waiting for a notebook write. `initSessionArtifacts` already
+  // replays via `notifyNotebookChange` on session_start, but the mint sink needs
+  // a captured ctx to deliver — so capture it here. The explicit
+  // `pointAtNotebook(readCurrentNotebook())` is the order-independent belt vs.
+  // init's replay; `setPage` no-ops when already on that page, so whichever
+  // fires first wins and the other is a no-op (no double mint).
+  pi.on("session_start", async (_event, ctx) => {
+    latestCtx = ctx;
+    const content = readCurrentNotebook();
+    if (content !== null) pointAtNotebook(content);
+  });
+
+  function pointAtNotebook(content: string): void {
     const binding = findGalaxyPageBlocks(content)[0] ?? null;
     // Only mint while bound AND connected — minting needs the API key + a live
     // server, and a token is worthless without a page to embed.
-    manager.setPage(binding && isGalaxyConnected() ? binding.pageId : null);
-  });
+    manager.setPage(binding && isGalaxyEffectivelyConnected() ? binding.pageId : null);
+  }
+
+  onNotebookChange(pointAtNotebook);
 }

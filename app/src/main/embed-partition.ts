@@ -17,6 +17,13 @@
 /** Request header carrying the scoped embed token to Galaxy. */
 export const EMBED_TOKEN_HEADER = "X-Galaxy-Embed-Token";
 
+/** Request cookie header — stripped so the embed partition stays stateless. */
+export const COOKIE_HEADER = "Cookie";
+
+/** Response header setting a cookie — stripped so Galaxy can't seat a session
+ *  in the embed partition. */
+export const SET_COOKIE_HEADER = "Set-Cookie";
+
 /** Dedicated, persistent partition for the embed iframe — isolated from the
  *  app's normal session so cookies/storage never mix. */
 export const GALAXY_EMBED_PARTITION = "persist:galaxy-embed";
@@ -76,6 +83,32 @@ export function stripFrameHeaders(
   for (const [key, value] of Object.entries(headers ?? {})) {
     if (/^x-frame-options$/i.test(key)) continue;
     if (/^content-security-policy(-report-only)?$/i.test(key)) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+/**
+ * Drop any case-variant of header `name` from a header record. Pure; returns a
+ * new record with the input untouched. Generic over the value type so it serves
+ * both request headers (`string`) and response headers (`string[]`).
+ *
+ * Used to keep the embed partition **stateless**: the `<webview>` loading
+ * `/published/page` makes Galaxy seat an anonymous `galaxysession` cookie, and
+ * Galaxy resolves that cookie session ahead of the injected embed token — so a
+ * cookie-bearing `/api/pages/{id}` is read as anonymous and 403s even with a
+ * valid token (LOOM Bug 1). Stripping `Cookie` on Galaxy-origin requests (and
+ * `Set-Cookie` on responses) means the locked-down view carries no ambient
+ * session and authenticates by the per-page token alone.
+ */
+export function stripHeader<T>(
+  headers: Record<string, T> | undefined,
+  name: string,
+): Record<string, T> {
+  const lower = name.toLowerCase();
+  const out: Record<string, T> = {};
+  for (const [key, value] of Object.entries(headers ?? {})) {
+    if (key.toLowerCase() === lower) continue;
     out[key] = value;
   }
   return out;

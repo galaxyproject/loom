@@ -17,11 +17,14 @@
 
 import { session, type Session } from "electron";
 import {
+  COOKIE_HEADER,
   EMBED_TOKEN_HEADER,
   GALAXY_EMBED_PARTITION,
+  SET_COOKIE_HEADER,
   sameGalaxyOrigin,
   shouldBlockNavigation,
   stripFrameHeaders,
+  stripHeader,
 } from "./embed-partition.js";
 
 export interface EmbedPartitionDeps {
@@ -40,10 +43,14 @@ export function configureGalaxyEmbedPartition(
   sess: Session = session.fromPartition(GALAXY_EMBED_PARTITION),
 ): Session {
   sess.webRequest.onBeforeSendHeaders((details, callback) => {
-    const headers = { ...details.requestHeaders };
+    let headers = { ...details.requestHeaders };
     const token = deps.getToken();
     if (token && sameGalaxyOrigin(details.url, deps.getServerUrl())) {
       headers[EMBED_TOKEN_HEADER] = token;
+      // Keep the partition stateless: drop any ambient `galaxysession` cookie so
+      // Galaxy authenticates by the embed token alone (LOOM Bug 1) — otherwise
+      // the anonymous cookie session wins and the token is ignored.
+      headers = stripHeader(headers, COOKIE_HEADER);
     } else {
       delete headers[EMBED_TOKEN_HEADER];
     }
@@ -52,7 +59,14 @@ export function configureGalaxyEmbedPartition(
 
   sess.webRequest.onHeadersReceived((details, callback) => {
     if (sameGalaxyOrigin(details.url, deps.getServerUrl())) {
-      callback({ responseHeaders: stripFrameHeaders(details.responseHeaders ?? undefined) });
+      // Strip frame-busting headers AND `Set-Cookie` so Galaxy can't seat a
+      // session in the embed partition (the request-side cookie strip already
+      // neuters it; this keeps the cookie jar clean — LOOM Bug 1).
+      const stripped = stripHeader(
+        stripFrameHeaders(details.responseHeaders ?? undefined),
+        SET_COOKIE_HEADER,
+      );
+      callback({ responseHeaders: stripped });
     } else {
       callback({ cancel: false });
     }
