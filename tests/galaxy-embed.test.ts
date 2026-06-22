@@ -11,6 +11,7 @@ import {
   refreshDelayMs,
   shouldRefreshToken,
   DEFAULT_REFRESH_SKEW_MS,
+  DEFAULT_EMBED_THEME,
 } from "../extensions/loom/galaxy-embed";
 import type { GalaxyPageBindingYaml } from "../extensions/loom/galaxy-page-binding";
 import { decodeNotebookEmbed, encodeNotebookEmbed } from "../shared/loom-shell-contract.js";
@@ -28,33 +29,50 @@ function binding(overrides: Partial<GalaxyPageBindingYaml> = {}): GalaxyPageBind
 }
 
 describe("getEmbedUrl", () => {
-  it("builds the absolute chrome-free published-page URL", () => {
+  it("builds the absolute chrome-free published-page URL with the default theme", () => {
     expect(getEmbedUrl(binding())).toBe(
-      "https://usegalaxy.org/published/page?id=adb5f5c93f827949&embed=true",
+      "https://usegalaxy.org/published/page?id=adb5f5c93f827949&embed=true&theme=orbit",
     );
   });
 
   it("trims a trailing slash off the server URL", () => {
     expect(getEmbedUrl(binding({ galaxyServerUrl: "https://usegalaxy.org/" }))).toBe(
-      "https://usegalaxy.org/published/page?id=adb5f5c93f827949&embed=true",
+      "https://usegalaxy.org/published/page?id=adb5f5c93f827949&embed=true&theme=orbit",
     );
   });
 
   it("honors a deployment prefix in the server URL", () => {
     expect(getEmbedUrl(binding({ galaxyServerUrl: "https://example.org/galaxy" }))).toBe(
-      "https://example.org/galaxy/published/page?id=adb5f5c93f827949&embed=true",
+      "https://example.org/galaxy/published/page?id=adb5f5c93f827949&embed=true&theme=orbit",
     );
   });
 
-  it("appends rev and embed_origin when given", () => {
+  it("appends rev and embed_origin when given (theme stays last)", () => {
     const url = getEmbedUrl(binding(), { rev: "rev-9", embedOrigin: "app://orbit" });
     expect(url).toBe(
-      "https://usegalaxy.org/published/page?id=adb5f5c93f827949&embed=true&rev=rev-9&embed_origin=app%3A%2F%2Forbit",
+      "https://usegalaxy.org/published/page?id=adb5f5c93f827949&embed=true&rev=rev-9&embed_origin=app%3A%2F%2Forbit&theme=orbit",
     );
   });
 
-  it("omits rev/embed_origin when null or absent", () => {
+  it("omits rev/embed_origin when null or absent (theme still defaults)", () => {
     expect(getEmbedUrl(binding(), { rev: null, embedOrigin: null })).toBe(
+      "https://usegalaxy.org/published/page?id=adb5f5c93f827949&embed=true&theme=orbit",
+    );
+  });
+
+  it("uses DEFAULT_EMBED_THEME ('orbit') as the default theme id", () => {
+    expect(DEFAULT_EMBED_THEME).toBe("orbit");
+    expect(getEmbedUrl(binding())).toContain("&theme=orbit");
+  });
+
+  it("overrides the theme id when one is supplied", () => {
+    expect(getEmbedUrl(binding(), { theme: "lightblue" })).toBe(
+      "https://usegalaxy.org/published/page?id=adb5f5c93f827949&embed=true&theme=lightblue",
+    );
+  });
+
+  it("omits the theme param entirely when theme is null", () => {
+    expect(getEmbedUrl(binding(), { theme: null })).toBe(
       "https://usegalaxy.org/published/page?id=adb5f5c93f827949&embed=true",
     );
   });
@@ -68,7 +86,8 @@ describe("buildNotebookEmbed", () => {
       pageId: "adb5f5c93f827949",
       historyId: "hist-1",
       galaxyUrl: "https://usegalaxy.org",
-      embedUrl: "https://usegalaxy.org/published/page?id=adb5f5c93f827949&embed=true&rev=rev-3",
+      embedUrl:
+        "https://usegalaxy.org/published/page?id=adb5f5c93f827949&embed=true&rev=rev-3&theme=orbit",
       lastSyncedRevision: "rev-3",
     });
   });
@@ -76,6 +95,11 @@ describe("buildNotebookEmbed", () => {
   it("forwards embed_origin into the embedUrl", () => {
     const payload = buildNotebookEmbed(binding(), { embedOrigin: "app://orbit" });
     expect(payload.embedUrl).toContain("embed_origin=app%3A%2F%2Forbit");
+  });
+
+  it("requests the orbit theme in the embedUrl by default", () => {
+    const payload = buildNotebookEmbed(binding({ lastSyncedRevision: "rev-3" }));
+    expect(payload.embedUrl).toContain("&theme=orbit");
   });
 
   it("returns the unbound payload for a null binding", () => {

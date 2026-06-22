@@ -96,7 +96,8 @@ describe("ui-bridge embed emission", () => {
       pageId: "adb5f5c93f827949",
       historyId: "hist-1",
       galaxyUrl: "https://usegalaxy.org",
-      embedUrl: "https://usegalaxy.org/published/page?id=adb5f5c93f827949&embed=true&rev=rev-3",
+      embedUrl:
+        "https://usegalaxy.org/published/page?id=adb5f5c93f827949&embed=true&rev=rev-3&theme=orbit",
       lastSyncedRevision: "rev-3",
     });
   });

@@ -22,6 +22,14 @@ import type { NotebookEmbedPayload } from "../../shared/loom-shell-contract.js";
 // Embed URL
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Theme id Orbit requests via `&theme=` so Galaxy renders the embedded page with
+ * dark `--content-*` surfaces matching Orbit's shell (Galaxy ships `orbit` as a
+ * built-in theme — see lib/galaxy/util/themes.py). `App.vue` honors `?theme=` only
+ * in embedded mode, so this is a no-op on a Galaxy that predates the built-in.
+ */
+export const DEFAULT_EMBED_THEME = "orbit";
+
 export interface EmbedUrlOptions {
   /**
    * Cache-buster appended as `&rev=`. Pass the binding's
@@ -34,11 +42,16 @@ export interface EmbedUrlOptions {
    * bridge target-origin-restricts its messages (see embedBridge.ts).
    */
   embedOrigin?: string | null;
+  /**
+   * Galaxy theme id, forwarded as `&theme=`. Defaults to {@link DEFAULT_EMBED_THEME}
+   * (`orbit`); pass `null` to omit the param entirely.
+   */
+  theme?: string | null;
 }
 
 /**
  * Build the absolute chrome-free embed URL for a bound page:
- * `{galaxy_server_url}/published/page?id={pageId}&embed=true[&rev=…][&embed_origin=…]`.
+ * `{galaxy_server_url}/published/page?id={pageId}&embed=true[&rev=…][&embed_origin=…][&theme=…]`.
  *
  * The page id is already a Galaxy-encoded id; `encodeURIComponent` is a
  * defensive no-op on the hex form and matches the rest of the Pages client.
@@ -51,6 +64,8 @@ export function getEmbedUrl(binding: GalaxyPageBindingYaml, opts: EmbedUrlOption
   });
   if (opts.rev) params.set("rev", opts.rev);
   if (opts.embedOrigin) params.set("embed_origin", opts.embedOrigin);
+  const theme = opts.theme === undefined ? DEFAULT_EMBED_THEME : opts.theme;
+  if (theme) params.set("theme", theme);
   return `${base}/published/page?${params.toString()}`;
 }
 
