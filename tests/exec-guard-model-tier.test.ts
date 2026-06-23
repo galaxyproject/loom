@@ -20,6 +20,23 @@ describe("classifyModelTier", () => {
     expect(
       classifyModelTier({ id: "gpt-5.4", provider: "openai", cost: { input: 5, output: 20 } }),
     ).toBe("trusted");
+    // Regression: "gemini" contains "mini"; a gemini-pro id must not match the weak marker.
+    // gemini-2.5-pro is trusted by its marker (a sub-$10 price proves it, not the price fallback);
+    // gemini-3.1-pro-preview has no marker and is trusted via the price fallback.
+    expect(
+      classifyModelTier({
+        id: "gemini-2.5-pro",
+        provider: "google",
+        cost: { input: 1.25, output: 5 },
+      }),
+    ).toBe("trusted");
+    expect(
+      classifyModelTier({
+        id: "gemini-3.1-pro-preview",
+        provider: "google",
+        cost: { input: 2, output: 12 },
+      }),
+    ).toBe("trusted");
   });
   it("cheap/small models are weak", () => {
     expect(
