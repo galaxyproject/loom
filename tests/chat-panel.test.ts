@@ -224,4 +224,11 @@ describe("computeCopyButtonPlacement", () => {
     expect(p.hidden).toBe(false);
     if (!p.hidden) expect(p.left).toBe(4); // clamped to min 4
   });
+
+  it("clamps the right edge into the viewport", () => {
+    const r = { top: 300, bottom: 320, right: 1200, width: 200, height: 20 };
+    const p = computeCopyButtonPlacement(r, cont, viewport);
+    expect(p.hidden).toBe(false);
+    if (!p.hidden) expect(p.left).toBe(1000 - 80 - 4); // viewport.width - bw - 4
+  });
 });

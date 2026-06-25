@@ -139,6 +139,19 @@ function toPosix(p: string): string {
   return p.split(path.sep).join("/");
 }
 
+// Whether p's real path stays inside cwd. Used to decide if a symlinked
+// directory is safe to descend into -- mirrors the file-protocol guard in
+// main.ts so symlinks can't expose content outside the working directory.
+async function isWithinCwd(cwd: string, p: string): Promise<boolean> {
+  try {
+    const cwdReal = await fsp.realpath(cwd);
+    const pReal = await fsp.realpath(p);
+    return pReal === cwdReal || pReal.startsWith(cwdReal + path.sep);
+  } catch {
+    return false;
+  }
+}
+
 export async function walkDir(
   cwd: string,
   relDir: string,
@@ -169,13 +182,18 @@ export async function walkDir(
     // Resolve symlinks to their target type so linked files/dirs still appear.
     let isDir = e.isDirectory();
     let isFile = e.isFile();
+    let recurse = isDir; // real directories always descend
     if (e.isSymbolicLink()) {
       try {
         const target = await fsp.stat(absPath);
         isDir = target.isDirectory();
         isFile = target.isFile();
+        // Only descend into a linked directory whose real path stays inside
+        // cwd, so a symlink can't expose content outside the working directory.
+        recurse = isDir && (await isWithinCwd(cwd, absPath));
       } catch {
         // Broken symlink -- surface it as a file so it stays visible.
+        isDir = false;
         isFile = true;
       }
     }
@@ -185,7 +203,7 @@ export async function walkDir(
         name: e.name,
         relPath: childRel,
         type: "directory",
-        children: await walkDir(cwd, childRel, includeHidden, depth + 1),
+        children: recurse ? await walkDir(cwd, childRel, includeHidden, depth + 1) : [],
       });
     } else if (isFile) {
       let size: number | undefined;
