@@ -10,6 +10,7 @@ vi.mock("electron", () => ({ ipcMain: {}, BrowserWindow: {} }));
 import { walkDir, type FileNode } from "../app/src/main/files-handler.js";
 
 let root: string;
+let outside: string;
 
 beforeAll(async () => {
   root = await fsp.mkdtemp(path.join(os.tmpdir(), "loom-walkdir-"));
@@ -23,10 +24,16 @@ beforeAll(async () => {
   await fsp.symlink(path.join(root, "real.txt"), path.join(root, "link-to-file"));
   await fsp.symlink(path.join(root, "realdir"), path.join(root, "link-to-dir"));
   await fsp.symlink(path.join(root, "missing-target"), path.join(root, "broken-link"));
+
+  // A symlink to a directory OUTSIDE cwd -- shown, but must not be descended.
+  outside = await fsp.mkdtemp(path.join(os.tmpdir(), "loom-outside-"));
+  await fsp.writeFile(path.join(outside, "secret.txt"), "nope");
+  await fsp.symlink(outside, path.join(root, "link-outside"));
 });
 
 afterAll(async () => {
   await fsp.rm(root, { recursive: true, force: true });
+  await fsp.rm(outside, { recursive: true, force: true });
 });
 
 function byName(nodes: FileNode[]): Map<string, FileNode> {
@@ -54,5 +61,14 @@ describe("walkDir symlink handling", () => {
     const link = nodes.get("broken-link");
     expect(link).toBeDefined();
     expect(link?.type).toBe("file");
+  });
+
+  it("shows a symlink to an outside-cwd directory but does not descend into it", async () => {
+    const nodes = byName(await walkDir(root, "", false, 0));
+    const link = nodes.get("link-outside");
+    expect(link).toBeDefined();
+    expect(link?.type).toBe("directory");
+    // Contents outside cwd must not leak into the tree.
+    expect(link?.children).toEqual([]);
   });
 });
