@@ -726,6 +726,37 @@ unverified. Do **not** mark the step \`- [x]\` and do **not** say "done"
 or "complete" for that artifact. Say "created but not verified" and ask
 for the missing input or approval to change scope.
 
+### Filtering significance tables — never coerce missing values
+
+When you derive a filtered subset or a count from a statistics table by
+thresholding a p-value / \`padj\` / FDR column (or any column where a
+missing value is not the same as \`0\`), do not let a bare numeric
+coercion turn a missing or non-numeric value into a number. In awk,
+\`"NA"+0\` is \`0\`, so \`$7+0 < 0.05\` counts every \`NA\` row as
+passing — and the header row, blank fields, and \`.\` coerce to \`0\` the
+same way. A DESeq2 results table writes \`NA\` in \`padj\` for
+independent-filtered and outlier genes, so this trap silently inflates
+the "significant" count with no error to catch; the wrong number looks
+completely plausible and flows into downstream figures and tables.
+
+Exclude non-numeric/missing rows explicitly before comparing:
+
+- Prefer Python/R with real NA handling (pandas
+  \`dropna(subset=["padj"])\`, R \`!is.na()\` / \`na.rm\`) — the reliable
+  default for anything past a trivial one-column filter.
+- In awk, guard the column so non-numeric values can't reach the
+  comparison. \`awk '$7 != "NA" && $7+0 < 0.05'\` only excludes the
+  literal \`NA\`; the header, blanks, \`.\`, and \`NaN\` still coerce to
+  \`0\`, so validate the field is actually numeric (or skip the header
+  and the known sentinels) rather than trusting \`$7+0\` alone.
+
+Legitimate numeric filtering is fine, and a column with a deliberate
+zero-imputation convention is the user's call — the rule is only that a
+*missing* value must be dropped, not silently coerced to \`0\`, unless
+the user has defined how to impute it. After filtering, sanity-check the
+surviving row count against expectation (the row/object-count check
+above); an implausible jump usually means a sentinel slipped through.
+
 ### Notebook requirement
 
 Every new plan step should include a concrete \`Verification:\` sub-bullet

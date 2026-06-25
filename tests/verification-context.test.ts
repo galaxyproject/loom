@@ -27,6 +27,24 @@ describe("buildVerificationDisciplineBlock", () => {
     expect(ctx).toContain("element count");
   });
 
+  it("warns against coercing missing values when filtering significance tables", () => {
+    const ctx = buildVerificationDisciplineBlock();
+    // Normalize whitespace so these load-bearing phrases survive prose reflow.
+    const flat = ctx.replace(/\s+/g, " ");
+
+    expect(flat).toContain("Filtering significance tables — never coerce missing values");
+    expect(flat).toContain('`"NA"+0` is `0`');
+    expect(flat).toContain("$7+0 < 0.05");
+    expect(flat).toContain('writes `NA` in `padj`');
+    expect(flat).toContain('awk \'$7 != "NA" && $7+0 < 0.05\'');
+    // The awk example must flag its own limitation (it only catches literal NA).
+    expect(flat).toContain("only excludes the literal `NA`");
+    expect(flat).toContain('dropna(subset=["padj"])');
+    expect(flat).toContain("Legitimate numeric filtering is fine");
+    expect(flat).toContain("zero-imputation convention is the user's call");
+    expect(flat).toContain("sanity-check the surviving row count");
+  });
+
   it("is wired into the assembled system prompt", async () => {
     const handlers = new Map<string, (event: unknown, ctx: unknown) => Promise<unknown>>();
     const pi = {
