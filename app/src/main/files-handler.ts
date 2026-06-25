@@ -139,7 +139,7 @@ function toPosix(p: string): string {
   return p.split(path.sep).join("/");
 }
 
-async function walkDir(
+export async function walkDir(
   cwd: string,
   relDir: string,
   includeHidden: boolean,
@@ -164,24 +164,40 @@ async function walkDir(
     if (!includeHidden && e.name.startsWith(".") && e.name !== "notebook.md") continue;
 
     const childRel = toPosix(path.join(relDir, e.name));
-    if (e.isDirectory()) {
+    const absPath = path.join(absDir, e.name);
+
+    // Resolve symlinks to their target type so linked files/dirs still appear.
+    let isDir = e.isDirectory();
+    let isFile = e.isFile();
+    if (e.isSymbolicLink()) {
+      try {
+        const target = await fsp.stat(absPath);
+        isDir = target.isDirectory();
+        isFile = target.isFile();
+      } catch {
+        // Broken symlink -- surface it as a file so it stays visible.
+        isFile = true;
+      }
+    }
+
+    if (isDir) {
       out.push({
         name: e.name,
         relPath: childRel,
         type: "directory",
         children: await walkDir(cwd, childRel, includeHidden, depth + 1),
       });
-    } else if (e.isFile()) {
+    } else if (isFile) {
       let size: number | undefined;
       try {
-        const stat = await fsp.stat(path.join(absDir, e.name));
+        const stat = await fsp.stat(absPath);
         size = stat.size;
       } catch {
         size = undefined;
       }
       out.push({ name: e.name, relPath: childRel, type: "file", size });
     }
-    // Symlinks / sockets / etc. are ignored.
+    // Sockets / fifos / etc. are still ignored.
   }
 
   // Directories first, then files; alphabetical within each group.
