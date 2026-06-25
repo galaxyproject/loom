@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   historyToMarkdown,
   fragmentToMarkdown,
+  computeCopyButtonPlacement,
   type MessageRecord,
 } from "../app/src/renderer/chat/chat-panel.js";
 
@@ -42,9 +43,7 @@ describe("historyToMarkdown", () => {
     const records: MessageRecord[] = [
       { role: "tool", id: "t1", name: "bash", status: "done", result: "hello world" },
     ];
-    expect(historyToMarkdown(records)).toBe(
-      "*Tool call ✓: `bash`*\n\n```\nhello world\n```\n",
-    );
+    expect(historyToMarkdown(records)).toBe("*Tool call ✓: `bash`*\n\n```\nhello world\n```\n");
   });
 
   it("formats an error message", () => {
@@ -110,15 +109,13 @@ describe("fragmentToMarkdown", () => {
   });
 
   it("converts <pre><code> with language", () => {
-    expect(
-      fragmentToMarkdown(html('<pre><code class="language-python">x = 1</code></pre>')),
-    ).toBe("```python\nx = 1\n```");
+    expect(fragmentToMarkdown(html('<pre><code class="language-python">x = 1</code></pre>'))).toBe(
+      "```python\nx = 1\n```",
+    );
   });
 
   it("converts <pre><code> without language", () => {
-    expect(fragmentToMarkdown(html("<pre><code>x = 1</code></pre>"))).toBe(
-      "```\nx = 1\n```",
-    );
+    expect(fragmentToMarkdown(html("<pre><code>x = 1</code></pre>"))).toBe("```\nx = 1\n```");
   });
 
   it("does not double-wrap <code> inside <pre>", () => {
@@ -175,12 +172,56 @@ describe("fragmentToMarkdown", () => {
   });
 
   it("handles nested formatting: bold inside paragraph", () => {
-    expect(fragmentToMarkdown(html("<p><strong>bold</strong> plain</p>"))).toBe(
-      "**bold** plain",
-    );
+    expect(fragmentToMarkdown(html("<p><strong>bold</strong> plain</p>"))).toBe("**bold** plain");
   });
 
   it("handles nested formatting: italic inside bold", () => {
     expect(fragmentToMarkdown(html("<strong><em>both</em></strong>"))).toBe("***both***");
+  });
+});
+
+// ── computeCopyButtonPlacement ───────────────────────────────────────────────
+
+describe("computeCopyButtonPlacement", () => {
+  const viewport = { width: 1000, height: 800 };
+  const cont = { top: 100, bottom: 700 };
+
+  it("hides when the selection has no size", () => {
+    const r = { top: 0, bottom: 0, right: 0, width: 0, height: 0 };
+    expect(computeCopyButtonPlacement(r, cont, viewport)).toEqual({ hidden: true });
+  });
+
+  it("hides when the selection scrolled above the chat's visible area", () => {
+    const r = { top: 40, bottom: 60, right: 500, width: 200, height: 20 };
+    expect(computeCopyButtonPlacement(r, cont, viewport)).toEqual({ hidden: true });
+  });
+
+  it("hides when the selection scrolled below the chat's visible area", () => {
+    const r = { top: 720, bottom: 740, right: 500, width: 200, height: 20 };
+    expect(computeCopyButtonPlacement(r, cont, viewport)).toEqual({ hidden: true });
+  });
+
+  it("pins just below a selection that is comfortably in view", () => {
+    const r = { top: 300, bottom: 320, right: 500, width: 200, height: 20 };
+    const p = computeCopyButtonPlacement(r, cont, viewport);
+    expect(p.hidden).toBe(false);
+    if (!p.hidden) expect(p.top).toBe(324); // bottom + 4
+  });
+
+  it("flips above the selection near the viewport bottom", () => {
+    // A chat that fills the viewport: selection sits low enough that the button
+    // would overflow the bottom edge, so it flips above the selection.
+    const tallCont = { top: 100, bottom: 790 };
+    const r = { top: 760, bottom: 780, right: 500, width: 200, height: 20 };
+    const p = computeCopyButtonPlacement(r, tallCont, viewport);
+    expect(p.hidden).toBe(false);
+    if (!p.hidden) expect(p.top).toBe(760 - 28 - 4); // top - bh - 4
+  });
+
+  it("clamps the left edge into the viewport", () => {
+    const r = { top: 300, bottom: 320, right: 4, width: 4, height: 20 };
+    const p = computeCopyButtonPlacement(r, cont, viewport);
+    expect(p.hidden).toBe(false);
+    if (!p.hidden) expect(p.left).toBe(4); // clamped to min 4
   });
 });

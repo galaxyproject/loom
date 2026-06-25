@@ -17,6 +17,25 @@ export type MessageRecord =
   | { role: "info"; text: string }
   | { role: "error"; text: string };
 
+export type CopyButtonPlacement = { hidden: true } | { hidden: false; top: number; left: number };
+
+// Pure placement math for the selection Copy button. Hidden when the selection
+// is empty or has scrolled outside the chat's visible bounds; otherwise pinned
+// just below the selection, flipping above it near the viewport bottom.
+export function computeCopyButtonPlacement(
+  sel: { top: number; bottom: number; right: number; width: number; height: number },
+  cont: { top: number; bottom: number },
+  viewport: { width: number; height: number },
+): CopyButtonPlacement {
+  if (!sel.width && !sel.height) return { hidden: true };
+  if (sel.bottom < cont.top || sel.top > cont.bottom) return { hidden: true };
+  const bh = 28,
+    bw = 80;
+  const top = sel.bottom + 6 + bh > viewport.height ? sel.top - bh - 4 : sel.bottom + 4;
+  const left = Math.max(4, Math.min(sel.right - bw, viewport.width - bw - 4));
+  return { hidden: false, top, left };
+}
+
 export class ChatPanel {
   private container: HTMLElement;
   private currentMessage: HTMLElement | null = null;
@@ -468,13 +487,24 @@ export class ChatPanel {
     document.addEventListener("mousedown", (e) => {
       // contains() so clicking the button's inner <svg> (a child) still counts
       // as the button -- otherwise the icon hit hides it before the copy fires.
-      if (!btn.contains(e.target as Node)) { btn.hidden = true; mouseIsDown = true; }
+      if (!btn.contains(e.target as Node)) {
+        btn.hidden = true;
+        mouseIsDown = true;
+      }
     });
     document.addEventListener("mouseup", () => {
       mouseIsDown = false;
       updateBtn();
     });
-    window.addEventListener("blur", () => { btn.hidden = true; });
+    window.addEventListener("blur", () => {
+      btn.hidden = true;
+    });
+
+    // The button is position:fixed at coords captured when the selection was
+    // made. Scrolling the chat (trackpad, no mousedown) or resizing would leave
+    // it pinned in the viewport forever, so keep it anchored to the selection.
+    this.container.addEventListener("scroll", () => updateBtn(), { passive: true });
+    window.addEventListener("resize", () => updateBtn());
 
     btn.addEventListener("click", () => {
       const sel = window.getSelection();
@@ -502,17 +532,27 @@ export class ChatPanel {
 
     const updateBtn = () => {
       const sel = window.getSelection();
-      if (!sel || sel.isCollapsed || sel.rangeCount === 0) { btn.hidden = true; return; }
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+        btn.hidden = true;
+        return;
+      }
       const range = sel.getRangeAt(0);
-      if (!this.container.contains(range.commonAncestorContainer)) { btn.hidden = true; return; }
-      const rect = range.getBoundingClientRect();
-      if (!rect.width && !rect.height) { btn.hidden = true; return; }
+      if (!this.container.contains(range.commonAncestorContainer)) {
+        btn.hidden = true;
+        return;
+      }
+      const placement = computeCopyButtonPlacement(
+        range.getBoundingClientRect(),
+        this.container.getBoundingClientRect(),
+        { width: window.innerWidth, height: window.innerHeight },
+      );
+      if (placement.hidden) {
+        btn.hidden = true;
+        return;
+      }
       btn.hidden = false;
-      const bh = 28, bw = 80;
-      const top = rect.bottom + 6 + bh > window.innerHeight ? rect.top - bh - 4 : rect.bottom + 4;
-      const left = Math.max(4, Math.min(rect.right - bw, window.innerWidth - bw - 4));
-      btn.style.top = `${top}px`;
-      btn.style.left = `${left}px`;
+      btn.style.top = `${placement.top}px`;
+      btn.style.left = `${placement.left}px`;
     };
 
     return btn;
@@ -558,7 +598,9 @@ export function historyToMarkdown(records: MessageRecord[]): string {
       lines.push(`**Assistant**\n\n${rec.text}\n`);
     } else if (rec.role === "tool") {
       const badge = rec.status === "done" ? "✓" : rec.status === "error" ? "✗" : "…";
-      lines.push(`*Tool call ${badge}: \`${rec.name}\`*${rec.result ? `\n\n\`\`\`\n${rec.result}\n\`\`\`` : ""}\n`);
+      lines.push(
+        `*Tool call ${badge}: \`${rec.name}\`*${rec.result ? `\n\n\`\`\`\n${rec.result}\n\`\`\`` : ""}\n`,
+      );
     } else if (rec.role === "error") {
       lines.push(`*Error: ${rec.text}*\n`);
     }
@@ -578,9 +620,15 @@ function nodeToMd(node: Node): string {
   const inner = () => Array.from(el.childNodes).map(nodeToMd).join("");
 
   switch (tag) {
-    case "strong": case "b": return `**${inner()}**`;
-    case "em": case "i": return `*${inner()}*`;
-    case "del": case "s": return `~~${inner()}~~`;
+    case "strong":
+    case "b":
+      return `**${inner()}**`;
+    case "em":
+    case "i":
+      return `*${inner()}*`;
+    case "del":
+    case "s":
+      return `~~${inner()}~~`;
     case "code":
       if (el.closest("pre")) return el.textContent ?? "";
       return `\`${el.textContent ?? ""}\``;
@@ -589,21 +637,47 @@ function nodeToMd(node: Node): string {
       const lang = (code?.className ?? "").match(/language-(\w+)/)?.[1] ?? "";
       return `\`\`\`${lang}\n${(code ?? el).textContent ?? ""}\n\`\`\``;
     }
-    case "h1": return `# ${inner()}\n`;
-    case "h2": return `## ${inner()}\n`;
-    case "h3": return `### ${inner()}\n`;
-    case "h4": return `#### ${inner()}\n`;
-    case "h5": return `##### ${inner()}\n`;
-    case "h6": return `###### ${inner()}\n`;
-    case "p": return `${inner()}\n\n`;
-    case "br": return "\n";
-    case "ul": return Array.from(el.children).map(li => `- ${nodeToMd(li)}`).join("\n") + "\n";
-    case "ol": return Array.from(el.children).map((li, i) => `${i + 1}. ${nodeToMd(li)}`).join("\n") + "\n";
-    case "li": return inner();
-    case "a": return `[${inner()}](${el.getAttribute("href") ?? ""})`;
-    case "blockquote": return inner().split("\n").map(l => `> ${l}`).join("\n");
-    case "hr": return "---\n";
-    default: return inner();
+    case "h1":
+      return `# ${inner()}\n`;
+    case "h2":
+      return `## ${inner()}\n`;
+    case "h3":
+      return `### ${inner()}\n`;
+    case "h4":
+      return `#### ${inner()}\n`;
+    case "h5":
+      return `##### ${inner()}\n`;
+    case "h6":
+      return `###### ${inner()}\n`;
+    case "p":
+      return `${inner()}\n\n`;
+    case "br":
+      return "\n";
+    case "ul":
+      return (
+        Array.from(el.children)
+          .map((li) => `- ${nodeToMd(li)}`)
+          .join("\n") + "\n"
+      );
+    case "ol":
+      return (
+        Array.from(el.children)
+          .map((li, i) => `${i + 1}. ${nodeToMd(li)}`)
+          .join("\n") + "\n"
+      );
+    case "li":
+      return inner();
+    case "a":
+      return `[${inner()}](${el.getAttribute("href") ?? ""})`;
+    case "blockquote":
+      return inner()
+        .split("\n")
+        .map((l) => `> ${l}`)
+        .join("\n");
+    case "hr":
+      return "---\n";
+    default:
+      return inner();
   }
 }
 
