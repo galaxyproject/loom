@@ -48,6 +48,8 @@ export function setNotebookWidgetMode(mode: NotebookWidgetMode): void {
 export function resetState(): void {
   stopWatchingNotebook();
   notebookWidgetMode = "auto";
+  lastEmittedNotebookContent = null;
+  lastInspectedFingerprint = null;
   state = {
     galaxyConnected: false,
     currentHistoryId: null,
@@ -63,6 +65,12 @@ export function resetState(): void {
 type NotebookChangeListener = (markdown: string) => void;
 const notebookChangeListeners: NotebookChangeListener[] = [];
 
+// Content last handed to listeners, plus a cheap stat fingerprint of the file
+// state we last inspected. Both feed reemitNotebookIfChanged() so a re-sync
+// trigger only emits when notebook.md actually changed.
+let lastEmittedNotebookContent: string | null = null;
+let lastInspectedFingerprint: string | null = null;
+
 /** Register a callback that fires on every notebook write. Returns unsubscribe. */
 export function onNotebookChange(listener: NotebookChangeListener): () => void {
   notebookChangeListeners.push(listener);
@@ -73,9 +81,65 @@ export function onNotebookChange(listener: NotebookChangeListener): () => void {
 }
 
 function notifyNotebookChange(markdown: string): void {
+  lastEmittedNotebookContent = markdown;
   for (const listener of notebookChangeListeners) {
-    listener(markdown);
+    try {
+      listener(markdown);
+    } catch (err) {
+      // Isolate subscribers: one throwing listener must not starve the others
+      // or break the caller (e.g. the tool_execution_end hook, which is no
+      // longer wrapped the way the watcher path is). #253
+      console.error("notebook change listener failed:", err);
+    }
   }
+}
+
+/**
+ * Re-read notebook.md and emit a change if its content differs from what was
+ * last emitted; returns whether it emitted.
+ *
+ * The chokidar watcher tracks a single file path and can miss a bash write
+ * that replaces the inode (an atomic temp-and-rename save, e.g. `sed -i` or an
+ * editor) or one that races its awaitWriteFinish window, leaving the Notebook
+ * panel stale until the next `/notebook`. The tool_execution_end hook calls
+ * this after every tool so the panel re-syncs. A cheap stat fingerprint skips
+ * the read when the file is untouched, and a content compare suppresses emits
+ * when nothing actually changed, so calling this on every tool end is not
+ * churn. #253
+ */
+export function reemitNotebookIfChanged(): boolean {
+  const filePath = state.notebookPath;
+  if (!filePath) return false;
+
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(filePath);
+  } catch {
+    // Missing/unreadable right now (e.g. mid-rename); the watcher and the next
+    // real write recover. Don't advance the fingerprint so the follow-up is seen.
+    return false;
+  }
+
+  // Include dev/ino and ctimeMs, not just mtime+size: an atomic temp-and-rename
+  // save swaps the inode (changing ino), and ctime moves on any write -- so an
+  // inode-replacing or same-size rewrite with a preserved/coarse mtime is still
+  // seen as changed, which is the whole point of #253.
+  const fingerprint = `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`;
+  if (fingerprint === lastInspectedFingerprint) return false;
+
+  let content: string;
+  try {
+    content = fs.readFileSync(filePath, "utf-8");
+  } catch {
+    return false;
+  }
+  lastInspectedFingerprint = fingerprint;
+
+  // mtime/size moved but the bytes are identical (e.g. a rewrite) -> no churn.
+  if (content === lastEmittedNotebookContent) return false;
+
+  notifyNotebookChange(content);
+  return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -141,6 +205,11 @@ export function getNotebookPath(): string | null {
 export function setNotebookPath(notebookFile: string | null): void {
   state.notebookPath = notebookFile;
   state.notebookLoaded = notebookFile !== null;
+  // Switching notebooks must not inherit the prior file's emit baselines, or a
+  // new notebook that shares the old one's content/fingerprint would be wrongly
+  // suppressed and leave the panel stale. #253
+  lastEmittedNotebookContent = null;
+  lastInspectedFingerprint = null;
   if (notebookFile) {
     startWatchingNotebook(notebookFile, false);
     loadActivityLog(path.dirname(notebookFile));
@@ -169,6 +238,9 @@ export function initSessionArtifacts(cwd: string): void {
   const sessionDir = cwd;
   // Fresh session: Pi has cleared extension widgets, so reset the mode too.
   notebookWidgetMode = "auto";
+  // New session may point at a different notebook.md; force the next re-sync
+  // check to re-inspect rather than trust a stale fingerprint. #253
+  lastInspectedFingerprint = null;
 
   try {
     const autoCommit = ensureGitRepo(cwd);

@@ -31,7 +31,13 @@ import { registerSandbox } from "./sandbox";
 import { isLocalExecDisabled } from "./local-exec";
 import { registerSecretRedaction } from "./secret-redaction";
 import * as fs from "fs";
-import { getState, getNotebookPath, getNotebookWidgetMode, setNotebookWidgetMode } from "./state";
+import {
+  getState,
+  getNotebookPath,
+  getNotebookWidgetMode,
+  setNotebookWidgetMode,
+  reemitNotebookIfChanged,
+} from "./state";
 import {
   loadProfiles,
   saveProfile,
@@ -366,6 +372,13 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_execution_end", async (event, ctx) => {
+    // Re-sync the Notebook panel after any tool. A bash write to notebook.md
+    // can slip past the single-file watcher -- an atomic temp-and-rename save
+    // (`sed -i`, editors) swaps the inode, and a plain truncate can race the
+    // watcher's awaitWriteFinish window. This is content-guarded so it only
+    // emits on a real change and is a no-op otherwise. #253
+    reemitNotebookIfChanged();
+
     if (event.toolName?.startsWith("galaxy_")) {
       const startTime = toolStartTimes.get(event.toolName);
       if (startTime) {
