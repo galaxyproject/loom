@@ -16,6 +16,7 @@ import { formatGalaxyTooltip } from "./galaxy-tooltip.js";
 import { PromptQueue, queuedPreview } from "./prompt-queue.js";
 import { FeedbackDraftStore } from "./feedback-draft.js";
 import { caretVisualLineFlags, shouldRecallOnArrow } from "./input-history-nav.js";
+import { shouldAcceptSlashCommandOnEnter } from "./slash-popup-nav.js";
 import { LoomWidgetKey, decodeMarkdownWidget } from "../../../shared/loom-shell-contract.js";
 import { ALLOWED_SKILLS_PREFIX, isAllowedSkillUrl } from "../../../shared/loom-config.js";
 import {
@@ -2217,9 +2218,15 @@ function acceptSlashPopup(index: number): void {
 }
 
 inputEl.addEventListener("keydown", (e) => {
+  // An Enter that commits an IME composition isn't a submit -- let the browser
+  // handle it and bail before any accept/submit logic (covers both Enter paths).
+  if (e.key === "Enter" && e.isComposing) return;
+
   // Slash popup is a hint, not a modal: Tab completes, ↑/↓ navigate
-  // within it, Esc dismisses. Enter still submits whatever the user
-  // typed — the popup auto-closes as a side effect of submit.
+  // within it, Esc dismisses. Enter accepts the highlighted command and
+  // runs it -- Tab+Enter in one keystroke (#287). A fully-typed command is
+  // itself the highlighted row, so it still runs; Shift+Enter inserts a
+  // newline and falls through to the regular submit path.
   if (isSlashPopupOpen()) {
     if (e.key === "ArrowUp") {
       e.preventDefault();
@@ -2241,7 +2248,22 @@ inputEl.addEventListener("keydown", (e) => {
       closeSlashPopup();
       return;
     }
-    // Enter falls through to the regular submit path below.
+    if (
+      e.key === "Enter" &&
+      !e.shiftKey &&
+      shouldAcceptSlashCommandOnEnter(slashPopupActive, slashPopupItems.length)
+    ) {
+      // Complete the highlighted command, then submit it. acceptSlashPopup
+      // dispatches an input event that can re-open the popup for a no-arg
+      // command, so close it again before submit -- matching the raw path.
+      e.preventDefault();
+      acceptSlashPopup(slashPopupActive);
+      closeSlashPopup();
+      submit();
+      return;
+    }
+    // Shift+Enter (newline) or a popup with no valid highlighted row fall
+    // through to the regular submit path below.
   }
 
   if (e.key === "ArrowUp" && shouldRecallOnArrow("up", caretVisualLineFlags(inputEl))) {
