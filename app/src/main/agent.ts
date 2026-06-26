@@ -12,6 +12,7 @@ import { buildBrainEnv as buildBaseBrainEnv } from "../../../shared/brain-env.js
 import { noLocalShellSpawnExtras } from "./local-shell.js";
 import { TurnWatchdog } from "./turn-watchdog.js";
 import { formatWindowTitle } from "./window-title.js";
+import { EmbedTokenStore, isEmbedTokenWidget, parseEmbedTokenWidget } from "./embed-token-store.js";
 
 /**
  * How long the brain may stay completely silent mid-turn before Orbit treats the
@@ -169,6 +170,13 @@ export class AgentManager {
   // not the symlink).
   private pinnedSessionFile: string | null = null;
   private mcpBootstrapRestartDone = false; // → guard: only auto-restart once per app lifetime
+
+  // Current Galaxy embed token, pushed by the brain on the dedicated EmbedToken
+  // widget key and held here in the privileged process. Intercepted in
+  // handleLine and NEVER forwarded to the renderer; the iframe partition reads
+  // it when injecting the embed-auth header. Public so the partition setup can
+  // subscribe.
+  readonly embedTokens = new EmbedTokenStore();
   private silentRestarting = false; // → suppresses status flicker during MCP bootstrap restart
 
   /**
@@ -692,6 +700,20 @@ export class AgentManager {
         log("swallowing MCP bootstrap notify → scheduling silent restart");
         this.mcpBootstrapRestartDone = true;
         setTimeout(() => this.silentRestart(), 0);
+        return;
+      }
+      // Embed token: intercept and hold in the privileged process. NEVER forward
+      // to the renderer — an exfiltrated token from page JS is the whole reason
+      // this isn't the API key (LOOM plan §6). Swallow even a malformed payload
+      // so a token-keyed message can't slip through to the renderer.
+      if (isEmbedTokenWidget(data)) {
+        const token = parseEmbedTokenWidget(data);
+        if (token) {
+          this.embedTokens.set(token);
+          log("  embed token received for page", token.pageId);
+        } else {
+          log("  discarded malformed embed token widget");
+        }
         return;
       }
       this.window.webContents.send("agent:ui-request", data);

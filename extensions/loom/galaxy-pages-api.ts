@@ -53,6 +53,23 @@ export interface GalaxyPage extends GalaxyPageSummary {
   content?: string;
   content_format?: "markdown" | "html";
   edit_source?: "user" | "agent" | "restore";
+  /**
+   * Chrome-free, frame-embeddable URL for the page's latest revision. Galaxy
+   * returns this *path-relative* (honors a deployment prefix, no host), so the
+   * brain builds the absolute embed URL itself via galaxy-embed.ts rather than
+   * consuming this directly. Present only on `PageDetails` (the `getPage` shape).
+   */
+  embed_url?: string | null;
+}
+
+/**
+ * Response of `POST /api/pages/{id}/embed_token` (upstream `PageEmbedToken`):
+ * a short-lived, page-scoped token authenticating a read-only embedded render,
+ * plus its UTC expiry. See galaxy schema.py `PageEmbedToken`.
+ */
+export interface GalaxyEmbedToken {
+  token: string;
+  expires_at: string;
 }
 
 /** What `GET /api/pages/{id}/revisions` actually returns — no content. */
@@ -175,6 +192,24 @@ export async function updatePage(
   if (params.title !== undefined) body.title = params.title;
   if (params.annotation !== undefined) body.annotation = params.annotation;
   return galaxyPut<GalaxyPageSummary>(`/pages/${encodeURIComponent(pageId)}`, body, signal);
+}
+
+/**
+ * Mint a short-lived, page-scoped embed token for `pageId`. Auth is the normal
+ * API key (this client's `galaxyPost`); Galaxy authorizes the caller as the page
+ * owner/sharer before minting. The token authenticates the read-only embedded
+ * render and its nested dataset/viz frames; the brain refreshes it before
+ * `expires_at` (see galaxy-embed.ts `shouldRefreshToken`).
+ */
+export async function mintEmbedToken(
+  pageId: string,
+  signal?: AbortSignal,
+): Promise<GalaxyEmbedToken> {
+  return galaxyPost<GalaxyEmbedToken>(
+    `/pages/${encodeURIComponent(pageId)}/embed_token`,
+    {},
+    signal,
+  );
 }
 
 export async function getPageRevisions(

@@ -442,6 +442,29 @@ function findSessionSummaryBlockRanges(content: string): SessionSummaryBlockRang
 }
 
 /**
+ * Remove every `loom-session` block from the content. Used on push so Galaxy
+ * doesn't try to render Loom's internal session-housekeeping metadata as a page
+ * cell (Galaxy markdown reads ` ```loom-session ` as an unknown cell directive →
+ * "This cell type `loom-session` is not available"). Mirrors
+ * `stripGalaxyPageBlocks`; also drops a single trailing blank line so repeated
+ * strips don't leave wide gaps.
+ */
+export function stripSessionSummaryBlocks(content: string): string {
+  const ranges = findSessionSummaryBlockRanges(content);
+  if (ranges.length === 0) return content;
+
+  const lines = content.split("\n");
+  const drop = new Set<number>();
+  for (const r of ranges) {
+    for (let n = r.start; n <= r.end; n++) drop.add(n);
+    if (r.end + 1 < lines.length && lines[r.end + 1].trim() === "") {
+      drop.add(r.end + 1);
+    }
+  }
+  return lines.filter((_, idx) => !drop.has(idx)).join("\n");
+}
+
+/**
  * Find every `loom-session` block in the notebook content and parse each.
  * Skips blocks that fail validation. Used by `session_start` to surface
  * any orphaned-active state from the previous session.

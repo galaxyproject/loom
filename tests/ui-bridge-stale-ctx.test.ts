@@ -54,7 +54,11 @@ describe("ui-bridge notebook widget (#271 stale-ctx guard)", () => {
 
     captured.listener!("fresh notebook content");
 
-    expect(setWidget).toHaveBeenCalledTimes(1);
+    // Two widgets now: the embed state (always) + the notebook markdown.
+    expect(setWidget).toHaveBeenCalledTimes(2);
+    const keys = setWidget.mock.calls.map((c) => c[0]);
+    expect(keys).toContain("notebook-embed");
+    expect(keys).toContain("notebook");
     expect(setNotebookWidgetMode).toHaveBeenCalledWith("open");
   });
 

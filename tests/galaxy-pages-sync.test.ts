@@ -163,6 +163,56 @@ describe("pushNotebookToGalaxy", () => {
     expect(written).toContain("last_synced_revision: r2");
   });
 
+  it("strips loom-session blocks from the pushed body but keeps them locally", async () => {
+    // Galaxy markdown reads ```loom-session as an unknown cell directive
+    // ("This cell type `loom-session` is not available"), so it must not reach
+    // the page -- but it's durable local session history, so the local re-persist
+    // must keep it.
+    const initial = [
+      "# Analysis",
+      "",
+      "Body content.",
+      "",
+      "```loom-session",
+      "id: 019eee42-4e64-73c1-a9eb-9a57187887f2",
+      "started_at: 2026-06-22T07:36:24.076Z",
+      "ended_at: 2026-06-22T08:28:05.634Z",
+      "notebook: notebook.md",
+      "orphaned_active_steps: 0",
+      "```",
+      "",
+      "```loom-galaxy-page",
+      "page_id: p1",
+      "page_slug: analysis",
+      'galaxy_server_url: "https://galaxy.example"',
+      "history_id: h1",
+      "last_synced_revision: r1",
+      "bound_at: 2026-05-20T10:00:00Z",
+      "```",
+      "",
+    ].join("\n");
+    vi.mocked(notebookWriter.readNotebook).mockResolvedValue(initial);
+    vi.mocked(pagesApi.updatePage).mockResolvedValue({
+      id: "p1",
+      slug: "analysis",
+      latest_revision_id: "r2",
+      revision_ids: ["r1", "r2"],
+      title: "Analysis",
+      create_time: "2026-05-20T00:00:00Z",
+      update_time: "2026-05-21T00:00:00Z",
+    });
+
+    await pushNotebookToGalaxy();
+
+    const sent = vi.mocked(pagesApi.updatePage).mock.calls[0][1].content;
+    expect(sent).not.toContain("loom-session");
+    expect(sent).toContain("Body content.");
+    // Local notebook retains the session history (and the binding).
+    const written = vi.mocked(notebookWriter.writeNotebook).mock.calls.at(-1)![1];
+    expect(written).toContain("```loom-session");
+    expect(written).toContain("id: 019eee42-4e64-73c1-a9eb-9a57187887f2");
+  });
+
   it("throws on server-URL mismatch before calling Galaxy", async () => {
     const initial = [
       "```loom-galaxy-page",

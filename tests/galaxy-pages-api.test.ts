@@ -15,7 +15,9 @@ import {
   getPageRevisions,
   listHistoryPages,
   listRecentPages,
+  mintEmbedToken,
   updatePage,
+  type GalaxyEmbedToken,
   type GalaxyPage,
   type GalaxyPageRevisionDetails,
   type GalaxyPageRevisionSummary,
@@ -256,6 +258,31 @@ describe("updatePage", () => {
     const body = put.mock.calls[0][1];
     expect(body).not.toHaveProperty("title");
     expect(body).not.toHaveProperty("annotation");
+  });
+});
+
+describe("mintEmbedToken", () => {
+  it("posts an empty body to /pages/{id}/embed_token and returns token + expiry", async () => {
+    const fixture: GalaxyEmbedToken = {
+      token: "deadbeefdeadbeefdeadbeefdeadbeef",
+      expires_at: "2026-06-20T12:15:00Z",
+    };
+    const post = vi.spyOn(galaxyApi, "galaxyPost").mockResolvedValue(fixture);
+
+    const got = await mintEmbedToken("page-abc");
+
+    expect(post).toHaveBeenCalledWith("/pages/page-abc/embed_token", {}, undefined);
+    expect(got).toEqual(fixture);
+  });
+
+  it("url-encodes the page id", async () => {
+    const post = vi.spyOn(galaxyApi, "galaxyPost").mockResolvedValue({
+      token: "t",
+      expires_at: "2026-06-20T12:15:00Z",
+    } as GalaxyEmbedToken);
+
+    await mintEmbedToken("page/with/slashes");
+    expect(post).toHaveBeenCalledWith("/pages/page%2Fwith%2Fslashes/embed_token", {}, undefined);
   });
 });
 

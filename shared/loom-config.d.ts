@@ -76,6 +76,13 @@ export interface LoomConfig {
      * session corpus via a SQLite+FTS5 mirror at ~/.loom/sessions-index.db.
      */
     sessionIndex?: boolean;
+    /**
+     * Auto-push the bound notebook to its Galaxy page on every content change
+     * (debounced), so the embedded Galaxy view tracks local edits without a
+     * manual `/sync push`. Off by default: `/sync push` is local-wins and
+     * silently clobbers server-side edits, so opting in accepts that risk.
+     */
+    autoPush?: boolean;
   };
   /**
    * Terminal/display preferences for the loom CLI.

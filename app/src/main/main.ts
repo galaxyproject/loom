@@ -23,6 +23,9 @@ import { getConfigDir, getConfigPath } from "../../../shared/loom-config.js";
 import { parseCliArgs, type CliArgs } from "./cli-args.js";
 import { initAutoUpdate } from "./auto-update.js";
 import { resolveStartupCwd } from "./startup-cwd.js";
+import { loadConfig } from "./config.js";
+import { resolveGalaxyServerUrl } from "./galaxy-status.js";
+import { configureGalaxyEmbedPartition } from "./embed-partition-session.js";
 
 // Workaround for systems where chrome-sandbox isn't suid root
 app.commandLine.appendSwitch("no-sandbox");
@@ -237,6 +240,13 @@ function createWindow(cwd: string): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // Enables the <webview> used for the server-side Galaxy notebook view,
+      // which needs the dedicated `persist:galaxy-embed` partition (a plain
+      // <iframe> can't target a custom partition). The webview's content is
+      // contained by that locked-down partition (token injection + frame-header
+      // strip + off-origin nav block); the renderer can't reach window.orbit
+      // from inside it (cross-origin, isolated world).
+      webviewTag: true,
     },
   });
 
@@ -284,6 +294,16 @@ function createWindow(cwd: string): void {
   }
 
   agentManager = new AgentManager(mainWindow, cwd);
+
+  // Lock down the dedicated embed-iframe partition: inject the scoped embed
+  // token (held in main, never the renderer) for Galaxy-origin requests only,
+  // strip frame-busting headers, and block off-origin in-frame navigation. The
+  // token + server URL are read live so a refresh / reconnect is picked up.
+  configureGalaxyEmbedPartition({
+    getToken: () => agentManager?.embedTokens.get()?.token ?? null,
+    getServerUrl: () => resolveGalaxyServerUrl(loadConfig(), process.env),
+  });
+
   registerIpcHandlers(agentManager);
   registerFilesIpc(() => agentManager?.getCwd() ?? cwd);
   startFilesWatcher(mainWindow, cwd);

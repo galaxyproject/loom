@@ -9,7 +9,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import * as fs from "fs";
-import { getState, getNotebookPath } from "./state";
+import { getState, getNotebookPath, isGalaxyEffectivelyConnected } from "./state";
 import { isTeamDispatchEnabled } from "./teams/is-enabled";
 import { isSessionIndexEnabled } from "./session-index/is-enabled";
 import { loadConfig } from "./config";
@@ -1212,10 +1212,8 @@ export function setupContextInjection(pi: ExtensionAPI): void {
 
   // Reflect Galaxy connection state in the status bar after each turn.
   pi.on("turn_end", async (_event, ctx) => {
-    const state = getState();
     const galaxyUrl = process.env.GALAXY_URL;
-    const apiKey = process.env.GALAXY_API_KEY;
-    const connected = Boolean(galaxyUrl && apiKey) || state.galaxyConnected;
+    const connected = isGalaxyEffectivelyConnected();
     const text = connected ? `🟢 Galaxy: ${galaxyUrl || "connected"}` : "⚪ Local-only";
     ctx.ui.setStatus("galaxy-plan", text);
   });
@@ -1227,8 +1225,7 @@ export function setupContextInjection(pi: ExtensionAPI): void {
 export function formatConnectionStatus(_ctx: ExtensionContext): string[] {
   const state = getState();
   const galaxyUrl = process.env.GALAXY_URL;
-  const apiKey = process.env.GALAXY_API_KEY;
-  const connected = Boolean(galaxyUrl && apiKey) || state.galaxyConnected;
+  const connected = isGalaxyEffectivelyConnected();
 
   const lines: string[] = [];
   if (connected) {
