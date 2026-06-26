@@ -8,6 +8,23 @@ describe("hostFromUrl", () => {
     expect(hostFromUrl("https://my.galaxy.example:8080/x")).toBe("my.galaxy.example");
     expect(hostFromUrl(undefined)).toBeUndefined();
     expect(hostFromUrl("not a url")).toBeUndefined();
+    expect(hostFromUrl("   ")).toBeUndefined();
+  });
+
+  it("extracts the host from a scheme-less URL (the form config/env often supply)", () => {
+    expect(hostFromUrl("usegalaxy.org")).toBe("usegalaxy.org");
+    expect(hostFromUrl("test.galaxyproject.org/")).toBe("test.galaxyproject.org");
+    expect(hostFromUrl("my.galaxy.example:8080/x")).toBe("my.galaxy.example");
+  });
+
+  it("keeps a loopback http host (the one non-https scheme Galaxy permits)", () => {
+    expect(hostFromUrl("http://127.0.0.1:8080")).toBe("127.0.0.1");
+  });
+
+  it("ignores non-http(s) schemes so they can't seed the network allowlist", () => {
+    // Galaxy speaks http(s); ftp:// / file:// (even with a host) must not allowlist one.
+    expect(hostFromUrl("ftp://x.org")).toBeUndefined();
+    expect(hostFromUrl("file://evil.example/etc/passwd")).toBeUndefined();
   });
 });
 
@@ -38,6 +55,11 @@ describe("buildSandboxConfig", () => {
   it("network: deny-all bash by default, allowlisting the Galaxy host when known", () => {
     expect(buildSandboxConfig(base).network!.allowedDomains).toEqual([]);
     const c = buildSandboxConfig({ ...base, galaxyUrl: "https://usegalaxy.org" });
+    expect(c.network!.allowedDomains).toContain("usegalaxy.org");
+  });
+
+  it("allowlists the Galaxy host even when the configured URL is scheme-less", () => {
+    const c = buildSandboxConfig({ ...base, galaxyUrl: "usegalaxy.org" });
     expect(c.network!.allowedDomains).toContain("usegalaxy.org");
   });
 
