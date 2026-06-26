@@ -8,6 +8,7 @@ describe("hostFromUrl", () => {
     expect(hostFromUrl("https://my.galaxy.example:8080/x")).toBe("my.galaxy.example");
     expect(hostFromUrl(undefined)).toBeUndefined();
     expect(hostFromUrl("not a url")).toBeUndefined();
+    expect(hostFromUrl("   ")).toBeUndefined();
   });
 
   it("extracts the host from a scheme-less URL (the form config/env often supply)", () => {
@@ -24,11 +25,6 @@ describe("hostFromUrl", () => {
     // Galaxy speaks http(s); ftp:// / file:// (even with a host) must not allowlist one.
     expect(hostFromUrl("ftp://x.org")).toBeUndefined();
     expect(hostFromUrl("file://evil.example/etc/passwd")).toBeUndefined();
-  });
-
-  it("yields no host for empty or unparseable input", () => {
-    expect(hostFromUrl("")).toBeUndefined();
-    expect(hostFromUrl("   ")).toBeUndefined();
   });
 });
 

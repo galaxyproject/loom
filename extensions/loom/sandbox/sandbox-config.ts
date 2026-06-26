@@ -47,9 +47,8 @@ export function hostFromUrl(url?: string): string | undefined {
     // scheme-less GALAXY_URL ("usegalaxy.org") still resolves to a host.
     const parsed = new URL(normalizeGalaxyUrl(url));
     // Galaxy speaks http(s) only (validateGalaxyUrl enforces this on connect),
-    // so keep the host only for those schemes -- an ftp://x.org or
-    // file://host/... GALAXY_URL must not seed the bash network allowlist. The
-    // allowlisted host is therefore the Galaxy connection's, never broader.
+    // so keep the host only for those schemes -- an ftp:// or file:// GALAXY_URL
+    // must not seed the bash network allowlist.
     if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return undefined;
     return parsed.hostname || undefined;
   } catch {
