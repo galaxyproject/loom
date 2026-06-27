@@ -52,6 +52,7 @@
   --activity-bg: var(--masthead);
   --activity-border: var(--border-strong);
   --activity-shell-text: var(--masthead-text);
+  --activity-header-button-text: var(--text-subtle-on-masthead);
 
   --success: #4ade80;
   --success-bg: rgba(74, 222, 128, 0.15);
@@ -123,6 +124,7 @@
   --activity-bg: var(--accent-surface);
   --activity-border: var(--accent-surface-border);
   --activity-shell-text: var(--accent-surface-text);
+  --activity-header-button-text: var(--text-dim);
 
   --success: #17803d;
   --success-bg: rgba(23, 128, 61, 0.12);
@@ -1916,7 +1918,7 @@ body.platform-darwin #files-title {
 .activity-section-header button {
   background: none;
   border: 1px solid var(--border-strong);
-  color: var(--text-subtle-on-masthead);
+  color: var(--activity-header-button-text);
   font-family: var(--font-sans);
   font-size: 10px;
   padding: 1px 6px;
