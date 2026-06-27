@@ -15,6 +15,7 @@ import { refreshGalaxyHistory } from "./galaxy-history.js";
 import { formatGalaxyTooltip } from "./galaxy-tooltip.js";
 import { PromptQueue, queuedPreview } from "./prompt-queue.js";
 import { FeedbackDraftStore } from "./feedback-draft.js";
+import { applyOrbitTheme } from "./theme.js";
 import { caretVisualLineFlags, shouldRecallOnArrow } from "./input-history-nav.js";
 import { LoomWidgetKey, decodeMarkdownWidget } from "../../../shared/loom-shell-contract.js";
 import { ALLOWED_SKILLS_PREFIX, isAllowedSkillUrl } from "../../../shared/loom-config.js";
@@ -33,10 +34,18 @@ declare global {
   }
 }
 
+let cleanupThemeListener: (() => void) | null = null;
+
+function setOrbitThemePreference(preference: unknown): void {
+  cleanupThemeListener?.();
+  cleanupThemeListener = applyOrbitTheme(preference);
+}
+
 // Apply remote-mode class as early as possible so CSS rules hit before paint.
 // The web shell's config:get response carries `_mode: "remote" | "desktop"`;
 // Electron's main-process config has no such field, so this is a no-op there.
 void window.orbit.getConfig().then((cfg: Record<string, unknown>) => {
+  setOrbitThemePreference((cfg as { ui?: { theme?: unknown } })?.ui?.theme);
   if ((cfg as { _mode?: string })?._mode === "remote") {
     document.body.classList.add("remote-mode");
   }
@@ -2878,6 +2887,8 @@ const prefsBypass = document.getElementById("prefs-bypass") as HTMLInputElement;
 const bypassBanner = document.getElementById("bypass-banner")!;
 const prefsSandbox = document.getElementById("prefs-sandbox") as HTMLInputElement;
 const sandboxBanner = document.getElementById("sandbox-banner")!;
+const prefsTheme = document.getElementById("prefs-theme") as HTMLSelectElement;
+let prefsSavedThemePreference: "light" | "dark" = "dark";
 
 function refreshBypassBanner(active: boolean): void {
   bypassBanner.classList.toggle("hidden", !active);
@@ -3255,6 +3266,7 @@ async function openPreferences(): Promise<void> {
     condaBin?: string;
     skills?: { repos?: Array<{ name?: string; url?: string; branch?: string; enabled?: boolean }> };
     guardian?: { dangerouslyBypassPermissions?: boolean; sandbox?: boolean };
+    ui?: { theme?: "light" | "dark" };
   };
 
   // Build per-provider in-memory state from masked config.
@@ -3287,6 +3299,8 @@ async function openPreferences(): Promise<void> {
 
   prefsDefaultCwd.value = config.defaultCwd || "";
   prefsCondaBin.value = config.condaBin || "auto";
+  prefsSavedThemePreference = config.ui?.theme === "light" ? "light" : "dark";
+  prefsTheme.value = prefsSavedThemePreference;
   prefsBypass.checked = config.guardian?.dangerouslyBypassPermissions === true;
   prefsSandbox.checked = config.guardian?.sandbox === true;
 
@@ -3305,8 +3319,9 @@ async function openPreferences(): Promise<void> {
   prefsOverlay.classList.remove("hidden");
 }
 
-function closePreferences(): void {
+function closePreferences({ revertTheme = true }: { revertTheme?: boolean } = {}): void {
   prefsOverlay.classList.add("hidden");
+  if (revertTheme) setOrbitThemePreference(prefsSavedThemePreference);
 }
 
 async function savePreferences(): Promise<void> {
@@ -3398,6 +3413,7 @@ async function savePreferences(): Promise<void> {
 
   config.defaultCwd = prefsDefaultCwd.value.trim() || undefined;
   config.condaBin = (prefsCondaBin.value as "auto" | "mamba" | "conda") || undefined;
+  config.ui = { theme: prefsTheme.value };
   // The bash sandbox toggle rides the normal Save path (which restarts the brain, so
   // the sandbox engages at the next session_start). Main narrows this to the sandbox
   // field only and merges it onto the stored guardian block, so it can't disturb the
@@ -3440,7 +3456,8 @@ async function savePreferences(): Promise<void> {
 
   const result = await window.orbit.saveConfig(config as Record<string, unknown>);
   if (result.success) {
-    closePreferences();
+    closePreferences({ revertTheme: false });
+    setOrbitThemePreference(prefsTheme.value);
     void refreshGalaxyStatus();
     refreshSandboxBanner(prefsSandbox.checked);
     if (selectedModel) {
@@ -3470,9 +3487,12 @@ async function savePreferences(): Promise<void> {
   }
 }
 
-prefsClose.addEventListener("click", closePreferences);
-prefsCancel.addEventListener("click", closePreferences);
+prefsClose.addEventListener("click", () => closePreferences());
+prefsCancel.addEventListener("click", () => closePreferences());
 prefsSave.addEventListener("click", savePreferences);
+prefsTheme.addEventListener("change", () => {
+  setOrbitThemePreference(prefsTheme.value);
+});
 prefsOverlay.addEventListener("click", (e) => {
   if (e.target === prefsOverlay) closePreferences();
 });

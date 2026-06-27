@@ -82,6 +82,11 @@ export interface LoomConfig {
    */
   ui?: {
     /**
+     * Orbit visual theme. Missing or invalid values resolve to "dark" so
+     * existing installs keep the pre-theme appearance.
+     */
+    theme?: "light" | "dark";
+    /**
      * Show the model's "thinking" blocks in the interactive terminal. Off by
      * default -- loom hides them (writes pi's `hideThinkingBlock`) to keep the
      * chat readable. Set true to restore pi's reasoning stream persistently.
