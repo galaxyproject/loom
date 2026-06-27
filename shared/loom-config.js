@@ -20,6 +20,7 @@ export const DEFAULT_SKILLS = [
  * isAllowedSkillUrl() with a more permissive predicate.
  */
 export const ALLOWED_SKILLS_PREFIX = "https://github.com/galaxyproject/";
+const VALID_UI_THEMES = new Set(["light", "dark"]);
 
 export function isAllowedSkillUrl(url) {
   if (typeof url !== "string") return false;
@@ -119,6 +120,11 @@ export function loadConfig() {
   if (typeof raw.updateCheck !== "boolean") {
     raw.updateCheck = true;
   }
+  const ui = raw.ui && typeof raw.ui === "object" && !Array.isArray(raw.ui) ? raw.ui : {};
+  raw.ui = {
+    ...ui,
+    theme: VALID_UI_THEMES.has(ui.theme) ? ui.theme : "dark",
+  };
   return raw;
 }
 
