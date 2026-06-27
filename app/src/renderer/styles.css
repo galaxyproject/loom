@@ -1904,7 +1904,7 @@ body.platform-darwin #files-title {
   gap: 8px;
   padding: 4px 12px;
   background: var(--bg-subtle);
-  color: var(--text-muted-on-masthead);
+  color: var(--text-dim);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
