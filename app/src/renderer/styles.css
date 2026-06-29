@@ -83,6 +83,13 @@
   --footer-ctrl-padding-x: 10px;
   --footer-ctrl-radius: var(--radius);
   --footer-ctrl-font-size: 11px;
+  --footer-control-text: var(--text-dim);
+  --footer-control-hover-text: var(--text);
+  --footer-control-hover-bg: var(--bg-subtle-hover);
+  --footer-highlight: var(--accent);
+  --footer-highlight-border: var(--accent);
+  --footer-highlight-bg: var(--accent-bg);
+  --footer-highlight-text: var(--galaxy-dark);
 }
 
 :root[data-theme="light"] {
@@ -142,6 +149,14 @@
   --danger-bg: #c03434;
   --danger-bg-hover: #a82d2d;
   --danger-border: #9f2a2a;
+
+  --footer-control-text: rgba(255, 255, 255, 0.82);
+  --footer-control-hover-text: #ffffff;
+  --footer-control-hover-bg: rgba(219, 234, 254, 0.16);
+  --footer-highlight: #60a5fa;
+  --footer-highlight-border: rgba(147, 197, 253, 0.85);
+  --footer-highlight-bg: rgba(96, 165, 250, 0.24);
+  --footer-highlight-text: #ffffff;
 }
 
 * {
@@ -595,6 +610,12 @@ body:not(.artifact-collapsed) #artifact-toggle {
   background: var(--accent-bg);
 }
 
+:root[data-theme="light"] body:not(.files-collapsed) #files-toggle,
+:root[data-theme="light"] body:not(.artifact-collapsed) #artifact-toggle {
+  color: #ffffff;
+  border-color: #ffffff;
+}
+
 /* ── File viewer (in artifact pane) ───────────────────────────────────────── */
 
 .file-viewer-root {
@@ -892,7 +913,7 @@ body.platform-darwin #files-title {
   border-radius: var(--footer-ctrl-radius);
   border: 1px solid var(--border);
   background: var(--bg-subtle);
-  color: var(--text-dim);
+  color: var(--footer-control-text);
   font-family: var(--font);
   font-size: var(--footer-ctrl-font-size);
   font-weight: 500;
@@ -907,16 +928,16 @@ body.platform-darwin #files-title {
   cursor: pointer;
 }
 .footer-control.is-interactive:hover {
-  background: var(--bg-subtle-hover);
-  color: var(--text);
+  background: var(--footer-control-hover-bg);
+  color: var(--footer-control-hover-text);
   border-color: var(--border-strong);
 }
 
 /* Status badge — agent state. Color-only variants atop the base. */
 .status-badge.running {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: var(--accent-bg);
+  color: var(--footer-highlight-text);
+  border-color: var(--footer-highlight-border);
+  background: var(--footer-highlight-bg);
 }
 .status-badge.error {
   color: #ff817b;
@@ -924,9 +945,9 @@ body.platform-darwin #files-title {
   background: rgba(227, 26, 30, 0.2);
 }
 .status-badge.thinking {
-  color: var(--galaxy-gold-dark);
-  border-color: rgba(255, 215, 0, 0.3);
-  background: rgba(255, 215, 0, 0.15);
+  color: var(--footer-highlight-text);
+  border-color: var(--footer-highlight-border);
+  background: var(--footer-highlight-bg);
   animation: blink 1.5s step-end infinite;
 }
 
@@ -947,14 +968,14 @@ body.platform-darwin #files-title {
   transition: background 0.4s;
 }
 .agent-heartbeat.pulse {
-  background: var(--accent);
+  background: var(--footer-highlight);
   animation: heartbeat-pulse 0.8s ease-out;
 }
 @keyframes heartbeat-pulse {
   0% {
-    background: var(--accent);
+    background: var(--footer-highlight);
     transform: scale(1.6);
-    box-shadow: 0 0 4px var(--accent);
+    box-shadow: 0 0 4px var(--footer-highlight);
   }
   100% {
     background: var(--text-dim);
@@ -967,14 +988,14 @@ body.platform-darwin #files-title {
   font-family: var(--font);
 }
 #model-indicator:hover {
-  color: var(--masthead-hover);
-  border-color: var(--masthead-hover);
+  color: var(--footer-highlight);
+  border-color: var(--footer-highlight-border);
 }
 
 /* Galaxy status pill: same dimensions as other footer-controls; the dot is
    a ::before pseudo-element. Color states defined above near .status-dot. */
 .status-dot-connected {
-  color: var(--text);
+  color: var(--footer-control-hover-text);
 }
 
 /* Push the agent-status pill to the left edge; everything after it
@@ -988,7 +1009,7 @@ body.platform-darwin #files-title {
 #usage-cost {
   padding-left: 6px;
   border-left: 1px solid var(--border-strong);
-  color: var(--accent);
+  color: var(--footer-highlight);
   white-space: nowrap;
 }
 #usage-cost.hidden {
@@ -1015,7 +1036,7 @@ body.platform-darwin #files-title {
   height: 100%;
   width: 0%;
   border-radius: 3px;
-  background: var(--accent);
+  background: var(--footer-highlight);
   transition: width 0.2s;
 }
 #context-fill-pct {
@@ -1035,7 +1056,7 @@ body.platform-darwin #files-title {
 }
 
 /* Segmented Local|Cloud control — single rounded-rect container with two
-   inner buttons, the active one filled with var(--accent). */
+   inner buttons, the active one filled with the footer highlight. */
 .footer-control-segmented {
   padding: 0;
   gap: 0;
@@ -1045,7 +1066,7 @@ body.platform-darwin #files-title {
   appearance: none;
   background: transparent;
   border: 0;
-  color: var(--text-dim);
+  color: var(--footer-control-text);
   font: inherit;
   height: 100%;
   padding: 0 10px;
@@ -1055,12 +1076,12 @@ body.platform-darwin #files-title {
     color 0.15s;
 }
 .footer-control-segmented .exec-mode-btn:hover:not(.active) {
-  color: var(--text);
-  background: var(--bg-inset);
+  color: var(--footer-control-hover-text);
+  background: var(--footer-control-hover-bg);
 }
 .footer-control-segmented .exec-mode-btn.active {
-  background: var(--accent);
-  color: var(--galaxy-dark);
+  background: var(--footer-highlight);
+  color: var(--footer-highlight-text);
   font-weight: 600;
 }
 
@@ -1081,7 +1102,7 @@ body.platform-darwin #files-title {
   appearance: none;
   background: transparent;
   border: 0;
-  color: var(--text-dim);
+  color: var(--footer-control-text);
   padding: 0;
   margin-left: 2px;
   cursor: pointer;
@@ -1091,7 +1112,7 @@ body.platform-darwin #files-title {
   transition: color 0.15s;
 }
 .cwd-change-btn:hover {
-  color: var(--masthead-hover);
+  color: var(--footer-highlight);
 }
 
 /* ── Messages ──────────────────────────────────────────────────────────────── */
@@ -2073,7 +2094,7 @@ body.platform-darwin #files-title {
 #abort-btn {
   background: var(--accent);
   color: var(--galaxy-dark);
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--radius);
   width: 36px;
   height: 36px;
@@ -2085,9 +2106,22 @@ body.platform-darwin #files-title {
   flex-shrink: 0;
 }
 
+#send-btn {
+  align-self: stretch;
+  width: auto;
+  height: auto;
+  aspect-ratio: 1;
+}
+
 #send-btn:hover,
 #abort-btn:hover {
   opacity: 0.85;
+}
+
+:root[data-theme="light"] #send-btn {
+  background: #ffffff;
+  color: var(--galaxy-primary);
+  border-color: var(--accent);
 }
 
 /* Stop carries a visible label (not just an icon) so it's unmistakable while a
