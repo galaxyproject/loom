@@ -2771,7 +2771,10 @@ function setStatusBadge(status: string, msg?: string): void {
   statusBadge.className = ("footer-control status-badge " + (status || "")).trim();
   statusBadgeIsStuck = STUCK_STATUS.has(status);
   statusBadge.style.cursor = statusBadgeIsStuck ? "pointer" : "default";
-  statusBadge.title = statusBadgeIsStuck ? "Click to open Preferences" : "";
+  // The pill is width-capped and scrolls when long (see #agent-status CSS), so
+  // expose the full status on hover — "Click to open Preferences" still wins
+  // when the badge is stuck/clickable.
+  statusBadge.title = statusBadgeIsStuck ? "Click to open Preferences" : lastBadgeBaseText;
   renderBadgeText();
 }
 
