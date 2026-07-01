@@ -48,9 +48,7 @@ function packagedExecutablePath(): string {
   throw new Error(`Unsupported platform: ${process.platform}`);
 }
 
-test("Orbit launches and the renderer initializes without errors", async () => {
-  const errors: string[] = [];
-
+async function launchIsolatedOrbit(opts: { notebook?: string } = {}) {
   // Per-test temp tree. HOME redirect covers ~/.loom and ~/.orbit; the
   // Electron --user-data-dir flag covers app.getPath("userData") which on
   // macOS lives outside HOME (~/Library/Application Support).
@@ -63,6 +61,9 @@ test("Orbit launches and the renderer initializes without errors", async () => {
     fs.mkdir(fakeCwd, { recursive: true }),
     fs.mkdir(userDataDir, { recursive: true }),
   ]);
+  if (opts.notebook !== undefined) {
+    await fs.writeFile(path.join(fakeCwd, "notebook.md"), opts.notebook, "utf-8");
+  }
 
   const isolatedEnv = {
     ...process.env,
@@ -95,6 +96,13 @@ test("Orbit launches and the renderer initializes without errors", async () => {
     cwd: fakeCwd,
   });
 
+  return { app, tmpRoot };
+}
+
+test("Orbit launches and the renderer initializes without errors", async () => {
+  const errors: string[] = [];
+  const { app, tmpRoot } = await launchIsolatedOrbit();
+
   try {
     const page = await app.firstWindow();
     page.on("pageerror", (err) => errors.push(`pageerror: ${err.message}`));
@@ -115,6 +123,24 @@ test("Orbit launches and the renderer initializes without errors", async () => {
 
     // No uncaught renderer errors during boot
     expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    await fs.rm(tmpRoot, { recursive: true, force: true });
+  }
+});
+
+test("Orbit loads notebook.md into the notebook pane on startup", async () => {
+  const uniqueNotebookLine = `Notebook autoload sentinel ${Date.now()}`;
+  const { app, tmpRoot } = await launchIsolatedOrbit({
+    notebook: `# Existing analysis\n\n${uniqueNotebookLine}\n`,
+  });
+
+  try {
+    const page = await app.firstWindow();
+    await expect(page.locator("#input")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("#notebook-view")).toContainText(uniqueNotebookLine, {
+      timeout: 30_000,
+    });
   } finally {
     await app.close();
     await fs.rm(tmpRoot, { recursive: true, force: true });
