@@ -26,6 +26,7 @@ import {
 import type { FeedbackPayload, FeedbackSysinfo } from "../../../shared/feedback-contract.js";
 import changelogRaw from "../../../CHANGELOG.md?raw";
 import { parseChangelog, decideWhatsNew, releaseUrlFor } from "../../../shared/whats-new.js";
+import { openReleaseWithFallback } from "./update-banner.js";
 
 declare global {
   interface Window {
@@ -3987,7 +3988,16 @@ window.orbit.onProcUpdate((procs) => {
 
   if (updateBanner && updateVersionEl && updateLinkBtn && updateDismissBtn) {
     updateLinkBtn.addEventListener("click", () => {
-      if (currentReleaseUrl) void window.orbit.openReleasePage(currentReleaseUrl);
+      if (!currentReleaseUrl) return;
+      // Reveal the copyable link on every click, not just on a detected failure:
+      // where there's no working default browser (WSLg, #368) shell.openExternal
+      // fails silently, and because it only resolves Promise<void> a stub
+      // xdg-open that exits 0 without opening anything still looks like success.
+      // Showing the URL up-front means the update is never a dead end regardless
+      // of how the open fails; the note escalates only on a confirmed failure.
+      void openReleaseWithFallback(updateBanner, currentReleaseUrl, (u) =>
+        window.orbit.openReleasePage(u),
+      );
     });
     updateDismissBtn.addEventListener("click", () => {
       updateBanner.classList.add("hidden");

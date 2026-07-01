@@ -156,7 +156,7 @@ export interface OrbitAPI {
     releaseUrl: string;
   } | null>;
   getVersion(): Promise<{ version: string; isPackaged: boolean }>;
-  openReleasePage(url?: string): Promise<{ opened: boolean }>;
+  openReleasePage(url?: string): Promise<{ opened: boolean; url: string }>;
   openGalaxyHistory(url: string): Promise<{ opened: boolean }>;
   getGalaxyStatus(): Promise<{ connected: boolean; url: string | null }>;
   restartToUpdate(): Promise<{ restarting: boolean }>;
