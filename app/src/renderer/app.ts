@@ -1197,8 +1197,11 @@ async function refreshCwd(): Promise<void> {
 // callers behave as before. `applyCwdChange` passes false so the source cwd's
 // per-cwd cost record survives the switch — otherwise the per-cwd keying is
 // pointless.
+let notebookLoadSeq = 0;
+
 function resetUiForFreshContext(opts: { clearPersistedCost?: boolean } = {}): void {
   const { clearPersistedCost = true } = opts;
+  notebookLoadSeq++;
   chat.clear();
   artifacts.clear();
   clearQueue();
@@ -1245,6 +1248,7 @@ function applyCwdChange(dir: string): void {
   filesPanel.reset();
   void filesPanel.refresh();
   void refreshGalaxyInvocations(window.orbit);
+  void loadNotebookFromDisk();
 }
 
 cwdChangeBtn.addEventListener("click", async () => {
@@ -1261,12 +1265,16 @@ window.orbit.onCwdChanged((dir) => {
 // Replay prior turns only if the chat is currently blank — otherwise the user
 // is mid-flow (e.g. prefs-save restart) and replay would clobber live UI.
 async function loadNotebookFromDisk(): Promise<void> {
+  const seq = ++notebookLoadSeq;
   const r = await window.orbit.loadNotebook();
+  if (seq !== notebookLoadSeq) return;
   if (r.ok && r.content) {
     artifacts.setNotebookMarkdown(`> \`${r.path}\`\n\n${r.content}`);
     setArtifactCollapsed(false);
   }
 }
+
+void loadNotebookFromDisk();
 
 // On wake-from-sleep, auto-restore blank chat, notebook, and streaming UI state.
 window.orbit.onDisplayResume(() => {
@@ -2703,6 +2711,7 @@ window.orbit.onUiRequest((request) => {
     // the brain-side activity.jsonl is still written for debug but no
     // longer pushed as a widget.
     if (key === LoomWidgetKey.Notebook && lines) {
+      notebookLoadSeq++;
       artifacts.setNotebookMarkdown(decodeMarkdownWidget(lines));
       setArtifactCollapsed(false);
     }
