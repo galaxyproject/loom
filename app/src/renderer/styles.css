@@ -895,6 +895,19 @@ body.platform-darwin #files-title {
    collects on the right. */
 #agent-status {
   margin-right: auto;
+  /* Cap the status pill at a quarter of the footer so a long status message
+     can't grow the pill and crowd the other footer controls. min-width:0 lets
+     it shrink below its content; the text stays on one line (nowrap, inherited
+     from .footer-control) and scrolls horizontally within the pill when it
+     overflows. The scrollbar is hidden for aesthetics — the full text is still
+     available on hover via the title attribute (set in setStatusBadge). */
+  max-width: 25%;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+#agent-status::-webkit-scrollbar {
+  display: none;
 }
 #usage-tokens {
   white-space: nowrap;
