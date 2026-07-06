@@ -53,6 +53,9 @@
   --activity-border: var(--border-strong);
   --activity-shell-text: var(--masthead-text);
   --activity-header-button-text: var(--text-subtle-on-masthead);
+  --shell-tool-start-text: #80c3ea;
+  --shell-status-text: var(--galaxy-gold-dark);
+  --shell-stdout-text: var(--text-muted-on-masthead);
 
   --success: #4ade80;
   --success-bg: rgba(74, 222, 128, 0.15);
@@ -132,6 +135,10 @@
   --activity-border: var(--accent-surface-border);
   --activity-shell-text: var(--accent-surface-text);
   --activity-header-button-text: var(--text-dim);
+  /* Shell-line colors readable on the pale --activity-bg (AA on #dbeafe). */
+  --shell-tool-start-text: #155e8c;
+  --shell-status-text: #7a5c00;
+  --shell-stdout-text: #3d5678;
 
   --success: #17803d;
   --success-bg: rgba(23, 128, 61, 0.12);
@@ -2043,7 +2050,7 @@ body.platform-darwin #files-title {
 }
 
 .shell-line.shell-tool-start {
-  color: #80c3ea;
+  color: var(--shell-tool-start-text);
 }
 .shell-line.shell-tool-end {
   color: var(--success);
@@ -2054,13 +2061,13 @@ body.platform-darwin #files-title {
   padding-left: 16px;
 }
 .shell-line.shell-status {
-  color: var(--galaxy-gold-dark);
+  color: var(--shell-status-text);
 }
 .shell-line.shell-info {
   color: var(--text-dim);
 }
 .shell-line.shell-stdout {
-  color: var(--text-muted-on-masthead);
+  color: var(--shell-stdout-text);
   padding-left: 16px;
   font-size: 10px;
 }
@@ -3320,6 +3327,7 @@ body.remote-mode #update-banner,
 body.remote-mode #report-issue-btn,
 body.remote-mode #exec-mode-toggle,
 body.remote-mode #cwd-bar,
+body.remote-mode #prefs-section-appearance,
 body.remote-mode #prefs-section-llm,
 body.remote-mode #prefs-section-skills,
 body.remote-mode #prefs-section-safety {
