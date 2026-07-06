@@ -5,6 +5,8 @@
 @import url("./assets/fonts/fonts.css");
 
 :root {
+  color-scheme: dark;
+
   /* Galaxy brand palette */
   --galaxy-primary: #25537b;
   --galaxy-dark: #2c3143;
@@ -24,15 +26,36 @@
   --bg-hover: #3c435c;
   --bg-chat: #2c3143;
   --bg-artifact: #2c3143;
+  --bg-inset: rgba(255, 255, 255, 0.06);
+  --bg-base: rgba(0, 0, 0, 0.03);
+  --bg-subtle: rgba(255, 255, 255, 0.04);
+  --bg-subtle-hover: rgba(255, 255, 255, 0.1);
+  --bg-selected: rgba(255, 255, 255, 0.15);
 
   --text: #f0f2f8;
   --text-dim: rgba(248, 250, 252, 0.45);
   --text-bright: #f8fafc;
+  --text-muted-on-masthead: rgba(255, 255, 255, 0.7);
+  --text-subtle-on-masthead: rgba(255, 255, 255, 0.6);
 
+  --accent-surface: var(--galaxy-primary);
+  --accent-surface-border: rgba(255, 255, 255, 0.08);
+  --accent-surface-text: var(--text-bright);
   --accent: #ffd700;
   --accent-light: #ffd700;
   --accent-bg: rgba(255, 215, 0, 0.15);
   --accent-hover: #d19e00;
+
+  --user-message-bg: var(--accent-surface);
+  --user-message-border: var(--accent-surface-border);
+  --user-message-text: var(--accent-surface-text);
+  --activity-bg: var(--masthead);
+  --activity-border: var(--border-strong);
+  --activity-shell-text: var(--masthead-text);
+  --activity-header-button-text: var(--text-subtle-on-masthead);
+  --shell-tool-start-text: #80c3ea;
+  --shell-status-text: var(--galaxy-gold-dark);
+  --shell-stdout-text: var(--text-muted-on-masthead);
 
   --success: #4ade80;
   --success-bg: rgba(74, 222, 128, 0.15);
@@ -42,7 +65,14 @@
 
   --border: rgba(255, 255, 255, 0.08);
   --border-strong: rgba(255, 255, 255, 0.15);
+  --border-subtle: rgba(255, 255, 255, 0.04);
   --bg-stripe: rgba(255, 255, 255, 0.02);
+  --shadow: rgba(0, 0, 0, 0.4);
+  --shadow-soft: rgba(0, 0, 0, 0.3);
+  --modal-scrim: rgba(20, 25, 40, 0.6);
+  --danger-bg: #7a2027;
+  --danger-bg-hover: #8d2731;
+  --danger-border: #a13038;
   --radius: 6px;
   --font: "JetBrains Mono", Monaco, Menlo, Consolas, "Courier New", monospace;
   --font-sans:
@@ -56,6 +86,84 @@
   --footer-ctrl-padding-x: 10px;
   --footer-ctrl-radius: var(--radius);
   --footer-ctrl-font-size: 11px;
+  --footer-control-text: var(--text-dim);
+  --footer-control-hover-text: var(--text);
+  --footer-control-hover-bg: var(--bg-subtle-hover);
+  --footer-highlight: var(--accent);
+  --footer-highlight-border: var(--accent);
+  --footer-highlight-bg: var(--accent-bg);
+  --footer-highlight-text: var(--galaxy-dark);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --masthead: #25537b;
+  --masthead-text: #f8fafc;
+  --masthead-hover: #ffd700;
+
+  --bg: #f6f8fb;
+  --bg-surface: #ffffff;
+  --bg-deep: #e8edf5;
+  --bg-hover: #e1e8f2;
+  --bg-chat: #f6f8fb;
+  --bg-artifact: #ffffff;
+  --bg-inset: rgba(31, 41, 55, 0.06);
+  --bg-base: rgba(31, 41, 55, 0.035);
+  --bg-subtle: rgba(31, 41, 55, 0.055);
+  --bg-subtle-hover: rgba(31, 41, 55, 0.1);
+  --bg-selected: rgba(31, 41, 55, 0.14);
+
+  --text: #1f2937;
+  --text-dim: rgba(31, 41, 55, 0.62);
+  --text-bright: #111827;
+  --text-muted-on-masthead: rgba(248, 250, 252, 0.78);
+  --text-subtle-on-masthead: rgba(248, 250, 252, 0.68);
+
+  --accent-surface: #dbeafe;
+  --accent-surface-border: #bfdbfe;
+  --accent-surface-text: #1e3a5f;
+  --accent: #b77900;
+  --accent-light: #d19e00;
+  --accent-bg: rgba(209, 158, 0, 0.14);
+  --accent-hover: #8a5a00;
+
+  --user-message-bg: var(--accent-surface);
+  --user-message-border: var(--accent-surface-border);
+  --user-message-text: var(--accent-surface-text);
+  --activity-bg: var(--accent-surface);
+  --activity-border: var(--accent-surface-border);
+  --activity-shell-text: var(--accent-surface-text);
+  --activity-header-button-text: var(--text-dim);
+  /* Shell-line colors readable on the pale --activity-bg (AA on #dbeafe). */
+  --shell-tool-start-text: #155e8c;
+  --shell-status-text: #7a5c00;
+  --shell-stdout-text: #3d5678;
+
+  --success: #17803d;
+  --success-bg: rgba(23, 128, 61, 0.12);
+  --warning: #b77900;
+  --error: #c03434;
+  --error-bg: rgba(192, 52, 52, 0.1);
+
+  --border: rgba(31, 41, 55, 0.12);
+  --border-strong: rgba(31, 41, 55, 0.22);
+  --border-subtle: rgba(31, 41, 55, 0.08);
+  --bg-stripe: rgba(31, 41, 55, 0.035);
+  --shadow: rgba(31, 41, 55, 0.18);
+  --shadow-soft: rgba(31, 41, 55, 0.16);
+  --modal-scrim: rgba(15, 23, 42, 0.28);
+  --danger-bg: #c03434;
+  --danger-bg-hover: #a82d2d;
+  --danger-border: #9f2a2a;
+
+  --footer-control-text: rgba(255, 255, 255, 0.82);
+  --footer-control-hover-text: #ffffff;
+  --footer-control-hover-bg: rgba(219, 234, 254, 0.16);
+  --footer-highlight: #60a5fa;
+  --footer-highlight-border: rgba(147, 197, 253, 0.85);
+  --footer-highlight-bg: rgba(96, 165, 250, 0.24);
+  --footer-highlight-text: #ffffff;
 }
 
 * {
@@ -340,7 +448,7 @@ body.files-collapsed #files-divider {
 }
 .files-header-btn:hover {
   opacity: 1;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-subtle-hover);
 }
 .files-header-btn.active {
   opacity: 1;
@@ -423,7 +531,7 @@ body.files-collapsed #files-divider {
   background: var(--bg-surface);
   border: 1px solid var(--border-strong);
   border-radius: 4px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 16px var(--shadow);
   padding: 4px 0;
   font-family: var(--font-sans);
   font-size: 12px;
@@ -467,7 +575,7 @@ body.files-collapsed #files-divider {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 8px var(--shadow);
   transition:
     background 0.1s,
     color 0.1s;
@@ -499,7 +607,7 @@ body.files-collapsed #files-divider {
 }
 .pane-title-btn:hover {
   opacity: 1;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-subtle-hover);
 }
 body:not(.files-collapsed) #files-toggle,
 body:not(.artifact-collapsed) #artifact-toggle {
@@ -507,6 +615,12 @@ body:not(.artifact-collapsed) #artifact-toggle {
   color: var(--accent);
   border-color: var(--accent);
   background: var(--accent-bg);
+}
+
+:root[data-theme="light"] body:not(.files-collapsed) #files-toggle,
+:root[data-theme="light"] body:not(.artifact-collapsed) #artifact-toggle {
+  color: #ffffff;
+  border-color: #ffffff;
 }
 
 /* ── File viewer (in artifact pane) ───────────────────────────────────────── */
@@ -805,8 +919,8 @@ body.platform-darwin #files-title {
   padding: 0 var(--footer-ctrl-padding-x);
   border-radius: var(--footer-ctrl-radius);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-dim);
+  background: var(--bg-subtle);
+  color: var(--footer-control-text);
   font-family: var(--font);
   font-size: var(--footer-ctrl-font-size);
   font-weight: 500;
@@ -821,16 +935,16 @@ body.platform-darwin #files-title {
   cursor: pointer;
 }
 .footer-control.is-interactive:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text);
+  background: var(--footer-control-hover-bg);
+  color: var(--footer-control-hover-text);
   border-color: var(--border-strong);
 }
 
 /* Status badge — agent state. Color-only variants atop the base. */
 .status-badge.running {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: var(--accent-bg);
+  color: var(--footer-highlight-text);
+  border-color: var(--footer-highlight-border);
+  background: var(--footer-highlight-bg);
 }
 .status-badge.error {
   color: #ff817b;
@@ -838,9 +952,9 @@ body.platform-darwin #files-title {
   background: rgba(227, 26, 30, 0.2);
 }
 .status-badge.thinking {
-  color: var(--galaxy-gold-dark);
-  border-color: rgba(255, 215, 0, 0.3);
-  background: rgba(255, 215, 0, 0.15);
+  color: var(--footer-highlight-text);
+  border-color: var(--footer-highlight-border);
+  background: var(--footer-highlight-bg);
   animation: blink 1.5s step-end infinite;
 }
 
@@ -861,14 +975,14 @@ body.platform-darwin #files-title {
   transition: background 0.4s;
 }
 .agent-heartbeat.pulse {
-  background: var(--accent);
+  background: var(--footer-highlight);
   animation: heartbeat-pulse 0.8s ease-out;
 }
 @keyframes heartbeat-pulse {
   0% {
-    background: var(--accent);
+    background: var(--footer-highlight);
     transform: scale(1.6);
-    box-shadow: 0 0 4px var(--accent);
+    box-shadow: 0 0 4px var(--footer-highlight);
   }
   100% {
     background: var(--text-dim);
@@ -881,14 +995,14 @@ body.platform-darwin #files-title {
   font-family: var(--font);
 }
 #model-indicator:hover {
-  color: var(--masthead-hover);
-  border-color: var(--masthead-hover);
+  color: var(--footer-highlight);
+  border-color: var(--footer-highlight-border);
 }
 
 /* Galaxy status pill: same dimensions as other footer-controls; the dot is
    a ::before pseudo-element. Color states defined above near .status-dot. */
 .status-dot-connected {
-  color: var(--text);
+  color: var(--footer-control-hover-text);
 }
 
 /* Push the agent-status pill to the left edge; everything after it
@@ -914,8 +1028,8 @@ body.platform-darwin #files-title {
 }
 #usage-cost {
   padding-left: 6px;
-  border-left: 1px solid rgba(255, 255, 255, 0.15);
-  color: var(--accent);
+  border-left: 1px solid var(--border-strong);
+  color: var(--footer-highlight);
   white-space: nowrap;
 }
 #usage-cost.hidden {
@@ -934,7 +1048,7 @@ body.platform-darwin #files-title {
   width: 42px;
   height: 6px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--bg-selected);
   overflow: hidden;
 }
 #context-fill-bar {
@@ -942,7 +1056,7 @@ body.platform-darwin #files-title {
   height: 100%;
   width: 0%;
   border-radius: 3px;
-  background: var(--accent);
+  background: var(--footer-highlight);
   transition: width 0.2s;
 }
 #context-fill-pct {
@@ -962,7 +1076,7 @@ body.platform-darwin #files-title {
 }
 
 /* Segmented Local|Cloud control — single rounded-rect container with two
-   inner buttons, the active one filled with var(--accent). */
+   inner buttons, the active one filled with the footer highlight. */
 .footer-control-segmented {
   padding: 0;
   gap: 0;
@@ -972,7 +1086,7 @@ body.platform-darwin #files-title {
   appearance: none;
   background: transparent;
   border: 0;
-  color: var(--text-dim);
+  color: var(--footer-control-text);
   font: inherit;
   height: 100%;
   padding: 0 10px;
@@ -982,12 +1096,12 @@ body.platform-darwin #files-title {
     color 0.15s;
 }
 .footer-control-segmented .exec-mode-btn:hover:not(.active) {
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--footer-control-hover-text);
+  background: var(--footer-control-hover-bg);
 }
 .footer-control-segmented .exec-mode-btn.active {
-  background: var(--accent);
-  color: var(--galaxy-dark);
+  background: var(--footer-highlight);
+  color: var(--footer-highlight-text);
   font-weight: 600;
 }
 
@@ -1008,7 +1122,7 @@ body.platform-darwin #files-title {
   appearance: none;
   background: transparent;
   border: 0;
-  color: var(--text-dim);
+  color: var(--footer-control-text);
   padding: 0;
   margin-left: 2px;
   cursor: pointer;
@@ -1018,7 +1132,7 @@ body.platform-darwin #files-title {
   transition: color 0.15s;
 }
 .cwd-change-btn:hover {
-  color: var(--masthead-hover);
+  color: var(--footer-highlight);
 }
 
 /* ── Messages ──────────────────────────────────────────────────────────────── */
@@ -1053,11 +1167,11 @@ body.platform-darwin #files-title {
 }
 
 .message.user {
-  background: var(--galaxy-primary);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--user-message-bg);
+  border: 1px solid var(--user-message-border);
   align-self: flex-end;
   max-width: 85%;
-  color: var(--text-bright);
+  color: var(--user-message-text);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -1583,7 +1697,7 @@ body.platform-darwin #files-title {
   background: var(--bg-surface);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 16px var(--shadow);
   font-size: 12px;
   z-index: 50;
 }
@@ -1599,7 +1713,7 @@ body.platform-darwin #files-title {
   padding: 6px 12px;
   cursor: pointer;
   color: var(--text);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .slash-popup-item:last-child {
@@ -1679,6 +1793,7 @@ body.platform-darwin #files-title {
   flex-direction: column;
   height: 100%;
   padding: 0;
+  background: var(--activity-bg);
   overflow: hidden;
 }
 
@@ -1687,9 +1802,9 @@ body.platform-darwin #files-title {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-bottom: 2px solid var(--border-strong);
-  background: var(--masthead);
-  color: #d4d4d4;
+  border-bottom: 2px solid var(--activity-border);
+  background: var(--activity-bg);
+  color: var(--activity-shell-text);
   overflow: hidden;
 }
 
@@ -1698,7 +1813,7 @@ body.platform-darwin #files-title {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--masthead);
+  background: var(--activity-bg);
   color: var(--text);
   overflow: hidden;
 }
@@ -1707,7 +1822,7 @@ body.platform-darwin #files-title {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  background: var(--masthead);
+  background: var(--activity-bg);
   color: var(--text);
   overflow: hidden;
   max-height: 40%;
@@ -1725,7 +1840,7 @@ body.platform-darwin #files-title {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  background: var(--masthead);
+  background: var(--activity-bg);
   color: var(--text);
   overflow: hidden;
 }
@@ -1791,7 +1906,7 @@ body.platform-darwin #files-title {
 .galaxy-invocation-bar {
   margin-top: 4px;
   height: 4px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-subtle-hover);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -1831,8 +1946,8 @@ body.platform-darwin #files-title {
   align-items: center;
   gap: 8px;
   padding: 4px 12px;
-  background: rgba(0, 0, 0, 0.2);
-  color: rgba(255, 255, 255, 0.7);
+  background: var(--bg-subtle);
+  color: var(--text-dim);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -1843,8 +1958,8 @@ body.platform-darwin #files-title {
 }
 .activity-section-header button {
   background: none;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--border-strong);
+  color: var(--activity-header-button-text);
   font-family: var(--font-sans);
   font-size: 10px;
   padding: 1px 6px;
@@ -1852,7 +1967,7 @@ body.platform-darwin #files-title {
   cursor: pointer;
 }
 .activity-section-header button:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-subtle-hover);
   color: var(--masthead-hover);
   border-color: var(--masthead-hover);
 }
@@ -1895,10 +2010,10 @@ body.platform-darwin #files-title {
 }
 #proc-monitor-table td {
   padding: 3px 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--border-subtle);
 }
 #proc-monitor-table tr:hover td {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-subtle);
 }
 #proc-monitor-table .col-cmd {
   color: var(--text);
@@ -1938,7 +2053,7 @@ body.platform-darwin #files-title {
 }
 
 #agent-shell-body::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--bg-selected);
   border-radius: 3px;
 }
 
@@ -1948,24 +2063,24 @@ body.platform-darwin #files-title {
 }
 
 .shell-line.shell-tool-start {
-  color: #80c3ea;
+  color: var(--shell-tool-start-text);
 }
 .shell-line.shell-tool-end {
   color: var(--success);
   padding-left: 16px;
 }
 .shell-line.shell-tool-error {
-  color: #ff817b;
+  color: var(--error);
   padding-left: 16px;
 }
 .shell-line.shell-status {
-  color: var(--galaxy-gold-dark);
+  color: var(--shell-status-text);
 }
 .shell-line.shell-info {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-dim);
 }
 .shell-line.shell-stdout {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--shell-stdout-text);
   padding-left: 16px;
   font-size: 10px;
 }
@@ -1999,7 +2114,7 @@ body.platform-darwin #files-title {
 #abort-btn {
   background: var(--accent);
   color: var(--galaxy-dark);
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--radius);
   width: 36px;
   height: 36px;
@@ -2011,9 +2126,22 @@ body.platform-darwin #files-title {
   flex-shrink: 0;
 }
 
+#send-btn {
+  align-self: stretch;
+  width: auto;
+  height: auto;
+  aspect-ratio: 1;
+}
+
 #send-btn:hover,
 #abort-btn:hover {
   opacity: 0.85;
+}
+
+:root[data-theme="light"] #send-btn {
+  background: #ffffff;
+  color: var(--galaxy-primary);
+  border-color: var(--accent);
 }
 
 /* Stop carries a visible label (not just an icon) so it's unmistakable while a
@@ -2094,7 +2222,7 @@ body.platform-darwin #files-title {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(20, 25, 40, 0.6);
+  background: var(--modal-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2106,7 +2234,7 @@ body.platform-darwin #files-title {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 10px 40px var(--shadow-soft);
   width: 560px;
   max-width: 90vw;
   max-height: 85vh;
@@ -2455,13 +2583,13 @@ body.platform-darwin #files-title {
 }
 
 .modal-actions .plan-btn.danger {
-  background: #7a2027;
-  color: var(--text-bright, #fff);
-  border-color: #a13038;
+  background: var(--danger-bg);
+  color: #fff;
+  border-color: var(--danger-border);
 }
 
 .modal-actions .plan-btn.danger:hover {
-  background: #8d2731;
+  background: var(--danger-bg-hover);
 }
 
 /* Base button used across modals, prefs, plan-draft cards, file viewer.
@@ -2608,7 +2736,7 @@ body.platform-darwin #files-title {
   font-size: 16px;
   line-height: 1;
   font-weight: 400;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-subtle-on-masthead);
   cursor: pointer;
   transition:
     background 0.15s,
@@ -2616,8 +2744,8 @@ body.platform-darwin #files-title {
 }
 
 .pane-tab-close:hover {
-  background: rgba(255, 255, 255, 0.15);
-  color: #fff;
+  background: var(--bg-selected);
+  color: var(--masthead-text);
 }
 
 /* Activity timeline entries. */
@@ -2664,7 +2792,7 @@ body.platform-darwin #files-title {
 .activity-event-body {
   margin: 6px 0 0;
   padding: 6px 8px;
-  background: var(--bg-base, rgba(0, 0, 0, 0.03));
+  background: var(--bg-base);
   border-radius: 4px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -2701,7 +2829,7 @@ body.platform-darwin #files-title {
 }
 
 .empty-state code {
-  background: var(--bg-inset, rgba(255, 255, 255, 0.06));
+  background: var(--bg-inset);
   padding: 1px 5px;
   border-radius: 3px;
   font-family: "JetBrains Mono", monospace;
@@ -2772,8 +2900,8 @@ body.platform-darwin #files-title {
   width: 100%;
   padding: 8px 10px;
   font: inherit;
-  background: var(--bg-inset, rgba(255, 255, 255, 0.06));
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--text, inherit);
   box-sizing: border-box;
@@ -2797,7 +2925,7 @@ body.platform-darwin #files-title {
   border-radius: 4px;
   cursor: pointer;
   border: 1px solid transparent;
-  background: var(--bg-inset, rgba(255, 255, 255, 0.04));
+  background: var(--bg-inset);
 }
 
 .ext-option:hover,
@@ -3212,6 +3340,7 @@ body.remote-mode #update-banner,
 body.remote-mode #report-issue-btn,
 body.remote-mode #exec-mode-toggle,
 body.remote-mode #cwd-bar,
+body.remote-mode #prefs-section-appearance,
 body.remote-mode #prefs-section-llm,
 body.remote-mode #prefs-section-skills,
 body.remote-mode #prefs-section-safety {

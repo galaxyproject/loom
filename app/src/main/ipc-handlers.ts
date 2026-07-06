@@ -105,6 +105,15 @@ function reconcileIncomingConfig(incoming: Record<string, unknown>): LoomConfig 
     out.guardian = { ...current.guardian, sandbox: incomingGuardian.sandbox === true };
   }
 
+  const incomingUi = (incoming as { ui?: { theme?: unknown } }).ui;
+  if (incomingUi && typeof incomingUi === "object" && !Array.isArray(incomingUi)) {
+    const theme = incomingUi.theme;
+    out.ui = {
+      ...current.ui,
+      theme: theme === "light" || theme === "dark" ? theme : "dark",
+    };
+  }
+
   // LLM multi-provider reconciliation. The renderer sends:
   //   { active, providers: { [name]: { apiKey?, model? } } }
   // where apiKey may be UNCHANGED_SECRET (preserve), "" (clear), or a new value.
@@ -376,6 +385,7 @@ export function registerIpcHandlers(agent: AgentManager): void {
     "condaBin",
     "experiments",
     "guardian",
+    "ui",
     "updateCheck",
   ]);
 
@@ -400,6 +410,12 @@ export function registerIpcHandlers(agent: AgentManager): void {
     // XSS that reached config:save still can't enable the bypass.
     if (out.guardian && typeof out.guardian === "object" && !Array.isArray(out.guardian)) {
       out.guardian = { sandbox: (out.guardian as Record<string, unknown>).sandbox === true };
+    }
+    if (out.ui && typeof out.ui === "object" && !Array.isArray(out.ui)) {
+      const theme = (out.ui as Record<string, unknown>).theme;
+      out.ui = {
+        theme: theme === "light" || theme === "dark" ? theme : "dark",
+      };
     }
     return out as LoomConfig;
   }
