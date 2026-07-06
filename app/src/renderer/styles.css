@@ -883,7 +883,7 @@ body.platform-darwin #files-title {
 }
 
 /* Chat pane title hosts the files-toggle (left) and artifact-toggle (right)
-   flanking a centered "Chat" label. Buttons sit at the edges so each pane
+   flanking a centered Orbit brand label. Buttons sit at the edges so each pane
    toggle is visually adjacent to the pane it controls. */
 .pane-title-with-controls {
   justify-content: space-between;
@@ -891,7 +891,28 @@ body.platform-darwin #files-title {
 }
 .pane-title-with-controls .pane-title-label {
   flex: 1;
-  text-align: center;
+}
+
+.orbit-title-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  height: 100%;
+}
+
+.orbit-title-logo {
+  display: block;
+  width: auto;
+  max-width: 72px;
+  height: 18px;
+  object-fit: contain;
+}
+
+.orbit-title-text {
+  line-height: 1;
+  white-space: nowrap;
 }
 
 /* ── App footer ───────────────────────────────────────────────────────────── */
