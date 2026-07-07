@@ -26,7 +26,7 @@ import {
 import type { FeedbackPayload, FeedbackSysinfo } from "../../../shared/feedback-contract.js";
 import changelogRaw from "../../../CHANGELOG.md?raw";
 import { parseChangelog, decideWhatsNew, releaseUrlFor } from "../../../shared/whats-new.js";
-import { openReleaseWithFallback } from "./update-banner.js";
+import { openReleaseWithFallback, clearReleaseFallback } from "./update-banner.js";
 
 declare global {
   interface Window {
@@ -4001,6 +4001,7 @@ window.orbit.onProcUpdate((procs) => {
     });
     updateDismissBtn.addEventListener("click", () => {
       updateBanner.classList.add("hidden");
+      clearReleaseFallback(updateBanner);
       const v = updateVersionEl.textContent || restartVersionEl?.textContent;
       if (v) {
         try {
@@ -4021,6 +4022,7 @@ window.orbit.onProcUpdate((procs) => {
         if (dismissed === info.latest) return;
         updateVersionEl.textContent = info.latest;
         currentReleaseUrl = info.releaseUrl;
+        clearReleaseFallback(updateBanner); // fresh link banner starts clean
         linkText?.classList.remove("hidden");
         updateLinkBtn.classList.remove("hidden");
         updateBanner.classList.remove("hidden");
@@ -4032,6 +4034,9 @@ window.orbit.onProcUpdate((procs) => {
     if (window.orbit.platform === "darwin") {
       window.orbit.onUpdateDownloaded((info) => {
         if (restartVersionEl) restartVersionEl.textContent = info.version;
+        // Drop any release-link fallback from a prior updater-error notify
+        // banner so the restart-to-install banner renders clean.
+        clearReleaseFallback(updateBanner);
         linkText?.classList.add("hidden");
         updateLinkBtn.classList.add("hidden");
         restartText?.classList.remove("hidden");

@@ -31,6 +31,28 @@ describe("resolveReleasePageUrl", () => {
     expect(resolveReleasePageUrl("javascript:alert(1)")).toBe(LATEST);
   });
 
+  it("does not let path traversal escape the /releases/ pin", () => {
+    // These match a naive string prefix but normalize out of /releases/.
+    expect(
+      resolveReleasePageUrl("https://github.com/galaxyproject/loom/releases/../issues/1"),
+    ).toBe(LATEST);
+    expect(
+      resolveReleasePageUrl("https://github.com/galaxyproject/loom/releases/%2e%2e/issues/1"),
+    ).toBe(LATEST);
+  });
+
+  it("returns the normalized URL for traversal that stays within /releases/", () => {
+    expect(
+      resolveReleasePageUrl("https://github.com/galaxyproject/loom/releases/../releases/tag/v1"),
+    ).toBe("https://github.com/galaxyproject/loom/releases/tag/v1");
+  });
+
+  it("pins for a userinfo-bearing look-alike that is not github.com", () => {
+    expect(
+      resolveReleasePageUrl("https://github.com@evil.example/galaxyproject/loom/releases/tag/v1"),
+    ).toBe(LATEST);
+  });
+
   it("pins to the latest releases page for http (non-https) releases URL", () => {
     expect(resolveReleasePageUrl("http://github.com/galaxyproject/loom/releases/tag/v1")).toBe(
       LATEST,

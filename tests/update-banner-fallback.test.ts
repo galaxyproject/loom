@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   showReleaseFallback,
+  clearReleaseFallback,
   openReleaseWithFallback,
   copyToClipboard,
   NEUTRAL_FALLBACK_NOTE,
@@ -66,6 +67,14 @@ describe("showReleaseFallback", () => {
     expect(banner.querySelector(".update-banner-fallback-url")!.textContent).toBe(
       "https://github.com/galaxyproject/loom/releases/tag/v2",
     );
+  });
+
+  it("clearReleaseFallback removes a shown fallback and is a no-op when absent", () => {
+    clearReleaseFallback(banner); // absent: must not throw
+    showReleaseFallback(banner, "https://github.com/galaxyproject/loom/releases/latest");
+    expect(banner.querySelector(".update-banner-fallback")).not.toBeNull();
+    clearReleaseFallback(banner);
+    expect(banner.querySelector(".update-banner-fallback")).toBeNull();
   });
 
   it("offers a copy button that copies the URL to the clipboard", async () => {

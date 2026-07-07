@@ -78,6 +78,11 @@ export function showReleaseFallback(
   return fallback;
 }
 
+/** Remove the fallback if present. No-op when it was never shown. */
+export function clearReleaseFallback(banner: HTMLElement): void {
+  banner.querySelector(".update-banner-fallback")?.remove();
+}
+
 /**
  * Orchestrates a "Open release page" click: reveal the copyable link up front
  * (so the update is never a dead end even when shell.openExternal resolves
