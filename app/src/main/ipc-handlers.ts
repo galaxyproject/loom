@@ -23,6 +23,7 @@ import { normalizeGalaxyUrl, validateGalaxyUrl } from "./galaxy-url.js";
 import { getProviders, getModels } from "@earendil-works/pi-ai";
 import { isDeprecatedModelId } from "./model-catalog.js";
 import { checkLatestVersion } from "./version-check.js";
+import { resolveReleasePageUrl } from "./release-page.js";
 import { postFeedback } from "./feedback.js";
 import type { FeedbackPayload } from "../../../shared/feedback-contract.js";
 import {
@@ -685,16 +686,21 @@ export function registerIpcHandlers(agent: AgentManager): void {
   }));
 
   // Opens the GitHub releases page in the user's default browser when they
-  // click the "update available" banner. Hard-coded URL — renderer never
-  // gets a generic openExternal capability.
+  // click the "update available" banner. The destination is pinned in
+  // resolveReleasePageUrl -- the renderer never gets a generic openExternal
+  // capability. Report the *real* outcome (and log failures): shell.openExternal
+  // can reject or no-op where there's no default browser / no xdg-open (WSLg,
+  // #368), and the old always-"opened:true" hid that from the caller, which
+  // then had no way to offer a copy-the-link fallback.
   ipc.handle("version:open-release", async (_e, url: unknown) => {
-    const releasesPage = "https://github.com/galaxyproject/loom/releases/latest";
-    const target =
-      typeof url === "string" && /^https:\/\/github\.com\/galaxyproject\/loom\/releases\//.test(url)
-        ? url
-        : releasesPage;
-    await shell.openExternal(target);
-    return { opened: true };
+    const target = resolveReleasePageUrl(url);
+    try {
+      await shell.openExternal(target);
+      return { opened: true, url: target };
+    } catch (err) {
+      log("version:open-release -- shell.openExternal failed:", target, err);
+      return { opened: false, url: target };
+    }
   });
 
   // Opens the bound Galaxy history in the user's default browser when the user

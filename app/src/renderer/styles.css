@@ -231,6 +231,7 @@ a:visited {
 #update-banner {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 6px 12px;
   background: var(--accent-bg);
@@ -239,6 +240,21 @@ a:visited {
   font-family: var(--font-sans);
   font-size: 12px;
   flex: 0 0 auto;
+}
+/* Copy-the-link fallback, revealed only when the browser couldn't be opened
+   (WSLg / no default browser). Wraps onto its own row under the banner text. */
+#update-banner .update-banner-fallback {
+  flex: 1 1 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-dim);
+}
+#update-banner .update-banner-fallback-url {
+  font-family: var(--font-mono, monospace);
+  color: var(--accent);
+  user-select: all;
+  word-break: break-all;
 }
 #update-banner.hidden {
   display: none;
