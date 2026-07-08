@@ -10,7 +10,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { createServer } from "node:http";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { join, resolve, dirname } from "node:path";
+import { join, resolve, dirname, basename } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -23,7 +23,13 @@ import { isForwardableUiResponse } from "./rpc-guard.js";
 import { providerKeyVar, hasProviderKey } from "./llm-credentials.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const LOOM_BIN = resolve(__dirname, "../bin/loom.js");
+// In dev this file runs from web/; the container compiles it to web/build/ and
+// runs that. Anchor all repo-relative asset paths (the brain binary, the gate
+// extension, the built renderer) at the web dir so they resolve either way --
+// otherwise the compiled server looks one level too deep (web/build/...) and
+// the brain, the lockdown gate, and the static bundle all silently go missing.
+const WEB_ROOT = basename(__dirname) === "build" ? resolve(__dirname, "..") : __dirname;
+const LOOM_BIN = resolve(WEB_ROOT, "../bin/loom.js");
 const LOOM_CONFIG_DIR = join(homedir(), ".loom");
 const LOOM_CONFIG_PATH = join(LOOM_CONFIG_DIR, "config.json");
 const DEFAULT_CWD = join(LOOM_CONFIG_DIR, "analyses");
@@ -146,7 +152,7 @@ function startLoom(): void {
   env.LOOM_SHELL_KIND = "orbit";
 
   if (IS_REMOTE_MODE) {
-    const gatePath = resolve(__dirname, "extensions/web-mode-gate.ts");
+    const gatePath = resolve(WEB_ROOT, "extensions/web-mode-gate.ts");
     args.push("--extension", gatePath);
     const prov = activeProvider();
     if (providedProvider || process.env.LOOM_LLM_PROVIDER) {
@@ -481,7 +487,7 @@ wss.on("connection", (socket) => {
 
 async function setupRenderer(): Promise<void> {
   if (process.env.NODE_ENV === "production") {
-    const distDir = resolve(__dirname, "dist");
+    const distDir = resolve(WEB_ROOT, "dist");
     log("serving static renderer from", distDir);
     app.use(express.static(distDir));
     app.get("/", (_req, res) => res.sendFile(resolve(distDir, "index.html")));

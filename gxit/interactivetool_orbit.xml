@@ -30,7 +30,7 @@
          explicitly (mirrors the image CMD) rather than depending on the job
          runner honoring the container's default CMD. -->
     <command><![CDATA[
-        TMPDIR=/tmp node /app/web/node_modules/.bin/tsx /app/web/server.ts
+        TMPDIR=/tmp node /app/web/build/server.js
     ]]></command>
     <inputs/>
     <outputs/>
