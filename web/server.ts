@@ -20,6 +20,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { buildBrainEnv } from "../shared/brain-env.js";
 import { evaluateBind, authorizeWsUpgrade } from "./auth.js";
 import { isForwardableUiResponse } from "./rpc-guard.js";
+import { isCustomProvider } from "../shared/custom-provider.js";
 import { hasProviderKey, llmKeyEnvVar } from "./llm-credentials.js";
 import { resolveShutdownGraceMs } from "./shutdown-grace.js";
 
@@ -123,14 +124,38 @@ let providedLlmKey: string | null = null;
 let providedProvider: string | null = null;
 
 function activeProvider(): string {
-  return providedProvider ?? process.env.LOOM_LLM_PROVIDER ?? "anthropic";
+  if (providedProvider) return providedProvider;
+  if (process.env.LOOM_LLM_PROVIDER) return process.env.LOOM_LLM_PROVIDER;
+  // Fall back to the container's own config.json, which is what the brain reads.
+  // A custom-endpoint image (gxit/README.md) names its provider only there, so
+  // defaulting straight to "anthropic" made the server disagree with the brain
+  // about which provider is even active.
+  const active = (loadConfig().llm as { active?: unknown } | undefined)?.active;
+  if (typeof active === "string" && active.length > 0) return active;
+  return "anthropic";
+}
+
+/**
+ * Does the container's config.json describe this provider as an OpenAI-compatible
+ * custom endpoint? That baseUrl is what makes the brain authenticate the provider
+ * from LOOM_ACTIVE_LLM_API_KEY instead of a named var, so it's also what decides
+ * where a key may go -- guessing from the provider's name instead would either
+ * strand a configured container behind the BYO overlay or let a stale key vouch
+ * for a provider that can't use it.
+ */
+function isCustomProviderName(provider: string): boolean {
+  const providers = (loadConfig().llm as { providers?: Record<string, unknown> } | undefined)
+    ?.providers;
+  return isCustomProvider(providers?.[provider] as never);
 }
 
 function llmKeyPresent(): boolean {
+  const provider = activeProvider();
   return hasProviderKey({
     env: process.env,
-    provider: activeProvider(),
+    provider,
     providedKey: providedLlmKey,
+    isCustom: isCustomProviderName(provider),
   });
 }
 
@@ -164,9 +189,13 @@ function startLoom(): void {
     }
     // BYO-key: inject the user-supplied key into the brain's env (env var name
     // per the active provider; custom endpoints go to LOOM_ACTIVE_LLM_API_KEY).
-    // Never logged.
+    // Never logged. The provide-llm-key handler rejects keys it can't route, so
+    // by here a non-null var is expected -- but don't spawn a brain that silently
+    // drops the credential if that ever stops being true.
     if (providedLlmKey) {
-      env[llmKeyEnvVar(prov)] = providedLlmKey;
+      const keyVar = llmKeyEnvVar(prov, { isCustom: isCustomProviderName(prov) });
+      if (keyVar) env[keyVar] = providedLlmKey;
+      else log("refusing to inject a key for unroutable provider:", prov);
     }
     env.LOOM_NOTEBOOK_ALLOWLIST = join(cwd, "notebook.md");
     // No local execution surface in the container: the web-mode-gate is the
@@ -398,16 +427,31 @@ wss.on("connection", (socket) => {
     }
     if (channel === "agent:provide-llm-key") {
       const payload = (args[0] ?? {}) as { provider?: unknown; key?: unknown };
-      if (typeof payload.key === "string" && payload.key.length > 0) {
-        providedLlmKey = payload.key; // never logged
-        if (typeof payload.provider === "string" && payload.provider.length > 0) {
-          providedProvider = payload.provider;
-        }
-        if (!loomProcess) startLoom();
-        respond(id, { ok: true });
-      } else {
+      if (typeof payload.key !== "string" || payload.key.length === 0) {
         respond(id, { ok: false, error: "missing provider key" });
+        return;
       }
+      const provider =
+        typeof payload.provider === "string" && payload.provider.length > 0
+          ? payload.provider
+          : activeProvider();
+      // Refuse a key we have nowhere to put. The overlay offers
+      // "openai-compatible", but a custom endpoint also needs a baseUrl, and
+      // remote mode's config is read-only -- so unless this image was built with
+      // that provider in its config.json, there's no endpoint to talk to. Saying
+      // so beats accepting the key, reporting success, and leaving the user with
+      // an agent that can't authenticate and no way back to this prompt.
+      if (!llmKeyEnvVar(provider, { isCustom: isCustomProviderName(provider) })) {
+        respond(id, {
+          ok: false,
+          error: `Can't use a key for "${provider}" here: this deployment has no endpoint configured for it. Pick a built-in provider, or ask your admin to bake the endpoint into the image.`,
+        });
+        return;
+      }
+      providedLlmKey = payload.key; // never logged
+      providedProvider = provider;
+      if (!loomProcess) startLoom();
+      respond(id, { ok: true });
       return;
     }
     if (channel === "agent:get-cwd") {

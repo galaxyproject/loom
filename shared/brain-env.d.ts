@@ -1,5 +1,6 @@
 export const BRAIN_ENV_PASSTHROUGH: ReadonlySet<string>;
 export const BRAIN_ENV_PREFIXES: readonly string[];
+export const PROVIDER_KEY_VARS: Readonly<Record<string, string>>;
 export const PROVIDER_API_KEY_NAMES: ReadonlySet<string>;
 
 export interface BuildBrainEnvOptions {

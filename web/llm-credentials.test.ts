@@ -31,46 +31,66 @@ describe("hasProviderKey", () => {
   });
 });
 
-// #330 regression: a custom OpenAI-compatible provider (gxit/README.md) carries
-// its key in LOOM_ACTIVE_LLM_API_KEY, not ${PROVIDER}_API_KEY -- the brain
-// resolves it from there (bin/loom.js resolveActiveLlmApiKey). Gating on the
-// named var alone reported "no key" for a correctly-configured container, so the
-// server never spawned the brain and the user got the BYO overlay instead.
-describe("hasProviderKey with a custom provider", () => {
-  it("is true when LOOM_ACTIVE_LLM_API_KEY carries the key", () => {
-    expect(
-      hasProviderKey({ env: { LOOM_ACTIVE_LLM_API_KEY: "sk-custom" }, provider: "myprov" }),
-    ).toBe(true);
+// #330: providerKeyVar used to derive the var by uppercasing the provider name,
+// which is wrong for google -- its key is GEMINI_API_KEY, not GOOGLE_API_KEY.
+// The naive guess reported a perfectly good admin-injected GEMINI_API_KEY as
+// absent, and sent a BYO Gemini key somewhere the brain never reads.
+describe("providerKeyVar uses the canonical map, not the provider name", () => {
+  it("maps google to GEMINI_API_KEY", () => {
+    expect(providerKeyVar("google")).toBe("GEMINI_API_KEY");
+    expect(providerKeyVar("google")).not.toBe("GOOGLE_API_KEY");
   });
-  it("is true even when the active provider name looks built-in", () => {
-    // The server defaults activeProvider() to "anthropic" when LOOM_LLM_PROVIDER
-    // is unset, while config.json names the real custom provider -- so the key
-    // must count regardless of the provider label the server happens to hold.
-    expect(
-      hasProviderKey({ env: { LOOM_ACTIVE_LLM_API_KEY: "sk-custom" }, provider: "anthropic" }),
-    ).toBe(true);
+  it("maps the rest of the built-ins", () => {
+    expect(providerKeyVar("deepseek")).toBe("DEEPSEEK_API_KEY");
+    expect(providerKeyVar("mistral")).toBe("MISTRAL_API_KEY");
+    expect(providerKeyVar("groq")).toBe("GROQ_API_KEY");
   });
-  it("is false when LOOM_ACTIVE_LLM_API_KEY is empty", () => {
-    expect(hasProviderKey({ env: { LOOM_ACTIVE_LLM_API_KEY: "" }, provider: "myprov" })).toBe(
-      false,
-    );
+  it("finds an admin-injected Gemini key for provider google", () => {
+    expect(hasProviderKey({ env: { GEMINI_API_KEY: "sk-g" }, provider: "google" })).toBe(true);
+  });
+  it("routes a BYO google key to GEMINI_API_KEY", () => {
+    expect(llmKeyEnvVar("google")).toBe("GEMINI_API_KEY");
   });
 });
 
-describe("llmKeyEnvVar", () => {
-  it("routes a built-in provider to its own key var", () => {
-    expect(llmKeyEnvVar("anthropic")).toBe("ANTHROPIC_API_KEY");
+// A custom OpenAI-compatible provider (gxit/README.md) carries its key in
+// LOOM_ACTIVE_LLM_API_KEY, not ${PROVIDER}_API_KEY -- the brain resolves it from
+// there (resolveActiveLlmApiKey). Gating on the named var alone reported "no key"
+// for a correctly-configured container, so the server never spawned the brain and
+// showed the BYO overlay instead.
+describe("custom providers", () => {
+  it("counts LOOM_ACTIVE_LLM_API_KEY when the provider is custom", () => {
+    expect(
+      hasProviderKey({
+        env: { LOOM_ACTIVE_LLM_API_KEY: "sk-custom" },
+        provider: "myprov",
+        isCustom: true,
+      }),
+    ).toBe(true);
   });
-  it("routes an unknown/custom provider to LOOM_ACTIVE_LLM_API_KEY", () => {
-    // Mirrors Orbit desktop (app/src/main/agent.ts): custom endpoints route
-    // through LOOM_ACTIVE_LLM_API_KEY. Returning null here meant startLoom
-    // injected nothing and spawned an unauthenticated brain.
-    expect(llmKeyEnvVar("myprov")).toBe("LOOM_ACTIVE_LLM_API_KEY");
-    expect(llmKeyEnvVar("openai-compatible")).toBe("LOOM_ACTIVE_LLM_API_KEY");
+  it("routes a custom provider's key to LOOM_ACTIVE_LLM_API_KEY", () => {
+    expect(llmKeyEnvVar("myprov", { isCustom: true })).toBe("LOOM_ACTIVE_LLM_API_KEY");
   });
-  it("never returns null, so a supplied key always lands somewhere", () => {
-    for (const p of ["anthropic", "myprov", "", "openai"]) {
-      expect(typeof llmKeyEnvVar(p)).toBe("string");
-    }
+  // Codex #10: a stale LOOM_ACTIVE_LLM_API_KEY must NOT vouch for a built-in
+  // provider. bin/loom.js only reads that var for baseUrl-carrying providers, so
+  // treating it as a key here suppressed the BYO prompt and spawned a brain that
+  // couldn't authenticate, with no way back to the prompt.
+  it("ignores LOOM_ACTIVE_LLM_API_KEY for a built-in provider", () => {
+    expect(
+      hasProviderKey({ env: { LOOM_ACTIVE_LLM_API_KEY: "stale" }, provider: "anthropic" }),
+    ).toBe(false);
+  });
+  it("is false when a custom provider has no key", () => {
+    expect(hasProviderKey({ env: {}, provider: "myprov", isCustom: true })).toBe(false);
+  });
+});
+
+describe("llmKeyEnvVar refuses to guess", () => {
+  // Codex #2: the overlay can send "openai-compatible", which is not built in and
+  // has no config entry in a stock container. There is nowhere to put the key, so
+  // say so rather than inject it somewhere inert and report success.
+  it("returns null for an unknown, non-custom provider", () => {
+    expect(llmKeyEnvVar("openai-compatible")).toBeNull();
+    expect(llmKeyEnvVar("myprov")).toBeNull();
   });
 });
