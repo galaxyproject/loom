@@ -50,15 +50,18 @@ export interface PageSyncDeps {
    */
   initTimeoutMs?: number;
   /**
-   * How many times to try resolving the history before giving up for good.
-   * Attempts are lazy -- one per change event -- so a Galaxy that's briefly down
-   * at launch costs a retry, not the session's durability.
+   * Don't re-attempt arming more often than this. Rate, not a total: a count cap
+   * would burn its whole budget on a handful of debounced edits during one short
+   * outage and then never sync again, which is the failure this is here to
+   * prevent. flush() ignores the cooldown -- shutdown is the last chance to save.
    */
-  maxInitAttempts?: number;
+  retryCooldownMs?: number;
+  /** Injectable clock so the cooldown is testable without wall time. */
+  now?: () => number;
 }
 
 const DEFAULT_INIT_TIMEOUT_MS = 15000;
-const DEFAULT_MAX_INIT_ATTEMPTS = 5;
+const DEFAULT_RETRY_COOLDOWN_MS = 30000;
 
 class TimeoutError extends Error {}
 
@@ -88,26 +91,29 @@ export function createPageSyncEngine(deps: PageSyncDeps) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let unsubscribe: (() => void) | null = null;
   let active = false;
-  let initAttempts = 0;
+  let disposed = false;
+  let lastAttemptAt: number | null = null;
   const initTimeoutMs = deps.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS;
-  const maxInitAttempts = deps.maxInitAttempts ?? DEFAULT_MAX_INIT_ATTEMPTS;
+  const retryCooldownMs = deps.retryCooldownMs ?? DEFAULT_RETRY_COOLDOWN_MS;
+  const now = deps.now ?? (() => Date.now());
   // Serialize pushes: at most one in flight; a change arriving mid-push queues
   // exactly one follow-up so the latest body still lands. flush() awaits this.
   let inFlight: Promise<void> | null = null;
   let pendingAgain = false;
 
-  async function doPush(): Promise<void> {
+  async function doPush(force = false): Promise<void> {
     // A launch-time blip leaves us unarmed; retry here so the first change after
     // Galaxy comes back recovers sync instead of the session running to its end
     // with a notebook that only exists under /tmp.
-    if (!historyId && !(await arm())) return;
-    if (!historyId) return;
+    if (!historyId && !(await arm(force))) return;
+    if (disposed || !historyId) return;
     const body = await deps.readBody();
     if (!hasBodyChanged(lastBody, body)) return; // dedupe + self-trigger guard
-    // Never create/overwrite a page with an empty body: an untouched notebook
-    // has nothing worth persisting, and lastBody is null until a resume gives us
-    // a real baseline, so without this a no-op session would publish a blank page.
-    if (body.length === 0) return;
+    // Don't CREATE a page out of an empty notebook -- an untouched session has
+    // nothing worth publishing, and the baseline is null until a resume gives us
+    // a real one. Clearing a notebook we do have a baseline for is a real edit,
+    // though, so let that through rather than stranding deleted content in Galaxy.
+    if (body.length === 0 && lastBody === null) return;
     await deps.push({ historyId, slug, title: pageTitleForHistory(historyId) });
     lastBody = body;
   }
@@ -117,7 +123,7 @@ export function createPageSyncEngine(deps: PageSyncDeps) {
   // concurrent pushes (which raced on lastBody and could double-create the
   // page), and the latest body always wins. Returns the in-flight promise so
   // flush() can await whatever is already running plus the queued follow-up.
-  function requestPush(): Promise<void> {
+  function requestPush(force = false): Promise<void> {
     if (inFlight) {
       pendingAgain = true;
       return inFlight;
@@ -126,7 +132,7 @@ export function createPageSyncEngine(deps: PageSyncDeps) {
       try {
         do {
           pendingAgain = false;
-          await doPush();
+          await doPush(force);
         } while (pendingAgain);
       } finally {
         inFlight = null;
@@ -137,49 +143,68 @@ export function createPageSyncEngine(deps: PageSyncDeps) {
 
   /**
    * Resolve the history and adopt any prior page for it. Returns true once the
-   * engine can push. Safe to call repeatedly: it no-ops once armed and stops
-   * trying after maxInitAttempts so a permanently unreachable Galaxy doesn't
-   * mean a Galaxy call on every change event for the rest of the session.
+   * engine can push. Safe to call repeatedly: it no-ops once armed, and a failed
+   * attempt won't retry until the cooldown passes (force skips the wait).
+   *
+   * Nothing is committed until discovery has actually succeeded. Committing
+   * historyId first, as this used to, meant a single failed page listing left the
+   * engine armed but unaware of an existing page -- the next push would then take
+   * the create path and either duplicate the page or fight its slug forever, with
+   * no way to re-run discovery.
    */
-  async function arm(): Promise<boolean> {
+  async function arm(force = false): Promise<boolean> {
     if (historyId) return true;
-    if (initAttempts >= maxInitAttempts) return false;
-    initAttempts++;
+    if (!force && lastAttemptAt !== null && now() - lastAttemptAt < retryCooldownMs) return false;
+    lastAttemptAt = now();
 
-    let resolved: string | null;
+    let resolvedHistory: string | null;
     try {
-      resolved = await withTimeout(deps.getHistoryId(), initTimeoutMs, "history lookup");
+      resolvedHistory = await withTimeout(deps.getHistoryId(), initTimeoutMs, "history lookup");
     } catch (err) {
       console.error("[page-sync] history lookup failed:", err);
       return false;
     }
-    if (!resolved) return false;
+    if (disposed || !resolvedHistory) return false;
 
-    historyId = resolved;
-    slug = pageSlugForHistory(historyId);
+    const resolvedSlug = pageSlugForHistory(resolvedHistory);
     // Galaxy's GET /pages/{id} takes a page id, not a slug, so resolve the
     // per-history page id by listing the history's pages and matching the
     // derived slug, then resume by id. A fresh container has no local binding,
     // so listing is the only way to rediscover the page.
-    let existingPageId: string | null = null;
+    let existingPageId: string | null;
     try {
       existingPageId = await withTimeout(
-        deps.findPageId(historyId, slug),
+        deps.findPageId(resolvedHistory, resolvedSlug),
         initTimeoutMs,
         "page listing",
       );
-    } catch {
-      /* listing failed — treat as no prior page; created on first push */
+    } catch (err) {
+      // Can't tell "no prior page" from "couldn't ask". Assuming the former is
+      // how you end up with two pages for one history, so stay unarmed and retry.
+      console.error("[page-sync] page listing failed:", err);
+      return false;
     }
+    if (disposed) return false;
+
     let resumed = false;
     if (existingPageId) {
       try {
-        await deps.resume(existingPageId); // refresh notebook from the prior page
+        // Timed out like the others: init() runs inside session_start, and a page
+        // GET that accepts the connection then never answers would hang startup.
+        await withTimeout(deps.resume(existingPageId), initTimeoutMs, "page resume");
         resumed = true;
       } catch (err) {
+        // The page exists but we couldn't read it. Pushing now would overwrite it
+        // with a notebook that never saw its content, so leave the engine unarmed
+        // and try the whole adoption again later.
         console.error("[page-sync] resume failed:", err);
+        return false;
       }
     }
+    if (disposed) return false;
+
+    historyId = resolvedHistory;
+    slug = resolvedSlug;
     // Baseline only from a resume, where the notebook now mirrors the page and
     // the write we just made would otherwise self-trigger a pointless push.
     // Without a resume the local notebook is the authoritative copy, so leave
@@ -206,13 +231,15 @@ export function createPageSyncEngine(deps: PageSyncDeps) {
   }
 
   async function flush(): Promise<void> {
-    if (!active) return;
+    if (!active || disposed) return;
     if (timer) {
       clearTimeout(timer);
       timer = null;
     }
     try {
-      await requestPush();
+      // force: shutdown is the last chance to get this into Galaxy, so don't sit
+      // out a retry cooldown that happens to still be running.
+      await requestPush(true);
     } catch (err) {
       console.error("[page-sync] flush push failed:", err);
     }
@@ -224,10 +251,15 @@ export function createPageSyncEngine(deps: PageSyncDeps) {
     if (unsubscribe) unsubscribe();
     unsubscribe = null;
     active = false;
+    // An arm() started before dispose can still be waiting on Galaxy, and it
+    // resolves against whatever notebook is current by then -- a later session's.
+    // Its resume would overwrite that session's notebook with this one's page, so
+    // the checks after each await bail on a disposed engine.
+    disposed = true;
     historyId = null;
     lastBody = null;
     pendingAgain = false;
-    initAttempts = 0;
+    lastAttemptAt = null;
   }
 
   return { init, flush, dispose };

@@ -187,7 +187,14 @@ describe("createPageSyncEngine recovery", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
+  // Cooldown is rate-limiting, not a budget: pass now() so tests control it.
+  function makeClock() {
+    let t = 0;
+    return { now: () => t, advance: (ms: number) => (t += ms) };
+  }
+
   it("re-arms on a later change when the history lookup failed at launch", async () => {
+    const clock = makeClock();
     let attempts = 0;
     const deps = makeDeps({
       getHistoryId: async () => {
@@ -196,11 +203,14 @@ describe("createPageSyncEngine recovery", () => {
         return "h1";
       },
       findPageId: vi.fn(async () => null), // no prior page: local notebook is authoritative
+      now: clock.now,
+      retryCooldownMs: 1000,
     });
     const engine = createPageSyncEngine(deps);
     await engine.init();
     expect(deps.pushes).toHaveLength(0);
 
+    clock.advance(2000); // past the cooldown
     (deps as unknown as { setBody: (b: string) => void }).setBody("written while galaxy was down");
     deps.fire();
     await vi.advanceTimersByTimeAsync(150);
@@ -219,6 +229,7 @@ describe("createPageSyncEngine recovery", () => {
         return "h1";
       },
       findPageId: vi.fn(async () => null),
+      now: makeClock().now, // clock never advances: flush must force past the cooldown
     });
     const engine = createPageSyncEngine(deps);
     await engine.init();
@@ -232,29 +243,71 @@ describe("createPageSyncEngine recovery", () => {
     expect(deps.pushes[0].historyId).toBe("h1");
   });
 
-  it("gives up after maxInitAttempts so a dead Galaxy isn't retried forever", async () => {
+  // Codex #9: a hard attempt cap burned its whole budget on a few debounced edits
+  // during one short outage, then never synced again -- the exact silent data loss
+  // the retry was added to prevent. Rate-limit instead of counting.
+  it("keeps retrying after many failures, once the cooldown passes", async () => {
+    const clock = makeClock();
+    let attempts = 0;
+    const deps = makeDeps({
+      getHistoryId: async () => {
+        attempts++;
+        if (attempts <= 8) throw new Error("galaxy down");
+        return "h1";
+      },
+      findPageId: vi.fn(async () => null),
+      now: clock.now,
+      retryCooldownMs: 1000,
+    });
+    const engine = createPageSyncEngine(deps);
+    await engine.init();
+    for (let i = 0; i < 8; i++) {
+      clock.advance(1500);
+      (deps as unknown as { setBody: (b: string) => void }).setBody(`body-${i}`);
+      deps.fire();
+      await vi.advanceTimersByTimeAsync(150);
+    }
+    expect(deps.pushes).toHaveLength(1); // recovered on the 9th attempt
+  });
+
+  it("rate-limits retries so a dead Galaxy isn't hit on every keystroke", async () => {
+    const clock = makeClock();
     let attempts = 0;
     const deps = makeDeps({
       getHistoryId: async () => {
         attempts++;
         throw new Error("galaxy down");
       },
-      maxInitAttempts: 3,
+      now: clock.now,
+      retryCooldownMs: 30000,
     });
     const engine = createPageSyncEngine(deps);
     await engine.init(); // attempt 1
     for (let i = 0; i < 6; i++) {
+      clock.advance(100); // well inside the cooldown
       (deps as unknown as { setBody: (b: string) => void }).setBody(`body-${i}`);
       deps.fire();
       await vi.advanceTimersByTimeAsync(150);
     }
-    expect(attempts).toBe(3);
-    expect(deps.pushes).toHaveLength(0);
+    expect(attempts).toBe(1);
   });
 
   it("times out a hanging history request instead of stalling session_start", async () => {
     const deps = makeDeps({
       getHistoryId: () => new Promise<string>(() => {}), // never settles
+      initTimeoutMs: 5000,
+    });
+    const engine = createPageSyncEngine(deps);
+    const done = engine.init();
+    await vi.advanceTimersByTimeAsync(5001);
+    await expect(done).resolves.toBeUndefined();
+  });
+
+  // Codex #4: history and listing were timed out but resume wasn't, so a page GET
+  // that accepted the connection and never answered still hung session_start.
+  it("times out a hanging page resume", async () => {
+    const deps = makeDeps({
+      resume: vi.fn(() => new Promise<void>(() => {})), // never settles
       initTimeoutMs: 5000,
     });
     const engine = createPageSyncEngine(deps);
@@ -274,6 +327,19 @@ describe("createPageSyncEngine recovery", () => {
     expect(deps.pushes).toHaveLength(0);
   });
 
+  // Codex #5: skipping every empty body meant a user who deliberately cleared the
+  // notebook could never sync that -- Galaxy kept the stale content and restored
+  // it on the next launch.
+  it("pushes a deliberate clear of a resumed page", async () => {
+    const deps = makeDeps(); // resumes page-h1, baseline "first"
+    const engine = createPageSyncEngine(deps);
+    await engine.init();
+    (deps as unknown as { setBody: (b: string) => void }).setBody("");
+    deps.fire();
+    await vi.advanceTimersByTimeAsync(150);
+    expect(deps.pushes).toHaveLength(1);
+  });
+
   it("still skips a redundant push right after resuming an existing page", async () => {
     // resume() rewrites the notebook, which fires the watcher; that self-trigger
     // must not bounce straight back to Galaxy as a no-op push.
@@ -282,6 +348,70 @@ describe("createPageSyncEngine recovery", () => {
     await engine.init();
     deps.fire();
     await vi.advanceTimersByTimeAsync(150);
+    expect(deps.pushes).toHaveLength(0);
+  });
+
+  // Codex #6: historyId was committed before page discovery, so one failed
+  // listing left the engine armed but blind to an existing page -- the next push
+  // took the create path and duplicated it, and discovery never re-ran.
+  it("stays unarmed when page discovery fails, then adopts the page on retry", async () => {
+    const clock = makeClock();
+    let lists = 0;
+    const deps = makeDeps({
+      findPageId: vi.fn(async () => {
+        lists++;
+        if (lists === 1) throw new Error("503");
+        return "page-h1";
+      }),
+      now: clock.now,
+      retryCooldownMs: 1000,
+    });
+    const engine = createPageSyncEngine(deps);
+    await engine.init();
+    expect(deps.resume).not.toHaveBeenCalled();
+
+    (deps as unknown as { setBody: (b: string) => void }).setBody("edited");
+    deps.fire();
+    await vi.advanceTimersByTimeAsync(150);
+    // Cooldown still running: must not create a rival page for the same history.
+    expect(deps.pushes).toHaveLength(0);
+
+    clock.advance(2000);
+    deps.fire();
+    await vi.advanceTimersByTimeAsync(150);
+    expect(deps.resume).toHaveBeenCalledWith("page-h1"); // adopted, not duplicated
+  });
+
+  it("stays unarmed when resume of an existing page fails", async () => {
+    const deps = makeDeps({
+      resume: vi.fn(async () => {
+        throw new Error("boom");
+      }),
+    });
+    const engine = createPageSyncEngine(deps);
+    await engine.init();
+    (deps as unknown as { setBody: (b: string) => void }).setBody("edited");
+    deps.fire();
+    await vi.advanceTimersByTimeAsync(150);
+    // Pushing here would overwrite a page we failed to read.
+    expect(deps.pushes).toHaveLength(0);
+  });
+
+  // Codex #3: an arm() in flight when the engine is disposed used to land anyway,
+  // and resume() resolves the notebook path globally -- so a stale engine could
+  // overwrite the NEXT session's notebook with its own page.
+  it("does not resume after dispose", async () => {
+    let release: (v: string) => void = () => {};
+    const deps = makeDeps({
+      getHistoryId: () => new Promise<string>((r) => (release = r)),
+    });
+    const engine = createPageSyncEngine(deps);
+    const done = engine.init();
+    engine.dispose();
+    release("h1");
+    await done;
+    await vi.advanceTimersByTimeAsync(50);
+    expect(deps.resume).not.toHaveBeenCalled();
     expect(deps.pushes).toHaveLength(0);
   });
 });
