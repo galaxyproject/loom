@@ -304,9 +304,53 @@ function stopLoomGracefully(timeoutMs: number): Promise<void> {
   });
 }
 
+// A restart/reset now drains the outgoing brain before spawning its replacement,
+// which opens a window where loomProcess is a brain under SIGTERM. Writing to it
+// would look like it worked -- the pipe is still writable -- and the message would
+// die with the process, leaving the UI waiting on a turn nobody is running. Hold
+// messages instead and hand them to the replacement once it's up.
+let draining = false;
+const drainQueue: Record<string, unknown>[] = [];
+
 function sendToLoom(obj: Record<string, unknown>): void {
+  if (draining) {
+    drainQueue.push(obj);
+    return;
+  }
   if (!loomProcess?.stdin?.writable) return;
   loomProcess.stdin.write(JSON.stringify(obj) + "\n");
+}
+
+function flushDrainQueue(): void {
+  const queued = drainQueue.splice(0, drainQueue.length);
+  for (const obj of queued) sendToLoom(obj);
+}
+
+/**
+ * Run a brain swap with nothing else swapping underneath it. Two restarts landing
+ * together used to await the same dying process and then both spawn, so the
+ * second startLoom would SIGKILL the first replacement through the non-graceful
+ * path -- and a reset racing a restart could lose its fresh-session semantics
+ * entirely.
+ */
+let swapChain: Promise<void> = Promise.resolve();
+function serializeSwap(fn: () => Promise<void>): Promise<void> {
+  const next = swapChain.then(fn, fn);
+  // Keep the chain alive regardless of outcome; errors surface via the handler.
+  swapChain = next.catch(() => {});
+  return next;
+}
+
+/** Drain the current brain, then spawn its replacement (startLoom by default). */
+async function respawnBrain(spawnReplacement: () => void = startLoom): Promise<void> {
+  draining = true;
+  try {
+    await stopLoomGracefully(resolveShutdownGraceMs(process.env));
+    spawnReplacement();
+  } finally {
+    draining = false;
+  }
+  flushDrainQueue();
 }
 
 function sendEvent(event: string, ...payload: unknown[]): void {
@@ -477,25 +521,25 @@ wss.on("connection", (socket) => {
     // page the old one hadn't finished writing, or the two pushes could land
     // last-writer-wins. Draining first makes the handoff ordered.
     if (channel === "agent:restart") {
-      void (async () => {
-        await stopLoomGracefully(resolveShutdownGraceMs(process.env));
-        startLoom();
+      void serializeSwap(async () => {
+        await respawnBrain();
         respond(id, null);
-      })();
+      });
       return;
     }
     if (channel === "agent:reset-session") {
-      void (async () => {
-        await stopLoomGracefully(resolveShutdownGraceMs(process.env));
-        // Fresh start — tell loom not to auto-load notebook. Set around the
-        // synchronous spawn only: startLoom reads process.env at spawn time.
-        const origEnv = process.env.LOOM_FRESH_SESSION;
-        process.env.LOOM_FRESH_SESSION = "1";
-        startLoom();
-        if (origEnv === undefined) delete process.env.LOOM_FRESH_SESSION;
-        else process.env.LOOM_FRESH_SESSION = origEnv;
+      void serializeSwap(async () => {
+        await respawnBrain(() => {
+          // Fresh start — tell loom not to auto-load notebook. Set around the
+          // synchronous spawn only: startLoom reads process.env at spawn time.
+          const origEnv = process.env.LOOM_FRESH_SESSION;
+          process.env.LOOM_FRESH_SESSION = "1";
+          startLoom();
+          if (origEnv === undefined) delete process.env.LOOM_FRESH_SESSION;
+          else process.env.LOOM_FRESH_SESSION = origEnv;
+        });
         respond(id, null);
-      })();
+      });
       return;
     }
     if (channel === "agent:new-session") {
