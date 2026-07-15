@@ -43,6 +43,42 @@ export interface PageSyncDeps {
   push: (o: { historyId: string; slug: string; title: string }) => Promise<void>;
   subscribe: (cb: () => void) => () => void;
   debounceMs: number;
+  /**
+   * Cap on each init-time Galaxy call. init() runs inside session_start, so an
+   * unbounded history request against a wedged Galaxy hangs the session's whole
+   * startup rather than just costing us page sync.
+   */
+  initTimeoutMs?: number;
+  /**
+   * How many times to try resolving the history before giving up for good.
+   * Attempts are lazy -- one per change event -- so a Galaxy that's briefly down
+   * at launch costs a retry, not the session's durability.
+   */
+  maxInitAttempts?: number;
+}
+
+const DEFAULT_INIT_TIMEOUT_MS = 15000;
+const DEFAULT_MAX_INIT_ATTEMPTS = 5;
+
+class TimeoutError extends Error {}
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new TimeoutError(`${label} timed out after ${ms}ms`)),
+      ms,
+    );
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
 }
 
 export function createPageSyncEngine(deps: PageSyncDeps) {
@@ -52,15 +88,26 @@ export function createPageSyncEngine(deps: PageSyncDeps) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let unsubscribe: (() => void) | null = null;
   let active = false;
+  let initAttempts = 0;
+  const initTimeoutMs = deps.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS;
+  const maxInitAttempts = deps.maxInitAttempts ?? DEFAULT_MAX_INIT_ATTEMPTS;
   // Serialize pushes: at most one in flight; a change arriving mid-push queues
   // exactly one follow-up so the latest body still lands. flush() awaits this.
   let inFlight: Promise<void> | null = null;
   let pendingAgain = false;
 
   async function doPush(): Promise<void> {
+    // A launch-time blip leaves us unarmed; retry here so the first change after
+    // Galaxy comes back recovers sync instead of the session running to its end
+    // with a notebook that only exists under /tmp.
+    if (!historyId && !(await arm())) return;
     if (!historyId) return;
     const body = await deps.readBody();
     if (!hasBodyChanged(lastBody, body)) return; // dedupe + self-trigger guard
+    // Never create/overwrite a page with an empty body: an untouched notebook
+    // has nothing worth persisting, and lastBody is null until a resume gives us
+    // a real baseline, so without this a no-op session would publish a blank page.
+    if (body.length === 0) return;
     await deps.push({ historyId, slug, title: pageTitleForHistory(historyId) });
     lastBody = body;
   }
@@ -88,16 +135,27 @@ export function createPageSyncEngine(deps: PageSyncDeps) {
     return inFlight;
   }
 
-  async function init(): Promise<void> {
-    if (deps.mode !== "auto" || !deps.hasGalaxy()) return;
-    let resolved: string | null = null;
+  /**
+   * Resolve the history and adopt any prior page for it. Returns true once the
+   * engine can push. Safe to call repeatedly: it no-ops once armed and stops
+   * trying after maxInitAttempts so a permanently unreachable Galaxy doesn't
+   * mean a Galaxy call on every change event for the rest of the session.
+   */
+  async function arm(): Promise<boolean> {
+    if (historyId) return true;
+    if (initAttempts >= maxInitAttempts) return false;
+    initAttempts++;
+
+    let resolved: string | null;
     try {
-      resolved = await deps.getHistoryId();
-    } catch {
-      /* treat a rejected getHistoryId as "no history" → skip sync */
+      resolved = await withTimeout(deps.getHistoryId(), initTimeoutMs, "history lookup");
+    } catch (err) {
+      console.error("[page-sync] history lookup failed:", err);
+      return false;
     }
+    if (!resolved) return false;
+
     historyId = resolved;
-    if (!historyId) return;
     slug = pageSlugForHistory(historyId);
     // Galaxy's GET /pages/{id} takes a page id, not a slug, so resolve the
     // per-history page id by listing the history's pages and matching the
@@ -105,18 +163,38 @@ export function createPageSyncEngine(deps: PageSyncDeps) {
     // so listing is the only way to rediscover the page.
     let existingPageId: string | null = null;
     try {
-      existingPageId = await deps.findPageId(historyId, slug);
+      existingPageId = await withTimeout(
+        deps.findPageId(historyId, slug),
+        initTimeoutMs,
+        "page listing",
+      );
     } catch {
       /* listing failed — treat as no prior page; created on first push */
     }
+    let resumed = false;
     if (existingPageId) {
       try {
         await deps.resume(existingPageId); // refresh notebook from the prior page
+        resumed = true;
       } catch (err) {
         console.error("[page-sync] resume failed:", err);
       }
     }
-    lastBody = await deps.readBody();
+    // Baseline only from a resume, where the notebook now mirrors the page and
+    // the write we just made would otherwise self-trigger a pointless push.
+    // Without a resume the local notebook is the authoritative copy, so leave
+    // the baseline empty and let the next push carry it to Galaxy -- seeding it
+    // from disk here is what made a recovered session flush nothing at all.
+    lastBody = resumed ? await deps.readBody() : null;
+    return true;
+  }
+
+  async function init(): Promise<void> {
+    if (deps.mode !== "auto" || !deps.hasGalaxy()) return;
+    await arm();
+    // Subscribe regardless: an unarmed engine retries on the next change (see
+    // doPush), so a Galaxy that's down at launch no longer disables sync for the
+    // whole session.
     active = true;
     unsubscribe = deps.subscribe(() => {
       if (timer) clearTimeout(timer);
@@ -149,6 +227,7 @@ export function createPageSyncEngine(deps: PageSyncDeps) {
     historyId = null;
     lastBody = null;
     pendingAgain = false;
+    initAttempts = 0;
   }
 
   return { init, flush, dispose };

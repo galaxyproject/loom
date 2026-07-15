@@ -177,3 +177,111 @@ describe("createPageSyncEngine", () => {
     expect(deps.pushes).toHaveLength(0);
   });
 });
+
+// #330 (Codex, HIGH): page-sync failures were silent AND permanent. A Galaxy
+// that was briefly down at launch left init() with no history, which disabled
+// sync for the entire session while the UI still showed Galaxy as connected --
+// the notebook then only ever existed under /tmp, and the container's /tmp dies
+// with the job.
+describe("createPageSyncEngine recovery", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("re-arms on a later change when the history lookup failed at launch", async () => {
+    let attempts = 0;
+    const deps = makeDeps({
+      getHistoryId: async () => {
+        attempts++;
+        if (attempts === 1) throw new Error("galaxy down");
+        return "h1";
+      },
+      findPageId: vi.fn(async () => null), // no prior page: local notebook is authoritative
+    });
+    const engine = createPageSyncEngine(deps);
+    await engine.init();
+    expect(deps.pushes).toHaveLength(0);
+
+    (deps as unknown as { setBody: (b: string) => void }).setBody("written while galaxy was down");
+    deps.fire();
+    await vi.advanceTimersByTimeAsync(150);
+
+    expect(attempts).toBe(2);
+    expect(deps.pushes).toHaveLength(1);
+    expect(deps.pushes[0].historyId).toBe("h1");
+  });
+
+  it("recovers content written during the outage on flush, not just on change", async () => {
+    let attempts = 0;
+    const deps = makeDeps({
+      getHistoryId: async () => {
+        attempts++;
+        if (attempts === 1) return null; // no history yet
+        return "h1";
+      },
+      findPageId: vi.fn(async () => null),
+    });
+    const engine = createPageSyncEngine(deps);
+    await engine.init();
+    (deps as unknown as { setBody: (b: string) => void }).setBody("work worth keeping");
+
+    await engine.flush();
+
+    // Without arming inside the push path this flushed nothing and the work was
+    // lost with the container.
+    expect(deps.pushes).toHaveLength(1);
+    expect(deps.pushes[0].historyId).toBe("h1");
+  });
+
+  it("gives up after maxInitAttempts so a dead Galaxy isn't retried forever", async () => {
+    let attempts = 0;
+    const deps = makeDeps({
+      getHistoryId: async () => {
+        attempts++;
+        throw new Error("galaxy down");
+      },
+      maxInitAttempts: 3,
+    });
+    const engine = createPageSyncEngine(deps);
+    await engine.init(); // attempt 1
+    for (let i = 0; i < 6; i++) {
+      (deps as unknown as { setBody: (b: string) => void }).setBody(`body-${i}`);
+      deps.fire();
+      await vi.advanceTimersByTimeAsync(150);
+    }
+    expect(attempts).toBe(3);
+    expect(deps.pushes).toHaveLength(0);
+  });
+
+  it("times out a hanging history request instead of stalling session_start", async () => {
+    const deps = makeDeps({
+      getHistoryId: () => new Promise<string>(() => {}), // never settles
+      initTimeoutMs: 5000,
+    });
+    const engine = createPageSyncEngine(deps);
+    const done = engine.init();
+    await vi.advanceTimersByTimeAsync(5001);
+    await expect(done).resolves.toBeUndefined();
+  });
+
+  it("does not publish a page for an untouched notebook", async () => {
+    const deps = makeDeps({ findPageId: vi.fn(async () => null) });
+    (deps as unknown as { setBody: (b: string) => void }).setBody("");
+    const engine = createPageSyncEngine(deps);
+    await engine.init();
+    deps.fire();
+    await vi.advanceTimersByTimeAsync(150);
+    await engine.flush();
+    expect(deps.pushes).toHaveLength(0);
+  });
+
+  it("still skips a redundant push right after resuming an existing page", async () => {
+    // resume() rewrites the notebook, which fires the watcher; that self-trigger
+    // must not bounce straight back to Galaxy as a no-op push.
+    const deps = makeDeps(); // findPageId -> "page-h1", body stays "first"
+    const engine = createPageSyncEngine(deps);
+    await engine.init();
+    deps.fire();
+    await vi.advanceTimersByTimeAsync(150);
+    expect(deps.pushes).toHaveLength(0);
+  });
+});
