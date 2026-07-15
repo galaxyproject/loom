@@ -229,6 +229,57 @@ describe("copy button dismissal after clicking it (#377)", () => {
     expect(first.removeAllRanges).not.toHaveBeenCalled();
   });
 
+  it("does not clear a re-selection of the identical range made during the beat", async () => {
+    stubClipboard(true);
+    const { container, btn } = setup();
+    const sel = (currentSelection = makeSelection(container, "same range"));
+    selectionchange();
+    btn.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(btn.textContent).toContain("Copied");
+
+    // Within the beat the user collapses and re-selects the exact same text:
+    // identical signature, but a NEW selection the timer must not clear.
+    currentSelection = COLLAPSED;
+    selectionchange();
+    currentSelection = sel;
+    selectionchange();
+    expect(btn.hidden).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(btn.hidden).toBe(false);
+    expect(sel.removeAllRanges).not.toHaveBeenCalled();
+  });
+
+  it("does not suppress a re-selected identical range when a slow copy fails", async () => {
+    let reject: (e: Error) => void = () => {};
+    const writeText = vi.fn().mockImplementation(
+      () => new Promise((_res, rej) => (reject = rej)),
+    );
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    const { container, btn } = setup();
+    const sel = (currentSelection = makeSelection(container, "same range"));
+    selectionchange();
+    btn.click();
+
+    // While the clipboard write is still pending, collapse and re-select the
+    // identical range. The late failure must not suppress this new selection.
+    currentSelection = COLLAPSED;
+    selectionchange();
+    currentSelection = sel;
+    selectionchange();
+
+    reject(new Error("denied"));
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(btn.hidden).toBe(false);
+    selectionchange();
+    expect(btn.hidden).toBe(false);
+  });
+
   it("hides instead of lingering when the selection vanished before the click lands", () => {
     stubClipboard(true);
     const { container, btn } = setup();

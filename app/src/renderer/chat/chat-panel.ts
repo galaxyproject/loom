@@ -476,6 +476,11 @@ export class ChatPanel {
     // mouseup/selectionchange re-validation would bring the button right back.
     const dismissal = new CopyButtonDismissal();
 
+    // Bumped whenever the document selection collapses/empties: a later
+    // selection with an identical signature is then a NEW selection (the user
+    // re-selected the same text), not the one a pending copy acted on.
+    let selectionEpoch = 0;
+
     const currentSignature = (): SelectionSignature | null => {
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
@@ -520,6 +525,12 @@ export class ChatPanel {
       // confirmation beat ends, the user may have selected something else,
       // and that newer selection must be neither cleared nor suppressed.
       const copied = currentSignature();
+      const epoch = selectionEpoch;
+      // The copied selection is still the live one: same signature, and no
+      // collapse in between (which would make an identical signature a new,
+      // re-selected range rather than this one).
+      const copiedSelectionIsLive = () =>
+        epoch === selectionEpoch && selectionSignaturesEqual(currentSignature(), copied);
       void copyToClipboard(md).then((ok) => {
         if (ok) {
           btn.textContent = "✓ Copied";
@@ -527,12 +538,12 @@ export class ChatPanel {
           // Clipboard unavailable/refused: don't claim success, and keep the
           // selection so Cmd/Ctrl+C still works -- just stop showing the
           // button for it.
-          dismissal.suppress(copied);
+          if (copiedSelectionIsLive()) dismissal.suppress(copied);
           btn.textContent = "✗ Copy failed";
         }
         setTimeout(() => {
           btn.innerHTML = COPY_LABEL;
-          if (ok && selectionSignaturesEqual(currentSignature(), copied)) {
+          if (ok && copiedSelectionIsLive()) {
             btn.hidden = true;
             window.getSelection()?.removeAllRanges();
           } else {
@@ -547,7 +558,9 @@ export class ChatPanel {
     // Keyboard selection (Shift+arrow, Ctrl+A, etc.) — selectionchange is safe
     // here because there's no mousedown race.
     document.addEventListener("selectionchange", () => {
-      dismissal.noteSelectionChange(currentSignature());
+      const sig = currentSignature();
+      if (sig === null) selectionEpoch++;
+      dismissal.noteSelectionChange(sig);
       if (mouseIsDown) return;
       updateBtn();
     });
