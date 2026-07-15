@@ -3,6 +3,7 @@ import { joinTextBlocks } from "./block-spacing.js";
 import {
   computeCopyButtonPlacement,
   CopyButtonDismissal,
+  selectionSignaturesEqual,
   type SelectionSignature,
 } from "./copy-button.js";
 import { copyToClipboard } from "../update-banner.js";
@@ -515,24 +516,30 @@ export class ChatPanel {
       const tmp = document.createElement("div");
       tmp.appendChild(frag);
       const md = fragmentToMarkdown(tmp);
+      // Snapshot what was copied: by the time the clipboard settles or the
+      // confirmation beat ends, the user may have selected something else,
+      // and that newer selection must be neither cleared nor suppressed.
+      const copied = currentSignature();
       void copyToClipboard(md).then((ok) => {
         if (ok) {
           btn.textContent = "✓ Copied";
-          setTimeout(() => {
-            btn.innerHTML = COPY_LABEL;
-            btn.hidden = true;
-            sel.removeAllRanges();
-          }, 1200);
-          return;
+        } else {
+          // Clipboard unavailable/refused: don't claim success, and keep the
+          // selection so Cmd/Ctrl+C still works -- just stop showing the
+          // button for it.
+          dismissal.suppress(copied);
+          btn.textContent = "✗ Copy failed";
         }
-        // Clipboard unavailable/refused: don't claim success, and keep the
-        // selection so Cmd/Ctrl+C still works. Suppress right away so the
-        // confirmation beat can't be re-shown by scroll/selectionchange.
-        dismissal.suppress(currentSignature());
-        btn.textContent = "✗ Copy failed";
         setTimeout(() => {
           btn.innerHTML = COPY_LABEL;
-          btn.hidden = true;
+          if (ok && selectionSignaturesEqual(currentSignature(), copied)) {
+            btn.hidden = true;
+            window.getSelection()?.removeAllRanges();
+          } else {
+            // The user moved on (or the copy failed): leave the selection
+            // alone and let the usual rules decide visibility.
+            updateBtn();
+          }
         }, 1200);
       });
     });
