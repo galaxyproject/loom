@@ -1,6 +1,12 @@
 import { renderMarkdown } from "./markdown.js";
 import { joinTextBlocks } from "./block-spacing.js";
-import { computeCopyButtonPlacement } from "./copy-button.js";
+import {
+  computeCopyButtonPlacement,
+  CopyButtonDismissal,
+  selectionSignaturesEqual,
+  type SelectionSignature,
+} from "./copy-button.js";
+import { copyToClipboard } from "../update-banner.js";
 import {
   TEAM_DISPATCH_KIND,
   type TeamDispatchDetails,
@@ -453,16 +459,38 @@ export class ChatPanel {
   }
 
   private initCopyButton(): HTMLElement {
+    const COPY_LABEL = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy`;
     const btn = document.createElement("button");
     btn.className = "chat-copy-btn";
     btn.hidden = true;
-    btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy`;
+    btn.innerHTML = COPY_LABEL;
     document.body.appendChild(btn);
 
     // selectionchange fires while a mousedown is still in progress and the old
     // selection is still live, which would immediately re-show the button we
     // just hid. Track mousedown state so selectionchange can't re-show it.
     let mouseIsDown = false;
+
+    // #377: many clicks never collapse the selection (non-selectable chrome,
+    // the chat input, scrollbars), so hiding on mousedown isn't enough -- the
+    // mouseup/selectionchange re-validation would bring the button right back.
+    const dismissal = new CopyButtonDismissal();
+
+    // Bumped whenever the document selection collapses/empties: a later
+    // selection with an identical signature is then a NEW selection (the user
+    // re-selected the same text), not the one a pending copy acted on.
+    let selectionEpoch = 0;
+
+    const currentSignature = (): SelectionSignature | null => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
+      return {
+        anchorNode: sel.anchorNode,
+        anchorOffset: sel.anchorOffset,
+        focusNode: sel.focusNode,
+        focusOffset: sel.focusOffset,
+      };
+    };
 
     btn.addEventListener("mousedown", (e) => e.preventDefault()); // keep selection alive on button click
 
@@ -472,6 +500,7 @@ export class ChatPanel {
       if (!btn.contains(e.target as Node)) {
         btn.hidden = true;
         mouseIsDown = true;
+        dismissal.suppress(currentSignature());
       }
     });
     document.addEventListener("mouseup", () => {
@@ -484,17 +513,44 @@ export class ChatPanel {
 
     btn.addEventListener("click", () => {
       const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0) return;
+      if (!sel || sel.rangeCount === 0) {
+        btn.hidden = true;
+        return;
+      }
       const frag = sel.getRangeAt(0).cloneContents();
       const tmp = document.createElement("div");
       tmp.appendChild(frag);
       const md = fragmentToMarkdown(tmp);
-      navigator.clipboard.writeText(md).then(() => {
-        btn.textContent = "✓ Copied";
+      // Snapshot what was copied: by the time the clipboard settles or the
+      // confirmation beat ends, the user may have selected something else,
+      // and that newer selection must be neither cleared nor suppressed.
+      const copied = currentSignature();
+      const epoch = selectionEpoch;
+      // The copied selection is still the live one: same signature, and no
+      // collapse in between (which would make an identical signature a new,
+      // re-selected range rather than this one).
+      const copiedSelectionIsLive = () =>
+        epoch === selectionEpoch && selectionSignaturesEqual(currentSignature(), copied);
+      void copyToClipboard(md).then((ok) => {
+        if (ok) {
+          btn.textContent = "✓ Copied";
+        } else {
+          // Clipboard unavailable/refused: don't claim success, and keep the
+          // selection so Cmd/Ctrl+C still works -- just stop showing the
+          // button for it.
+          if (copiedSelectionIsLive()) dismissal.suppress(copied);
+          btn.textContent = "✗ Copy failed";
+        }
         setTimeout(() => {
-          btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy`;
-          btn.hidden = true;
-          sel.removeAllRanges();
+          btn.innerHTML = COPY_LABEL;
+          if (ok && copiedSelectionIsLive()) {
+            btn.hidden = true;
+            window.getSelection()?.removeAllRanges();
+          } else {
+            // The user moved on (or the copy failed): leave the selection
+            // alone and let the usual rules decide visibility.
+            updateBtn();
+          }
         }, 1200);
       });
     });
@@ -502,6 +558,9 @@ export class ChatPanel {
     // Keyboard selection (Shift+arrow, Ctrl+A, etc.) — selectionchange is safe
     // here because there's no mousedown race.
     document.addEventListener("selectionchange", () => {
+      const sig = currentSignature();
+      if (sig === null) selectionEpoch++;
+      dismissal.noteSelectionChange(sig);
       if (mouseIsDown) return;
       updateBtn();
     });
@@ -526,6 +585,11 @@ export class ChatPanel {
     const updateBtn = () => {
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+        btn.hidden = true;
+        return;
+      }
+      // A dismissed-but-surviving selection stays dismissed (#377).
+      if (dismissal.suppresses(currentSignature())) {
         btn.hidden = true;
         return;
       }

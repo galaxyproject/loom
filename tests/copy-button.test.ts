@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   computeCopyButtonPlacement,
+  CopyButtonDismissal,
+  selectionSignaturesEqual,
   type CopyButtonInput,
+  type SelectionSignature,
 } from "../app/src/renderer/chat/copy-button.js";
 
 const VIEWPORT = { width: 1000, height: 800 };
@@ -134,5 +137,89 @@ describe("computeCopyButtonPlacement", () => {
       top: 124,
       left: 304,
     });
+  });
+});
+
+// #377: clicking anywhere outside the button must dismiss it for good, even
+// when the click leaves the document selection intact (non-selectable UI
+// chrome, the chat input, a scrollbar). Node identity stands in for real DOM
+// nodes -- the signature only ever compares by reference.
+function sig(node: unknown, a = 0, f = 5): SelectionSignature {
+  return { anchorNode: node, anchorOffset: a, focusNode: node, focusOffset: f };
+}
+
+describe("selectionSignaturesEqual", () => {
+  const node = {};
+
+  it("treats two nulls as equal and null vs a signature as different", () => {
+    expect(selectionSignaturesEqual(null, null)).toBe(true);
+    expect(selectionSignaturesEqual(null, sig(node))).toBe(false);
+    expect(selectionSignaturesEqual(sig(node), null)).toBe(false);
+  });
+
+  it("compares nodes by identity and offsets by value", () => {
+    expect(selectionSignaturesEqual(sig(node), sig(node))).toBe(true);
+    expect(selectionSignaturesEqual(sig(node), sig({}))).toBe(false);
+    expect(selectionSignaturesEqual(sig(node, 0, 5), sig(node, 0, 6))).toBe(false);
+    expect(selectionSignaturesEqual(sig(node, 1, 5), sig(node, 0, 5))).toBe(false);
+  });
+});
+
+describe("CopyButtonDismissal", () => {
+  const r1 = sig({});
+  const r2 = sig({});
+
+  it("suppresses nothing until a dismissal happens", () => {
+    const d = new CopyButtonDismissal();
+    expect(d.suppresses(r1)).toBe(false);
+    expect(d.suppresses(null)).toBe(false);
+  });
+
+  it("keeps the button dismissed when a click leaves the selection untouched (non-selectable chrome)", () => {
+    const d = new CopyButtonDismissal();
+    d.suppress(r1);
+    // No selectionchange fires at all -- mouseup re-validation must not re-show.
+    expect(d.suppresses(r1)).toBe(true);
+  });
+
+  it("keeps the button dismissed when only a text control's internal selection changes (chat input click)", () => {
+    const d = new CopyButtonDismissal();
+    d.suppress(r1);
+    // Chromium fires document selectionchange for textarea caret moves, but the
+    // document selection itself is unchanged.
+    d.noteSelectionChange(r1);
+    expect(d.suppresses(r1)).toBe(true);
+  });
+
+  it("does not suppress a different selection", () => {
+    const d = new CopyButtonDismissal();
+    d.suppress(r1);
+    expect(d.suppresses(r2)).toBe(false);
+  });
+
+  it("lifts suppression when the selection collapses, so re-selecting the same text shows again", () => {
+    const d = new CopyButtonDismissal();
+    d.suppress(r1);
+    // Drag re-select: browser collapses the selection on mousedown-in-text...
+    d.noteSelectionChange(null);
+    // ...then the drag rebuilds the exact same range.
+    d.noteSelectionChange(r1);
+    expect(d.suppresses(r1)).toBe(false);
+  });
+
+  it("lifts suppression when the selection actually changes (new drag or keyboard extension)", () => {
+    const d = new CopyButtonDismissal();
+    d.suppress(r1);
+    d.noteSelectionChange(r2);
+    expect(d.suppresses(r2)).toBe(false);
+    expect(d.suppresses(r1)).toBe(false);
+  });
+
+  it("clears any prior suppression when dismissing with no selection", () => {
+    const d = new CopyButtonDismissal();
+    d.suppress(r1);
+    d.suppress(null);
+    expect(d.suppresses(r1)).toBe(false);
+    expect(d.suppresses(null)).toBe(false);
   });
 });
