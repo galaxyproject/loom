@@ -3,6 +3,9 @@ node_modules/
 # Production Vite build output for the web shell
 web/dist/
 
+# Bundled web server (esbuild output, built in the container image)
+web/build/
+
 # macOS Finder metadata
 .DS_Store
 

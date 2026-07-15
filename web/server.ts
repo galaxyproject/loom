@@ -20,13 +20,14 @@ import { WebSocketServer, WebSocket } from "ws";
 import { buildBrainEnv } from "../shared/brain-env.js";
 import { evaluateBind, authorizeWsUpgrade } from "./auth.js";
 import { isForwardableUiResponse } from "./rpc-guard.js";
-import { providerKeyVar, hasProviderKey } from "./llm-credentials.js";
+import { hasProviderKey, llmKeyEnvVar } from "./llm-credentials.js";
+import { resolveShutdownGraceMs } from "./shutdown-grace.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// In dev this file runs from web/; the container compiles it to web/build/ and
+// In dev this file runs from web/; the container bundles it to web/build/ and
 // runs that. Anchor all repo-relative asset paths (the brain binary, the gate
 // extension, the built renderer) at the web dir so they resolve either way --
-// otherwise the compiled server looks one level too deep (web/build/...) and
+// otherwise the bundled server looks one level too deep (web/build/...) and
 // the brain, the lockdown gate, and the static bundle all silently go missing.
 const WEB_ROOT = basename(__dirname) === "build" ? resolve(__dirname, "..") : __dirname;
 const LOOM_BIN = resolve(WEB_ROOT, "../bin/loom.js");
@@ -162,10 +163,10 @@ function startLoom(): void {
       args.push("--model", process.env.LOOM_LLM_MODEL);
     }
     // BYO-key: inject the user-supplied key into the brain's env (env var name
-    // per the active provider). Never logged.
-    const keyVar = providerKeyVar(prov);
-    if (providedLlmKey && keyVar) {
-      env[keyVar] = providedLlmKey;
+    // per the active provider; custom endpoints go to LOOM_ACTIVE_LLM_API_KEY).
+    // Never logged.
+    if (providedLlmKey) {
+      env[llmKeyEnvVar(prov)] = providedLlmKey;
     }
     env.LOOM_NOTEBOOK_ALLOWLIST = join(cwd, "notebook.md");
     // No local execution surface in the container: the web-mode-gate is the
@@ -300,6 +301,11 @@ const wss = new WebSocketServer({
     const auth = authorizeWsUpgrade(
       { origin: info.origin, host: info.req.headers.host, url: info.req.url },
       WEB_TOKEN,
+      // Remote mode with no token (the GxIT shape: gx-it-proxy is the trust
+      // boundary, and a Galaxy-issued entry-point URL can't carry a token) has
+      // no other check left, so demand the Origin browsers always send. Local
+      // dev and token deployments keep accepting non-browser clients.
+      { requireOrigin: IS_REMOTE_MODE && !WEB_TOKEN },
     );
     if (auth.ok) {
       done(true);
@@ -421,21 +427,31 @@ wss.on("connection", (socket) => {
       respond(id, cwd);
       return;
     }
+    // Restart/reset drain the old brain before spawning the new one. A bare
+    // SIGTERM-and-respawn let the outgoing brain's shutdown-hook page push
+    // overlap the incoming brain's resume/push: the new brain could resume a
+    // page the old one hadn't finished writing, or the two pushes could land
+    // last-writer-wins. Draining first makes the handoff ordered.
     if (channel === "agent:restart") {
-      stopLoom();
-      startLoom();
-      respond(id, null);
+      void (async () => {
+        await stopLoomGracefully(resolveShutdownGraceMs(process.env));
+        startLoom();
+        respond(id, null);
+      })();
       return;
     }
     if (channel === "agent:reset-session") {
-      stopLoom();
-      // Fresh start — tell loom not to auto-load notebook
-      const origEnv = process.env.LOOM_FRESH_SESSION;
-      process.env.LOOM_FRESH_SESSION = "1";
-      startLoom();
-      if (origEnv === undefined) delete process.env.LOOM_FRESH_SESSION;
-      else process.env.LOOM_FRESH_SESSION = origEnv;
-      respond(id, null);
+      void (async () => {
+        await stopLoomGracefully(resolveShutdownGraceMs(process.env));
+        // Fresh start — tell loom not to auto-load notebook. Set around the
+        // synchronous spawn only: startLoom reads process.env at spawn time.
+        const origEnv = process.env.LOOM_FRESH_SESSION;
+        process.env.LOOM_FRESH_SESSION = "1";
+        startLoom();
+        if (origEnv === undefined) delete process.env.LOOM_FRESH_SESSION;
+        else process.env.LOOM_FRESH_SESSION = origEnv;
+        respond(id, null);
+      })();
       return;
     }
     if (channel === "agent:new-session") {
@@ -528,11 +544,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   } catch {
     /* */
   }
-  // Guard the env override: a non-numeric LOOM_SHUTDOWN_GRACE_MS would parse to
-  // NaN, and setTimeout(NaN) fires immediately -> the SIGKILL backstop would
-  // race the notebook flush. Fall back to 8s on any non-finite/negative value.
-  const graceMs = parseInt(process.env.LOOM_SHUTDOWN_GRACE_MS ?? "8000", 10);
-  await stopLoomGracefully(Number.isFinite(graceMs) && graceMs >= 0 ? graceMs : 8000);
+  await stopLoomGracefully(resolveShutdownGraceMs(process.env));
   process.exit(0);
 }
 process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"));

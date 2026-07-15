@@ -2,15 +2,32 @@
 FROM node:22-slim AS builder
 
 WORKDIR /app
+
+# Root deps before any source, so an edit doesn't bust the install layer. These
+# are needed at BUILD time, not just runtime: the web bundle is built from the
+# Orbit renderer (vite.config.ts roots at app/src/renderer), whose bare imports
+# -- marked, dompurify -- are declared in the ROOT package.json. Node resolves
+# them by walking up from app/src/renderer/ to /app/node_modules, which never
+# reaches web/node_modules, so without this the vite build can't resolve them.
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY web/package.json web/package-lock.json ./web/
+RUN cd web && npm ci
+
 COPY CHANGELOG.md README.md ./
 COPY bin ./bin
 COPY extensions ./extensions
 COPY shared ./shared
 COPY app ./app
-COPY web/package.json web/package-lock.json ./web/
-RUN cd web && npm ci
 COPY web ./web
-RUN cd web && npm run build && npx tsc server.ts --outDir build --module ESNext --moduleResolution bundler --target ES2022 --skipLibCheck --resolveJsonModule --esModuleInterop
+# Bundle the server rather than compiling file-by-file. tsc would emit flat into
+# web/build/, keeping `../shared/brain-env.js` in the output -- which resolves to
+# web/shared/ at runtime, not the /app/shared this image ships, so the server
+# died on module load. Bundling inlines every relative import (shared/, auth,
+# rpc-guard, llm-credentials) and leaves bare package imports external for the
+# runner's npm ci to supply. Typechecking stays in CI, which has the app deps
+# this stage doesn't install.
+RUN cd web && npm run build && npm run build:server
 RUN cd web && npm prune --production --no-optional
 
 FROM node:22-slim AS runner
@@ -34,7 +51,13 @@ COPY --from=builder /app/web/package.json ./web/package.json
 COPY --from=builder /app/web/package-lock.json ./web/package-lock.json
 COPY --from=builder /app/web/extensions ./web/extensions
 
-RUN npm ci --production --omit=dev --no-optional && cd web && npm ci --production --omit=dev --no-optional
+# Drop the root `prepare` script before installing: it runs husky (a devDep) on
+# every npm ci, including this --omit=dev one, so npm would exec a binary it was
+# just told not to install and die with "husky: not found". The git hooks it
+# sets up are meaningless in an image with no .git anyway.
+RUN npm pkg delete scripts.prepare \
+ && npm ci --production --omit=dev --no-optional \
+ && cd web && npm ci --production --omit=dev --no-optional
 
 # Galaxy's tool/workflow execution surface runs through `uvx galaxy-mcp` (a
 # Python MCP server). node:slim ships no Python or uv, so bring uv -- which
@@ -64,7 +87,14 @@ EXPOSE 3000
 USER node
 
 # Pre-warm galaxy-mcp (and the managed Python it needs) into the node-owned uv
-# cache so the runtime `uvx galaxy-mcp>=1.8.0` launch resolves from cache.
-RUN uv tool install "galaxy-mcp>=1.8.0"
+# cache so the runtime `uvx` launch resolves from cache instead of PyPI.
+#
+# This MUST stay the spec bin/loom.js writes into mcp.json (GALAXY_MCP_SPEC in
+# shared/galaxy-mcp-spec.js) -- pre-warming a version the runtime spec doesn't
+# accept sends uv back to the network at job-launch, which is exactly what
+# baking the cache is meant to avoid. tests/galaxy-mcp-spec.test.ts fails the
+# build if these two drift apart.
+ARG GALAXY_MCP_SPEC="galaxy-mcp>=1.9.0"
+RUN uv tool install "${GALAXY_MCP_SPEC}"
 
 CMD ["node", "web/build/server.js"]
