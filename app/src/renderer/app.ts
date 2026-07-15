@@ -930,7 +930,16 @@ welcomeSave.addEventListener("click", async () => {
       welcomeError.textContent = "API key is required";
       return;
     }
-    await window.orbit.provideLlmKey?.(welcomeProvider.value, key);
+    // Keep the overlay up if the server couldn't route the key anywhere --
+    // hiding it on a rejection stranded the user in front of a brain that never
+    // started, with no way back to the key prompt.
+    const res = (await window.orbit.provideLlmKey?.(welcomeProvider.value, key)) as
+      | { ok?: boolean; error?: string }
+      | undefined;
+    if (res && res.ok === false) {
+      welcomeError.textContent = res.error || "Could not start the agent with that key";
+      return;
+    }
     welcomeOverlay.classList.add("hidden");
     await refreshGalaxyStatus();
     return;
