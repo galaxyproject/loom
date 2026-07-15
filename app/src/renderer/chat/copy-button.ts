@@ -71,3 +71,59 @@ export function computeCopyButtonPlacement(input: CopyButtonInput): CopyButtonPl
 
   return { hidden: false, top, left };
 }
+
+/**
+ * Identity of a document selection, compared by node reference + offsets.
+ * `null` stands for "no usable selection" (none, empty, or collapsed).
+ */
+export interface SelectionSignature {
+  anchorNode: unknown;
+  anchorOffset: number;
+  focusNode: unknown;
+  focusOffset: number;
+}
+
+export function selectionSignaturesEqual(
+  a: SelectionSignature | null,
+  b: SelectionSignature | null,
+): boolean {
+  if (a === null || b === null) return a === b;
+  return (
+    a.anchorNode === b.anchorNode &&
+    a.anchorOffset === b.anchorOffset &&
+    a.focusNode === b.focusNode &&
+    a.focusOffset === b.focusOffset
+  );
+}
+
+/**
+ * Click-to-dismiss state for the floating Copy button (#377).
+ *
+ * A click outside the button hides it, but many clicks never collapse the
+ * document selection (non-selectable UI chrome, the chat input's internal
+ * caret, scrollbars), so re-validating on mouseup used to bring the button
+ * straight back. Dismissal therefore records the selection it dismissed:
+ * as long as the document selection is still that exact range the button
+ * stays hidden, and any real change -- including the collapse at the start
+ * of a drag, so re-selecting the same text works -- lifts the suppression.
+ */
+export class CopyButtonDismissal {
+  private suppressed: SelectionSignature | null = null;
+
+  /** The button was dismissed while `current` was selected. */
+  suppress(current: SelectionSignature | null): void {
+    this.suppressed = current;
+  }
+
+  /** The document selection is now `current`; an actual change ends suppression. */
+  noteSelectionChange(current: SelectionSignature | null): void {
+    if (this.suppressed && !selectionSignaturesEqual(current, this.suppressed)) {
+      this.suppressed = null;
+    }
+  }
+
+  /** Whether showing the button for `current` would undo a dismissal. */
+  suppresses(current: SelectionSignature | null): boolean {
+    return this.suppressed !== null && selectionSignaturesEqual(current, this.suppressed);
+  }
+}
