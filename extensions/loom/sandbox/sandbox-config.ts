@@ -1,5 +1,6 @@
 import * as path from "path";
 import type { SandboxRuntimeConfig } from "@anthropic-ai/sandbox-runtime";
+import { normalizeGalaxyUrl } from "../profiles";
 
 /**
  * Inputs for deriving the OS-sandbox profile. Pure: no I/O, fully testable.
@@ -42,7 +43,14 @@ const DENY_WRITE = [".env", ".env.*", "*.pem", "*.key"];
 export function hostFromUrl(url?: string): string | undefined {
   if (!url) return undefined;
   try {
-    return new URL(url).hostname || undefined;
+    // Normalize via the same helper /connect and the profile system use, so a
+    // scheme-less GALAXY_URL ("usegalaxy.org") still resolves to a host.
+    const parsed = new URL(normalizeGalaxyUrl(url));
+    // Galaxy speaks http(s) only (validateGalaxyUrl enforces this on connect),
+    // so keep the host only for those schemes -- an ftp:// or file:// GALAXY_URL
+    // must not seed the bash network allowlist.
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return undefined;
+    return parsed.hostname || undefined;
   } catch {
     return undefined;
   }
