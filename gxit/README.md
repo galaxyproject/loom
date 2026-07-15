@@ -50,8 +50,10 @@ orbit_destination:
     #   value: anthropic
 ```
 
-If no admin key is provided, the user is prompted for their own once BYO-key
-(Plan 2) lands. (For a free/local model, see "Custom provider" below.)
+If no admin key is provided, the user is prompted for their own on first
+connect; the key is held in server memory for the container's lifetime and is
+never persisted or sent back to the browser. (For a free/local model, see
+"Custom provider" below.)
 
 ### Custom OpenAI-compatible provider (e.g. a local/free endpoint)
 
@@ -77,6 +79,17 @@ authenticates the Galaxy user and routes only them to their container; the
 container is not otherwise reachable, and a Galaxy-controlled entry-point URL
 can't carry `LOOM_WEB_TOKEN`. The agent receives a **scoped** per-user key
 (`inject="api_key"`), never the user's personal key.
+
+"Not otherwise reachable" is doing real work in that paragraph, and it's a
+property of the deployment rather than of this container -- on a default Docker
+bridge, every other container on the host can reach port 3000 directly, and the
+WebSocket drives a live agent holding that scoped key. So in remote mode without
+a token the server also requires the `Origin` header that browsers always send on
+a WebSocket upgrade, and requires it to match `Host`. Browser clients through
+gx-it-proxy are unaffected; an origin-less client connecting straight to the port
+is refused. If you deploy this somewhere the container's port is genuinely shared,
+that check is the only thing standing between a neighbour and the agent -- prefer
+`LOOM_WEB_TOKEN` where the entry point can carry one.
 
 ## Known requirements / gotchas (found in live testing)
 
