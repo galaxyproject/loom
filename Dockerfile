@@ -92,9 +92,10 @@ USER node
 # This MUST stay the spec bin/loom.js writes into mcp.json (GALAXY_MCP_SPEC in
 # shared/galaxy-mcp-spec.js) -- pre-warming a version the runtime spec doesn't
 # accept sends uv back to the network at job-launch, which is exactly what
-# baking the cache is meant to avoid. tests/galaxy-mcp-spec.test.ts fails the
-# build if these two drift apart.
-ARG GALAXY_MCP_SPEC="galaxy-mcp>=1.9.0"
-RUN uv tool install "${GALAXY_MCP_SPEC}"
+# baking the cache is meant to avoid. tests/galaxy-mcp-spec.test.ts fails if
+# these two drift apart, so it's a literal rather than a build arg: an ARG would
+# let --build-arg put a non-matching spec in the cache while the test still
+# passed against its default, which is the bypass the test exists to prevent.
+RUN uv tool install "galaxy-mcp>=1.9.0"
 
 CMD ["node", "web/build/server.js"]

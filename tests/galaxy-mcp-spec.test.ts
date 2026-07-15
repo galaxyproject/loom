@@ -17,17 +17,16 @@ const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 describe("galaxy-mcp spec lockstep", () => {
   it("Dockerfile pre-warms exactly the spec the brain requests", () => {
     const dockerfile = readFileSync(join(repoRoot, "Dockerfile"), "utf-8");
-    const arg = dockerfile.match(/^ARG GALAXY_MCP_SPEC="([^"]+)"$/m);
-    expect(arg, 'Dockerfile should declare ARG GALAXY_MCP_SPEC="..."').not.toBeNull();
-    expect(arg![1]).toBe(GALAXY_MCP_SPEC);
+    // Deliberately a literal, not an ARG: a build arg could be overridden at
+    // build time to bake a spec the runtime won't accept while this test still
+    // passed against the default -- the exact drift it's here to catch.
+    expect(dockerfile).toContain(`RUN uv tool install "${GALAXY_MCP_SPEC}"`);
   });
 
-  it("installs from the ARG rather than a second hardcoded spec", () => {
+  it("has no second, unpaired galaxy-mcp install in the image", () => {
     const dockerfile = readFileSync(join(repoRoot, "Dockerfile"), "utf-8");
-    expect(dockerfile).toContain('RUN uv tool install "${GALAXY_MCP_SPEC}"');
-    // A literal `uv tool install "galaxy-mcp..."` would dodge the ARG (and this
-    // test's pairing) even while the ARG stays correct.
-    expect(dockerfile).not.toMatch(/uv tool install "galaxy-mcp/);
+    const installs = dockerfile.match(/uv tool install "[^"]*"/g) ?? [];
+    expect(installs).toEqual([`uv tool install "${GALAXY_MCP_SPEC}"`]);
   });
 
   it("bin/loom.js writes the shared constant into mcp.json, not a literal", () => {
