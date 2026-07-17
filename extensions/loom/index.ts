@@ -30,6 +30,7 @@ import { registerExecGuard } from "./exec-guard";
 import { registerSandbox } from "./sandbox";
 import { isLocalExecDisabled } from "./local-exec";
 import { registerSecretRedaction } from "./secret-redaction";
+import { GALAXY_RECONNECT_NUDGE, transportNudgeDecision } from "./galaxy-transport-error";
 import * as fs from "fs";
 import { getState, getNotebookPath, getNotebookWidgetMode, setNotebookWidgetMode } from "./state";
 import {
@@ -357,6 +358,11 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   // ─────────────────────────────────────────────────────────────────────────────
   const toolStartTimes = new Map<string, number>();
 
+  // Armed = a reconnect nudge is allowed to fire. We fire once when the MCP
+  // transport drops, then disarm so a galaxy retry loop doesn't spam the user,
+  // and re-arm after any healthy galaxy result.
+  let transportNudgeArmed = true;
+
   pi.on("tool_execution_start", async (event, ctx) => {
     if (event.toolName?.startsWith("galaxy_")) {
       const label = event.toolName.replace(/^galaxy_/, "").replace(/_/g, " ");
@@ -413,7 +419,26 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
     }
   });
 
-  pi.on("tool_result", async (event, _ctx) => {
+  pi.on("tool_result", async (event, ctx) => {
+    // Surface an actionable hint when a galaxy_* call fails because the MCP
+    // transport died mid-session (bare "Not connected" / -32000 / -32001) --
+    // the user can recover with /mcp reconnect galaxy, no restart needed. This
+    // is the deterministic backstop for the connection-liveness steer in
+    // buildGalaxyContextBlock: even a model that ignores the steer produces the
+    // recovery incantation for the user. hasUI-guard + try/catch mirror the
+    // galaxy poller notifier -- a headless/stale ctx must not throw here.
+    try {
+      const firstContent = event.content?.[0];
+      const resultText = firstContent && "text" in firstContent ? firstContent.text : undefined;
+      const decision = transportNudgeDecision(transportNudgeArmed, event.toolName, resultText);
+      transportNudgeArmed = decision.armed;
+      if (decision.showNudge && ctx.hasUI) {
+        ctx.ui.notify(GALAXY_RECONNECT_NUDGE, "warning");
+      }
+    } catch {
+      /* stale/headless context -- a dropped reconnect hint is fine */
+    }
+
     if (event.toolName === "galaxy_connect") {
       try {
         const firstContent = event.content?.[0];
