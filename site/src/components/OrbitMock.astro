@@ -1,0 +1,398 @@
+---
+// A faithful, stylized mockup of the Orbit desktop app (dark, three-pane:
+// Files · Chat · Notebook) mid-analysis. Content mirrors a real notebook.md +
+// loom-invocation block. Motion is CSS-only. Collapses the files rail via a
+// container query so it works both as the narrow hero panel and full-width.
+interface Props { class?: string }
+const { class: className = '' } = Astro.props;
+---
+
+<div class={`mock scroll-dark ${className}`} role="img" aria-label="The Orbit desktop app running a chrM variant-calling analysis: a chat pane with an approved plan, and a live notebook.md tracking a Galaxy workflow invocation.">
+  <!-- title bar -->
+  <div class="mock__bar">
+    <span class="tl tl--r"></span><span class="tl tl--y"></span><span class="tl tl--g"></span>
+    <span class="mock__title">orbit</span>
+    <span class="mock__cwd">~/chrM-variants</span>
+  </div>
+
+  <div class="mock__body">
+    <!-- files rail -->
+    <aside class="files">
+      <div class="pane-hd">
+        <span>Files</span>
+        <span class="pane-hd__icons">⟳ ◔</span>
+      </div>
+      <ul class="tree">
+        <li class="tree__row"><span class="tw">▸</span> data</li>
+        <li class="tree__row"><span class="tw">▸</span> results</li>
+        <li class="tree__row is-active"><span class="dot-file"></span> notebook.md</li>
+        <li class="tree__row muted"><span class="tw">▸</span> .loom</li>
+      </ul>
+    </aside>
+
+    <!-- chat pane -->
+    <section class="chat">
+      <div class="pane-hd">
+        <span>Chat</span>
+        <span class="pane-hd__icons">▤ ⤓ ▥</span>
+      </div>
+      <div class="chat__scroll">
+        <div class="msg msg--user reveal d1">
+          <span class="msg__num">1</span>
+          <div class="bubble">Call chrM variants across these 4 samples on Galaxy.</div>
+        </div>
+
+        <div class="msg msg--bot reveal d2">
+          <p class="bot-line">Here's a plan — approve to run it:</p>
+          <div class="plan-card">
+            <div class="plan-card__hd">
+              <strong>Plan A · chrM Variant Calling</strong>
+              <span class="chip chip-hybrid">hybrid</span>
+            </div>
+            <ul class="plan-steps">
+              <li><span class="ck ok">✓</span> QC FASTQ <span class="chip chip-local">local</span></li>
+              <li><span class="ck ok">✓</span> Reference index <span class="chip chip-local">local</span></li>
+              <li><span class="ck run"></span> Read alignment <span class="chip chip-remote">remote · bwa-mem2</span></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="msg msg--bot reveal d3">
+          <div class="tool-card">
+            <span class="tool-card__tw">▾</span>
+            <span class="tool-card__name">galaxy · run_workflow</span>
+            <span class="spin tool-card__spin"></span>
+          </div>
+          <div class="thinking"><span class="tdot"></span><span class="tdot"></span><span class="tdot"></span> polling Galaxy jobs…</div>
+        </div>
+      </div>
+
+      <div class="composer reveal d4">
+        <div class="composer__box"><span class="composer__ph caret">Ask for a plan, drop a file path, or type&nbsp;/&nbsp;for commands</span></div>
+        <button class="composer__send" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z" stroke-linejoin="round" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- notebook pane -->
+    <section class="nb">
+      <div class="pane-tabs">
+        <span class="tab is-active">Notebook</span>
+        <span class="tab">Activity <span class="tab__badge">1</span></span>
+        <span class="tab">File</span>
+      </div>
+      <div class="nb__scroll">
+        <h3 class="nb-h1">Plan A: chrM Variant Calling <span class="chip chip-hybrid">hybrid</span></h3>
+        <p class="nb-q"><span class="nb-key">Question:</span> how do mtDNA variants distribute across tissues in this dataset?</p>
+        <div class="nb-h2">Steps</div>
+        <ul class="nb-steps">
+          <li><span class="ck ok">✓</span> <span class="strike">1. QC FASTQ</span> <span class="nb-route">local</span></li>
+          <li><span class="ck ok">✓</span> <span class="strike">2. Reference index</span> <span class="nb-route">local</span></li>
+          <li><span class="ck run"></span> 3. Read alignment <span class="nb-route hot">Galaxy · bwa-mem2/2.2.1</span></li>
+        </ul>
+
+        <div class="inv">
+          <div class="inv__hd">
+            <span class="inv__label">loom-invocation</span>
+            <span class="inv__pill">in_progress</span>
+          </div>
+          <div class="inv__title">BWA-MEM alignment (chrM, 4 samples)</div>
+          <div class="inv__bar"><span class="inv__fill"></span></div>
+          <div class="inv__meta">
+            <span>steps <b>2</b>/5</span>
+            <span>jobs <b>1</b>/4</span>
+            <span class="inv__server">usegalaxy.org</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- status footer -->
+  <div class="mock__foot">
+    <span class="foot-run"><span class="hb"></span> running…</span>
+    <span class="foot-sep"></span>
+    <span class="foot-galaxy"><span class="gx-dot"></span> Galaxy</span>
+    <span class="seg"><span class="seg__on">Cloud</span><span class="seg__off">Local</span></span>
+    <span class="foot-model">Opus&nbsp;4.8</span>
+    <span class="foot-tok">12.4k tok · $0.03</span>
+    <span class="foot-ctx"><span class="foot-ctx__bar"><span></span></span> 45%</span>
+  </div>
+</div>
+
+<style>
+  .mock {
+    --m-base: #2c3143;
+    --m-surface: #343a50;
+    --m-deep: #232838;
+    --m-hover: #3c435c;
+    --m-gold: #ffd700;
+    --m-blue: #25537b;
+    --m-text: #f0f2f8;
+    --m-dim: rgba(248, 250, 252, 0.5);
+    --m-ok: #4ade80;
+    --m-border: rgba(255, 255, 255, 0.08);
+
+    container-type: inline-size;
+    background: var(--m-base);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.85rem;
+    overflow: hidden;
+    color: var(--m-text);
+    font-size: 12.5px;
+    box-shadow:
+      0 40px 80px -30px rgba(0, 0, 0, 0.7),
+      0 0 0 1px rgba(255, 255, 255, 0.03);
+    text-align: left;
+  }
+
+  /* title bar */
+  .mock__bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 0.8rem;
+    background: linear-gradient(var(--m-deep), var(--m-base));
+    border-bottom: 1px solid var(--m-border);
+  }
+  .tl { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .tl--r { background: #ff5f57; }
+  .tl--y { background: #febc2e; }
+  .tl--g { background: #28c840; }
+  .mock__title {
+    font-family: var(--font-mono);
+    color: var(--m-dim);
+    margin-left: 0.4rem;
+    letter-spacing: 0.02em;
+  }
+  .mock__cwd {
+    font-family: var(--font-mono);
+    color: var(--m-dim);
+    margin-left: auto;
+    font-size: 11px;
+    opacity: 0.7;
+  }
+
+  .mock__body {
+    display: grid;
+    grid-template-columns: 140px 1.35fr 1fr;
+    min-height: 340px;
+  }
+
+  .pane-hd {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.7rem;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--m-dim);
+    border-bottom: 1px solid var(--m-border);
+  }
+  .pane-hd__icons { font-size: 11px; opacity: 0.6; letter-spacing: 0.15em; }
+
+  /* files */
+  .files { border-right: 1px solid var(--m-border); background: color-mix(in srgb, var(--m-deep) 60%, var(--m-base)); }
+  .tree { list-style: none; margin: 0; padding: 0.4rem 0.3rem; }
+  .tree__row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.28rem 0.45rem;
+    border-radius: 5px;
+    color: color-mix(in srgb, var(--m-text) 82%, transparent);
+  }
+  .tree__row .tw { color: var(--m-dim); font-size: 10px; }
+  .tree__row.muted { color: var(--m-dim); }
+  .tree__row.is-active {
+    background: color-mix(in srgb, var(--m-gold) 12%, transparent);
+    color: #fff;
+  }
+  .dot-file { width: 6px; height: 6px; border-radius: 50%; background: var(--m-gold); }
+
+  /* chat */
+  .chat { display: flex; flex-direction: column; border-right: 1px solid var(--m-border); min-width: 0; }
+  .chat__scroll { flex: 1; padding: 0.85rem 0.8rem; display: flex; flex-direction: column; gap: 0.85rem; overflow: hidden; }
+
+  .msg--user { display: flex; align-items: flex-start; gap: 0.4rem; justify-content: flex-end; }
+  .msg__num {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--m-dim);
+    background: var(--m-deep);
+    width: 15px; height: 15px;
+    display: grid; place-items: center;
+    border-radius: 4px;
+    margin-top: 0.3rem;
+  }
+  .bubble {
+    background: var(--m-blue);
+    color: #fff;
+    padding: 0.45rem 0.65rem;
+    border-radius: 0.6rem 0.6rem 0.2rem 0.6rem;
+    max-width: 85%;
+    line-height: 1.45;
+  }
+  .bot-line { margin: 0 0 0.5rem; color: color-mix(in srgb, var(--m-text) 90%, transparent); }
+
+  .plan-card {
+    background: var(--m-deep);
+    border: 1px solid var(--m-border);
+    border-left: 3px solid var(--m-gold);
+    border-radius: 0.5rem;
+    padding: 0.6rem 0.7rem;
+  }
+  .plan-card__hd { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+  .plan-card__hd strong { font-size: 12px; }
+  .plan-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+  .plan-steps li { display: flex; align-items: center; gap: 0.45rem; color: color-mix(in srgb, var(--m-text) 85%, transparent); }
+
+  .ck { width: 14px; height: 14px; border-radius: 4px; display: inline-grid; place-items: center; flex: none; font-size: 10px; }
+  .ck.ok { background: color-mix(in srgb, var(--m-ok) 22%, transparent); color: var(--m-ok); }
+  .ck.run {
+    border: 2px solid color-mix(in srgb, var(--m-gold) 40%, transparent);
+    border-top-color: var(--m-gold);
+    border-radius: 50%;
+    animation: spin 1.1s linear infinite;
+    width: 13px; height: 13px;
+  }
+
+  .tool-card {
+    display: flex; align-items: center; gap: 0.45rem;
+    background: var(--m-surface);
+    border: 1px solid var(--m-border);
+    border-radius: 0.45rem;
+    padding: 0.4rem 0.6rem;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .tool-card__tw { color: var(--m-dim); }
+  .tool-card__name { color: var(--m-gold); }
+  .tool-card__spin {
+    margin-left: auto;
+    width: 11px; height: 11px;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-top-color: var(--m-gold);
+    border-radius: 50%;
+  }
+  .thinking { margin-top: 0.5rem; display: flex; align-items: center; gap: 0.35rem; color: var(--m-dim); font-size: 11px; }
+  .tdot { width: 5px; height: 5px; border-radius: 50%; background: var(--m-gold); opacity: 0.4; animation: tdot 1.4s ease-in-out infinite; }
+  .tdot:nth-child(2) { animation-delay: 0.2s; }
+  .tdot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes tdot { 0%, 100% { opacity: 0.3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
+
+  .composer {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.6rem 0.7rem;
+    border-top: 1px solid var(--m-border);
+  }
+  .composer__box {
+    flex: 1;
+    background: var(--m-deep);
+    border: 1px solid var(--m-border);
+    border-radius: 0.55rem;
+    padding: 0.5rem 0.65rem;
+    color: var(--m-dim);
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .composer__send {
+    width: 30px; height: 30px; flex: none;
+    display: grid; place-items: center;
+    background: var(--m-gold); color: var(--m-base);
+    border: none; border-radius: 0.5rem;
+  }
+
+  /* notebook */
+  .nb { display: flex; flex-direction: column; min-width: 0; background: color-mix(in srgb, var(--m-deep) 35%, var(--m-base)); }
+  .pane-tabs { display: flex; gap: 0.2rem; padding: 0.35rem 0.5rem 0; border-bottom: 1px solid var(--m-border); }
+  .tab { font-size: 11px; padding: 0.4rem 0.55rem; color: var(--m-dim); border-bottom: 2px solid transparent; }
+  .tab.is-active { color: #fff; border-bottom-color: var(--m-gold); }
+  .tab__badge {
+    background: color-mix(in srgb, var(--m-gold) 22%, transparent);
+    color: var(--m-gold);
+    font-size: 9px; padding: 0 4px; border-radius: 6px; margin-left: 2px;
+  }
+  .nb__scroll { padding: 0.85rem 0.85rem; overflow: hidden; }
+  .nb-h1 { margin: 0 0 0.4rem; font-size: 13.5px; color: #fff; display: flex; align-items: center; gap: 0.4rem; }
+  .nb-q { margin: 0 0 0.75rem; color: color-mix(in srgb, var(--m-text) 78%, transparent); line-height: 1.5; }
+  .nb-key { color: var(--m-gold); font-weight: 700; }
+  .nb-h2 { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--m-dim); font-weight: 700; margin-bottom: 0.4rem; }
+  .nb-steps { list-style: none; margin: 0 0 0.85rem; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+  .nb-steps li { display: flex; align-items: center; gap: 0.45rem; color: color-mix(in srgb, var(--m-text) 88%, transparent); }
+  .strike { text-decoration: line-through; text-decoration-color: var(--m-dim); color: var(--m-dim); }
+  .nb-route { font-family: var(--font-mono); font-size: 10px; color: var(--m-dim); margin-left: auto; }
+  .nb-route.hot { color: color-mix(in srgb, var(--m-gold) 90%, #fff); }
+
+  .inv {
+    background: var(--m-deep);
+    border: 1px solid var(--m-border);
+    border-radius: 0.55rem;
+    padding: 0.65rem 0.7rem;
+    font-family: var(--font-mono);
+  }
+  .inv__hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.45rem; }
+  .inv__label { font-size: 10px; color: var(--m-dim); letter-spacing: 0.04em; }
+  .inv__pill { font-size: 9px; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--m-gold) 20%, transparent); color: var(--m-gold); }
+  .inv__title { font-size: 11.5px; color: #fff; margin-bottom: 0.5rem; font-family: var(--font-sans); }
+  .inv__bar { height: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; position: relative; }
+  .inv__fill {
+    display: block; height: 100%;
+    background: linear-gradient(90deg, var(--m-blue), var(--m-gold));
+    width: 6%;
+    border-radius: 999px;
+    animation: inv-fill 4.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    position: relative;
+  }
+  .inv__fill::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+    animation: shimmer 1.8s ease-in-out infinite;
+  }
+  @keyframes inv-fill { from { width: 6%; } to { width: 45%; } }
+  @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(220%); } }
+  .inv__meta { display: flex; gap: 0.8rem; margin-top: 0.45rem; font-size: 10px; color: var(--m-dim); }
+  .inv__meta b { color: var(--m-text); }
+  .inv__server { margin-left: auto; }
+
+  /* footer */
+  .mock__foot {
+    display: flex; align-items: center; gap: 0.6rem;
+    padding: 0.4rem 0.7rem;
+    background: var(--m-deep);
+    border-top: 1px solid var(--m-border);
+    font-size: 10px;
+    color: var(--m-dim);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .foot-run { display: flex; align-items: center; gap: 0.35rem; color: color-mix(in srgb, var(--m-text) 80%, transparent); }
+  .hb { width: 6px; height: 6px; border-radius: 50%; background: var(--m-gold); animation: tdot 1.3s ease-in-out infinite; }
+  .foot-sep { width: 1px; height: 12px; background: var(--m-border); }
+  .foot-galaxy { display: flex; align-items: center; gap: 0.3rem; }
+  .gx-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--m-ok); box-shadow: 0 0 6px var(--m-ok); }
+  .seg { display: inline-flex; border: 1px solid var(--m-border); border-radius: 5px; overflow: hidden; }
+  .seg__on { background: color-mix(in srgb, var(--m-gold) 20%, transparent); color: var(--m-gold); padding: 1px 6px; }
+  .seg__off { padding: 1px 6px; }
+  .foot-model { color: color-mix(in srgb, var(--m-text) 72%, transparent); }
+  .foot-ctx { display: flex; align-items: center; gap: 0.3rem; margin-left: auto; }
+  .foot-ctx__bar { width: 34px; height: 5px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+  .foot-ctx__bar > span { display: block; width: 45%; height: 100%; background: var(--m-gold); }
+
+  /* collapse to two panes when the mock is narrow (hero panel) */
+  @container (max-width: 620px) {
+    .mock__body { grid-template-columns: 1.25fr 1fr; }
+    .files { display: none; }
+  }
+  @container (max-width: 440px) {
+    .mock__body { grid-template-columns: 1fr; }
+    .nb { display: none; }
+    .mock__cwd { display: none; }
+  }
+</style>

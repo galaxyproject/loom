@@ -1,0 +1,66 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getCollection } from 'astro:content';
+import { url, links } from '../../lib/site';
+
+const docs = (await getCollection('docs')).sort(
+  (a, b) => a.data.order - b.data.order || a.data.title.localeCompare(b.data.title),
+);
+---
+
+<Base title="Documentation">
+  <section class="dh bg-space bg-stars grain">
+    <div class="dh__wrap">
+      <span class="eyebrow" style="color: var(--color-galaxy-gold)">Documentation</span>
+      <h1>Everything to get agentic science running on Galaxy</h1>
+      <p class="dh__sub">
+        Install Orbit or the Loom CLI, connect Galaxy through MCP, and learn the
+        notebook model that keeps the whole thing reproducible.
+      </p>
+    </div>
+  </section>
+
+  <section class="dlist">
+    <div class="dlist__grid">
+      {
+        docs.map((d, i) => (
+          <a href={url(`/docs/${d.id}`)} class="dcard card gold-hover">
+            <span class="dcard__n">{String(i + 1).padStart(2, '0')}</span>
+            <div class="dcard__body">
+              <h3>{d.data.title}</h3>
+              <p>{d.data.description}</p>
+            </div>
+            <span class="dcard__arrow" aria-hidden="true">→</span>
+          </a>
+        ))
+      }
+    </div>
+
+    <div class="dlist__ext">
+      <a href={links.loom} class="ext" rel="noopener" target="_blank">Loom repository ↗</a>
+      <a href={links.mcp} class="ext" rel="noopener" target="_blank">Galaxy MCP repository ↗</a>
+      <a href={links.releases} class="ext" rel="noopener" target="_blank">Releases ↗</a>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .dh { color: #fff; position: relative; overflow: hidden; }
+  .dh__wrap { position: relative; z-index: 2; max-width: 60rem; margin: 0 auto; padding: clamp(3rem, 6vw, 4.5rem) 1.5rem; }
+  .dh h1 { font-size: clamp(2rem, 4.4vw, 3rem); margin: 0.7rem 0 0; letter-spacing: -0.02em; text-wrap: balance; }
+  .dh__sub { margin: 1rem 0 0; color: color-mix(in srgb, #fff 76%, transparent); font-size: 1.1rem; line-height: 1.6; max-width: 46ch; }
+
+  .dlist { max-width: 60rem; margin: 0 auto; padding: clamp(2.5rem, 5vw, 4rem) 1.5rem; }
+  .dlist__grid { display: flex; flex-direction: column; gap: 0.9rem; }
+  .dcard { display: flex; align-items: center; gap: 1.2rem; padding: 1.3rem 1.5rem; text-decoration: none; }
+  .dcard__n { font-family: var(--font-mono); font-size: 0.9rem; color: var(--color-galaxy-gold-dark); font-weight: 700; flex: none; }
+  .dcard__body { flex: 1; }
+  .dcard__body h3 { margin: 0 0 0.25rem; color: var(--color-galaxy-dark); font-size: 1.2rem; }
+  .dcard__body p { margin: 0; color: var(--color-galaxy-grey); font-size: 0.95rem; line-height: 1.5; }
+  .dcard__arrow { color: var(--color-galaxy-primary); font-size: 1.2rem; transition: transform 0.18s ease; flex: none; }
+  .dcard:hover .dcard__arrow { transform: translateX(4px); color: var(--color-galaxy-gold-dark); }
+
+  .dlist__ext { display: flex; flex-wrap: wrap; gap: 1.4rem; margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--color-border-subtle, #e1e4e8); }
+  .ext { color: var(--color-galaxy-primary); text-decoration: none; font-weight: 600; font-size: 0.92rem; }
+  .ext:hover { color: var(--color-galaxy-gold-dark); }
+</style>

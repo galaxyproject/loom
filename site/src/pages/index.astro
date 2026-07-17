@@ -1,0 +1,505 @@
+---
+import Base from '../layouts/Base.astro';
+import CosmicWeb from '../components/CosmicWeb.astro';
+import OrbitMock from '../components/OrbitMock.astro';
+import { url, links } from '../lib/site';
+
+const features = [
+  {
+    title: 'The notebook is the project',
+    body: 'Plans, decisions, parameter tables, and results accumulate as plain markdown in one durable notebook.md — no hidden state store to drift out of sync.',
+    icon: '<path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"/><path d="M14 4v5h5M7 13h8M7 17h5"/>',
+  },
+  {
+    title: 'Plans you approve before they run',
+    body: 'The agent drafts in chat, waits for your sign-off, shows you every parameter, waits again — then writes to the notebook and executes.',
+    icon: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/>',
+  },
+  {
+    title: 'Galaxy-aware routing',
+    body: 'With Galaxy connected, each step is tagged local, hybrid, or remote based on whether an IWC workflow matches or the heavy tool lives on Galaxy.',
+    icon: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M6 8.5v3a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-3M12 13.5v2"/>',
+  },
+  {
+    title: 'Live invocation tracking',
+    body: 'Running Galaxy workflows are recorded as loom-invocation blocks and polled to completion or failure — in place, with no external tracker.',
+    icon: '<path d="M3 12h4l2 7 4-16 2 9h6"/>',
+  },
+  {
+    title: 'Git-tracked by default',
+    body: 'Loom git-inits the directory and auto-commits every notebook change — full undo history, timestamped reproducibility evidence, shareable via GitHub.',
+    icon: '<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M6 8.5v7M8.5 6H14a2.5 2.5 0 0 1 2.5 2.5v0"/>',
+  },
+  {
+    title: 'Bring your own model',
+    body: 'Anthropic, OpenAI, Google, Mistral, Groq, xAI, DeepSeek, or local Ollama — with live token, cost, and context-window meters in the footer.',
+    icon: '<rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 9h6v6H9zM9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/>',
+  },
+];
+
+const steps = [
+  { n: '01', t: 'Chat', d: 'Ask in plain language, drop file paths, request data lookups. None of it requires a “plan” — the conversation is just a conversation.' },
+  { n: '02', t: 'Approve', d: 'When you ask for a plan, the agent drafts it in chat and waits. It shows you the parameters and waits again. Nothing runs without your sign-off.' },
+  { n: '03', t: 'Run on Galaxy', d: 'Steps route to Galaxy — IWC workflows, heavy tools — or run locally. Live invocation status streams back as jobs complete or fail.' },
+  { n: '04', t: 'It’s recorded', d: 'Every plan, parameter, and interpretation lands in a durable, git-tracked notebook.md. Come back tomorrow and the analysis is the project.' },
+];
+
+const mcpCaps = [
+  'Connect to any Galaxy instance — URL + API key, or browser OAuth for short-lived keys',
+  'Search the tool catalog, view details, and execute tools',
+  'Access and import workflows from the IWC',
+  'Create, inspect, and manage histories & datasets',
+  'Upload local files into Galaxy',
+  'Ships stdio (local) and streamable-HTTP (remote) transports',
+];
+
+const notebookSnippet = `## Plan A: chrM Variant Calling [hybrid]
+
+Question: how do mtDNA variants distribute across tissues?
+
+### Steps
+- [x] 1. QC FASTQ {#plan-a-step-1} — fastp trim + per-base QC
+  - Routing: local
+- [ ] 3. Read alignment {#plan-a-step-3} — bwa mem, 4 samples
+  - Routing: Galaxy (bwa-mem2/2.2.1)
+
+\`\`\`loom-invocation
+invocation_id: f2db4a1c9e8b7654
+galaxy_server_url: https://usegalaxy.org
+notebook_anchor: plan-a-step-3
+label: BWA-MEM alignment (chrM, 4 samples)
+status: in_progress
+completed_jobs: 1
+total_jobs: 4
+\`\`\``;
+
+const mcpConfig = `{
+  "mcpServers": {
+    "galaxy-mcp": {
+      "command": "uvx",
+      "args": ["galaxy-mcp"],
+      "env": {
+        "GALAXY_URL": "https://usegalaxy.org",
+        "GALAXY_API_KEY": "••••••••"
+      }
+    }
+  }
+}`;
+---
+
+<Base>
+  <!-- ============================================================ HERO -->
+  <section class="hero bg-space bg-stars grain">
+    <CosmicWeb />
+    <div class="hero__wrap">
+      <div class="hero__copy">
+        <span class="eyebrow reveal d1" style="color: var(--color-galaxy-gold)">Orbit · Loom · Galaxy MCP</span>
+        <h1 class="hero__title reveal d2">
+          Agentic Science<br />
+          <span class="hero__accent">with Galaxy</span>
+        </h1>
+        <p class="hero__lede reveal d3">
+          Point an AI agent at your data. It plans, runs real bioinformatics on
+          <strong>Galaxy</strong>, and writes a reproducible
+          <span class="mono-inline">notebook.md</span> you can inspect, diff, and trust.
+        </p>
+        <div class="hero__cta reveal d4">
+          <a href={links.releases} class="btn btn-gold">Get Orbit</a>
+          <a href={url('/') + '#method'} class="btn btn-outline">See how it works →</a>
+        </div>
+        <div class="hero__meta reveal d5">
+          <span><span class="hero__meta-dot"></span> Open source · MIT</span>
+          <span class="hero__meta-sep">·</span>
+          <span>macOS · Linux · Windows</span>
+          <span class="hero__meta-sep">·</span>
+          <span><code>npm i -g @galaxyproject/loom</code></span>
+        </div>
+      </div>
+      <div class="hero__mock reveal d3">
+        <OrbitMock />
+        <div class="hero__mock-caption">Orbit, mid-analysis — chat, plan, and a live notebook in one window.</div>
+      </div>
+    </div>
+    <div class="hero__fade"></div>
+  </section>
+
+  <!-- ========================================================= PILLARS -->
+  <section class="wrap pillars">
+    <div class="pillar card gold-hover">
+      <div class="pillar__icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><ellipse cx="12" cy="12" rx="10" ry="4.5" transform="rotate(30 12 12)"/></svg>
+      </div>
+      <h3>Orbit &amp; Loom</h3>
+      <p>A co-scientist desktop app and CLI. Loom is the agent brain; Orbit is the electron shell you observe it from. Same brain, terminal or desktop.</p>
+      <a href={url('/') + '#orbit'} class="pillar__more">Explore Orbit →</a>
+    </div>
+    <div class="pillar card gold-hover">
+      <div class="pillar__icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v6M12 15v6M3 12h6M15 12h6"/><circle cx="12" cy="12" r="3"/></svg>
+      </div>
+      <h3>Galaxy MCP</h3>
+      <p>A Model Context Protocol server that connects any agent — Claude Desktop, Orbit, anything — to a Galaxy instance to run real, reproducible compute.</p>
+      <a href={url('/') + '#mcp'} class="pillar__more">Connect your agent →</a>
+    </div>
+    <div class="pillar card gold-hover">
+      <div class="pillar__icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 4h14v16l-7-3-7 3V4Z"/><path d="M9 9h6M9 12h4"/></svg>
+      </div>
+      <h3>Reproducible by construction</h3>
+      <p>Decisions stop happening in disposable chat. Plans, parameters, and provenance are written down as they happen — inspectable markdown, git-tracked.</p>
+      <a href={url('/') + '#method'} class="pillar__more">See the method →</a>
+    </div>
+  </section>
+
+  <!-- ========================================================== ORBIT -->
+  <section id="orbit" class="wrap section">
+    <div class="section-head">
+      <span class="eyebrow" style="color: var(--color-galaxy-primary)">Orbit &amp; Loom</span>
+      <h2>Your Galaxy co-scientist</h2>
+      <p class="section-sub">
+        Agentic bioinformatics that produces useful work — without the familiar failure mode
+        where decisions happen in chat, parameters drift, and a plausible final answer hides
+        weak intermediate validation.
+      </p>
+    </div>
+    <div class="feat-grid">
+      {
+        features.map((f) => (
+          <div class="feat card gold-hover">
+            <div class="feat__icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" set:html={f.icon} />
+            </div>
+            <h4>{f.title}</h4>
+            <p>{f.body}</p>
+          </div>
+        ))
+      }
+    </div>
+    <p class="feat-more">
+      …and more: a live activity stream of every tool call and subprocess, on-demand Galaxy skills,
+      and one <code>/orbit</code> command to pop a terminal session into the desktop view.
+    </p>
+  </section>
+
+  <!-- ========================================================= METHOD -->
+  <section id="method" class="method bg-space bg-grid-dark grain">
+    <div class="wrap">
+      <div class="section-head section-head--dark">
+        <span class="eyebrow" style="color: var(--color-galaxy-gold)">How it works</span>
+        <h2>Chat → approve → run → recorded</h2>
+        <p class="section-sub section-sub--dark">
+          The working record is made explicit <em>while</em> the analysis is happening — not
+          reconstructed after the fact.
+        </p>
+      </div>
+      <div class="method__grid">
+        <ol class="steps">
+          {
+            steps.map((s) => (
+              <li class="step">
+                <span class="step__n">{s.n}</span>
+                <div>
+                  <div class="step__t">{s.t}</div>
+                  <p class="step__d">{s.d}</p>
+                </div>
+              </li>
+            ))
+          }
+        </ol>
+        <figure class="codecard codecard--lg">
+          <figcaption class="codecard__hd">
+            <span class="codecard__dots"><i></i><i></i><i></i></span>
+            <span class="codecard__name">notebook.md</span>
+            <button class="codecard__copy" data-copy={notebookSnippet} type="button">Copy</button>
+          </figcaption>
+          <pre class="codecard__pre"><code>{notebookSnippet}</code></pre>
+        </figure>
+      </div>
+      <p class="method__foot">
+        Galaxy histories remain the computational truth. <code>notebook.md</code> is the durable
+        working record — <strong>Galaxy is the substrate, and Loom is one live authoring shell.</strong>
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================================================ MCP -->
+  <section id="mcp" class="wrap section">
+    <div class="mcp__grid">
+      <div class="mcp__copy">
+        <span class="eyebrow" style="color: var(--color-galaxy-primary)">Galaxy MCP</span>
+        <h2>Bring your own agent</h2>
+        <p class="section-sub" style="margin-left:0">
+          Galaxy MCP is the bridge that lets a conversational agent do real compute on Galaxy
+          instead of just talking about it. Point it at any Galaxy server and your agent can
+          search and run tools, drive workflows, and manage histories through Galaxy’s API.
+        </p>
+        <ul class="mcp__caps">
+          {mcpCaps.map((c) => <li><span class="mcp__tick">✓</span>{c}</li>)}
+        </ul>
+        <a href={links.mcp} class="btn btn-dark" rel="noopener" target="_blank">Galaxy MCP on GitHub</a>
+      </div>
+      <figure class="codecard">
+        <figcaption class="codecard__hd">
+          <span class="codecard__dots"><i></i><i></i><i></i></span>
+          <span class="codecard__name">claude_desktop_config.json</span>
+          <button class="codecard__copy" data-copy={mcpConfig} type="button">Copy</button>
+        </figcaption>
+        <pre class="codecard__pre"><code>{mcpConfig}</code></pre>
+        <div class="codecard__note">Works with Claude Desktop, Orbit/Loom, and any MCP client.</div>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ======================================================== INSTALL -->
+  <section id="install" class="install">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow" style="color: var(--color-galaxy-primary)">Get started</span>
+        <h2>Two minutes to your first agentic analysis</h2>
+      </div>
+      <div class="install__grid">
+        <div class="icard card">
+          <h4><span class="icard__k">Desktop</span> Orbit app</h4>
+          <p>Signed, notarized installers that bundle their own Node, uv, and Loom. Just download and open.</p>
+          <a href={links.releases} class="btn btn-gold icard__btn">Download for macOS · Linux · Windows</a>
+          <span class="icard__hint">From the GitHub Releases page.</span>
+        </div>
+        <div class="icard card">
+          <h4><span class="icard__k">Terminal</span> Loom CLI</h4>
+          <p>The same brain, in your shell. Needs Node 22.19+ and <code>uv</code> for Galaxy MCP.</p>
+          <pre class="icard__pre"><code>npm install -g @galaxyproject/loom
+loom</code></pre>
+          <span class="icard__hint">Or run it once with <code>npx @galaxyproject/loom</code>.</span>
+        </div>
+        <div class="icard card">
+          <h4><span class="icard__k">Any agent</span> Galaxy MCP</h4>
+          <p>Wire Galaxy into Claude Desktop or any MCP client with one command.</p>
+          <pre class="icard__pre"><code>uvx galaxy-mcp</code></pre>
+          <span class="icard__hint">Reads <code>GALAXY_URL</code> / <code>GALAXY_API_KEY</code> from the environment.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================== DOCS -->
+  <section class="docs-cta bg-space grain">
+    <div class="wrap docs-cta__inner">
+      <div>
+        <span class="eyebrow" style="color: var(--color-galaxy-gold)">Documentation</span>
+        <h2 class="docs-cta__title">Go deeper</h2>
+      </div>
+      <div class="docs-cta__cards">
+        <a href={url('/docs/getting-started')} class="doc-card card-glass gold-hover">
+          <span class="doc-card__t">Getting started →</span>
+          <span class="doc-card__d">Install, connect Galaxy, run your first plan.</span>
+        </a>
+        <a href={url('/docs/concepts')} class="doc-card card-glass gold-hover">
+          <span class="doc-card__t">Concepts →</span>
+          <span class="doc-card__d">The notebook model, plans, routing, invocations.</span>
+        </a>
+        <a href={url('/docs/galaxy-mcp')} class="doc-card card-glass gold-hover">
+          <span class="doc-card__t">Galaxy MCP →</span>
+          <span class="doc-card__d">Connect any agent to a Galaxy instance.</span>
+        </a>
+        <a href={url('/docs/architecture')} class="doc-card card-glass gold-hover">
+          <span class="doc-card__t">Architecture →</span>
+          <span class="doc-card__d">Brain, shells, and the RPC contract.</span>
+        </a>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .wrap { max-width: 76rem; margin: 0 auto; padding-left: 1.5rem; padding-right: 1.5rem; }
+  .mono-inline, .hero__meta code, code { font-family: var(--font-mono); }
+
+  /* ---- hero ---- */
+  .hero { position: relative; overflow: hidden; color: #fff; isolation: isolate; }
+  .hero__wrap {
+    position: relative; z-index: 2;
+    max-width: 76rem; margin: 0 auto;
+    padding: clamp(3rem, 7vw, 6rem) 1.5rem clamp(4rem, 8vw, 7rem);
+    display: grid;
+    grid-template-columns: 1fr 1.02fr;
+    gap: clamp(2rem, 5vw, 4rem);
+    align-items: center;
+  }
+  .hero__accent { color: var(--color-galaxy-gold); }
+  .hero__title {
+    font-size: clamp(2.6rem, 6vw, 4.4rem);
+    line-height: 1.02;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    margin: 0.9rem 0 0;
+    text-wrap: balance;
+  }
+  .hero__lede {
+    margin: 1.4rem 0 0;
+    font-size: clamp(1.05rem, 1.6vw, 1.28rem);
+    line-height: 1.6;
+    color: color-mix(in srgb, #fff 82%, transparent);
+    max-width: 34ch;
+  }
+  .hero__lede strong { color: #fff; }
+  .mono-inline { color: var(--color-galaxy-gold); font-size: 0.92em; }
+  .hero__cta { display: flex; gap: 0.8rem; margin-top: 2rem; flex-wrap: wrap; }
+  .hero__meta {
+    display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap;
+    margin-top: 1.8rem;
+    font-size: 0.82rem;
+    color: color-mix(in srgb, #fff 60%, transparent);
+  }
+  .hero__meta code { color: color-mix(in srgb, var(--color-galaxy-gold) 90%, #fff); font-size: 0.78rem; }
+  .hero__meta-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--color-ok, #4ade80); margin-right: 0.35rem; box-shadow: 0 0 8px #4ade80; }
+  .hero__meta-sep { opacity: 0.4; }
+  .hero__mock { position: relative; z-index: 2; }
+  .hero__mock-caption {
+    text-align: center; margin-top: 0.9rem;
+    font-size: 0.78rem; font-family: var(--font-mono);
+    color: color-mix(in srgb, #fff 50%, transparent);
+  }
+  .hero__fade { position: absolute; left: 0; right: 0; bottom: 0; height: 6rem; background: linear-gradient(transparent, #fff); z-index: 1; }
+
+  /* ---- pillars ---- */
+  .pillars {
+    position: relative; z-index: 3;
+    margin-top: -3.5rem;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem;
+    padding-bottom: 1rem;
+  }
+  .pillar { padding: 1.6rem 1.5rem; position: relative; }
+  .pillar__icon {
+    width: 2.6rem; height: 2.6rem; border-radius: 0.6rem;
+    display: grid; place-items: center;
+    background: color-mix(in srgb, var(--color-galaxy-primary) 10%, transparent);
+    color: var(--color-galaxy-primary);
+    margin-bottom: 0.9rem;
+  }
+  .pillar__icon svg { width: 1.5rem; height: 1.5rem; }
+  .pillar h3 { margin: 0 0 0.5rem; font-size: 1.2rem; color: var(--color-galaxy-dark); }
+  .pillar p { margin: 0 0 0.9rem; color: var(--color-galaxy-grey); line-height: 1.55; font-size: 0.95rem; }
+  .pillar__more { color: var(--color-galaxy-primary); font-weight: 700; text-decoration: none; font-size: 0.9rem; }
+  .pillar__more:hover { color: var(--color-galaxy-gold-dark); }
+
+  /* ---- generic section ---- */
+  .section { padding: clamp(4rem, 8vw, 6.5rem) 1.5rem; }
+  .section-head { max-width: 44rem; margin: 0 auto clamp(2.2rem, 4vw, 3.2rem); text-align: center; }
+  .section-head h2 { font-size: clamp(1.9rem, 3.6vw, 2.8rem); color: var(--color-galaxy-dark); margin: 0.7rem 0 0; letter-spacing: -0.02em; }
+  .section-head--dark h2 { color: #fff; }
+  .section-sub { margin: 1rem auto 0; color: var(--color-galaxy-grey); line-height: 1.65; font-size: 1.05rem; }
+  .section-sub--dark { color: color-mix(in srgb, #fff 72%, transparent); }
+  .eyebrow { justify-content: center; }
+  .mcp__copy .eyebrow, .section-head .eyebrow { display: inline-flex; }
+
+  /* ---- orbit feature grid ---- */
+  .feat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2rem; }
+  .feat { padding: 1.5rem 1.4rem; }
+  .feat__icon {
+    width: 2.4rem; height: 2.4rem; border-radius: 0.55rem;
+    display: grid; place-items: center; margin-bottom: 0.85rem;
+    background: color-mix(in srgb, var(--color-galaxy-gold) 16%, transparent);
+    color: var(--color-galaxy-gold-dark);
+  }
+  .feat__icon svg { width: 1.35rem; height: 1.35rem; }
+  .feat h4 { margin: 0 0 0.45rem; font-size: 1.05rem; color: var(--color-galaxy-dark); }
+  .feat p { margin: 0; color: var(--color-galaxy-grey); font-size: 0.92rem; line-height: 1.55; }
+  .feat-more { text-align: center; margin: 2rem auto 0; max-width: 46rem; color: var(--color-galaxy-grey); font-size: 0.95rem; }
+  /* inline code only — must not touch <pre><code> blocks (codecards) */
+  .feat-more code, .section :not(pre) > code, .method__foot code { font-family: var(--font-mono); background: var(--color-light-bg); padding: 0.1em 0.35em; border-radius: 0.3rem; font-size: 0.86em; }
+
+  /* ---- method (dark) ---- */
+  .method { position: relative; color: #fff; padding: clamp(4rem, 8vw, 6.5rem) 0; overflow: hidden; }
+  .method__grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(2rem, 4vw, 3.5rem); align-items: center; }
+  .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1.5rem; }
+  .step { display: flex; gap: 1rem; }
+  .step__n {
+    font-family: var(--font-mono); font-weight: 700; font-size: 0.85rem;
+    color: var(--color-galaxy-gold);
+    border: 1px solid color-mix(in srgb, var(--color-galaxy-gold) 40%, transparent);
+    border-radius: 0.5rem;
+    width: 2.4rem; height: 2.4rem; flex: none;
+    display: grid; place-items: center;
+  }
+  .step__t { font-weight: 700; font-size: 1.1rem; margin-bottom: 0.2rem; }
+  .step__d { margin: 0; color: color-mix(in srgb, #fff 68%, transparent); line-height: 1.55; font-size: 0.95rem; }
+  .method__foot { text-align: center; margin: 2.5rem auto 0; max-width: 50rem; color: color-mix(in srgb, #fff 72%, transparent); }
+  .method__foot strong { color: #fff; }
+  .method__foot code { background: color-mix(in srgb, #fff 10%, transparent); color: var(--color-galaxy-gold); }
+
+  /* ---- code card ---- */
+  .codecard { background: #1b2030; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0.7rem; overflow: hidden; box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.6); margin: 0; }
+  .codecard__hd { display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.8rem; background: rgba(255, 255, 255, 0.03); border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
+  .codecard__dots { display: inline-flex; gap: 0.3rem; }
+  .codecard__dots i { width: 10px; height: 10px; border-radius: 50%; background: rgba(255, 255, 255, 0.18); }
+  .codecard__name { font-family: var(--font-mono); font-size: 0.76rem; color: color-mix(in srgb, #fff 55%, transparent); }
+  .codecard__copy { margin-left: auto; font-family: var(--font-mono); font-size: 0.7rem; color: color-mix(in srgb, var(--color-galaxy-gold) 90%, #fff); background: transparent; border: 1px solid color-mix(in srgb, var(--color-galaxy-gold) 35%, transparent); border-radius: 0.35rem; padding: 0.15rem 0.5rem; cursor: pointer; transition: background 0.15s ease; }
+  .codecard__copy:hover { background: color-mix(in srgb, var(--color-galaxy-gold) 15%, transparent); }
+  .codecard__copy.copied { color: #4ade80; border-color: #4ade80; }
+  .codecard__pre { margin: 0; padding: 1rem 1.1rem; overflow-x: auto; }
+  .codecard__pre code { font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.6; color: #e6ebf5; white-space: pre; }
+  .codecard__note { padding: 0.5rem 1.1rem 0.8rem; font-size: 0.76rem; color: color-mix(in srgb, #fff 45%, transparent); font-family: var(--font-mono); }
+
+  /* ---- mcp ---- */
+  .mcp__grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(2rem, 4vw, 3.5rem); align-items: center; }
+  .mcp__copy h2 { font-size: clamp(1.9rem, 3.6vw, 2.8rem); color: var(--color-galaxy-dark); margin: 0.7rem 0 0; letter-spacing: -0.02em; }
+  .mcp__copy .section-sub { text-align: left; margin-top: 1rem; }
+  .mcp__caps { list-style: none; margin: 1.4rem 0 1.8rem; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+  .mcp__caps li { display: flex; gap: 0.6rem; color: var(--color-galaxy-grey); line-height: 1.45; font-size: 0.95rem; }
+  .mcp__tick { color: var(--color-galaxy-primary); font-weight: 700; flex: none; }
+
+  /* ---- install ---- */
+  .install { background: var(--color-light-bg); padding: clamp(4rem, 8vw, 6.5rem) 0; }
+  .install__grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2rem; }
+  .icard { padding: 1.6rem 1.5rem; display: flex; flex-direction: column; }
+  .icard h4 { margin: 0 0 0.6rem; font-size: 1.15rem; color: var(--color-galaxy-dark); display: flex; align-items: center; gap: 0.5rem; }
+  .icard__k { font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase; background: color-mix(in srgb, var(--color-galaxy-primary) 12%, transparent); color: var(--color-galaxy-primary); padding: 0.15rem 0.45rem; border-radius: 0.3rem; }
+  .icard p { margin: 0 0 1rem; color: var(--color-galaxy-grey); font-size: 0.92rem; line-height: 1.55; flex: 1; }
+  .icard__pre { background: #1b2030; border-radius: 0.5rem; padding: 0.7rem 0.85rem; margin: 0 0 0.7rem; overflow-x: auto; }
+  .icard__pre code { font-family: var(--font-mono); font-size: 0.8rem; color: #e6ebf5; white-space: pre; }
+  .icard__btn { justify-content: center; text-align: center; font-size: 0.86rem; margin-bottom: 0.7rem; }
+  .icard__hint { font-size: 0.8rem; color: var(--color-galaxy-grey); }
+  .icard__hint code { font-family: var(--font-mono); background: #fff; padding: 0.05em 0.3em; border-radius: 0.25rem; font-size: 0.86em; }
+
+  /* ---- docs cta ---- */
+  .docs-cta { position: relative; color: #fff; padding: clamp(3.5rem, 6vw, 5rem) 0; overflow: hidden; }
+  .docs-cta__inner { display: grid; grid-template-columns: 0.7fr 2fr; gap: 2rem; align-items: center; }
+  .docs-cta__title { font-size: clamp(1.8rem, 3vw, 2.4rem); margin: 0.5rem 0 0; }
+  .docs-cta__cards { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; }
+  .doc-card { display: flex; flex-direction: column; gap: 0.3rem; padding: 1.1rem 1.2rem; text-decoration: none; }
+  .doc-card__t { color: #fff; font-weight: 700; }
+  .doc-card__d { color: color-mix(in srgb, #fff 60%, transparent); font-size: 0.86rem; }
+
+  /* ---- responsive ---- */
+  @media (max-width: 960px) {
+    .hero__wrap { grid-template-columns: 1fr; }
+    .hero__lede { max-width: 46ch; }
+    .method__grid, .mcp__grid, .docs-cta__inner { grid-template-columns: 1fr; }
+    .pillars, .feat-grid, .install__grid { grid-template-columns: 1fr; }
+    .pillars { margin-top: -2.5rem; }
+    .docs-cta__cards { grid-template-columns: 1fr; }
+  }
+  @media (min-width: 641px) and (max-width: 960px) {
+    .feat-grid, .install__grid { grid-template-columns: repeat(2, 1fr); }
+    .pillars { grid-template-columns: repeat(3, 1fr); }
+  }
+</style>
+
+<script>
+  document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(btn.dataset.copy ?? '');
+        const prev = btn.textContent;
+        btn.textContent = 'Copied ✓';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = prev;
+          btn.classList.remove('copied');
+        }, 1600);
+      } catch {
+        /* clipboard unavailable */
+      }
+    });
+  });
+</script>

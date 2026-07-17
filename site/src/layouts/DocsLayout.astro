@@ -1,0 +1,124 @@
+---
+import Base from './Base.astro';
+import { getCollection } from 'astro:content';
+import { url } from '../lib/site';
+
+interface Props {
+  title: string;
+  description?: string;
+  current?: string;
+}
+const { title, description, current } = Astro.props;
+
+const docs = (await getCollection('docs')).sort(
+  (a, b) => a.data.order - b.data.order || a.data.title.localeCompare(b.data.title),
+);
+
+// Preserve first-seen group order.
+const groups: { name: string; items: typeof docs }[] = [];
+for (const d of docs) {
+  let g = groups.find((x) => x.name === d.data.group);
+  if (!g) {
+    g = { name: d.data.group, items: [] as typeof docs };
+    groups.push(g);
+  }
+  g.items.push(d);
+}
+---
+
+<Base title={title} description={description}>
+  <div class="docs-header bg-space grain">
+    <div class="docs-header__wrap">
+      <span class="eyebrow" style="color: var(--color-galaxy-gold)">Documentation</span>
+      <h1>{title}</h1>
+      {description && <p class="docs-header__sub">{description}</p>}
+    </div>
+  </div>
+
+  <div class="docs-shell">
+    <aside class="docs-side">
+      <nav aria-label="Documentation">
+        {
+          groups.map((g) => (
+            <div class="docs-side__group">
+              <div class="docs-side__title">{g.name}</div>
+              <ul>
+                {g.items.map((d) => (
+                  <li>
+                    <a
+                      href={url(`/docs/${d.id}`)}
+                      class:list={['docs-side__link', current === d.id && 'is-active']}
+                      aria-current={current === d.id ? 'page' : undefined}
+                    >
+                      {d.data.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        }
+      </nav>
+    </aside>
+
+    <article class="docs-main">
+      <div class="prose">
+        <slot />
+      </div>
+      <div class="docs-foot">
+        <a href={url('/')} class="docs-foot__home">← Back to overview</a>
+        <a href="https://github.com/galaxyproject/loom" class="docs-foot__gh" rel="noopener" target="_blank">Edit on GitHub</a>
+      </div>
+    </article>
+  </div>
+</Base>
+
+<style>
+  .docs-header { color: #fff; border-bottom: 1px solid color-mix(in srgb, var(--color-galaxy-gold) 20%, transparent); position: relative; }
+  .docs-header__wrap { max-width: 76rem; margin: 0 auto; padding: 2.6rem 1.5rem 2.2rem; }
+  .docs-header h1 { font-size: clamp(2rem, 4vw, 2.8rem); margin: 0.6rem 0 0; letter-spacing: -0.02em; }
+  .docs-header__sub { margin: 0.7rem 0 0; color: color-mix(in srgb, #fff 72%, transparent); max-width: 52ch; line-height: 1.6; }
+
+  .docs-shell {
+    max-width: 76rem;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 4rem;
+    display: grid;
+    grid-template-columns: 15rem 1fr;
+    gap: 2.5rem;
+    align-items: start;
+  }
+  .docs-side { position: sticky; top: 5rem; }
+  .docs-side__group { margin-bottom: 1.4rem; }
+  .docs-side__title {
+    font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase;
+    font-weight: 700; color: var(--color-galaxy-grey); margin-bottom: 0.5rem;
+    font-family: var(--font-mono);
+  }
+  .docs-side ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.1rem; }
+  .docs-side__link {
+    display: block; padding: 0.4rem 0.7rem; border-radius: 0.4rem;
+    color: var(--color-galaxy-grey); text-decoration: none; font-size: 0.92rem;
+    border-left: 2px solid transparent; transition: color 0.15s ease, background 0.15s ease;
+  }
+  .docs-side__link:hover { color: var(--color-galaxy-dark); background: var(--color-light-bg); }
+  .docs-side__link.is-active {
+    color: var(--color-galaxy-primary); font-weight: 700;
+    background: color-mix(in srgb, var(--color-galaxy-gold) 10%, transparent);
+    border-left-color: var(--color-galaxy-gold);
+  }
+
+  .docs-main { min-width: 0; }
+  .docs-foot {
+    margin-top: 3rem; padding-top: 1.5rem;
+    border-top: 1px solid var(--color-border-subtle, #e1e4e8);
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem;
+  }
+  .docs-foot a { color: var(--color-galaxy-primary); text-decoration: none; font-weight: 600; font-size: 0.92rem; }
+  .docs-foot a:hover { color: var(--color-galaxy-gold-dark); }
+
+  @media (max-width: 820px) {
+    .docs-shell { grid-template-columns: 1fr; gap: 1.5rem; }
+    .docs-side { position: static; border-bottom: 1px solid var(--color-border-subtle, #e1e4e8); padding-bottom: 1rem; }
+  }
+</style>
