@@ -47,20 +47,20 @@ const edges: [number, number][] = [
           x1={nodes[a][0]} y1={nodes[a][1]}
           x2={nodes[b][0]} y2={nodes[b][1]}
           stroke="#6fa5d4"
-          stroke-opacity="0.16"
+          stroke-opacity="0.08"
           stroke-width="1"
         />
       ))
     }
     {
-      nodes.map(([x, y, r, gold], i) =>
+      nodes.map(([x, y, r, gold]) =>
         gold ? (
           <>
-            <circle cx={x} cy={y} r={r * 5} fill="url(#galaxy-glow)" opacity="0.5" />
-            <circle cx={x} cy={y} r={r} fill="#ffd700" style={`animation: pulse-node 4s ease-in-out ${i * 0.3}s infinite`} />
+            <circle cx={x} cy={y} r={r * 3} fill="url(#galaxy-glow)" opacity="0.2" />
+            <circle cx={x} cy={y} r={r} fill="#ffd700" fill-opacity="0.7" />
           </>
         ) : (
-          <circle cx={x} cy={y} r={r} fill="#aecce7" fill-opacity="0.55" />
+          <circle cx={x} cy={y} r={r} fill="#aecce7" fill-opacity="0.28" />
         ),
       )
     }

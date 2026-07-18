@@ -297,29 +297,7 @@ body {
   animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-@keyframes drift {
-  from {
-    transform: translate3d(0, 0, 0);
-  }
-  to {
-    transform: translate3d(-18px, -12px, 0);
-  }
-}
-.filaments {
-  animation: drift 24s ease-in-out infinite alternate;
-}
-
-@keyframes pulse-node {
-  0%,
-  100% {
-    opacity: 0.35;
-    r: 2;
-  }
-  50% {
-    opacity: 1;
-    r: 3.2;
-  }
-}
+/* cosmic web is static now — no drift / node pulse; it sits calm behind the grid */
 
 @keyframes caret {
   0%,
