@@ -105,6 +105,10 @@ const faqs = [
     a: `The notebook is the project. Instead of decisions living in disposable chat, every plan, parameter table, and result is written to a durable, git-tracked <code>notebook.md</code> you can inspect, edit, and diff. Multi-step plans are drafted and approved — with the exact parameters shown — before anything runs.`,
   },
   {
+    q: 'Does this replace the Galaxy interface?',
+    a: `No — it's an additive way to work with Galaxy, not a replacement, and that's the point. Galaxy stays the substrate: every heavy step runs as a real Galaxy job or workflow invocation, so the analysis itself lands in your Galaxy history — fully reproducible, re-runnable, and shareable like any other Galaxy work. On top of that, Loom keeps a durable record of the <em>reasoning</em> — the plans, parameter choices, and interpretation — in <code>notebook.md</code> as it happens. So <strong>both halves are transparent and reproducible</strong>: the conversation and decisions in the notebook <em>and</em> the actual analysis in Galaxy. You can always open Galaxy and re-run exactly what the agent did — it's still Galaxy.`,
+  },
+  {
     q: 'Can I drive Galaxy from Claude Desktop or another agent — not just Orbit?',
     a: `Yes. <a href="${url('/docs/galaxy-mcp')}">Galaxy MCP</a> (<code>uvx galaxy-mcp</code>) is a standalone Model Context Protocol server — point any MCP-capable client (Claude Desktop, Orbit, others) at a Galaxy instance and it can search and run tools, drive workflows, and manage histories. Orbit and Loom use it under the hood.`,
   },
