@@ -264,6 +264,25 @@ once — don't badger.
 
 Galaxy is connected.
 
+### If a Galaxy tool reports it's not connected
+
+The live Galaxy MCP connection is per-session and does **not** survive a resume
+or a long idle period, even though the credentials above stay configured. So a
+\`galaxy_*\` tool can come back "not connected" / "connection closed" / with a
+transport timeout at any time -- most often on the first Galaxy action after
+resuming this project. That does **not** mean Galaxy is unavailable; it means
+this session's connection needs to be re-established.
+
+When it happens -- and before you ever tell the user Galaxy is disconnected:
+1. Call \`galaxy_connect()\` first to re-bind this session. Do NOT report a
+   disconnection you haven't tried to fix.
+2. If \`galaxy_connect()\` itself fails with a transport error (connection
+   closed / timed out, not an auth error), tell the user to run
+   \`/mcp reconnect galaxy\` (no restart needed), then retry.
+
+Never report "Galaxy is disconnected" as a final answer without attempting
+\`galaxy_connect()\` in the same turn.
+
 ### Resuming existing Galaxy work ("pick up where I left off")
 
 If the user asks to connect to, catch up on, or resume work they did in
