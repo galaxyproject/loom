@@ -94,6 +94,11 @@ const grounded = [
     icon: '<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>',
   },
   {
+    title: "No tool for the job? It builds one.",
+    body: 'When nothing in the catalog fits, the agent authors a User-Defined Tool right in Galaxy — guided by a curated skill — instead of dropping to ad-hoc local scripts. Even bespoke steps run through Galaxy\'s job system, so they stay reproducible and shareable.',
+    icon: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12h8"/>',
+  },
+  {
     title: 'Community workflows, not reinvented',
     body: 'When a curated IWC workflow fits the task, the agent finds and runs it instead of assembling a pipeline from scratch — decades of best-practice, tested methods as the default.',
     icon: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M6 8.5v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-2M12 12.5v3"/>',
@@ -129,6 +134,10 @@ const faqs = [
   {
     q: "Won't the AI just hallucinate tools and parameters?",
     a: `That's the failure mode Galaxy grounding is built to avoid. Instead of inventing a pipeline from text, the agent works through Galaxy MCP against your server's real tool catalog and the curated <strong>IWC</strong> workflow collection — so the tools it runs actually exist, are version-pinned, and are containerized. It drafts the plan with the exact tools and parameters for you to approve <em>before</em> anything runs, and the run itself is a real Galaxy job with full provenance. The output is grounded in Galaxy's contracts, not a plausible-looking guess.`,
+  },
+  {
+    q: "What if the tool I need isn't in Galaxy?",
+    a: `<strong>It builds one.</strong> When no catalog tool fits the task, the agent authors a <strong>User-Defined Tool</strong> right in Galaxy — guided by a curated skill — rather than dropping to ad-hoc local scripts. The new tool runs through Galaxy's job system like any other, so even bespoke steps stay reproducible and shareable. Full agentic reach, still inside Galaxy.`,
   },
   {
     q: 'Can I drive Galaxy from Claude Desktop or another agent — not just Orbit?',
@@ -330,6 +339,11 @@ const faqs = [
           ))
         }
       </div>
+      <p class="grounded-foot">
+        <strong>Full agentic driving on top of the reproducible, transparent, web-accessible
+        Galaxy platform</strong> — your analysis runs in the browser, on the Galaxy servers you
+        and your collaborators already use. It's still Galaxy.
+      </p>
     </div>
   </section>
 
@@ -573,7 +587,9 @@ loom</code></pre>
 
   /* ---- grounded (built on Galaxy) ---- */
   .grounded { background: var(--color-light-bg); padding: clamp(4rem, 8vw, 6.5rem) 0; }
-  .grounded-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2rem; }
+  .grounded-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.2rem; }
+  .grounded-foot { text-align: center; margin: 2.25rem auto 0; max-width: 52rem; color: var(--color-galaxy-grey); line-height: 1.65; font-size: 1.02rem; }
+  .grounded-foot strong { color: var(--color-galaxy-dark); }
 
   /* ---- code card ---- */
   .codecard { background: #1b2030; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0.7rem; overflow: hidden; box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.6); margin: 0; }
