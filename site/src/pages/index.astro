@@ -122,10 +122,9 @@ const mcpConfig = `{
         <div class="hero__mock-caption">Orbit, mid-analysis — chat, plan, and a live notebook in one window.</div>
       </div>
     </div>
-  </section>
 
-  <!-- ========================================================= PILLARS -->
-  <section class="wrap pillars">
+    <!-- ============================================ PILLARS (on the dark hero) -->
+    <section class="wrap pillars">
     <div class="pillar card gold-hover">
       <div class="pillar__icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><ellipse cx="12" cy="12" rx="10" ry="4.5" transform="rotate(30 12 12)"/></svg>
@@ -150,6 +149,7 @@ const mcpConfig = `{
       <p>Decisions stop happening in disposable chat. Plans, parameters, and provenance are written down as they happen — inspectable markdown, git-tracked.</p>
       <a href={url('/') + '#method'} class="pillar__more">See the method →</a>
     </div>
+    </section>
   </section>
 
   <!-- ==================================================== SEE IN ACTION -->
@@ -336,22 +336,22 @@ loom</code></pre>
   .wrap { max-width: 76rem; margin: 0 auto; padding-left: 1.5rem; padding-right: 1.5rem; }
   .mono-inline, .hero__meta code, code { font-family: var(--font-mono); }
 
-  /* ---- hero ---- */
-  .hero { position: relative; overflow: hidden; color: #fff; isolation: isolate; }
+  /* ---- hero (the dark top; the pillar cards live on it too) ---- */
+  .hero { position: relative; overflow: hidden; color: #fff; isolation: isolate; padding-bottom: clamp(2.5rem, 5vw, 4rem); }
   /* signature 24px workflow-mesh grid as the substrate, under the cosmic web;
-     masked to fade out before the bottom white transition */
+     masked to fade gently at the very bottom edge */
   .hero__grid {
     position: absolute;
     inset: 0;
     z-index: 0;
     pointer-events: none;
-    -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent 88%);
-    mask-image: linear-gradient(to bottom, #000 45%, transparent 88%);
+    -webkit-mask-image: linear-gradient(to bottom, #000 82%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 82%, transparent 100%);
   }
   .hero__wrap {
     position: relative; z-index: 2;
     max-width: 76rem; margin: 0 auto;
-    padding: clamp(3rem, 7vw, 6rem) 1.5rem clamp(4rem, 8vw, 7rem);
+    padding: clamp(3rem, 7vw, 6rem) 1.5rem clamp(2.5rem, 5vw, 4rem);
     display: grid;
     grid-template-columns: 1fr 1.02fr;
     gap: clamp(2rem, 5vw, 4rem);
@@ -392,14 +392,12 @@ loom</code></pre>
     color: color-mix(in srgb, #fff 50%, transparent);
   }
 
-  /* ---- pillars ---- */
+  /* ---- pillars (white cards elevated on the dark hero) ---- */
   .pillars {
     position: relative; z-index: 3;
-    margin-top: -3.5rem;
     display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem;
-    padding-bottom: 1rem;
   }
-  .pillar { padding: 1.6rem 1.5rem; position: relative; }
+  .pillar { padding: 1.6rem 1.5rem; position: relative; box-shadow: 0 22px 48px -22px rgba(0, 0, 0, 0.6); }
   .pillar__icon {
     width: 2.6rem; height: 2.6rem; border-radius: 0.6rem;
     display: grid; place-items: center;
@@ -510,7 +508,6 @@ loom</code></pre>
     .hero__lede { max-width: 46ch; }
     .method__grid, .mcp__grid, .docs-cta__inner { grid-template-columns: 1fr; }
     .pillars, .feat-grid, .install__grid { grid-template-columns: 1fr; }
-    .pillars { margin-top: -2.5rem; }
     .docs-cta__cards { grid-template-columns: 1fr; }
   }
   @media (min-width: 641px) and (max-width: 960px) {
