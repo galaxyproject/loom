@@ -2,6 +2,7 @@
 import Base from '../layouts/Base.astro';
 import CosmicWeb from '../components/CosmicWeb.astro';
 import OrbitMock from '../components/OrbitMock.astro';
+import OrbitDemo from '../components/OrbitDemo.astro';
 import { url, links } from '../lib/site';
 
 const features = [
@@ -148,6 +149,27 @@ const mcpConfig = `{
       <h3>Reproducible by construction</h3>
       <p>Decisions stop happening in disposable chat. Plans, parameters, and provenance are written down as they happen — inspectable markdown, git-tracked.</p>
       <a href={url('/') + '#method'} class="pillar__more">See the method →</a>
+    </div>
+  </section>
+
+  <!-- ==================================================== SEE IN ACTION -->
+  <section id="demo" class="demo-section">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow" style="color: var(--color-galaxy-primary)">See it in action</span>
+        <h2>Exactly what you can do</h2>
+        <p class="section-sub">
+          Real analyses, start to finish. Ask in plain language; Orbit drafts a plan,
+          routes the heavy steps to Galaxy, and writes the notebook as it goes. Pick a
+          scenario — or watch them play.
+        </p>
+      </div>
+      <OrbitDemo />
+      <p class="demo-note">
+        Representative transcripts. The plan format, <code>[galaxy]</code>/<code>[hybrid]</code>
+        routing tags, and <code>loom-invocation</code> tracking are real; the exact tools and
+        results a run produces vary by model and analysis.
+      </p>
     </div>
   </section>
 
@@ -384,6 +406,9 @@ loom</code></pre>
 
   /* ---- generic section ---- */
   .section { padding: clamp(4rem, 8vw, 6.5rem) 1.5rem; }
+  .demo-section { padding: clamp(4rem, 8vw, 6.5rem) 0; background: var(--color-light-bg); }
+  .demo-note { text-align: center; margin: 1.4rem auto 0; max-width: 52rem; font-size: 0.86rem; color: var(--color-galaxy-grey); line-height: 1.55; }
+  .demo-note code { font-family: var(--font-mono); font-size: 0.82em; background: #fff; padding: 0.05em 0.35em; border-radius: 0.25rem; }
   .section-head { max-width: 44rem; margin: 0 auto clamp(2.2rem, 4vw, 3.2rem); text-align: center; }
   .section-head h2 { font-size: clamp(1.9rem, 3.6vw, 2.8rem); color: var(--color-galaxy-dark); margin: 0.7rem 0 0; letter-spacing: -0.02em; }
   .section-head--dark h2 { color: #fff; }

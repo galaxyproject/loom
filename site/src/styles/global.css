@@ -257,7 +257,7 @@ body {
   padding: 0.2rem 0.55rem;
   border-radius: 0.4rem;
 }
-.chip-remote {
+.chip-galaxy {
   background: color-mix(in srgb, var(--color-galaxy-primary) 16%, transparent);
   color: var(--color-bay-of-many-200);
 }

@@ -28,8 +28,8 @@ inspectable record of *how you got there*.
 When you ask for a plan, the agent drafts a `## Plan X:` section. Each plan header
 carries a routing tag, and each step is tagged too:
 
+- `[galaxy]` — runs on Galaxy (an IWC workflow matches, or the heavy tool lives on Galaxy). This is the primary execution path.
 - `[local]` — runs on your machine.
-- `[remote]` — runs on Galaxy (an IWC workflow matches, or the heavy tool lives on Galaxy).
 - `[hybrid]` — a mix.
 
 Steps use markdown checkboxes and stable anchors:
