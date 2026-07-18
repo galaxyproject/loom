@@ -22,4 +22,4 @@ export const links = {
 
 export const SITE_TITLE = 'Agentic Science with Galaxy';
 export const SITE_DESC =
-  "An AI co-scientist for Galaxy: plan and iterate on best-practice analyses, run them on Galaxy's tools and workflows, all fully reproducible and transparent. Meet Orbit, Loom, and Galaxy MCP.";
+  "Plan, refine, and execute best-practice analyses, run on Galaxy's tools and workflows — every step reproducible and transparent. Meet Orbit, Loom, and Galaxy MCP.";
