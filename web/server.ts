@@ -10,7 +10,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { createServer } from "node:http";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { join, resolve, dirname } from "node:path";
+import { join, resolve, dirname, basename } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -20,9 +20,18 @@ import { WebSocketServer, WebSocket } from "ws";
 import { buildBrainEnv } from "../shared/brain-env.js";
 import { evaluateBind, authorizeWsUpgrade } from "./auth.js";
 import { isForwardableUiResponse } from "./rpc-guard.js";
+import { isCustomProvider } from "../shared/custom-provider.js";
+import { hasProviderKey, llmKeyEnvVar } from "./llm-credentials.js";
+import { resolveShutdownGraceMs } from "./shutdown-grace.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const LOOM_BIN = resolve(__dirname, "../bin/loom.js");
+// In dev this file runs from web/; the container bundles it to web/build/ and
+// runs that. Anchor all repo-relative asset paths (the brain binary, the gate
+// extension, the built renderer) at the web dir so they resolve either way --
+// otherwise the bundled server looks one level too deep (web/build/...) and
+// the brain, the lockdown gate, and the static bundle all silently go missing.
+const WEB_ROOT = basename(__dirname) === "build" ? resolve(__dirname, "..") : __dirname;
+const LOOM_BIN = resolve(WEB_ROOT, "../bin/loom.js");
 const LOOM_CONFIG_DIR = join(homedir(), ".loom");
 const LOOM_CONFIG_PATH = join(LOOM_CONFIG_DIR, "config.json");
 const DEFAULT_CWD = join(LOOM_CONFIG_DIR, "analyses");
@@ -61,7 +70,7 @@ function saveConfig(config: Record<string, unknown>): void {
 }
 
 function synthesizedRemoteConfig(): Record<string, unknown> {
-  const provider = process.env.LOOM_LLM_PROVIDER ?? "anthropic";
+  const provider = activeProvider();
   // Mirror the nested masked shape the desktop renderer expects (active +
   // providers / active + profiles) so the first-run welcome overlay stays
   // suppressed and the Galaxy status dot reads "connected" from the env-injected
@@ -84,7 +93,7 @@ function synthesizedRemoteConfig(): Record<string, unknown> {
       providers: {
         [provider]: {
           model: process.env.LOOM_LLM_MODEL ?? null,
-          hasApiKey: true,
+          hasApiKey: llmKeyPresent(),
         },
       },
     },
@@ -109,6 +118,47 @@ let loomProcess: ChildProcess | null = null;
 let activeSocket: WebSocket | null = null;
 let cwd = getCwd();
 
+// BYO-key: a provider key supplied by the user at runtime (held in memory for
+// the process lifetime only -- never persisted, logged, or sent to the renderer).
+let providedLlmKey: string | null = null;
+let providedProvider: string | null = null;
+
+function activeProvider(): string {
+  if (providedProvider) return providedProvider;
+  if (process.env.LOOM_LLM_PROVIDER) return process.env.LOOM_LLM_PROVIDER;
+  // Fall back to the container's own config.json, which is what the brain reads.
+  // A custom-endpoint image (gxit/README.md) names its provider only there, so
+  // defaulting straight to "anthropic" made the server disagree with the brain
+  // about which provider is even active.
+  const active = (loadConfig().llm as { active?: unknown } | undefined)?.active;
+  if (typeof active === "string" && active.length > 0) return active;
+  return "anthropic";
+}
+
+/**
+ * Does the container's config.json describe this provider as an OpenAI-compatible
+ * custom endpoint? That baseUrl is what makes the brain authenticate the provider
+ * from LOOM_ACTIVE_LLM_API_KEY instead of a named var, so it's also what decides
+ * where a key may go -- guessing from the provider's name instead would either
+ * strand a configured container behind the BYO overlay or let a stale key vouch
+ * for a provider that can't use it.
+ */
+function isCustomProviderName(provider: string): boolean {
+  const providers = (loadConfig().llm as { providers?: Record<string, unknown> } | undefined)
+    ?.providers;
+  return isCustomProvider(providers?.[provider] as never);
+}
+
+function llmKeyPresent(): boolean {
+  const provider = activeProvider();
+  return hasProviderKey({
+    env: process.env,
+    provider,
+    providedKey: providedLlmKey,
+    isCustom: isCustomProviderName(provider),
+  });
+}
+
 function startLoom(): void {
   if (loomProcess) stopLoom();
 
@@ -128,13 +178,24 @@ function startLoom(): void {
   env.LOOM_SHELL_KIND = "orbit";
 
   if (IS_REMOTE_MODE) {
-    const gatePath = resolve(__dirname, "extensions/web-mode-gate.ts");
+    const gatePath = resolve(WEB_ROOT, "extensions/web-mode-gate.ts");
     args.push("--extension", gatePath);
-    if (process.env.LOOM_LLM_PROVIDER) {
-      args.push("--provider", process.env.LOOM_LLM_PROVIDER);
+    const prov = activeProvider();
+    if (providedProvider || process.env.LOOM_LLM_PROVIDER) {
+      args.push("--provider", prov);
     }
     if (process.env.LOOM_LLM_MODEL) {
       args.push("--model", process.env.LOOM_LLM_MODEL);
+    }
+    // BYO-key: inject the user-supplied key into the brain's env (env var name
+    // per the active provider; custom endpoints go to LOOM_ACTIVE_LLM_API_KEY).
+    // Never logged. The provide-llm-key handler rejects keys it can't route, so
+    // by here a non-null var is expected -- but don't spawn a brain that silently
+    // drops the credential if that ever stops being true.
+    if (providedLlmKey) {
+      const keyVar = llmKeyEnvVar(prov, { isCustom: isCustomProviderName(prov) });
+      if (keyVar) env[keyVar] = providedLlmKey;
+      else log("refusing to inject a key for unroutable provider:", prov);
     }
     env.LOOM_NOTEBOOK_ALLOWLIST = join(cwd, "notebook.md");
     // No local execution surface in the container: the web-mode-gate is the
@@ -142,6 +203,9 @@ function startLoom(): void {
     // (whose headless approval prompts would otherwise hang). See
     // extensions/loom/index.ts.
     env.LOOM_LOCAL_EXEC = "off";
+    // Deterministic notebook -> Galaxy Page persistence: resume on launch,
+    // debounce-push on change, flush on shutdown. Brain-side, env-gated.
+    env.LOOM_GALAXY_PAGE_SYNC = "auto";
   } else {
     // The local dev server DOES have a local execution surface, so pin the
     // guard on authoritatively (same as agent.ts and bin/loom.js) -- the
@@ -210,9 +274,83 @@ function stopLoom(): void {
   }
 }
 
+/**
+ * SIGTERM the brain and wait for it to exit so its session_shutdown hook can
+ * flush the notebook to Galaxy. SIGKILL backstop after timeoutMs (kept under
+ * the container orchestrator's grace window).
+ */
+function stopLoomGracefully(timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const proc = loomProcess;
+    if (!proc) return resolve();
+    const timer = setTimeout(() => {
+      try {
+        proc.kill("SIGKILL");
+      } catch {
+        /* already gone */
+      }
+      resolve();
+    }, timeoutMs);
+    proc.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    try {
+      proc.kill("SIGTERM");
+    } catch {
+      clearTimeout(timer);
+      resolve();
+    }
+  });
+}
+
+// A restart/reset now drains the outgoing brain before spawning its replacement,
+// which opens a window where loomProcess is a brain under SIGTERM. Writing to it
+// would look like it worked -- the pipe is still writable -- and the message would
+// die with the process, leaving the UI waiting on a turn nobody is running. Hold
+// messages instead and hand them to the replacement once it's up.
+let draining = false;
+const drainQueue: Record<string, unknown>[] = [];
+
 function sendToLoom(obj: Record<string, unknown>): void {
+  if (draining) {
+    drainQueue.push(obj);
+    return;
+  }
   if (!loomProcess?.stdin?.writable) return;
   loomProcess.stdin.write(JSON.stringify(obj) + "\n");
+}
+
+function flushDrainQueue(): void {
+  const queued = drainQueue.splice(0, drainQueue.length);
+  for (const obj of queued) sendToLoom(obj);
+}
+
+/**
+ * Run a brain swap with nothing else swapping underneath it. Two restarts landing
+ * together used to await the same dying process and then both spawn, so the
+ * second startLoom would SIGKILL the first replacement through the non-graceful
+ * path -- and a reset racing a restart could lose its fresh-session semantics
+ * entirely.
+ */
+let swapChain: Promise<void> = Promise.resolve();
+function serializeSwap(fn: () => Promise<void>): Promise<void> {
+  const next = swapChain.then(fn, fn);
+  // Keep the chain alive regardless of outcome; errors surface via the handler.
+  swapChain = next.catch(() => {});
+  return next;
+}
+
+/** Drain the current brain, then spawn its replacement (startLoom by default). */
+async function respawnBrain(spawnReplacement: () => void = startLoom): Promise<void> {
+  draining = true;
+  try {
+    await stopLoomGracefully(resolveShutdownGraceMs(process.env));
+    spawnReplacement();
+  } finally {
+    draining = false;
+  }
+  flushDrainQueue();
 }
 
 function sendEvent(event: string, ...payload: unknown[]): void {
@@ -236,6 +374,11 @@ const wss = new WebSocketServer({
     const auth = authorizeWsUpgrade(
       { origin: info.origin, host: info.req.headers.host, url: info.req.url },
       WEB_TOKEN,
+      // Remote mode with no token (the GxIT shape: gx-it-proxy is the trust
+      // boundary, and a Galaxy-issued entry-point URL can't carry a token) has
+      // no other check left, so demand the Origin browsers always send. Local
+      // dev and token deployments keep accepting non-browser clients.
+      { requireOrigin: IS_REMOTE_MODE && !WEB_TOKEN },
     );
     if (auth.ok) {
       done(true);
@@ -292,7 +435,11 @@ wss.on("connection", (socket) => {
   log("browser connected");
   activeSocket = socket;
 
-  if (!loomProcess) startLoom();
+  // In remote mode with no resolvable provider key, hold off spawning: the
+  // renderer's key-entry screen drives agent:provide-llm-key, which spawns.
+  // Non-remote (desktop/dev) is unchanged -- the brain reads its own
+  // ~/.loom/config.json key, which never reaches this env-only check.
+  if (!loomProcess && (!IS_REMOTE_MODE || llmKeyPresent())) startLoom();
 
   socket.on("message", (raw) => {
     let msg: Record<string, unknown>;
@@ -322,6 +469,35 @@ wss.on("connection", (socket) => {
       respond(id, { success: true });
       return;
     }
+    if (channel === "agent:provide-llm-key") {
+      const payload = (args[0] ?? {}) as { provider?: unknown; key?: unknown };
+      if (typeof payload.key !== "string" || payload.key.length === 0) {
+        respond(id, { ok: false, error: "missing provider key" });
+        return;
+      }
+      const provider =
+        typeof payload.provider === "string" && payload.provider.length > 0
+          ? payload.provider
+          : activeProvider();
+      // Refuse a key we have nowhere to put. The overlay offers
+      // "openai-compatible", but a custom endpoint also needs a baseUrl, and
+      // remote mode's config is read-only -- so unless this image was built with
+      // that provider in its config.json, there's no endpoint to talk to. Saying
+      // so beats accepting the key, reporting success, and leaving the user with
+      // an agent that can't authenticate and no way back to this prompt.
+      if (!llmKeyEnvVar(provider, { isCustom: isCustomProviderName(provider) })) {
+        respond(id, {
+          ok: false,
+          error: `Can't use a key for "${provider}" here: this deployment has no endpoint configured for it. Pick a built-in provider, or ask your admin to bake the endpoint into the image.`,
+        });
+        return;
+      }
+      providedLlmKey = payload.key; // never logged
+      providedProvider = provider;
+      if (!loomProcess) startLoom();
+      respond(id, { ok: true });
+      return;
+    }
     if (channel === "agent:get-cwd") {
       respond(id, cwd);
       return;
@@ -339,21 +515,31 @@ wss.on("connection", (socket) => {
       respond(id, cwd);
       return;
     }
+    // Restart/reset drain the old brain before spawning the new one. A bare
+    // SIGTERM-and-respawn let the outgoing brain's shutdown-hook page push
+    // overlap the incoming brain's resume/push: the new brain could resume a
+    // page the old one hadn't finished writing, or the two pushes could land
+    // last-writer-wins. Draining first makes the handoff ordered.
     if (channel === "agent:restart") {
-      stopLoom();
-      startLoom();
-      respond(id, null);
+      void serializeSwap(async () => {
+        await respawnBrain();
+        respond(id, null);
+      });
       return;
     }
     if (channel === "agent:reset-session") {
-      stopLoom();
-      // Fresh start — tell loom not to auto-load notebook
-      const origEnv = process.env.LOOM_FRESH_SESSION;
-      process.env.LOOM_FRESH_SESSION = "1";
-      startLoom();
-      if (origEnv === undefined) delete process.env.LOOM_FRESH_SESSION;
-      else process.env.LOOM_FRESH_SESSION = origEnv;
-      respond(id, null);
+      void serializeSwap(async () => {
+        await respawnBrain(() => {
+          // Fresh start — tell loom not to auto-load notebook. Set around the
+          // synchronous spawn only: startLoom reads process.env at spawn time.
+          const origEnv = process.env.LOOM_FRESH_SESSION;
+          process.env.LOOM_FRESH_SESSION = "1";
+          startLoom();
+          if (origEnv === undefined) delete process.env.LOOM_FRESH_SESSION;
+          else process.env.LOOM_FRESH_SESSION = origEnv;
+        });
+        respond(id, null);
+      });
       return;
     }
     if (channel === "agent:new-session") {
@@ -405,7 +591,7 @@ wss.on("connection", (socket) => {
 
 async function setupRenderer(): Promise<void> {
   if (process.env.NODE_ENV === "production") {
-    const distDir = resolve(__dirname, "dist");
+    const distDir = resolve(WEB_ROOT, "dist");
     log("serving static renderer from", distDir);
     app.use(express.static(distDir));
     app.get("/", (_req, res) => res.sendFile(resolve(distDir, "index.html")));
@@ -434,3 +620,20 @@ httpServer.listen(PORT, HOST, () => {
 function isLoopbackBind(): boolean {
   return HOST === "127.0.0.1" || HOST === "::1" || HOST === "localhost";
 }
+
+let shuttingDown = false;
+async function gracefulShutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  log("received", signal, "-- draining");
+  try {
+    wss.close();
+    httpServer.close();
+  } catch {
+    /* */
+  }
+  await stopLoomGracefully(resolveShutdownGraceMs(process.env));
+  process.exit(0);
+}
+process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => void gracefulShutdown("SIGINT"));

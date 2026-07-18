@@ -46,19 +46,32 @@ export const BRAIN_ENV_PASSTHROUGH = new Set([
 
 export const BRAIN_ENV_PREFIXES = ["LOOM_", "GALAXY_", "PI_"];
 
+// Built-in provider -> the env var its API key lives in. Mirrors the brain's
+// PROVIDER_ENV_MAP (bin/loom.js / app/src/main/agent.ts).
+//
+// Don't try to derive these by uppercasing the provider name: google's key is
+// GEMINI_API_KEY, not GOOGLE_API_KEY, so a name-derived guess silently fails to
+// find a perfectly good key (and, worse, routes a supplied one somewhere the
+// brain never reads).
+export const PROVIDER_KEY_VARS = {
+  anthropic: "ANTHROPIC_API_KEY",
+  openai: "OPENAI_API_KEY",
+  google: "GEMINI_API_KEY",
+  mistral: "MISTRAL_API_KEY",
+  groq: "GROQ_API_KEY",
+  xai: "XAI_API_KEY",
+  deepseek: "DEEPSEEK_API_KEY",
+};
+
 // Must stay a superset of the brain's built-in provider->env-key map
 // (PROVIDER_ENV_MAP in bin/loom.js / app/src/main/agent.ts): a provider key
 // that isn't listed here is dropped at this boundary, so in remote mode -- where
 // creds are env-only -- the brain would fail its credential check and refuse to
-// launch. brain-env.test.ts guards the superset relationship.
+// launch. brain-env.test.ts guards the superset relationship. Derived from the
+// map above so the two can't drift; AI_GATEWAY_API_KEY has no provider name of
+// its own (it's the brain's fallback var) so it's listed separately.
 export const PROVIDER_API_KEY_NAMES = new Set([
-  "ANTHROPIC_API_KEY",
-  "OPENAI_API_KEY",
-  "GEMINI_API_KEY",
-  "MISTRAL_API_KEY",
-  "GROQ_API_KEY",
-  "XAI_API_KEY",
-  "DEEPSEEK_API_KEY",
+  ...Object.values(PROVIDER_KEY_VARS),
   "AI_GATEWAY_API_KEY",
 ]);
 

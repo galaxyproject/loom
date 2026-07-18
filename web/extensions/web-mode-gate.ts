@@ -4,6 +4,8 @@
  * Default-DENY allowlist for the remote brain's tool surface. The agent may
  * only reach the curated remote surface:
  *   - Galaxy / BRC-Analytics MCP tools (galaxy_*, brc_analytics_*)
+ *   - the `mcp` proxy gateway, scoped to those same curated servers -- the only
+ *     path to them on a cold-cache container, where direct tools don't register
  *   - the brain's HTTP helper tools (gtn_*, notebook_*, skills_fetch)
  *   - path-gated edit/write/read, confined to the session notebook.md
  * Everything else -- bash/grep/find/ls, the pi-web-access egress tools
@@ -40,6 +42,49 @@ const ALLOWED_PREFIXES = ["galaxy_", "brc_analytics_", "gtn_", "notebook_"];
 
 // Allowed tool names that don't share one of the prefixes above.
 const ALLOWED_EXACT = new Set(["skills_fetch"]);
+
+// The curated MCP servers reachable through the `mcp` proxy gateway. On a
+// cold-cache container -- every fresh remote launch -- pi-mcp-adapter never
+// registers the galaxy_*/brc_analytics_* DIRECT tools (it needs a warm
+// per-server metadata cache, and the per-user scoped GALAXY_API_KEY changes
+// the cache's config hash every launch), so the single `mcp` proxy tool is the
+// only path to those servers. We allow the proxy but scope it to these servers,
+// matching the direct-tool surface ALLOWED_PREFIXES already permits.
+const CURATED_MCP_SERVERS = new Set(["galaxy", "brc-analytics"]);
+
+function asTrimmedString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+/**
+ * Gate the pi-mcp-adapter `mcp` proxy gateway. Mirrors the proxy's own dispatch
+ * precedence: a `tool` field is a server-side tool CALL and wins over
+ * everything; `connect` opens a server connection. Both must target a curated
+ * server -- a call with no server is unverifiable, so it's denied. The
+ * remaining ops (search/describe/list/status/ui-messages) are read-only
+ * discovery against already-configured servers and pass through.
+ */
+export function gateMcpProxy(input: Record<string, unknown>): BlockDecision | undefined {
+  const tool = asTrimmedString(input.tool);
+  if (tool) {
+    const server = asTrimmedString(input.server);
+    if (server && CURATED_MCP_SERVERS.has(server)) return undefined;
+    return {
+      block: true,
+      reason: server
+        ? `mcp proxy call to server "${server}" is blocked in remote mode (allowed: galaxy, brc-analytics)`
+        : `mcp proxy tool calls must set "server" to one of: galaxy, brc-analytics`,
+    };
+  }
+  const connect = asTrimmedString(input.connect);
+  if (connect && !CURATED_MCP_SERVERS.has(connect)) {
+    return {
+      block: true,
+      reason: `mcp proxy connect to "${connect}" is blocked in remote mode (allowed: galaxy, brc-analytics)`,
+    };
+  }
+  return undefined;
+}
 
 /**
  * Resolve an absolute path with symlink collapsing. Walks up until it finds
@@ -93,15 +138,21 @@ export function shouldBlockTool(
     if (isPathAllowed(raw, allowlist, cwd)) return undefined;
     return { block: true, reason: `path "${raw}" is not in the remote-mode allowlist` };
   }
-  // Destructive Galaxy ops (whole-history delete/purge) -- called directly or via the
-  // code-mode run_galaxy_tool envelope -- are blocked in remote mode: this gate has no
-  // confirmation UI to require an are-you-sure (#338). A remote-confirm UX is a follow-up.
+  // Destructive Galaxy ops (whole-history delete/purge) -- called directly, via the
+  // code-mode run_galaxy_tool envelope, or wrapped in the mcp() proxy -- are blocked in
+  // remote mode: this gate has no confirmation UI to require an are-you-sure (#338).
+  // This MUST run before the mcp-proxy allow below: classifyGalaxyDestructive unwraps the
+  // mcp envelope, so ordering it first stops a delete/purge smuggled through mcp() from
+  // being waved through as a "curated server" call. A remote-confirm UX is a follow-up.
   if (classifyGalaxyDestructive(toolName, input)) {
     return {
       block: true,
       reason: `${toolName} is a destructive Galaxy operation; blocked in remote mode (no confirmation UI available)`,
     };
   }
+  // The MCP proxy gateway reaches the curated servers when their direct tools
+  // aren't registered (cold cache). Allow it, scoped to those servers.
+  if (toolName === "mcp") return gateMcpProxy(input);
   // Curated remote surface -> allowed.
   if (ALLOWED_EXACT.has(toolName)) return undefined;
   if (ALLOWED_PREFIXES.some((p) => toolName.startsWith(p))) return undefined;

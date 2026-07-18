@@ -917,8 +917,33 @@ welcomeBrowseCwd.addEventListener("click", async () => {
   if (dir) welcomeCwd.value = dir;
 });
 
+// Remote (web/GxIT) BYO-key entry: when the server reports no LLM key, reuse
+// this overlay to collect a provider key and hand it to the server
+// (provideLlmKey) instead of writing config.json, which remote mode rejects.
+let remoteKeyEntry = false;
+
 welcomeSave.addEventListener("click", async () => {
   welcomeError.textContent = "";
+  if (remoteKeyEntry) {
+    const key = welcomeApiKey.value.trim();
+    if (!key) {
+      welcomeError.textContent = "API key is required";
+      return;
+    }
+    // Keep the overlay up if the server couldn't route the key anywhere --
+    // hiding it on a rejection stranded the user in front of a brain that never
+    // started, with no way back to the key prompt.
+    const res = (await window.orbit.provideLlmKey?.(welcomeProvider.value, key)) as
+      | { ok?: boolean; error?: string }
+      | undefined;
+    if (res && res.ok === false) {
+      welcomeError.textContent = res.error || "Could not start the agent with that key";
+      return;
+    }
+    welcomeOverlay.classList.add("hidden");
+    await refreshGalaxyStatus();
+    return;
+  }
   const oauth = isOAuthProvider(welcomeProvider.value);
   const apiKey = welcomeApiKey.value.trim();
   if (!oauth && !apiKey) {
@@ -1003,9 +1028,27 @@ async function checkFirstRun(): Promise<void> {
     _mode?: string;
     llm?: { active?: string; providers?: Record<string, { hasApiKey?: boolean }> };
   };
-  // Remote shells inject creds server-side; the first-run credential flow is N/A
-  // there and its OAuth/key controls aren't wired in the web shim.
-  if (cfg._mode === "remote") return;
+  // Remote shells inject Galaxy creds server-side, but the LLM key may be
+  // missing (no admin-baked key). When it is, reuse the welcome overlay to
+  // collect a provider key and hand it to the server (BYO-key); otherwise the
+  // first-run flow is N/A.
+  if (cfg._mode === "remote") {
+    const active = cfg.llm?.active;
+    const hasKey = active ? Boolean(cfg.llm?.providers?.[active]?.hasApiKey) : false;
+    if (!hasKey) {
+      remoteKeyEntry = true;
+      if (active) welcomeProvider.value = active;
+      populateWelcomeModels(welcomeProvider.value);
+      void updateWelcomeAuthUi();
+      // Remote: cwd is fixed (/tmp/loom-session) and Galaxy creds are injected,
+      // so hide both optional <details> sections; "Skip" would leave no agent.
+      welcomeCwd.closest("details")?.classList.add("hidden");
+      welcomeGalaxyUrl.closest("details")?.classList.add("hidden");
+      welcomeSkip.classList.add("hidden");
+      welcomeOverlay.classList.remove("hidden");
+    }
+    return;
+  }
   const active = cfg.llm?.active;
   // Treat an OAuth-only setup (no API key, but provider has a stored token)
   // as fully configured -- skip the welcome screen.

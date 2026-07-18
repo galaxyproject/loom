@@ -19,6 +19,7 @@ import {
   syncCustomProviderModelsFile,
   resolveActiveLlmApiKey,
 } from "../shared/custom-provider.js";
+import { GALAXY_MCP_SPEC } from "../shared/galaxy-mcp-spec.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -318,7 +319,7 @@ if (!isInformationalCommand) {
   if (hasGalaxyCredentials) {
     mcpConfig.mcpServers.galaxy = {
       command: "uvx",
-      args: ["galaxy-mcp>=1.9.0"],
+      args: [GALAXY_MCP_SPEC],
       directTools: true,
       // Local-path upload over MCP times out on large files (-32001); the
       // loom-native galaxy_upload_local_file tool handles those instead. URL
