@@ -22,4 +22,4 @@ export const links = {
 
 export const SITE_TITLE = 'Agentic Science with Galaxy';
 export const SITE_DESC =
-  'Point an AI agent at your data. It plans, runs real bioinformatics on Galaxy, and keeps the whole analysis fully reproducible and transparent. Meet Orbit, Loom, and Galaxy MCP.';
+  "An AI co-scientist for Galaxy: plan and iterate on best-practice analyses, run them on Galaxy's tools and workflows, all fully reproducible and transparent. Meet Orbit, Loom, and Galaxy MCP.";
