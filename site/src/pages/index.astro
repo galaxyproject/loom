@@ -87,6 +87,24 @@ const mcpConfig = `{
   }
 }`;
 
+const grounded = [
+  {
+    title: 'Real, versioned tools',
+    body: "The agent works from Galaxy's actual catalog — thousands of containerized, version-pinned tools — through Galaxy MCP. What it runs is installed and reproducible, not a name it made up.",
+    icon: '<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>',
+  },
+  {
+    title: 'Community workflows, not reinvented',
+    body: 'When a curated IWC workflow fits the task, the agent finds and runs it instead of assembling a pipeline from scratch — decades of best-practice, tested methods as the default.',
+    icon: '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M6 8.5v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-2M12 12.5v3"/>',
+  },
+  {
+    title: 'Reproducible by contract',
+    body: "Every step executes as a real Galaxy job or workflow invocation, with Galaxy's provenance, tool versions, and containers behind it — re-runnable and shareable in Galaxy, by construction.",
+    icon: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/>',
+  },
+];
+
 const faqs = [
   {
     q: 'Why two names — Orbit and Loom?',
@@ -107,6 +125,10 @@ const faqs = [
   {
     q: 'Does this replace the Galaxy interface?',
     a: `No — it's an additive way to work with Galaxy, not a replacement, and that's the point. Galaxy stays the substrate: every heavy step runs as a real Galaxy job or workflow invocation, so the analysis itself lands in your Galaxy history — fully reproducible, re-runnable, and shareable like any other Galaxy work. On top of that, Loom keeps a durable record of the <em>reasoning</em> — the plans, parameter choices, and interpretation — in <code>notebook.md</code> as it happens. So <strong>both halves are transparent and reproducible</strong>: the conversation and decisions in the notebook <em>and</em> the actual analysis in Galaxy. You can always open Galaxy and re-run exactly what the agent did — it's still Galaxy.`,
+  },
+  {
+    q: "Won't the AI just hallucinate tools and parameters?",
+    a: `That's the failure mode Galaxy grounding is built to avoid. Instead of inventing a pipeline from text, the agent works through Galaxy MCP against your server's real tool catalog and the curated <strong>IWC</strong> workflow collection — so the tools it runs actually exist, are version-pinned, and are containerized. It drafts the plan with the exact tools and parameters for you to approve <em>before</em> anything runs, and the run itself is a real Galaxy job with full provenance. The output is grounded in Galaxy's contracts, not a plausible-looking guess.`,
   },
   {
     q: 'Can I drive Galaxy from Claude Desktop or another agent — not just Orbit?',
@@ -280,6 +302,34 @@ const faqs = [
         Galaxy histories remain the computational truth. <code>notebook.md</code> is the durable
         working record — <strong>Galaxy is the substrate, and Loom is one live authoring shell.</strong>
       </p>
+    </div>
+  </section>
+
+  <!-- ======================================================== GROUNDED -->
+  <section id="grounded" class="grounded">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow" style="color: var(--color-galaxy-primary)">Grounded, not guessing</span>
+        <h2>Built on Galaxy's tools, workflows, and contracts</h2>
+        <p class="section-sub">
+          Generic AI invents plausible-looking pipelines — fake tool names, wrong parameters,
+          workflows that won't run. Orbit builds on Galaxy's contracts instead, so what the
+          agent proposes is real, versioned, and reproducible.
+        </p>
+      </div>
+      <div class="grounded-grid">
+        {
+          grounded.map((g) => (
+            <div class="feat card gold-hover">
+              <div class="feat__icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" set:html={g.icon} />
+              </div>
+              <h4>{g.title}</h4>
+              <p>{g.body}</p>
+            </div>
+          ))
+        }
+      </div>
     </div>
   </section>
 
@@ -521,6 +571,10 @@ loom</code></pre>
   .method__foot strong { color: #fff; }
   .method__foot code { background: color-mix(in srgb, #fff 10%, transparent); color: var(--color-galaxy-gold); }
 
+  /* ---- grounded (built on Galaxy) ---- */
+  .grounded { background: var(--color-light-bg); padding: clamp(4rem, 8vw, 6.5rem) 0; }
+  .grounded-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2rem; }
+
   /* ---- code card ---- */
   .codecard { background: #1b2030; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0.7rem; overflow: hidden; box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.6); margin: 0; }
   .codecard__hd { display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.8rem; background: rgba(255, 255, 255, 0.03); border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
@@ -598,11 +652,11 @@ loom</code></pre>
     .hero__wrap { grid-template-columns: 1fr; }
     .hero__lede { max-width: 46ch; }
     .method__grid, .mcp__grid, .docs-cta__inner { grid-template-columns: 1fr; }
-    .pillars, .feat-grid, .install__grid { grid-template-columns: 1fr; }
+    .pillars, .feat-grid, .install__grid, .grounded-grid { grid-template-columns: 1fr; }
     .docs-cta__cards { grid-template-columns: 1fr; }
   }
   @media (min-width: 641px) and (max-width: 960px) {
-    .feat-grid, .install__grid { grid-template-columns: repeat(2, 1fr); }
+    .feat-grid, .install__grid, .grounded-grid { grid-template-columns: repeat(2, 1fr); }
     .pillars { grid-template-columns: repeat(3, 1fr); }
   }
 </style>
