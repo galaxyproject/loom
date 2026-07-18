@@ -116,12 +116,14 @@ body {
   background-size: 24px 24px;
 }
 
-/* Deep-space gradient base for the hero + dark sections. */
+/* Deep-space gradient base for the hero + dark sections. Radials are large,
+   pushed off-corner, and fade all the way out — so no hard edge/arc appears at
+   any section height. Linear layer is monotonic (no lighter midpoint band). */
 .bg-space {
   background:
-    radial-gradient(1200px 600px at 78% -10%, color-mix(in srgb, var(--color-galaxy-primary) 55%, transparent), transparent 60%),
-    radial-gradient(900px 500px at 10% 110%, color-mix(in srgb, var(--color-bay-of-many-800) 40%, transparent), transparent 55%),
-    linear-gradient(160deg, var(--color-space) 0%, var(--color-galaxy-dark) 55%, var(--color-space-2) 100%);
+    radial-gradient(150% 120% at 92% -25%, color-mix(in srgb, var(--color-galaxy-primary) 34%, transparent), transparent 70%),
+    radial-gradient(140% 120% at -12% 120%, color-mix(in srgb, var(--color-bay-of-many-800) 26%, transparent), transparent 66%),
+    linear-gradient(172deg, var(--color-galaxy-dark) 0%, var(--color-space-2) 100%);
 }
 
 /* Faint starfield — layered radial dots, purely decorative. */
