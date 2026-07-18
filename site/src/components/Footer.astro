@@ -1,0 +1,178 @@
+---
+import { url, links } from '../lib/site';
+const year = new Date().getFullYear();
+
+const cols = [
+  {
+    title: 'Product',
+    items: [
+      { label: 'Orbit desktop app', href: links.releases },
+      { label: 'Loom CLI', href: links.npm },
+      { label: 'Galaxy MCP', href: links.mcp },
+      { label: 'Galaxy Skills', href: links.skills },
+    ],
+  },
+  {
+    title: 'Learn',
+    items: [
+      { label: 'Docs', href: url('/docs') },
+      { label: 'Getting started', href: url('/docs/getting-started') },
+      { label: 'How it works', href: url('/') + '#method' },
+      { label: 'Architecture', href: url('/docs/architecture') },
+    ],
+  },
+  {
+    title: 'Ecosystem',
+    items: [
+      { label: 'Galaxy Project', href: links.galaxy },
+      { label: 'IWC workflows', href: links.iwc },
+      { label: 'Loom on GitHub', href: links.loom },
+      { label: 'Releases', href: links.releases },
+    ],
+  },
+];
+---
+
+<footer class="site-footer bg-space grain">
+  <div class="site-footer__grid">
+    <div class="site-footer__brand">
+      <div class="brand-row">
+        <img src={url('/orbit-icon.svg')} alt="" width="36" height="36" />
+        <div>
+          <div class="brand-name">Agentic Science with Galaxy</div>
+          <div class="brand-tag">The notebook is the project.</div>
+        </div>
+      </div>
+      <p class="blurb">
+        Loom weaves your research record the way the cosmic web weaves galaxies;
+        Orbit is the electron shell you observe it from.
+      </p>
+    </div>
+
+    {
+      cols.map((col) => (
+        <nav class="fcol" aria-label={col.title}>
+          <div class="fcol__title">{col.title}</div>
+          {col.items.map((i) => (
+            <a href={i.href} class="fcol__link">{i.label}</a>
+          ))}
+        </nav>
+      ))
+    }
+  </div>
+
+  <div class="site-footer__bar">
+    <div class="gold-dot" aria-hidden="true"></div>
+    <span>© {year} The Galaxy Project · Loom &amp; Orbit are open source (MIT).</span>
+    <a href={links.galaxy} class="bar-link">galaxyproject.org ↗</a>
+  </div>
+</footer>
+
+<style>
+  .site-footer {
+    position: relative;
+    color: color-mix(in srgb, #fff 70%, transparent);
+    border-top: 1px solid color-mix(in srgb, var(--color-galaxy-gold) 18%, transparent);
+    margin-top: 0;
+  }
+  .site-footer__grid {
+    position: relative;
+    max-width: 76rem;
+    margin: 0 auto;
+    padding: 3.5rem 1.5rem 2rem;
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 2.5rem;
+  }
+  .brand-row {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+  }
+  .brand-row img {
+    border-radius: 8px;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-galaxy-gold) 25%, transparent);
+  }
+  .brand-name {
+    color: #fff;
+    font-weight: 700;
+    font-size: 1.05rem;
+  }
+  .brand-tag {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: color-mix(in srgb, var(--color-galaxy-gold) 90%, #fff);
+    margin-top: 0.15rem;
+  }
+  .blurb {
+    margin: 1rem 0 0;
+    max-width: 34ch;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: color-mix(in srgb, #fff 60%, transparent);
+  }
+  .fcol {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+  .fcol__title {
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.78rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 0.3rem;
+  }
+  .fcol__link {
+    color: color-mix(in srgb, #fff 66%, transparent);
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: color 0.15s ease;
+    width: fit-content;
+  }
+  .fcol__link:hover {
+    color: var(--color-galaxy-gold);
+  }
+  .site-footer__bar {
+    position: relative;
+    max-width: 76rem;
+    margin: 0 auto;
+    padding: 1.2rem 1.5rem;
+    border-top: 1px solid color-mix(in srgb, #fff 8%, transparent);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.82rem;
+  }
+  .gold-dot {
+    width: 0.35rem;
+    height: 1.1rem;
+    background: var(--color-galaxy-gold);
+    border-radius: 999px;
+    flex: none;
+  }
+  .bar-link {
+    margin-left: auto;
+    color: color-mix(in srgb, #fff 66%, transparent);
+    text-decoration: none;
+  }
+  .bar-link:hover {
+    color: var(--color-galaxy-gold);
+  }
+
+  @media (max-width: 760px) {
+    .site-footer__grid {
+      grid-template-columns: 1fr 1fr;
+    }
+    .site-footer__brand {
+      grid-column: 1 / -1;
+    }
+    .site-footer__bar {
+      flex-wrap: wrap;
+    }
+    .bar-link {
+      margin-left: 0;
+    }
+  }
+</style>

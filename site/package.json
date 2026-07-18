@@ -1,0 +1,26 @@
+{
+  "name": "agentic-science-site",
+  "type": "module",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Agentic Science with Galaxy — the showcase site for Orbit, Loom, and Galaxy MCP.",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "typecheck": "astro check"
+  },
+  "dependencies": {
+    "@fontsource/atkinson-hyperlegible": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@galaxyproject/brand-tokens": "^0.1.0",
+    "@tailwindcss/typography": "^0.5.19",
+    "@tailwindcss/vite": "4.1.18",
+    "astro": "^5.17.1",
+    "tailwindcss": "4.1.18"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.4",
+    "typescript": "^5.7.0"
+  }
+}

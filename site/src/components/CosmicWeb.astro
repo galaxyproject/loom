@@ -1,0 +1,79 @@
+---
+// Decorative cosmic-web backdrop: galaxies (nodes) strung along filaments of
+// dark matter (edges). Hand-authored coordinates so the structure reads as
+// intentional. Purely decorative — aria-hidden, pointer-events: none.
+interface Props { class?: string }
+const { class: className = '' } = Astro.props;
+
+// viewBox 0..1000 x 0..640
+const nodes: [number, number, number, boolean][] = [
+  // x, y, r, isGold
+  [80, 90, 2.2, false], [210, 60, 2.6, true], [330, 140, 2, false],
+  [150, 220, 3, false], [300, 280, 2.2, false], [60, 330, 2, true],
+  [430, 70, 2.4, false], [470, 210, 2.8, false], [380, 330, 2, false],
+  [560, 130, 2, false], [640, 250, 3.2, true], [520, 360, 2.2, false],
+  [700, 90, 2.4, false], [760, 200, 2, false], [820, 320, 2.6, false],
+  [900, 130, 2.2, true], [930, 280, 2, false], [690, 400, 2.4, false],
+  [240, 420, 2.6, false], [120, 480, 2, false], [370, 500, 2.2, true],
+  [520, 470, 2, false], [660, 520, 2.8, false], [840, 460, 2.2, false],
+  [950, 430, 2, false], [280, 560, 2, false], [610, 600, 2.4, false],
+  [790, 580, 2, true],
+];
+const edges: [number, number][] = [
+  [0,1],[1,2],[0,3],[3,4],[3,5],[2,6],[6,7],[4,7],[7,8],[6,9],[9,10],[10,7],
+  [10,11],[8,11],[9,12],[12,13],[13,14],[13,10],[14,15],[15,16],[16,14],[14,17],
+  [17,11],[4,18],[18,19],[18,20],[20,21],[21,11],[21,22],[22,17],[22,23],[23,24],
+  [23,16],[19,25],[25,20],[26,22],[27,23],[26,27],[8,4],[11,17],[24,16],
+];
+---
+
+<svg
+  class={`cosmic ${className}`}
+  viewBox="0 0 1000 640"
+  preserveAspectRatio="xMidYMid slice"
+  aria-hidden="true"
+  fill="none"
+>
+  <defs>
+    <radialGradient id="galaxy-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffd700" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#ffd700" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <g class="filaments">
+    {
+      edges.map(([a, b]) => (
+        <line
+          x1={nodes[a][0]} y1={nodes[a][1]}
+          x2={nodes[b][0]} y2={nodes[b][1]}
+          stroke="#6fa5d4"
+          stroke-opacity="0.08"
+          stroke-width="1"
+        />
+      ))
+    }
+    {
+      nodes.map(([x, y, r, gold]) =>
+        gold ? (
+          <>
+            <circle cx={x} cy={y} r={r * 3} fill="url(#galaxy-glow)" opacity="0.2" />
+            <circle cx={x} cy={y} r={r} fill="#ffd700" fill-opacity="0.7" />
+          </>
+        ) : (
+          <circle cx={x} cy={y} r={r} fill="#aecce7" fill-opacity="0.28" />
+        ),
+      )
+    }
+  </g>
+</svg>
+
+<style>
+  .cosmic {
+    position: absolute;
+    inset: -4%;
+    width: 108%;
+    height: 108%;
+    z-index: 0;
+    pointer-events: none;
+  }
+</style>
