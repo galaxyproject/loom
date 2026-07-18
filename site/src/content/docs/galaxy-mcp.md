@@ -36,8 +36,7 @@ uvx galaxy-mcp
 ```
 
 It reads `GALAXY_URL` and `GALAXY_API_KEY` from the environment. You can also
-install from PyPI (`pip install galaxy-mcp`) or run the
-`galaxyproject/galaxy-mcp` Docker image.
+install it from PyPI with `pip install galaxy-mcp`.
 
 ## Connect Claude Desktop
 

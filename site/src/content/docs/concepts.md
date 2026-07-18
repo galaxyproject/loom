@@ -77,9 +77,11 @@ markdown.
 
 ## Git-tracked notebooks
 
-Loom `git init`s the analysis directory and auto-commits every notebook change.
-That gives you a full undo history, timestamped reproducibility evidence,
-branchable exploration, and a notebook you can share on GitHub — for free.
+When Loom creates the analysis directory it `git init`s it and auto-commits every
+notebook change. That gives you a full undo history, timestamped reproducibility
+evidence, branchable exploration, and a notebook you can share on GitHub — for
+free. (If you start Loom inside a repo you already manage, auto-commit is opt-in,
+so it never touches your history without asking.)
 
 ## Skills
 

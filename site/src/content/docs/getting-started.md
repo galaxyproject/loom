@@ -17,13 +17,14 @@ Pick whichever shell you prefer — they run the same brain.
 
 ### Orbit (desktop app)
 
-Download a signed, notarized installer from the
-[Releases page](https://github.com/galaxyproject/loom/releases). Each installer
-bundles its own Node, `uv`, and Loom, so there is nothing else to set up.
+Download an installer from the
+[Releases page](https://github.com/galaxyproject/loom/releases). Each build
+bundles its own Node, `uv`, and Loom, so there is nothing else to set up. The
+macOS build is signed and notarized.
 
 - **macOS** — open the `.dmg` and drag Orbit to Applications.
 - **Linux** — install the `.deb` (`sudo dpkg -i orbit_*_amd64.deb && sudo apt-get install -f`) or `.rpm`, then run `orbit`.
-- **Windows** — run the `Setup.exe` (remote-only build).
+- **Windows** — remote-only (no local shell). Currently ships as an unsigned `.zip` — unzip and run `orbit`; a signed installer is on the way.
 
 ### Loom (CLI)
 
