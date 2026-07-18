@@ -49,9 +49,10 @@ const nav = [
     position: sticky;
     top: 0;
     z-index: 50;
-    background: color-mix(in srgb, var(--color-space) 82%, transparent);
-    backdrop-filter: saturate(140%) blur(12px);
-    border-bottom: 1px solid color-mix(in srgb, var(--color-galaxy-gold) 22%, transparent);
+    /* solid deep navy — was a translucent + saturate(140%) blend that read as a
+       muddy warm grey at the top; gold accents stay on the logo tile + CTA */
+    background: var(--color-space-2);
+    border-bottom: 1px solid color-mix(in srgb, #fff 8%, transparent);
   }
   .site-header__inner {
     max-width: 76rem;
