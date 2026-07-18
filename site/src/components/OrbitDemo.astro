@@ -216,14 +216,16 @@ const routeLabel = (r: Route, tool: string) => (r === 'galaxy' ? `galaxy · ${to
   }
   .demo__replay:hover { background: color-mix(in srgb, var(--m-gold) 25%, transparent); }
 
-  .demo__body { display: grid; grid-template-columns: 1.25fr 1fr; min-height: 400px; }
+  /* fixed height so the box never resizes as messages append (no jump when the
+     final result bubble lands); panes flex-fill and scroll internally instead */
+  .demo__body { display: grid; grid-template-columns: 1.25fr 1fr; height: 430px; }
 
   .pane-hd { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0.75rem; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--m-dim); border-bottom: 1px solid var(--m-border); }
   .pane-hd__icons { opacity: 0.55; letter-spacing: 0.15em; }
 
   /* chat */
   .demo-chat { display: flex; flex-direction: column; border-right: 1px solid var(--m-border); min-width: 0; }
-  .demo-chat__scroll { flex: 1; padding: 0.9rem 0.85rem; display: flex; flex-direction: column; gap: 0.8rem; overflow-y: auto; max-height: 340px; }
+  .demo-chat__scroll { flex: 1; min-height: 0; padding: 0.9rem 0.85rem; display: flex; flex-direction: column; gap: 0.8rem; overflow-y: auto; }
   .dmsg { animation: dfade 0.4s ease both; }
   @keyframes dfade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   .dmsg--user { display: flex; align-items: flex-start; gap: 0.4rem; justify-content: flex-end; }
@@ -269,7 +271,7 @@ const routeLabel = (r: Route, tool: string) => (r === 'galaxy' ? `galaxy · ${to
   .pane-tabs { display: flex; gap: 0.2rem; padding: 0.35rem 0.5rem 0; border-bottom: 1px solid var(--m-border); }
   .tab { font-size: 11px; padding: 0.4rem 0.55rem; color: var(--m-dim); border-bottom: 2px solid transparent; }
   .tab.is-active { color: #fff; border-bottom-color: var(--m-gold); }
-  .demo-nb__scroll { padding: 0.9rem 0.85rem; overflow-y: auto; max-height: 358px; }
+  .demo-nb__scroll { flex: 1; min-height: 0; padding: 0.9rem 0.85rem; overflow-y: auto; }
   .demo-nb__scroll > * { animation: dfade 0.4s ease both; }
   .nb-h1 { margin: 0 0 0.4rem; font-size: 14px; color: #fff; display: flex; align-items: center; gap: 0.4rem; }
   .nb-h1 .chip { margin-left: 0; }
@@ -305,10 +307,10 @@ const routeLabel = (r: Route, tool: string) => (r === 'galaxy' ? `galaxy · ${to
   .foot-ctx { margin-left: auto; font-family: var(--font-mono); }
 
   @container (max-width: 640px) {
-    .demo__body { grid-template-columns: 1fr; }
+    .demo__body { grid-template-columns: 1fr; height: auto; }
     .demo-nb { border-top: 1px solid var(--m-border); }
-    .demo-chat__scroll { max-height: 260px; }
-    .demo-nb__scroll { max-height: 300px; }
+    .demo-chat__scroll { flex: none; height: 260px; }
+    .demo-nb__scroll { flex: none; height: 300px; }
   }
   @media (max-width: 720px) {
     .demo-tabs { grid-template-columns: 1fr; }
