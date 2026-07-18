@@ -86,6 +86,41 @@ const mcpConfig = `{
     }
   }
 }`;
+
+const faqs = [
+  {
+    q: 'Why two names — Orbit and Loom?',
+    a: `<strong>Loom is the brain; Orbit is the shell.</strong> Loom is the agent runtime — the system-prompt context, Galaxy routing and invocation tracking, the skills system, and the RPC contract — and you can run it straight from a terminal with <code>loom</code>. <strong>Orbit</strong> is the Electron desktop app that wraps that same brain in a chat + notebook + activity layout. Same brain, two ways to observe it; future shells (a Galaxy-embedded UI, a hosted mode) talk to it over the same RPC contract. The names trace the cosmology: the cosmic web weaves galaxies along filaments of dark matter — Loom weaves your research record the same way, and Orbit is the electron shell you observe it from.`,
+  },
+  {
+    q: 'Do I need a Galaxy account to try it?',
+    a: `No — Loom is useful for local exploration and planning before you connect anything. But Galaxy is the primary execution path: add a Galaxy URL and API key and the agent surveys the workflow registry and tool catalog while drafting plans, then routes the heavy steps to Galaxy and tracks each invocation in the notebook.`,
+  },
+  {
+    q: 'Which AI models can I use?',
+    a: `Bring your own. Anthropic, OpenAI, Google (Gemini), Mistral, Groq, xAI, DeepSeek, local Ollama, or any OpenAI-compatible endpoint — with live token, cost, and context-window meters in the footer. You supply the key; nothing is locked to one vendor.`,
+  },
+  {
+    q: 'How is this different from just chatting with an AI about my analysis?',
+    a: `The notebook is the project. Instead of decisions living in disposable chat, every plan, parameter table, and result is written to a durable, git-tracked <code>notebook.md</code> you can inspect, edit, and diff. Multi-step plans are drafted and approved — with the exact parameters shown — before anything runs.`,
+  },
+  {
+    q: 'Can I drive Galaxy from Claude Desktop or another agent — not just Orbit?',
+    a: `Yes. <a href="${url('/docs/galaxy-mcp')}">Galaxy MCP</a> (<code>uvx galaxy-mcp</code>) is a standalone Model Context Protocol server — point any MCP-capable client (Claude Desktop, Orbit, others) at a Galaxy instance and it can search and run tools, drive workflows, and manage histories. Orbit and Loom use it under the hood.`,
+  },
+  {
+    q: 'Is it open source? What does it cost?',
+    a: `Loom, Orbit, and Galaxy MCP are open source (MIT). There's no license fee — you pay only for your own model usage (your API key) and whatever Galaxy compute your account uses.`,
+  },
+  {
+    q: 'What platforms does Orbit run on?',
+    a: `macOS (Apple Silicon; signed &amp; notarized), Linux (<code>.deb</code> / <code>.rpm</code> / <code>.zip</code>), and Windows. The Windows build is remote-only (Galaxy execution, no local shell) and currently ships as a <code>.zip</code> while a signed installer is finalized. Prefer the terminal? The <code>loom</code> CLI runs anywhere Node 22.19+ does.`,
+  },
+  {
+    q: 'Is it ready for everyday use?',
+    a: `Orbit and Loom are in active development — think capable beta. The core loop (plan, route to Galaxy, track invocations, record the notebook) works today; end-to-end validation against live Galaxy servers is ongoing. Galaxy credentials are stored in your OS keychain in Orbit, and local execution is confined to your working directory by default.`,
+  },
+];
 ---
 
 <Base>
@@ -303,6 +338,29 @@ loom</code></pre>
     </div>
   </section>
 
+  <!-- ============================================================ FAQ -->
+  <section id="faq" class="faq">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow" style="color: var(--color-galaxy-primary)">FAQ</span>
+        <h2>Questions, answered</h2>
+      </div>
+      <div class="faq-list">
+        {
+          faqs.map((f, i) => (
+            <details class="faq-item" open={i === 0}>
+              <summary class="faq-q">
+                <span>{f.q}</span>
+                <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+              </summary>
+              <div class="faq-a" set:html={f.a} />
+            </details>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
   <!-- =========================================================== DOCS -->
   <section class="docs-cta bg-space grain">
     <div class="wrap docs-cta__inner">
@@ -492,6 +550,35 @@ loom</code></pre>
   .icard__btn { justify-content: center; text-align: center; font-size: 0.86rem; margin-bottom: 0.7rem; }
   .icard__hint { font-size: 0.8rem; color: var(--color-galaxy-grey); }
   .icard__hint code { font-family: var(--font-mono); background: #fff; padding: 0.05em 0.3em; border-radius: 0.25rem; font-size: 0.86em; }
+
+  /* ---- faq ---- */
+  .faq { padding: clamp(4rem, 8vw, 6.5rem) 1.5rem; }
+  .faq-list { max-width: 48rem; margin: 0 auto; display: flex; flex-direction: column; gap: 0.7rem; }
+  .faq-item {
+    background: #fff;
+    border: 1px solid color-mix(in srgb, var(--color-galaxy-primary) 12%, transparent);
+    border-radius: 0.7rem; overflow: hidden;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .faq-item[open] {
+    border-color: color-mix(in srgb, var(--color-galaxy-gold) 45%, transparent);
+    box-shadow: 0 12px 30px -18px rgba(0, 0, 0, 0.2);
+  }
+  .faq-q {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    cursor: pointer; list-style: none;
+    padding: 1.05rem 1.3rem;
+    font-weight: 700; font-size: 1.02rem; color: var(--color-galaxy-dark);
+  }
+  .faq-q::-webkit-details-marker { display: none; }
+  .faq-q:hover { color: var(--color-galaxy-primary); }
+  .faq-chevron { width: 1.15rem; height: 1.15rem; flex: none; color: var(--color-galaxy-primary); transition: transform 0.2s ease; }
+  .faq-item[open] .faq-chevron { transform: rotate(180deg); }
+  .faq-a { padding: 0 1.3rem 1.2rem; color: var(--color-galaxy-grey); line-height: 1.65; font-size: 0.97rem; }
+  .faq-a :global(a) { color: var(--color-galaxy-primary); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--color-galaxy-primary) 40%, transparent); text-underline-offset: 2px; }
+  .faq-a :global(a:hover) { color: var(--color-galaxy-gold-dark); }
+  .faq-a :global(code) { font-family: var(--font-mono); background: var(--color-light-bg); padding: 0.1em 0.35em; border-radius: 0.3rem; font-size: 0.86em; }
+  .faq-a :global(strong) { color: var(--color-galaxy-dark); }
 
   /* ---- docs cta ---- */
   .docs-cta { position: relative; color: #fff; padding: clamp(3.5rem, 6vw, 5rem) 0; overflow: hidden; }
