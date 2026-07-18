@@ -91,6 +91,7 @@ const mcpConfig = `{
 <Base>
   <!-- ============================================================ HERO -->
   <section class="hero bg-space bg-stars grain">
+    <div class="hero__grid bg-grid-dark" aria-hidden="true"></div>
     <CosmicWeb />
     <div class="hero__wrap">
       <div class="hero__copy">
@@ -121,7 +122,6 @@ const mcpConfig = `{
         <div class="hero__mock-caption">Orbit, mid-analysis — chat, plan, and a live notebook in one window.</div>
       </div>
     </div>
-    <div class="hero__fade"></div>
   </section>
 
   <!-- ========================================================= PILLARS -->
@@ -338,6 +338,16 @@ loom</code></pre>
 
   /* ---- hero ---- */
   .hero { position: relative; overflow: hidden; color: #fff; isolation: isolate; }
+  /* signature 24px workflow-mesh grid as the substrate, under the cosmic web;
+     masked to fade out before the bottom white transition */
+  .hero__grid {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent 88%);
+    mask-image: linear-gradient(to bottom, #000 45%, transparent 88%);
+  }
   .hero__wrap {
     position: relative; z-index: 2;
     max-width: 76rem; margin: 0 auto;
@@ -381,7 +391,6 @@ loom</code></pre>
     font-size: 0.78rem; font-family: var(--font-mono);
     color: color-mix(in srgb, #fff 50%, transparent);
   }
-  .hero__fade { position: absolute; left: 0; right: 0; bottom: 0; height: 6rem; background: linear-gradient(transparent, #fff); z-index: 1; }
 
   /* ---- pillars ---- */
   .pillars {
