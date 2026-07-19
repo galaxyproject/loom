@@ -1,11 +1,14 @@
 # Galaxy integration and routing
 
-Three operating modes are an _outcome_ of the plan you draft, not a
+Four routing modes are an _outcome_ of the plan you draft, not a
 configuration setting:
 
+- **galaxy** — steps run on Galaxy's tools and workflows; the default
+  when a matching Galaxy tool or workflow exists
+- **hybrid** — some steps local, some on Galaxy
 - **local** — every step runs locally
-- **hybrid** — some local, some Galaxy
-- **remote** — entire plan is one Galaxy workflow invocation
+- **remote** — entire plan is one Galaxy workflow invocation (an IWC
+  workflow matches it end to end)
 
 The agent makes the routing decision **per plan, during drafting**,
 once Galaxy is connected. The mode follows from those step-by-step
