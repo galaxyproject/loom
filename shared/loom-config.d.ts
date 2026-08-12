@@ -71,6 +71,12 @@ export interface LoomConfig {
     /** Register the experimental team_dispatch tool and its prompt guidance. */
     teamDispatch?: boolean;
     /**
+     * Hand a finished Galaxy run back to the agent automatically instead of
+     * only toasting the user. Off by default: it makes the agent take turns
+     * and spend tokens with nobody watching.
+     */
+    autoResume?: boolean;
+    /**
      * Register the experimental session-index tools (chat_search,
      * chat_session_context, chat_find_tool_calls) that query Pi's JSONL
      * session corpus via a SQLite+FTS5 mirror at ~/.loom/sessions-index.db.

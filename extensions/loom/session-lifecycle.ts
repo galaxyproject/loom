@@ -6,6 +6,7 @@ import {
   stopWatchingNotebook,
 } from "./state.js";
 import { startGalaxyPoller, stopGalaxyPoller } from "./galaxy-poller.js";
+import { isAutoResumeEnabled } from "./auto-resume.js";
 import { initGalaxyPageSync, flushNotebookToGalaxy } from "./galaxy-page-sync.js";
 import {
   upsertSessionSummaryBlock,
@@ -46,13 +47,30 @@ export function registerSessionLifecycle(pi: ExtensionAPI): void {
     // ctx may be headless (rpc/--print/web) or stale after a session swap —
     // ctx.ui/hasUI assert an active context and can throw. Guard like the
     // compaction notifier (see registerCommand("compact") in index.ts).
+    // Auto-resume (opt-in) hands a finished run straight back to the agent as a
+    // queued follow-up, so it verifies outputs itself instead of the toast
+    // asking the user to relay (#413 part B). `followUp` is required, not
+    // cosmetic: a plain send to a brain that is mid-turn is rejected with
+    // "Agent is already processing".
+    const resumeFn = isAutoResumeEnabled()
+      ? (text: string) => {
+          // Fired from a 15s timer, so a rejected/throwing send must not take
+          // the tick down with it.
+          try {
+            void pi.sendUserMessage(text, { deliverAs: "followUp" });
+          } catch (err) {
+            console.error("[galaxy-poller] auto-resume send failed:", err);
+          }
+        }
+      : undefined;
+
     startGalaxyPoller((text, level) => {
       try {
         if (ctx.hasUI) ctx.ui.notify(text, level);
       } catch {
         /* stale/headless context — a dropped completion toast is fine */
       }
-    });
+    }, resumeFn);
 
     sessionStart = {
       id: ctx.sessionManager?.getSessionId?.() ?? `session-${Date.now()}`,
