@@ -40,7 +40,8 @@ export function registerExecutionCommands(pi: ExtensionAPI): void {
         `the next pending step. For each step:\n` +
         `1. Decide local vs Galaxy per the plan's routing tag (see [local|hybrid|remote] in the section header).\n` +
         `2. **Galaxy steps run in the BACKGROUND — this is the default.** Invoke via Galaxy MCP, call ` +
-        `galaxy_invocation_record({ invocationId, notebookAnchor, label }), then **hand control back to the user**: ` +
+        `galaxy_invocation_record({ invocationId, notebookAnchor, label }) — or, for a single tool run, ` +
+        `galaxy_job_record({ jobId, notebookAnchor, label }) — then **hand control back to the user**: ` +
         `say it's submitted and running in the background (the Activity tab shows live progress), and STOP. ` +
         `Do NOT sit in this turn polling the invocation to completion — a background poller advances its status ` +
         `automatically and the user is notified when it finishes. Leave the step's checkbox \`- [ ]\`. ` +

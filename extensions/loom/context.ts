@@ -406,6 +406,13 @@ whole wrapper — keep its keys, replace every placeholder (\`<value>\`,
 control back to the user.** Do NOT block the turn polling a Galaxy job to
 completion; the user wants to keep working with you while it runs.
 
+This applies to single **tool** runs too, not just workflows — record those
+with \`galaxy_job_record({ jobId, notebookAnchor, label })\` right after
+\`galaxy_run_tool\` returns a job id. An unrecorded run is invisible to the
+poller: nothing advances it, nothing notices when it finishes, and the
+analysis stalls until the user asks. If you did not record it, you must not
+claim a poller is watching it.
+
 After invoking via Galaxy MCP and getting an \`invocationId\` back:
 1. Call \`galaxy_invocation_record({ invocationId, notebookAnchor, label })\`.
    The \`notebookAnchor\` is a stable id like \`plan-1-step-3\` that

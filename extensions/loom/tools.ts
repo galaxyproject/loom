@@ -25,6 +25,7 @@ import {
   type InvocationYaml,
   type InvocationPollUpdate,
 } from "./notebook-writer";
+import { upsertJobBlock, type JobYaml } from "./galaxy-job-block";
 import { getGalaxyConfig, galaxyGet, type GalaxyInvocationResponse } from "./galaxy-api";
 import { listEnabledSkillRepos, findSkillRepo } from "./skills";
 import { fetchSkillFile, githubRawBase } from "./skills-discovery";
@@ -490,6 +491,94 @@ Writes a fenced \`loom-invocation\` YAML block at the end of the notebook. Polli
         { invocationId?: string; notebookAnchor?: string; error?: boolean } | undefined;
       if (d?.error) return new Text("❌ Failed to record invocation");
       return new Text(`🔗 Invocation ${d?.invocationId} → ${d?.notebookAnchor}`);
+    },
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Tool: Record a Galaxy tool run (job) in the notebook
+  // ─────────────────────────────────────────────────────────────────────────────
+  pi.registerTool({
+    name: "galaxy_job_record",
+    label: "Record Galaxy Job",
+    description: `Record a Galaxy TOOL run in the project notebook so its progress is tracked in
+the background. Call right after submitting a tool via Galaxy MCP (galaxy_run_tool), the same way
+galaxy_invocation_record is called after invoking a workflow. Without this the run is invisible to
+the background poller: nothing advances its status and nothing notifies anyone when it finishes.
+Writes a fenced \`loom-job\` YAML block; the poller updates it in place.`,
+    parameters: Type.Object({
+      jobId: Type.String({ description: "Galaxy job ID returned from galaxy_run_tool" }),
+      notebookAnchor: Type.String({
+        description: "Stable anchor where this run lives, e.g. 'plan-1-step-3'",
+      }),
+      label: Type.String({
+        description: "Human-readable description for status display, e.g. 'BWA alignment'",
+      }),
+      toolId: Type.Optional(
+        Type.String({ description: "Galaxy tool id, e.g. 'bwa_mem' — shown if no label fits" }),
+      ),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const notebookPath = getNotebookPath();
+      if (!notebookPath) {
+        return {
+          content: [
+            { type: "text", text: JSON.stringify({ success: false, error: "No notebook open." }) },
+          ],
+          details: { error: true } as Record<string, unknown>,
+        };
+      }
+
+      const cfg = getGalaxyConfig();
+      try {
+        const job: JobYaml = {
+          jobId: params.jobId,
+          galaxyServerUrl: cfg?.url || "",
+          notebookAnchor: params.notebookAnchor,
+          label: params.label,
+          toolId: params.toolId,
+          submittedAt: new Date().toISOString(),
+          status: "in_progress",
+        };
+        await withNotebookLock(notebookPath, async () => {
+          const content = await readNotebook(notebookPath);
+          await writeNotebook(notebookPath, upsertJobBlock(content, job));
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  success: true,
+                  jobId: job.jobId,
+                  notebookAnchor: job.notebookAnchor,
+                  label: job.label,
+                  status: job.status,
+                  message: `Recorded job ${job.jobId} (${job.label}) at ${job.notebookAnchor}. The background poller will advance it and notify on completion.`,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+          details: { jobId: job.jobId, notebookAnchor: job.notebookAnchor } as Record<
+            string,
+            unknown
+          >,
+        };
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        return {
+          content: [{ type: "text", text: JSON.stringify({ success: false, error: msg }) }],
+          details: { error: true } as Record<string, unknown>,
+        };
+      }
+    },
+    renderResult: (result) => {
+      const d = result.details as { jobId?: string; notebookAnchor?: string; error?: boolean } | undefined;
+      if (d?.error) return new Text("❌ Failed to record job");
+      return new Text(`🔗 Job ${d?.jobId} → ${d?.notebookAnchor}`);
     },
   });
 
