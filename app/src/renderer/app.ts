@@ -28,6 +28,7 @@ import {
 import type { FeedbackPayload, FeedbackSysinfo } from "../../../shared/feedback-contract.js";
 import changelogRaw from "../../../CHANGELOG.md?raw";
 import { parseChangelog, decideWhatsNew, releaseUrlFor } from "../../../shared/whats-new.js";
+import { splitApprovalPrompt } from "../../../shared/approval-prompt.js";
 import { openReleaseWithFallback, clearReleaseFallback } from "./update-banner.js";
 
 declare global {
@@ -2596,6 +2597,7 @@ window.orbit.onAgentEvent((event) => {
 const extOverlay = document.getElementById("ext-overlay")!;
 const extTitleEl = document.getElementById("ext-title")!;
 const extMessageEl = document.getElementById("ext-message")!;
+const extDetailEl = document.getElementById("ext-detail")!;
 const extInputEl = document.getElementById("ext-input") as HTMLInputElement;
 const extOptionsEl = document.getElementById("ext-options")!;
 const extCancelBtn = document.getElementById("ext-cancel") as HTMLButtonElement;
@@ -2606,12 +2608,14 @@ const extDenyBtn = document.getElementById("ext-deny") as HTMLButtonElement;
 function hideExtModal(): void {
   extOverlay.classList.add("hidden");
   extMessageEl.classList.add("hidden");
+  extDetailEl.classList.add("hidden");
   extInputEl.classList.add("hidden");
   extOptionsEl.classList.add("hidden");
   extConfirmBtn.classList.add("hidden");
   extAcceptBtn.classList.add("hidden");
   extDenyBtn.classList.add("hidden");
   extOptionsEl.innerHTML = "";
+  extDetailEl.textContent = "";
   extInputEl.value = "";
 }
 
@@ -2652,7 +2656,15 @@ function openExtInput(id: string, title: string, placeholder?: string): void {
 }
 
 function openExtSelect(id: string, title: string, options: string[]): void {
-  extTitleEl.textContent = title;
+  // The brain has only the title string to work with, so anything below the
+  // first blank line is the thing being approved -- render it in the body,
+  // where it can scroll and keep its newlines. #399
+  const { heading, detail } = splitApprovalPrompt(title);
+  extTitleEl.textContent = heading;
+  // Assigned unconditionally so a detail-less prompt can never inherit the
+  // previous prompt's command, even if the modal was left un-reset.
+  extDetailEl.textContent = detail;
+  extDetailEl.classList.toggle("hidden", !detail);
   extOptionsEl.classList.remove("hidden");
   extOverlay.classList.remove("hidden");
 

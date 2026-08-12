@@ -14,6 +14,7 @@ import { createPathResolver } from "./path-jail";
 import { classifyModelTier } from "./model-tier";
 import { decide } from "./policy";
 import { CONSENT_VERSION, type PolicyResult } from "./types";
+import { buildApprovalPrompt } from "../../../shared/approval-prompt.js";
 
 // In-memory "allow for this session" set, keyed by tool + raw input signature.
 const sessionAllow = new Set<string>();
@@ -126,12 +127,18 @@ export function registerExecGuard(pi: ExtensionAPI): void {
     }
 
     const modelName = ctx.model?.id ?? "the model";
-    const detail =
-      event.toolName === "bash"
-        ? `run: ${String(input.command ?? "").slice(0, 200)}`
-        : `${event.toolName}: ${String(input.path ?? "")}`;
+    // Heading and the thing being approved are separated by a blank line so a
+    // shell can render the command as a readable body instead of a headline.
+    // Lowercased to match the policy engine, which gates on the normalized
+    // name -- otherwise a "Bash" call would be gated as a command but prompted
+    // as a path, showing the user nothing of what they're approving.
+    const isBash = event.toolName.toLowerCase() === "bash";
+    const heading = isBash
+      ? `Allow ${modelName} to run this command?`
+      : `Allow ${modelName} to ${event.toolName} this path?`;
+    const detail = String((isBash ? input.command : input.path) ?? "");
     const choice = await ctx.ui.select(
-      `Allow ${modelName} to ${detail}?`,
+      buildApprovalPrompt(heading, detail),
       [
         "Allow once",
         "Allow for this session",

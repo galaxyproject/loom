@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { registerExecGuard } from "../extensions/loom/exec-guard/gate";
+import { APPROVAL_DETAIL_LIMIT, splitApprovalPrompt } from "../shared/approval-prompt.js";
 
 let sandbox: string, prevHome: string | undefined;
 let handler: (event: any, ctx: any) => Promise<any>;
@@ -124,6 +125,80 @@ describe("registerExecGuard", () => {
     );
     expect(r?.block).toBe(true);
     expect(select).not.toHaveBeenCalled();
+  });
+});
+
+describe("registerExecGuard -- approval prompt legibility (#399)", () => {
+  const longCommand = `python train.py ${"--flag value ".repeat(60)}`.trim();
+
+  it("shows the whole command, not a silent 200-char slice", async () => {
+    const select = vi.fn(async () => "Deny");
+    const c = ctx({ ui: { select, confirm: vi.fn(async () => false), notify: vi.fn() } });
+    await handler(
+      { type: "tool_call", toolName: "bash", toolCallId: "p1", input: { command: longCommand } },
+      c,
+    );
+    const title = select.mock.calls[0][0] as string;
+    expect(longCommand.length).toBeGreaterThan(200);
+    expect(title).toContain(longCommand);
+  });
+
+  it("keeps the command out of the heading so shells can render it as a body", async () => {
+    const select = vi.fn(async () => "Deny");
+    const c = ctx({ ui: { select, confirm: vi.fn(async () => false), notify: vi.fn() } });
+    await handler(
+      {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: "p2",
+        input: { command: "python x.py\n  --verbose" },
+      },
+      c,
+    );
+    const { heading, detail } = splitApprovalPrompt(select.mock.calls[0][0] as string);
+    expect(heading).toBe("Allow claude-opus-4-8 to run this command?");
+    // Newlines inside the command survive the trip.
+    expect(detail).toBe("python x.py\n  --verbose");
+  });
+
+  it("says so explicitly when a command is too long to show in full", async () => {
+    const select = vi.fn(async () => "Deny");
+    const c = ctx({ ui: { select, confirm: vi.fn(async () => false), notify: vi.fn() } });
+    const huge = `python x.py ${"z".repeat(APPROVAL_DETAIL_LIMIT * 2)}`;
+    await handler(
+      { type: "tool_call", toolName: "bash", toolCallId: "p3", input: { command: huge } },
+      c,
+    );
+    const title = select.mock.calls[0][0] as string;
+    expect(title).toContain("truncated");
+    expect(title).toContain(String(huge.length));
+  });
+
+  it("prompts with the command even when pi emits a capitalized tool name", async () => {
+    const select = vi.fn(async () => "Deny");
+    const c = ctx({ ui: { select, confirm: vi.fn(async () => false), notify: vi.fn() } });
+    await handler(
+      { type: "tool_call", toolName: "Bash", toolCallId: "p5", input: { command: "python x.py" } },
+      c,
+    );
+    expect(select).toHaveBeenCalled();
+    const { heading, detail } = splitApprovalPrompt(select.mock.calls[0][0] as string);
+    expect(heading).toBe("Allow claude-opus-4-8 to run this command?");
+    expect(detail).toBe("python x.py");
+  });
+
+  it("gives path-gated tools the same heading/detail shape", async () => {
+    const select = vi.fn(async () => "Deny");
+    const c = ctx({ ui: { select, confirm: vi.fn(async () => false), notify: vi.fn() } });
+    const hook = path.join(sandbox, "project", ".git", "hooks", "pre-commit");
+    await handler(
+      { type: "tool_call", toolName: "write", toolCallId: "p4", input: { path: hook } },
+      c,
+    );
+    expect(select).toHaveBeenCalled();
+    const { heading, detail } = splitApprovalPrompt(select.mock.calls[0][0] as string);
+    expect(heading).toBe("Allow claude-opus-4-8 to write this path?");
+    expect(detail).toBe(hook);
   });
 });
 

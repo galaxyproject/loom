@@ -2933,6 +2933,30 @@ body.platform-darwin #files-title {
   line-height: 1.5;
 }
 
+/* Extension titles are model-supplied, so let a long one wrap rather than
+   overflow the masthead. */
+#ext-title {
+  overflow-wrap: anywhere;
+}
+
+/* The command/path being approved. Lives in the scrollable modal body -- the
+   header has no scroll region, so a long title there would squeeze the options
+   off-screen. #399 */
+.ext-detail {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
 .ext-input {
   width: 100%;
   padding: 8px 10px;
