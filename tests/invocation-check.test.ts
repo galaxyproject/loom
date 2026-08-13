@@ -104,6 +104,28 @@ describe("checkInvocations", () => {
     expect(notebook).toContain("Workflow failed: 1 job(s) errored, 1 succeeded");
   });
 
+  it("asks Galaxy for step details, without which every job counter is zero", async () => {
+    // Regression: the fetch omitted `step_details=true`. Galaxy still returns a
+    // `jobs` key on every step but leaves it empty, so totalJobs came back 0,
+    // neither the completed nor the failed branch could fire, and blocks sat at
+    // in_progress forever -- no status transition, no toast. Every test here
+    // mocks galaxyGet with jobs already populated (what step_details returns),
+    // which is exactly why the suite stayed green while this was broken. Assert
+    // the request itself, since a mocked response cannot catch it.
+    writeFileSync(nbPath, renderInvocationYaml(invocation()), "utf-8");
+    const galaxyGet = vi.spyOn(galaxyApi, "galaxyGet").mockResolvedValue({
+      id: "inv-1",
+      state: "scheduled",
+      workflow_id: "wf-1",
+      history_id: "hist-1",
+      steps: [],
+    });
+
+    await checkInvocations(undefined);
+
+    expect(galaxyGet).toHaveBeenCalledWith(expect.stringContaining("step_details=true"), undefined);
+  });
+
   it("does not rewrite already completed invocations in check_all", async () => {
     writeFileSync(nbPath, renderInvocationYaml(invocation({ status: "completed" })), "utf-8");
     const galaxyGet = vi.spyOn(galaxyApi, "galaxyGet");

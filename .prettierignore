@@ -14,3 +14,7 @@ coverage/
 
 *.jsonl
 *-notebook.md
+
+# Vendored upstream reference, hash-gated by check:foundry-skills. Reformatting
+# it would break the drift gate and diverge the copy from what was reviewed.
+extensions/loom/vendor/skills/

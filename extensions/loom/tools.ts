@@ -28,6 +28,7 @@ import {
 import { getGalaxyConfig, galaxyGet, type GalaxyInvocationResponse } from "./galaxy-api";
 import { listEnabledSkillRepos, findSkillRepo } from "./skills";
 import { fetchSkillFile, githubRawBase } from "./skills-discovery";
+import { VENDOR_REPO_NAME, readVendoredSkill } from "./vendor-skills";
 import { parse as parseHtml } from "node-html-parser";
 
 /**
@@ -313,12 +314,17 @@ analyses in Galaxy.`,
     description: `Fetch operational know-how from a configured skills repo. The
 system prompt's "Skills repositories" section lists the available repos and the
 canonical paths inside each. Results are cached locally for 24h. If \`repo\` is
-omitted, the first enabled repo is used (typically \`galaxy-skills\`).`,
+omitted, the first enabled repo is used (typically \`galaxy-skills\`).
+
+\`repo: "${VENDOR_REPO_NAME}"\` reads Galaxy reference material bundled with Loom
+(offline, no network). It is not listed in the skills router; hints name the
+exact file when it becomes relevant.`,
     parameters: Type.Object({
       repo: Type.Optional(
         Type.String({
           description:
-            "Name of the skills repo to fetch from (e.g. 'galaxy-skills'). " +
+            "Name of the skills repo to fetch from (e.g. 'galaxy-skills'), or " +
+            `'${VENDOR_REPO_NAME}' for bundled reference material. ` +
             "Omit to use the default (first enabled repo).",
         }),
       ),
@@ -329,6 +335,38 @@ omitted, the first enabled repo is used (typically \`galaxy-skills\`).`,
       }),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
+      // Bundled reference ships inside the package -- resolve it from disk
+      // before the configured-repo path, which is GitHub-backed and cached.
+      // On a miss, fall through to a configured repo of the same name rather
+      // than erroring: `galaxyproject/foundry` is a repo a user may well add,
+      // and the bundled set must not silently shadow the whole thing.
+      if (params.repo === VENDOR_REPO_NAME) {
+        const res = readVendoredSkill(params.path);
+        if (res.ok) {
+          return {
+            content: [{ type: "text", text: res.text }],
+            details: {
+              repo: VENDOR_REPO_NAME,
+              path: params.path,
+              length: res.text.length,
+              cached: true,
+            },
+          };
+        }
+        if (!findSkillRepo(VENDOR_REPO_NAME)) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: ${res.error}. Bundled files: ${res.available.join(", ") || "(none)"}.`,
+              },
+            ],
+            details: { error: true, repo: VENDOR_REPO_NAME, path: params.path },
+          };
+        }
+        // A repo named "foundry" is configured — let the normal path serve it.
+      }
+
       const repo = findSkillRepo(params.repo);
       if (!repo) {
         const enabled =
@@ -638,8 +676,13 @@ export async function checkInvocations(
 
   for (const block of toCheck) {
     try {
+      // `step_details=true` is required for the per-step `jobs` arrays to be
+      // populated. Without it Galaxy still returns a `jobs` key on every step,
+      // but always empty -- so every counter below lands on zero, neither the
+      // completed nor the failed branch can fire, and the block sits at
+      // in_progress forever with no toast and no transition.
       const inv = await galaxyGet<GalaxyInvocationResponse>(
-        `/invocations/${block.invocationId}`,
+        `/invocations/${block.invocationId}?step_details=true`,
         signal,
       );
 

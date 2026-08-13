@@ -61,7 +61,9 @@
     "typecheck": "tsc --noEmit",
     "check:versions": "node scripts/check-version-lockstep.mjs",
     "smoke:pack": "node scripts/smoke-pack.mjs",
-    "prepublishOnly": "npm run typecheck && npm test && npm run smoke:pack"
+    "prepublishOnly": "npm run typecheck && npm test && npm run smoke:pack",
+    "sync:foundry-skills": "node scripts/sync-foundry-skills.mjs",
+    "check:foundry-skills": "node scripts/sync-foundry-skills.mjs --check"
   },
   "lint-staged": {
     "*.{json,md,css,html,yml,yaml}": "prettier --write",

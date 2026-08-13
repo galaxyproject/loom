@@ -1,0 +1,23 @@
+{
+  "$comment": "Foundry reference material vendored into Loom. Regenerate with `npm run sync:foundry-skills`; verify with `npm run check:foundry-skills`. Do not hand-edit files under extensions/loom/vendor/skills/.",
+  "repo": "galaxyproject/foundry",
+  "ref": "74a49c1a0ba5f5be43e5c4132994ea197d26d334",
+  "refDate": "2026-07-29",
+  "files": [
+    {
+      "source": "casts/claude/skills/debug-galaxy-workflow-output/references/notes/galaxy-tool-job-failure-reference.md",
+      "target": "galaxy-tool-job-failure-reference.md",
+      "why": "Interpreting a failed Galaxy job: job_messages vs exit_code vs tool_stderr vs job_stderr, which states are terminal, which job APIs preserve the evidence."
+    },
+    {
+      "source": "casts/claude/skills/debug-galaxy-workflow-output/references/notes/galaxy-workflow-invocation-failure-reference.md",
+      "target": "galaxy-workflow-invocation-failure-reference.md",
+      "why": "Interpreting a failed workflow invocation: invocation states, the structured message-reason table, and which invocation APIs prove the failure mode."
+    },
+    {
+      "source": "casts/claude/skills/debug-galaxy-workflow-output/references/notes/galaxy-collection-semantics.yml",
+      "target": "galaxy-collection-semantics.yml",
+      "why": "Formal spec of collection map-over/reduction semantics, vendored by the Foundry from Galaxy core. Complements galaxy-skills collection-manipulation, which covers how to manipulate rather than what the platform does to shapes."
+    }
+  ]
+}

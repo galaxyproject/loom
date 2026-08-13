@@ -44,6 +44,9 @@ cd app && npm start
 - Startup/shutdown/restore behavior belongs in `extensions/loom/session-lifecycle.ts`.
 - `/review`, `/test`, `/execute`, and `/run` are brain-owned command semantics in `extensions/loom/execution-commands.ts`.
 - Orbit should stay a shell, not a second brain.
+- `extensions/loom/vendor/` is generated. Change `scripts/foundry-skills.manifest.json` and run
+  `npm run sync:foundry-skills`; never hand-edit the vendored files. `npm run check:foundry-skills`
+  is the CI drift gate.
 
 ## Validation bias
 

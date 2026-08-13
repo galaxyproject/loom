@@ -99,6 +99,20 @@ export interface LoomConfig {
    * Local-execution safety gate (exec-guard). Secure by default: the gate is
    * enabled, never bypassed, and trusts nothing until the user says otherwise.
    */
+  /**
+   * Evidence gate for plan-step completion. Watches writes to `notebook.md`
+   * for a *bare* completion flip -- turning `- [ ]` into `- [x]` on a plan step
+   * while adding no evidence anywhere in the same write.
+   *
+   * `warn` (default) allows the write and records the decision to
+   * `activity.jsonl`, so the real-world false-positive rate can be measured
+   * before anyone turns this into a hard failure. `deny` blocks the write and
+   * tells the agent to record evidence and flip in one edit. `off` disables it.
+   * Also settable per-session via `LOOM_EVIDENCE_GATE`.
+   */
+  evidenceGate?: {
+    mode?: "off" | "warn" | "deny";
+  };
   guardian?: {
     /** Master switch. When false the gate is fully off (advanced escape hatch). */
     enabled?: boolean;
