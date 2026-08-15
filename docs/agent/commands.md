@@ -28,6 +28,7 @@ There are no `analysis_*` plan tools. Plans are markdown sections.
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/notebook`               | View current notebook content                                                                                                                     |
 | `/status`                 | Galaxy connection + notebook path summary                                                                                                         |
+| `/instructions`           | Show the `LOOM.md` standing instructions loaded this session; `init` / `init project` creates one                                                 |
 | `/connect [name]`         | Connect to Galaxy (prompts for credentials, or switches profile)                                                                                  |
 | `/profiles`               | List saved Galaxy server profiles                                                                                                                 |
 | `/execute` (alias `/run`) | Tell the agent to run the next pending step in the latest plan section                                                                            |

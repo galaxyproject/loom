@@ -532,6 +532,38 @@ For the **CLI**, add a provider entry with a `baseUrl` to `~/.loom/config.json`:
 
 The `baseUrl` marks the entry as a custom endpoint: Loom registers it with Pi for you (writing the matching `~/.pi/agent/models.json` entry, with sensible metadata defaults) and passes the key to Pi at runtime, so the key never lands in `models.json`. The provider name is yours to choose -- `"openai-compatible"` is just a convention.
 
+### Standing instructions (`LOOM.md`)
+
+Preferences you'd otherwise repeat every session belong in a `LOOM.md` file,
+which Loom loads into every conversation:
+
+```
+Always end an analysis with a visualization.
+Prefer IWC workflows over hand-assembled tool chains.
+Use HISAT2 for RNA-seq alignment, not bowtie.
+```
+
+Loom reads two places:
+
+- `~/.pi/agent/LOOM.md` -- yours, applied to every session. Run
+  `/instructions init` to create it.
+- `LOOM.md` in your project directory, or any directory above it -- applied to
+  work in that directory. `/instructions init project` creates one.
+
+Run `/instructions` to see exactly which files loaded, which is the fastest way
+to answer "why isn't it doing what I told it."
+
+The two are not equally trusted, on purpose. Your global file is your own voice
+and goes into the system prompt. A project file travels with the folder -- a
+cloned repo, a shared drive, something a collaborator sent you -- so it is
+supplied as reference material instead: it can steer tool choice and output
+conventions, but it cannot grant permissions, skip a confirmation prompt, or
+override anything Loom was told at startup.
+
+Files are capped at 8KB or 200 lines and at eight files total; anything past
+that is dropped, and `/instructions` tells you when it happened. Edits take
+effect on your next message -- no restart.
+
 ## Local execution safety
 
 Loom drives a real coding agent: alongside the Galaxy tools, the model has `bash`, `write`, `edit`, and `read` on your machine. That's the point -- local analysis needs it -- but it means a misreading model, or one that's been prompt-injected by untrusted content (a Galaxy dataset, tool output, a fetched page), could run something destructive as you. This risk is higher with cheaper, less-capable models, which Loom lets you pick to save money.
@@ -591,6 +623,7 @@ Type `/` in the chat to open the autocomplete popup. Tab to accept; Enter still 
 | `/chat`                   | Restore the chat pane from the session transcript without restarting the agent     |
 | `/notebook`               | Show the notebook content in the Notebook tab                                      |
 | `/status`                 | Galaxy connection + notebook path summary                                          |
+| `/instructions`           | Show the `LOOM.md` standing instructions loaded this session                       |
 | `/summarize [N [M]]`      | Append a summary of prompts N..M into the notebook                                 |
 | `/cost`                   | Append the session token/cost breakdown to the notebook                            |
 | `/connect [name]`         | Open Galaxy connection settings (or switch to an existing profile)                 |

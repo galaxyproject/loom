@@ -91,6 +91,12 @@ export interface PlanAssertions {
    * heuristic, not an oracle. Curate generously to limit false negatives.
    */
   mentionsOneOf?: string[];
+  /**
+   * The plan-source text must mention EVERY one of these (case-insensitive).
+   * Use when a scenario asserts several independent preferences at once and
+   * "any one of them" would let the model satisfy the check by accident.
+   */
+  mentionsAllOf?: string[];
   /** The plan-source text must mention none of these (case-insensitive). */
   mentionsNoneOf?: string[];
 }

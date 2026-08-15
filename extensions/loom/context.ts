@@ -24,12 +24,20 @@ import {
 import { findGalaxyPageBlocks } from "./galaxy-page-binding";
 import { isLocalShellDisabled } from "./local-exec.js";
 import { GALAXY_PAGE_MARKDOWN_GUIDANCE } from "./galaxy-page-markdown-guidance";
+import {
+  buildUserInstructionsBlock,
+  buildWorkspaceInstructionsContext,
+} from "./user-instructions.js";
 
 const NOTEBOOK_HEAD_MAX_CHARS = 2000;
 const NOTEBOOK_TAIL_MAX_CHARS = 4000;
 
 /** customType for the per-turn live notebook context message (E1/E2 cache fix). */
 const LOOM_NOTEBOOK_CONTEXT_TYPE = "loom-notebook-context";
+
+/** customType for workspace LOOM.md content. Kept out of the system prompt on
+ *  purpose -- see buildWorkspaceInstructionsContext. */
+const LOOM_WORKSPACE_INSTRUCTIONS_TYPE = "loom-workspace-instructions";
 
 /**
  * Read the user-curated notebook.md from disk and return a head + tail
@@ -1209,6 +1217,12 @@ export function setupContextInjection(pi: ExtensionAPI): void {
       buildNoLocalShellBlock(),
       buildTeamDispatchContext(),
       buildSessionIndexContext(),
+      // Last on purpose: the user's OWN preferences read inside the frame of
+      // everything above, and last position in the cached prefix earns the most
+      // attention. Only the global file gets this slot -- a workspace LOOM.md
+      // travels with the directory and rides the lower-authority context
+      // channel below instead.
+      buildUserInstructionsBlock(),
     ]
       .filter(Boolean)
       .join("\n");
@@ -1226,23 +1240,28 @@ export function setupContextInjection(pi: ExtensionAPI): void {
   // text message, so the model still sees current project state each turn.
   pi.on("context", async (event) => {
     const messages = event.messages.filter(
-      (m) => !(m.role === "custom" && m.customType === LOOM_NOTEBOOK_CONTEXT_TYPE),
+      (m) =>
+        !(
+          m.role === "custom" &&
+          (m.customType === LOOM_NOTEBOOK_CONTEXT_TYPE ||
+            m.customType === LOOM_WORKSPACE_INSTRUCTIONS_TYPE)
+        ),
     );
-    const live = buildLiveNotebookContext();
-    if (live) {
+
+    // Insert project-data messages just BEFORE the current user turn rather
+    // than at the very end. This content is agent-writable or arrives with the
+    // project directory, so it must not occupy the final, highest-attention
+    // slot where a model is most prone to treat it as the operative
+    // instruction -- the user's actual request stays last. Falls back to
+    // appending when there's no user turn yet.
+    const insert = (customType: string, content: string) => {
       const msg = {
         role: "custom" as const,
-        customType: LOOM_NOTEBOOK_CONTEXT_TYPE,
-        content: live,
+        customType,
+        content,
         display: false,
         timestamp: Date.now(),
       };
-      // Insert the project-data message just BEFORE the current user turn rather
-      // than at the very end. The notebook is agent-writable (and can hold text
-      // fetched from external sources), so it must not occupy the final,
-      // highest-attention slot where a model is most prone to treat it as the
-      // operative instruction -- the user's actual request stays last. Falls
-      // back to appending when there's no user turn yet.
       let lastUser = -1;
       for (let i = messages.length - 1; i >= 0; i--) {
         if (messages[i].role === "user") {
@@ -1252,7 +1271,16 @@ export function setupContextInjection(pi: ExtensionAPI): void {
       }
       if (lastUser === -1) messages.push(msg);
       else messages.splice(lastUser, 0, msg);
-    }
+    };
+
+    // Workspace LOOM.md first, so the notebook -- and then the user's own turn
+    // -- sit closer to the end than anything a cloned folder shipped.
+    const workspace = buildWorkspaceInstructionsContext();
+    if (workspace) insert(LOOM_WORKSPACE_INSTRUCTIONS_TYPE, workspace);
+
+    const live = buildLiveNotebookContext();
+    if (live) insert(LOOM_NOTEBOOK_CONTEXT_TYPE, live);
+
     return { messages };
   });
 

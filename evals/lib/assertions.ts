@@ -319,6 +319,7 @@ function evaluatePlan(
       a.minPendingSteps !== undefined ||
       a.eachStepHasDescription ||
       a.mentionsOneOf ||
+      a.mentionsAllOf ||
       a.mentionsNoneOf
     ) {
       // Validity is the gate -- emit the primary existence failure first.
@@ -336,7 +337,7 @@ function evaluatePlan(
           dimension: "routing",
         });
       }
-      if (a.mentionsOneOf?.length || a.mentionsNoneOf?.length) {
+      if (a.mentionsOneOf?.length || a.mentionsAllOf?.length || a.mentionsNoneOf?.length) {
         failures.push({
           assertion: `${prefix}.mentions`,
           detail: `no plan in ${surfaceLabel}, so tools could not be graded`,
@@ -398,6 +399,15 @@ function evaluatePlan(
       failures.push({
         assertion: `${prefix}.mentionsOneOf`,
         detail: `${surfaceLabel} mentions none of [${a.mentionsOneOf.join(", ")}]`,
+        dimension: "tools",
+      });
+    }
+  }
+  for (const required of a.mentionsAllOf ?? []) {
+    if (!lower.includes(required.toLowerCase())) {
+      failures.push({
+        assertion: `${prefix}.mentionsAllOf`,
+        detail: `${surfaceLabel} never mentions '${required}'`,
         dimension: "tools",
       });
     }
