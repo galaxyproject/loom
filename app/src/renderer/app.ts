@@ -378,6 +378,23 @@ function contextWindowFor(provider: string | null, model: string | null): number
   return best;
 }
 
+/**
+ * The same lookup as contextWindowFor, minus the cross-provider fallback --
+ * null unless the ACTIVE provider's own table knows this model.
+ *
+ * The fallback above prefers the smallest match, which is the safe bias for a
+ * warning bar (warn early) but the wrong one for telling a user their model is
+ * too small to run Orbit at all (#419): a custom OpenAI-compatible endpoint
+ * serving its own large-window "gpt-4" would inherit OpenAI's 8,192 and be
+ * declared unusable. Only a provider-qualified hit is trustworthy enough to
+ * make that claim; anything else leaves the humanizer on its default advice.
+ */
+function knownContextWindowFor(provider: string | null, model: string | null): number | null {
+  if (!provider || !model) return null;
+  const table = CONTEXT_WINDOWS[provider];
+  return table ? windowFromTable(table, model) : null;
+}
+
 // Context-fill indicator: shows how full the current model's context window is,
 // so the user sees an impending overflow before it happens. The numerator is
 // the LATEST turn's request size (contextTokens), NOT cumulative sessionUsage.
@@ -2498,7 +2515,11 @@ window.orbit.onAgentEvent((event) => {
           chat.hideThinking();
           chat.finishAssistantMessage();
           if (msg.errorMessage) {
-            chat.addErrorMessage(humanizeAgentError(msg.errorMessage).text);
+            chat.addErrorMessage(
+              humanizeAgentError(msg.errorMessage, {
+                contextWindow: knownContextWindowFor(currentProvider, currentModel),
+              }).text,
+            );
           }
           streaming = false;
           stopTurnTimer();
@@ -2577,7 +2598,11 @@ window.orbit.onAgentEvent((event) => {
     case "error": {
       const rawMsg = (event as { message?: string }).message || "Unknown error";
       chat.hideThinking();
-      chat.addErrorMessage(humanizeAgentError(rawMsg).text);
+      chat.addErrorMessage(
+        humanizeAgentError(rawMsg, {
+          contextWindow: knownContextWindowFor(currentProvider, currentModel),
+        }).text,
+      );
       streaming = false;
       stopTurnTimer();
       setStatusBadge("error");

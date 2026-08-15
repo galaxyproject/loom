@@ -50,6 +50,32 @@ const CONTEXT_OVERFLOW_PATTERNS = [
 // overflow even when an overflow phrase coincidentally matches.
 const NOT_OVERFLOW_PATTERNS = [/rate limit/i, /too many requests/i, /throttl/i];
 
+// Overflow also happens before the user has said anything: Orbit's baseline
+// request -- the ~8K-token cached system prefix built in
+// extensions/loom/context.ts, plus the tool schemas -- already exceeds some
+// models' entire window, so the turn fails identically on a one-sentence
+// session and on a fresh /new. Two beta reporters hit that on gpt-4 (8,192
+// tokens) and were told to compact a conversation that had barely begun
+// (issue #419). Below this floor the conversation is never the dominant term,
+// so the overflow branch names the real problem instead of pointing at /compact.
+// Chosen conservatively: every model pi's registry lists below this floor has a
+// window of 8,192 tokens or less, while genuinely usable small models (the 32K
+// tier, e.g. grok-code-fast-1) stay on the /compact path, where compacting a
+// real conversation can still help.
+export const MIN_WORKABLE_CONTEXT_WINDOW = 16_000;
+
+// What the renderer knows about the failing turn beyond the error text itself.
+// Optional so callers that have no such context (and the existing tests) keep
+// working unchanged.
+export interface AgentErrorContext {
+  /**
+   * The selected model's context window in tokens, as resolved from pi-ai's
+   * registry. null/undefined when unknown -- in which case the humanizer must
+   * not guess, and falls back to the conversation-length advice.
+   */
+  contextWindow?: number | null;
+}
+
 function isContextOverflowError(text: string): boolean {
   if (NOT_OVERFLOW_PATTERNS.some((p) => p.test(text))) return false;
   return CONTEXT_OVERFLOW_PATTERNS.some((p) => p.test(text));
@@ -72,14 +98,34 @@ function isOpaqueProviderError(text: string): boolean {
   return UNKNOWN_PROVIDER_ERROR.test(text);
 }
 
-export function humanizeAgentError(raw: string | undefined | null): HumanizedError {
+export function humanizeAgentError(
+  raw: string | undefined | null,
+  ctx?: AgentErrorContext,
+): HumanizedError {
   if (!raw) return { text: "Unknown error", retriable: false };
   const trimmed = raw.trim();
 
   // Check overflow first, against the whole string: the signature can be a bare
   // string (OpenAI-compatible) or buried in a JSON error body, and either way
-  // /compact is the actionable answer.
+  // the overflow advice below beats the typed handling further down.
   if (isContextOverflowError(trimmed)) {
+    // A window too small to hold Orbit's baseline prompt can't be rescued by
+    // compacting or by starting over, so don't send the user after either one.
+    const windowSize = ctx?.contextWindow;
+    if (
+      typeof windowSize === "number" &&
+      windowSize > 0 &&
+      windowSize < MIN_WORKABLE_CONTEXT_WINDOW
+    ) {
+      return {
+        text:
+          `The selected model's context window (${windowSize.toLocaleString()} tokens) is too ` +
+          "small for Orbit -- its baseline prompt and tool definitions leave next to no room " +
+          "for a conversation, so compacting or starting a new session won't help. Pick a " +
+          "model with a larger context window in Preferences.",
+        retriable: false,
+      };
+    }
     return {
       text:
         "This conversation is too long for the model's context window. " +

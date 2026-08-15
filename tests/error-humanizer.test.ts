@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { humanizeAgentError } from "../app/src/renderer/chat/error-humanizer.js";
+import {
+  humanizeAgentError,
+  MIN_WORKABLE_CONTEXT_WINDOW,
+} from "../app/src/renderer/chat/error-humanizer.js";
 
 describe("humanizeAgentError", () => {
   it("unwraps Anthropic overloaded_error into a friendly message", () => {
@@ -250,6 +253,117 @@ describe("humanizeAgentError", () => {
       // Should stay on the rate-limit path, not the overflow path.
       expect(result.text).not.toMatch(/\/compact/);
       expect(result.retriable).toBe(true);
+    });
+
+    // #419: the /compact nudge above is right for a long session on a
+    // large-context model, but actively misleading when the model's whole
+    // window is smaller than Orbit's baseline prompt. Two beta reporters hit
+    // that on gpt-4 (8,192 tokens) -- one after a single sentence, one after
+    // several /new attempts -- and were told to compact a conversation that had
+    // barely begun. When the renderer knows the selected model's window and it
+    // sits below the workable floor, say the window is too small instead.
+    describe("model window too small for Orbit's baseline (#419)", () => {
+      const GPT4_WINDOW = 8_192;
+      const OPENAI_OVERFLOW =
+        "400 This model's maximum context length is 8192 tokens. However, you " +
+        "requested 12000 tokens (12000 in the messages, 0 in the completion). " +
+        "Please reduce the length of the messages or completion.";
+
+      it("drops the /compact advice when the window can't hold the baseline prompt", () => {
+        const result = humanizeAgentError(OPENAI_OVERFLOW, { contextWindow: GPT4_WINDOW });
+        expect(result.text).not.toMatch(/\/compact/);
+        // Says outright that the two moves the user would otherwise try are dead ends.
+        expect(result.text).toMatch(/won'?t help/i);
+        expect(result.retriable).toBe(false);
+      });
+
+      it("names the window and points at picking a different model", () => {
+        const result = humanizeAgentError(OPENAI_OVERFLOW, { contextWindow: GPT4_WINDOW });
+        expect(result.text).toMatch(/context window/i);
+        expect(result.text).toMatch(/preferences/i);
+        // Formatted the same way the humanizer formats it, so this doesn't
+        // depend on the test runner's locale.
+        expect(result.text).toContain(GPT4_WINDOW.toLocaleString());
+      });
+
+      it("still keeps the raw provider token counts out of the message", () => {
+        const result = humanizeAgentError(OPENAI_OVERFLOW, { contextWindow: GPT4_WINDOW });
+        expect(result.text).not.toContain("12000");
+        expect(result.text).not.toContain("{");
+      });
+
+      it("keeps the /compact nudge on a large-window model (the #209 case)", () => {
+        const raw = JSON.stringify({
+          type: "error",
+          error: {
+            type: "invalid_request_error",
+            message: "prompt is too long: 213462 tokens > 200000 maximum",
+          },
+        });
+        const result = humanizeAgentError(raw, { contextWindow: 200_000 });
+        expect(result.text).toMatch(/\/compact/);
+        expect(result.retriable).toBe(false);
+      });
+
+      it("keeps the /compact nudge when the window is unknown", () => {
+        expect(humanizeAgentError(OPENAI_OVERFLOW).text).toMatch(/\/compact/);
+        expect(humanizeAgentError(OPENAI_OVERFLOW, {}).text).toMatch(/\/compact/);
+        expect(humanizeAgentError(OPENAI_OVERFLOW, { contextWindow: null }).text).toMatch(
+          /\/compact/,
+        );
+      });
+
+      it("treats a non-positive window as unknown rather than as tiny", () => {
+        expect(humanizeAgentError(OPENAI_OVERFLOW, { contextWindow: 0 }).text).toMatch(/\/compact/);
+        expect(humanizeAgentError(OPENAI_OVERFLOW, { contextWindow: -1 }).text).toMatch(
+          /\/compact/,
+        );
+      });
+
+      it("switches messages at the workable floor, not above it", () => {
+        const at = humanizeAgentError(OPENAI_OVERFLOW, {
+          contextWindow: MIN_WORKABLE_CONTEXT_WINDOW,
+        });
+        const below = humanizeAgentError(OPENAI_OVERFLOW, {
+          contextWindow: MIN_WORKABLE_CONTEXT_WINDOW - 1,
+        });
+        expect(at.text).toMatch(/\/compact/);
+        expect(below.text).not.toMatch(/\/compact/);
+      });
+
+      it("keeps the rate-limit exclusion even on a tiny-window model", () => {
+        // Rate-limit phrasings must never reach either overflow message --
+        // resending after a pause is the fix, and the model is not the problem.
+        const raw = JSON.stringify({
+          type: "error",
+          error: {
+            type: "rate_limit_error",
+            message: "rate limit exceeded: too many tokens per minute",
+          },
+        });
+        const result = humanizeAgentError(raw, { contextWindow: GPT4_WINDOW });
+        expect(result.text).toMatch(/rate limited/i);
+        expect(result.text).not.toMatch(/\/compact/);
+        expect(result.text).not.toMatch(/too small/i);
+        expect(result.retriable).toBe(true);
+      });
+
+      it("still wins over the typed JSON handling for a wrapped overflow", () => {
+        // The overflow check runs before JSON parsing on purpose; a small window
+        // must not demote a wrapped overflow to the generic "Invalid request:".
+        const raw = JSON.stringify({
+          error: {
+            message:
+              "This model's maximum context length is 8192 tokens. However you requested 12000 tokens.",
+            type: "invalid_request_error",
+            code: "context_length_exceeded",
+          },
+        });
+        const result = humanizeAgentError(raw, { contextWindow: GPT4_WINDOW });
+        expect(result.text).not.toMatch(/invalid request/i);
+        expect(result.text).toMatch(/too small/i);
+        expect(result.retriable).toBe(false);
+      });
     });
   });
 });
