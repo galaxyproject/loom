@@ -263,3 +263,71 @@ No LLM-judge plan-_quality_ scoring (tool allow-sets stay coarse
 substring heuristics -- a model naming a tool in surrounding prose can pass
 `mentionsOneOf`), no end-to-end execution, no recorded/live Galaxy MCP. The
 assertion library leaves seams for each.
+
+## UDT authoring: container choice and typed inputs (2026-08-19)
+
+Two scenarios added alongside `udt-authoring-threads`:
+`udt-authoring-container` (does the drafted UDT name an image that actually
+ships the library it imports?) and `udt-authoring-select-params` (are a
+tool's options modeled as typed inputs, or baked into the command?). Both
+mirror axes of Galaxy's own `custom_tool` eval
+(galaxyproject/galaxy#22968, #22981).
+
+### The harness was scoring zeros for the wrong reason
+
+Before any of this could run, `writePiModelsConfig` had to be fixed. It wrote
+the _name_ of the API-key env var into pi's `models.json`, but pi's provider
+`apiKey` is the literal credential -- so the proxy received `PROXY_API_KEY` as
+the bearer token and 401'd. Every tier-2 run died in ~1.3s with no events, and
+the assertions reported plain "chat text did not include ...", which is
+indistinguishable from a model that simply answered badly. Any tier-2 matrix
+number produced between that pi drift and this fix is meaningless.
+
+Worth remembering as an eval-design lesson: a credential failure and a
+capability failure looked identical in the report.
+
+### Results, n=3, before and after galaxy-skills#32
+
+Both scenarios were run twice: once against galaxy-skills `main` (the skill as
+published) and once against the `udt-agent-parity` branch (galaxy-skills#32,
+which rewrites the container section around verified resolution and spells out
+that a bare language image ships no third-party libraries).
+
+| model            | container (main) | container (#32) | select-params (main) | select-params (#32) |
+| ---------------- | ---------------- | --------------- | -------------------- | ------------------- |
+| Qwen3-32B        | 2/3              | **3/3**         | 1/3                  | 1/3                 |
+| MiniMax-M2.7     | 0/3              | **2/3**         | 0/3                  | **3/3**             |
+| Llama-4-Maverick | 0/3              | 0/3             | 0/3                  | 0/3                 |
+| gemma-4-31B      | 0/3              | 0/3             | 0/3                  | 0/3                 |
+| Llama-3.3-70B    | 0/3              | 0/3             | 0/3                  | 0/3                 |
+| Llama-3.1-8B     | 0/3              | 0/3             | 0/3                  | 0/3                 |
+| gpt-oss-120b     | 0/3              | 0/3             | 0/3                  | 0/3                 |
+
+**The skill change does measurable work, on exactly the failure it targets.**
+On `main`, MiniMax emitted `container: python:` for a pandas tool on 3 of 3
+runs -- the bare-image mistake that can't `import pandas`, and the one
+galaxyproject/galaxy#22981 was chasing. On the #32 branch that banned
+substring does not appear in a single run, from any model. Qwen's one
+`container: python:` run also disappears. This is the clearest before/after
+the suite has produced so far.
+
+Per-model notes on the rest:
+
+- **Llama-4-Maverick and gpt-oss-120b never call `skills_fetch`.** They fail
+  the progressive-disclosure assertion before content is even in play, so
+  their 0/3 says nothing about UDT authoring.
+- **gpt-oss-120b is additionally broken on this proxy**, now for a second
+  reason: LiteLLM rejects `reasoning_effort` for it (400) on top of the
+  `reasoning_content` problem recorded above. It dies in ~1.7s.
+- **Llama-3.3-70B hits the 120s timeout on all six runs** without emitting
+  YAML -- consistent with what `udt-authoring-threads` saw.
+- **Llama-3.1-8B and gemma-4-31B** fetch the skill but never produce a
+  `class: GalaxyUserTool` block.
+- **Qwen3-32B on select-params** is the interesting near-miss: it drafts the
+  tool and gets `type: select` with real options, but models the minimum
+  length as something other than `type: integer` on 2 of 3 runs. A narrow,
+  real gap rather than a wholesale failure.
+
+So the honest read is that UDT authoring is a two-model capability on this
+matrix today (Qwen3-32B and MiniMax-M2.7), and for those two the skill content
+is what decides whether the container is right.

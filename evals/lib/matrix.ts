@@ -51,12 +51,23 @@ export function writePiModelsConfig(model: ModelEntry, agentDir: string): void {
     throw new Error(`Model ${model.id}: providerConfig.baseUrl env var '${cfg.baseUrl}' is unset`);
   }
 
+  // pi's provider `apiKey` is the literal credential, not the name of an env var
+  // holding it -- writing the name got it sent verbatim as the bearer token, so the
+  // whole matrix 401'd ("Received=PROX****_KEY"). Resolve it here. The file lives in
+  // a per-run mkdtemp that runScenario removes in its finally block.
+  const apiKey = process.env[cfg.apiKeyEnvVar];
+  if (!apiKey) {
+    throw new Error(
+      `Model ${model.id}: providerConfig.apiKeyEnvVar '${cfg.apiKeyEnvVar}' is unset`,
+    );
+  }
+
   const piModels = {
     providers: {
       [model.provider]: {
         baseUrl,
         api: "openai-completions",
-        apiKey: cfg.apiKeyEnvVar,
+        apiKey,
         models: [
           {
             id: model.model,

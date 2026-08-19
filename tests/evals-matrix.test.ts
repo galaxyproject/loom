@@ -21,11 +21,13 @@ const baseProviderConfig = {
 describe("evals matrix: writePiModelsConfig", () => {
   beforeEach(() => {
     process.env.PROXY_URL = "https://proxy.example/v1";
+    process.env.PROXY_API_KEY = "sk-test-key";
   });
 
   afterEach(() => {
-    // don't leak the fake PROXY_URL into other test files in this worker
+    // don't leak the fake credentials into other test files in this worker
     delete process.env.PROXY_URL;
+    delete process.env.PROXY_API_KEY;
   });
 
   it("marks a reasoning model with reasoning:true and the configured maxTokens", () => {
@@ -55,5 +57,32 @@ describe("evals matrix: writePiModelsConfig", () => {
     writePiModelsConfig(model, dir);
     const cfg = JSON.parse(fs.readFileSync(path.join(dir, "models.json"), "utf-8"));
     expect(cfg.providers["tacc-sambanova"].models[0].reasoning).toBe(false);
+  });
+  it("writes the resolved API key, not the name of the env var", () => {
+    // Regression: pi's provider `apiKey` is the literal credential. Writing the
+    // env var NAME sent "PROXY_API_KEY" as the bearer token, 401'd every model,
+    // and surfaced as a content assertion failure rather than an auth error.
+    const model: ModelEntry = {
+      id: "tacc:qwen3-32b",
+      provider: "tacc-sambanova",
+      model: "Qwen3-32B",
+      providerConfig: baseProviderConfig,
+    };
+    const dir = tmpAgentDir();
+    writePiModelsConfig(model, dir);
+    const cfg = JSON.parse(fs.readFileSync(path.join(dir, "models.json"), "utf-8"));
+    expect(cfg.providers["tacc-sambanova"].apiKey).toBe("sk-test-key");
+    expect(cfg.providers["tacc-sambanova"].apiKey).not.toBe("PROXY_API_KEY");
+  });
+
+  it("throws a named error when the API key env var is unset", () => {
+    delete process.env.PROXY_API_KEY;
+    const model: ModelEntry = {
+      id: "tacc:qwen3-32b",
+      provider: "tacc-sambanova",
+      model: "Qwen3-32B",
+      providerConfig: baseProviderConfig,
+    };
+    expect(() => writePiModelsConfig(model, tmpAgentDir())).toThrow(/PROXY_API_KEY/);
   });
 });

@@ -1,0 +1,34 @@
+{
+  "name": "udt-authoring: model typed inputs (select + integer)",
+  "description": "Tier-2 check that UDT authoring models a tool's options as typed inputs rather than baking them into the command. Asks for a seqkit UDT with a sequence-type choice (dna/rna/protein) and a minimum-length number -- which should become a `type: select` with real `options:` and a `type: integer`. Asserts the agent fetched the udt-authoring skill and drafted a GalaxyUserTool declaring both input types plus the options block, so a bare mention of the type names in prose isn't enough. Restricting --tools to skills_fetch forces the agent to draft the YAML in chat so chatText assertions can see it. Mirrors the parameter-shape dimension of Galaxy's custom_tool eval (galaxyproject/galaxy#22968).",
+  "tier": 2,
+  "requiresModel": true,
+  "loomArgs": [
+    "--tools",
+    "skills_fetch"
+  ],
+  "inputs": [
+    "Wrap `seqkit seq` as a Galaxy user-defined tool I can run in my own account. Let the user pick a sequence type -- one of dna, rna, or protein -- and set a minimum sequence length to keep. Draft the full GalaxyUserTool YAML definition; don't create it on the server yet."
+  ],
+  "timeoutMs": 120000,
+  "assertions": {
+    "toolCalls": {
+      "mustInclude": [
+        {
+          "name": "skills_fetch",
+          "argsContains": {
+            "path": "udt-authoring"
+          }
+        }
+      ]
+    },
+    "chatText": {
+      "mustInclude": [
+        "class: GalaxyUserTool",
+        "type: select",
+        "options:",
+        "type: integer"
+      ]
+    }
+  }
+}

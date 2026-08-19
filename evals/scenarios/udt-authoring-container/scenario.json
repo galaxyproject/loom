@@ -1,0 +1,20 @@
+{
+  "name": "udt-authoring: pick a library-bearing biocontainer, not a bare image",
+  "description": "Tier-2 check that UDT authoring reaches for an image that actually ships the library the tool imports. Asks for a pandas-based data-cleaning UDT -- the case that tempts `container: python:3.x-slim`, which cannot `import pandas`. This is the image-FAMILY decision, not tag resolution: the prompt says outright that the exact build tag will be verified separately, because with only skills_fetch exposed the agent has no resolver and the skill correctly tells it not to invent a tag it cannot verify. Without that framing a well-behaved agent would refuse to name an image at all and fail the assertion for the right reason. Asserts the agent (a) fetched the udt-authoring skill, (b) drafted a GalaxyUserTool whose `container:` line is a quay.io/biocontainers image, and (c) did not settle for a bare `container: python:` image. Anchoring on the `container:` key rather than a bare substring keeps a passing mention in prose from counting. Mirrors the container dimension of Galaxy's custom_tool eval (galaxyproject/galaxy#22968, #22981).",
+  "tier": 2,
+  "requiresModel": true,
+  "loomArgs": ["--tools", "skills_fetch"],
+  "inputs": [
+    "Wrap a small data-cleaning step as a Galaxy user-defined tool for my own account: read a tab-separated file with pandas, drop the rows where the `score` column is empty, and write the cleaned table back out. Draft the full GalaxyUserTool YAML definition -- show me the complete definition, don't create it on the server yet. Don't worry about pinning an exact container build tag; I'll verify the exact tag myself before we create it. Just make sure the image you name is the right one for this tool."
+  ],
+  "timeoutMs": 120000,
+  "assertions": {
+    "toolCalls": {
+      "mustInclude": [{ "name": "skills_fetch", "argsContains": { "path": "udt-authoring" } }]
+    },
+    "chatText": {
+      "mustInclude": ["class: GalaxyUserTool", "container: quay.io/biocontainers"],
+      "mustNotInclude": ["container: python:"]
+    }
+  }
+}
