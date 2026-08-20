@@ -18,6 +18,8 @@ import { FeedbackDraftStore } from "./feedback-draft.js";
 import { applyOrbitTheme } from "./theme.js";
 import { caretVisualLineFlags, shouldRecallOnArrow } from "./input-history-nav.js";
 import { shouldAcceptSlashCommandOnEnter } from "./slash-popup-nav.js";
+import { buildDiscoveredModelOptions, type ModelOption } from "./model-options.js";
+import { planModelDiscovery } from "./model-discovery-gate.js";
 import { LoomWidgetKey, decodeMarkdownWidget } from "../../../shared/loom-shell-contract.js";
 import { ALLOWED_SKILLS_PREFIX, isAllowedSkillUrl } from "../../../shared/loom-config.js";
 import {
@@ -808,6 +810,18 @@ function formatOAuthStatus(s: {
   return who;
 }
 
+/** Replace a model <select>'s options. */
+function renderModelOptions(el: HTMLSelectElement, options: ModelOption[]): void {
+  el.innerHTML = "";
+  for (const o of options) {
+    const opt = document.createElement("option");
+    opt.value = o.id;
+    opt.textContent = o.label;
+    if (o.selected) opt.selected = true;
+    el.appendChild(opt);
+  }
+}
+
 // Wire a provider-dropdown / API-key-input / status-label triple to do
 // debounced live validation (see main/ipc-handlers.ts validateApiKey).
 // Same helper used from both the Welcome screen and Preferences.
@@ -817,6 +831,7 @@ function wireApiKeyValidation(
   statusEl: HTMLElement,
   baseUrlEl?: HTMLInputElement,
   modelEl?: HTMLSelectElement,
+  onModels?: (provider: string, models: string[]) => void,
 ): void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let seq = 0;
@@ -836,27 +851,27 @@ function wireApiKeyValidation(
     setStatus("checking", "Checking…");
     try {
       const res = await window.orbit.validateApiKey(provider, key, baseUrl);
-      if (mySeq !== seq) return;
+      // The provider dropdown's own change fires this on a 600ms debounce, so
+      // a reply that outlived a provider switch would otherwise paint one
+      // provider's models into another's picker.
+      if (mySeq !== seq || providerEl.value !== provider) return;
       if (res.valid) {
         setStatus("valid", "\u2713 Valid");
         if (modelEl && res.models && res.models.length > 0) {
-          const selected = modelEl.value;
-          modelEl.innerHTML = "";
-          for (const id of res.models) {
-            const opt = document.createElement("option");
-            opt.value = id;
-            opt.textContent = id;
-            if (id === selected) opt.selected = true;
-            modelEl.appendChild(opt);
-          }
+          renderModelOptions(modelEl, buildDiscoveredModelOptions(res.models, modelEl.value));
+          onModels?.(provider, res.models);
         }
       } else setStatus("invalid", `\u2717 ${res.error || "Invalid"}`);
     } catch (err) {
-      if (mySeq !== seq) return;
+      if (mySeq !== seq || providerEl.value !== provider) return;
       setStatus("invalid", `\u2717 ${err instanceof Error ? err.message : String(err)}`);
     }
   };
   const schedule = () => {
+    // Retire any in-flight request here rather than in validateNow: the
+    // debounce means a reply about the *previous* key or provider would
+    // otherwise have 600ms to land and repaint the picker.
+    seq++;
     if (timer) clearTimeout(timer);
     timer = setTimeout(validateNow, 600);
   };
@@ -3029,6 +3044,9 @@ const prefsOauthSignOut = document.getElementById("prefs-oauth-signout") as HTML
 const prefsBaseUrlRow = document.getElementById("prefs-base-url-row")!;
 const prefsBaseUrl = document.getElementById("prefs-base-url") as HTMLInputElement;
 const prefsJetstreamPreset = document.getElementById("prefs-jetstream-preset") as HTMLButtonElement;
+const prefsModelRefresh = document.getElementById("prefs-model-refresh") as HTMLButtonElement;
+const prefsModelStatusRow = document.getElementById("prefs-model-status-row")!;
+const prefsModelStatus = document.getElementById("prefs-model-status")!;
 
 // Model catalog by provider — labels include cost guidance
 // (in/out price per 1M tokens). Fallback only — populateDynamicModelData()
@@ -3086,7 +3104,13 @@ let MODELS_BY_PROVIDER: Record<string, ModelChoice[]> = {
   "openai-compatible": [],
 };
 
-function populateModels(provider: string, selected?: string): void {
+function populateModels(provider: string, selected?: string, discovered?: readonly string[]): void {
+  // A custom endpoint has no static catalog -- what it serves is whatever
+  // /models last reported (#432).
+  if (discovered && discovered.length > 0) {
+    renderModelOptions(prefsModel, buildDiscoveredModelOptions(discovered, selected));
+    return;
+  }
   prefsModel.innerHTML = "";
   const models = MODELS_BY_PROVIDER[provider] || [];
   for (const m of models) {
@@ -3112,8 +3136,21 @@ prefsProvider.addEventListener("change", () => {
   prefsActiveProvider = prefsProvider.value;
   loadProviderFields(prefsActiveProvider);
   void updatePrefsAuthUi();
+  void refreshDiscoveredModels(prefsActiveProvider, false);
 });
-wireApiKeyValidation(prefsProvider, prefsApiKey, prefsApiKeyStatus, prefsBaseUrl, prefsModel);
+wireApiKeyValidation(
+  prefsProvider,
+  prefsApiKey,
+  prefsApiKeyStatus,
+  prefsBaseUrl,
+  prefsModel,
+  // Remember what typing a key discovered, so flipping providers and back
+  // inside one Preferences session doesn't lose the list.
+  (provider, models) => {
+    const target = prefsProviderStates[provider];
+    if (target) target.discoveredModels = models;
+  },
+);
 prefsJetstreamPreset.addEventListener("click", () => {
   prefsBaseUrl.value = JETSTREAM_BASE_URL;
   prefsModel.innerHTML = "";
@@ -3126,8 +3163,23 @@ prefsJetstreamPreset.addEventListener("click", () => {
   // Trigger validation/discovery if a key is already entered.
   prefsBaseUrl.dispatchEvent(new Event("input"));
 });
+// An edited endpoint retires a probe of the saved one: the reply would
+// otherwise land after the edit and list a different host's models under the
+// URL now on screen. Anything already fetched belongs to the saved URL too,
+// so it stops being this provider's list the moment the field diverges.
+prefsBaseUrl.addEventListener("input", () => {
+  retireModelDiscovery();
+  const state = prefsProviderStates[prefsActiveProvider];
+  if (state && prefsBaseUrl.value.trim() !== state.savedBaseUrl.trim()) {
+    state.discoveredModels = undefined;
+    setModelStatus("", "");
+  }
+});
 // Clear the "✓ Key stored" indicator as soon as the user starts typing.
 prefsApiKey.addEventListener("input", () => {
+  // A stored-key probe still in flight is about a key the user is replacing;
+  // let the typed-key validation own the dropdown from here.
+  retireModelDiscovery();
   if (prefsApiKeyStatus.classList.contains("stored")) {
     prefsApiKeyStatus.className = "api-key-status";
     prefsApiKeyStatus.textContent = "";
@@ -3138,6 +3190,8 @@ async function updatePrefsAuthUi(): Promise<void> {
   const oauth = isOAuthProvider(prefsProvider.value);
   const custom = prefsProvider.value === "openai-compatible";
   prefsBaseUrlRow.classList.toggle("hidden", !custom);
+  prefsModelRefresh.classList.toggle("hidden", !custom);
+  prefsModelStatusRow.classList.toggle("hidden", !custom);
   prefsApiKeyRow.classList.toggle("hidden", oauth);
   prefsApiKeyHintRow.classList.toggle("hidden", oauth);
   prefsOauthRow.classList.toggle("hidden", !oauth);
@@ -3301,6 +3355,14 @@ interface ProviderState {
   typedKey: string;
   model: string;
   baseUrl: string;
+  /**
+   * Base URL as it sits in config. Unlike `baseUrl` (the editable field) this
+   * is never overwritten by a snapshot, so it always says what main would
+   * actually contact for a discovery probe.
+   */
+  savedBaseUrl: string;
+  /** Ids last reported by a custom endpoint's /models, if it was asked. */
+  discoveredModels?: string[];
 }
 let prefsProviderStates: Record<string, ProviderState> = {};
 let prefsActiveProvider = "anthropic";
@@ -3323,13 +3385,107 @@ prefsGalaxyKey.addEventListener("input", updatePrefsGalaxyValidity);
 
 /** Snapshot the currently-visible provider fields into prefsProviderStates. */
 function snapshotCurrentProvider(): void {
+  const prev = prefsProviderStates[prefsActiveProvider];
   prefsProviderStates[prefsActiveProvider] = {
-    hadKey: prefsProviderStates[prefsActiveProvider]?.hadKey ?? false,
+    hadKey: prev?.hadKey ?? false,
     typedKey: prefsApiKey.value,
     model: prefsModel.value,
     baseUrl: prefsBaseUrl.value.trim(),
+    savedBaseUrl: prev?.savedBaseUrl ?? "",
+    discoveredModels: prev?.discoveredModels,
   };
 }
+
+/**
+ * Bumped whenever something newer takes ownership of the model dropdown, so a
+ * slow discovery reply can't overwrite it.
+ */
+let modelDiscoverySeq = 0;
+let modelDiscoveryInFlight = 0;
+
+function setModelStatus(cls: "" | "checking" | "valid" | "invalid", text: string): void {
+  prefsModelStatus.className = `api-key-status${cls ? " " + cls : ""}`;
+  prefsModelStatus.textContent = text;
+}
+
+/**
+ * Disown any in-flight discovery -- what it reports no longer describes what's
+ * on screen. The retired reply returns without touching the label, so drop its
+ * "Fetching…" here or it sits there forever.
+ */
+function retireModelDiscovery(): void {
+  modelDiscoverySeq++;
+  if (prefsModelStatus.classList.contains("checking")) setModelStatus("", "");
+}
+
+/**
+ * Re-list a custom endpoint's models through main, which holds the stored key
+ * -- the renderer never sees it, so it can't make the /models call itself.
+ * Without this the list only ever appeared while the key was being typed and
+ * vanished on the next Preferences open (#432).
+ *
+ * `manual` = the user pressed "Fetch models": probe even with no stored key
+ * (so main can say why) and don't reuse this session's cached list.
+ */
+async function refreshDiscoveredModels(provider: string, manual: boolean): Promise<void> {
+  const state = prefsProviderStates[provider];
+  const plan = planModelDiscovery({
+    manual,
+    savedBaseUrl: state?.savedBaseUrl ?? "",
+    typedBaseUrl: prefsBaseUrl.value,
+    typedKey: prefsApiKey.value,
+    hadKey: state?.hadKey ?? false,
+    alreadyDiscovered: Boolean(state?.discoveredModels?.length),
+  });
+  if (plan.action === "skip") return;
+  if (plan.action === "message") {
+    setModelStatus("invalid", `\u2717 ${plan.message}`);
+    return;
+  }
+  if (plan.action === "validate-typed-key") {
+    // Nudge the debounced validator so discovery uses the key on screen.
+    prefsApiKey.dispatchEvent(new Event("input"));
+    return;
+  }
+  const mySeq = ++modelDiscoverySeq;
+  // Only touch the DOM while this reply is both current and about the
+  // provider on screen.
+  const owns = () => mySeq === modelDiscoverySeq && provider === prefsActiveProvider;
+  if (owns()) setModelStatus("checking", "Fetching models…");
+  modelDiscoveryInFlight++;
+  prefsModelRefresh.disabled = true;
+  try {
+    const res = await window.orbit.discoverModels(provider);
+    if (mySeq !== modelDiscoverySeq) return;
+    if (!res.ok) {
+      if (owns()) setModelStatus("invalid", `\u2717 ${res.error}`);
+      return;
+    }
+    if (res.models.length === 0) {
+      if (owns()) setModelStatus("invalid", "\u2717 The endpoint listed no models.");
+      return;
+    }
+    // Re-read: a provider switch replaces the state object mid-flight.
+    const target = prefsProviderStates[provider];
+    if (target) target.discoveredModels = res.models;
+    if (owns()) {
+      populateModels(provider, prefsModel.value || target?.model || undefined, res.models);
+      const n = res.models.length;
+      setModelStatus("valid", `\u2713 ${n} model${n === 1 ? "" : "s"} available`);
+    }
+  } catch (err) {
+    if (owns()) {
+      setModelStatus("invalid", `\u2717 ${err instanceof Error ? err.message : String(err)}`);
+    }
+  } finally {
+    modelDiscoveryInFlight--;
+    if (modelDiscoveryInFlight === 0) prefsModelRefresh.disabled = false;
+  }
+}
+
+prefsModelRefresh.addEventListener("click", () => {
+  void refreshDiscoveredModels(prefsActiveProvider, true);
+});
 
 /** Load a provider's stored state into the visible fields. */
 function loadProviderFields(provider: string): void {
@@ -3338,8 +3494,10 @@ function loadProviderFields(provider: string): void {
     typedKey: "",
     model: "",
     baseUrl: "",
+    savedBaseUrl: "",
   };
-  populateModels(provider, state.model || undefined);
+  populateModels(provider, state.model || undefined, state.discoveredModels);
+  setModelStatus("", "");
   prefsApiKey.value = state.typedKey;
   prefsBaseUrl.value = state.baseUrl;
   prefsApiKey.placeholder = state.hadKey ? "leave blank to keep existing key" : "";
@@ -3378,12 +3536,14 @@ async function openPreferences(): Promise<void> {
       typedKey: "",
       model: p.model ?? "",
       baseUrl: p.baseUrl ?? "",
+      savedBaseUrl: p.baseUrl ?? "",
     };
   }
   prefsActiveProvider = config.llm?.active || "anthropic";
   prefsProvider.value = prefsActiveProvider;
   loadProviderFields(prefsActiveProvider);
   await updatePrefsAuthUi();
+  void refreshDiscoveredModels(prefsActiveProvider, false);
 
   // Galaxy: use active profile
   const activeProfile = config.galaxy?.active

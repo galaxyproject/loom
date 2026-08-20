@@ -482,7 +482,21 @@
             </div>
             <div class="prefs-row">
               <label for="prefs-model">Model</label>
-              <select id="prefs-model"></select>
+              <div class="prefs-row-with-btn">
+                <select id="prefs-model"></select>
+                <button
+                  id="prefs-model-refresh"
+                  class="plan-btn hidden"
+                  type="button"
+                  title="Fetch the endpoint's available models"
+                >
+                  Fetch models
+                </button>
+              </div>
+            </div>
+            <div class="prefs-row prefs-hint hidden" id="prefs-model-status-row">
+              <span></span>
+              <span id="prefs-model-status" class="api-key-status"></span>
             </div>
             <div class="prefs-row prefs-hint">
               <span></span>

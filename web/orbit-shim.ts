@@ -203,6 +203,8 @@ async function fetchMode(): Promise<"remote" | "desktop"> {
   oauthSignIn: () => Promise.resolve({ ok: false, error: "OAuth is unavailable in remote mode" }),
   oauthSignOut: () => Promise.resolve({ ok: true }),
   validateApiKey: () => Promise.resolve({ valid: false, error: "unavailable in remote mode" }),
+  discoverModels: () =>
+    Promise.resolve({ ok: false, error: "model discovery is unavailable in remote mode" }),
   setBypassPermissions: () => Promise.resolve({ ok: false, enabled: false }),
   getReportSysinfo: () =>
     Promise.resolve({

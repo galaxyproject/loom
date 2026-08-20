@@ -2457,8 +2457,12 @@ body.platform-darwin #files-title {
   gap: 8px;
 }
 
-.prefs-row-with-btn input {
+.prefs-row-with-btn input,
+.prefs-row-with-btn select {
   flex: 1;
+  /* A long model id (OpenRouter ids run 40+ chars) would otherwise widen the
+     select past the row and push the button out. */
+  min-width: 0;
 }
 
 .prefs-row-with-btn .plan-btn {

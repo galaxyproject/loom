@@ -90,6 +90,14 @@ export interface OrbitAPI {
     key: string,
     baseUrl?: string,
   ): Promise<{ valid: boolean; error?: string; models?: string[] }>;
+  /**
+   * Re-list an OpenAI-compatible provider's models using the key already
+   * stored in main. Takes only the provider name -- the renderer never holds
+   * the credential (#432).
+   */
+  discoverModels(
+    provider: string,
+  ): Promise<{ ok: true; models: string[] } | { ok: false; error: string }>;
   /** Provider id -> sign-in button label, sourced from pi's registry. */
   oauthProviders(): Promise<Record<string, string>>;
   oauthStatus(
@@ -193,6 +201,7 @@ const api: OrbitAPI = {
   setBypassPermissions: (enabled) => ipcRenderer.invoke("guardian:set-bypass", enabled),
   validateApiKey: (provider, key, baseUrl) =>
     ipcRenderer.invoke("apiKey:validate", provider, key, baseUrl),
+  discoverModels: (provider) => ipcRenderer.invoke("models:discover", provider),
   oauthProviders: () => ipcRenderer.invoke("oauth:providers"),
   oauthStatus: (provider) => ipcRenderer.invoke("oauth:status", provider),
   oauthSignIn: (provider) => ipcRenderer.invoke("oauth:sign-in", provider),

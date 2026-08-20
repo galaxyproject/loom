@@ -12,6 +12,7 @@ import {
   encryptSecret,
   isAvailable as safeStorageAvailable,
   resolveGalaxyApiKey,
+  resolveProviderApiKey,
 } from "./secure-config.js";
 import {
   resolveGalaxyStatus,
@@ -26,6 +27,7 @@ import { normalizeGalaxyUrl, validateGalaxyUrl } from "./galaxy-url.js";
 // directly or these are undefined at runtime.
 import { getProviders, getModels } from "@earendil-works/pi-ai/compat";
 import { isDeprecatedModelId } from "./model-catalog.js";
+import { discoverProviderModels } from "./model-discovery.js";
 import { checkLatestVersion } from "./version-check.js";
 import { resolveReleasePageUrl } from "./release-page.js";
 import { postFeedback } from "./feedback.js";
@@ -375,6 +377,28 @@ export function registerIpcHandlers(agent: AgentManager): void {
       return validateApiKey(provider, key, baseUrl);
     },
   );
+
+  // Re-run OpenAI-compatible model discovery for a saved provider (#432).
+  // Preferences can't do this itself: config:get is masked, so the renderer
+  // only knows *that* a key is stored, never its value -- which is why the
+  // discovered list used to vanish on reopen until the user retyped the key.
+  //
+  // The renderer passes a provider *name* only; the URL contacted and the key
+  // sent both come from disk, and neither reaches the renderer. Note what that
+  // does and doesn't buy: a hostile renderer still can't read the key, but it
+  // can call config:save first to repoint a provider's baseUrl while the
+  // UNCHANGED_SECRET sentinel preserves the key, and then have this probe (or
+  // simply the next agent turn, which is the same hole today) carry the key to
+  // the new host. Binding a stored key to the endpoint it was saved for
+  // belongs in config:save, not here.
+  ipc.handle("models:discover", async (_e, provider: unknown) => {
+    const name = typeof provider === "string" ? provider : "";
+    return discoverProviderModels(name, {
+      config: loadConfig(),
+      resolveKey: resolveProviderApiKey,
+      probe: (baseUrl, key) => validateApiKey(name, key, baseUrl),
+    });
+  });
 
   // Top-level config keys the renderer is allowed to set. Anything else
   // submitted via config:save is dropped before saveConfig() runs — the
