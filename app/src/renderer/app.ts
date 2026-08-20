@@ -3163,6 +3163,17 @@ prefsJetstreamPreset.addEventListener("click", () => {
   // Trigger validation/discovery if a key is already entered.
   prefsBaseUrl.dispatchEvent(new Event("input"));
 });
+// An edited endpoint retires a probe of the saved one: the reply would
+// otherwise land after the edit and list a different host's models under the
+// URL now on screen. Anything already fetched belongs to the saved URL too,
+// so it stops being this provider's list the moment the field diverges.
+prefsBaseUrl.addEventListener("input", () => {
+  modelDiscoverySeq++;
+  const state = prefsProviderStates[prefsActiveProvider];
+  if (state && prefsBaseUrl.value.trim() !== state.savedBaseUrl.trim()) {
+    state.discoveredModels = undefined;
+  }
+});
 // Clear the "✓ Key stored" indicator as soon as the user starts typing.
 prefsApiKey.addEventListener("input", () => {
   // A stored-key probe still in flight is about a key the user is replacing;
