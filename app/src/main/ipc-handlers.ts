@@ -26,6 +26,7 @@ import { normalizeGalaxyUrl, validateGalaxyUrl } from "./galaxy-url.js";
 // directly or these are undefined at runtime.
 import { getProviders, getModels } from "@earendil-works/pi-ai/compat";
 import { isDeprecatedModelId } from "./model-catalog.js";
+import { filterUnusableContextWindows } from "./model-context-window.js";
 import { checkLatestVersion } from "./version-check.js";
 import { resolveReleasePageUrl } from "./release-page.js";
 import { postFeedback } from "./feedback.js";
@@ -782,7 +783,14 @@ export function registerIpcHandlers(agent: AgentManager): void {
         if (!USER_FACING_PROVIDERS.has(provider)) continue;
         // Drop generations the provider's live API has retired -- pi's registry
         // still lists them but they 404 on use, so they shouldn't reach the picker (#221).
-        const models = getModels(provider).filter((m) => !isDeprecatedModelId(provider, m.id));
+        // Then drop models whose context window is too small to hold Orbit's
+        // baseline prompt: those don't 404, they accept the request and fail on
+        // the user's very first message (#418). Same treatment as #221 -- keep
+        // them out of the picker rather than showing them disabled.
+        const models = filterUnusableContextWindows(
+          provider,
+          getModels(provider).filter((m) => !isDeprecatedModelId(provider, m.id)),
+        );
         if (!models.length) continue;
         out[provider] = models.map((m) => {
           const cleanName = m.name.replace(/^Claude\s+/i, "");
