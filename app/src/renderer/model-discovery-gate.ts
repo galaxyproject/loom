@@ -40,16 +40,21 @@ export function planModelDiscovery(ctx: DiscoveryContext): DiscoveryPlan {
       ? { action: "message", message: "Save the base URL and key first, then fetch." }
       : { action: "skip" };
   }
-  if (ctx.manual) {
-    if (ctx.typedBaseUrl.trim() !== saved) {
-      return {
-        action: "message",
-        message: "Save the new base URL first — this fetches from the saved one.",
-      };
-    }
-    if (ctx.typedKey.trim()) return { action: "validate-typed-key" };
-    return { action: "probe" };
+  // Unsaved edits make a stored-config probe answer a question the user is no
+  // longer asking, so they gate both paths -- silently when Preferences opened
+  // the probe, out loud when the user pressed the button.
+  if (ctx.typedBaseUrl.trim() !== saved) {
+    return ctx.manual
+      ? {
+          action: "message",
+          message: "Save the new base URL first — this fetches from the saved one.",
+        }
+      : { action: "skip" };
   }
+  if (ctx.typedKey.trim()) {
+    return ctx.manual ? { action: "validate-typed-key" } : { action: "skip" };
+  }
+  if (ctx.manual) return { action: "probe" };
   // Opening the pane: only worth a network call when main has something to
   // probe with, and only once per provider per session.
   if (!ctx.hadKey || ctx.alreadyDiscovered) return { action: "skip" };

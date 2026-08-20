@@ -863,11 +863,15 @@ function wireApiKeyValidation(
         }
       } else setStatus("invalid", `\u2717 ${res.error || "Invalid"}`);
     } catch (err) {
-      if (mySeq !== seq) return;
+      if (mySeq !== seq || providerEl.value !== provider) return;
       setStatus("invalid", `\u2717 ${err instanceof Error ? err.message : String(err)}`);
     }
   };
   const schedule = () => {
+    // Retire any in-flight request here rather than in validateNow: the
+    // debounce means a reply about the *previous* key or provider would
+    // otherwise have 600ms to land and repaint the picker.
+    seq++;
     if (timer) clearTimeout(timer);
     timer = setTimeout(validateNow, 600);
   };

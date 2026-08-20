@@ -26,6 +26,21 @@ describe("planModelDiscovery — opening Preferences / switching provider", () =
     });
   });
 
+  // The saved URL is what main probes; the field is what the user is looking
+  // at. Painting the old endpoint's models under a new URL would let a save
+  // pair that URL with a model it never listed.
+  it("skips when the base URL field has unsaved edits", () => {
+    expect(
+      planModelDiscovery({ ...SAVED, manual: false, typedBaseUrl: "https://elsewhere.example/v1" }),
+    ).toEqual({ action: "skip" });
+  });
+
+  it("skips when a key is being typed -- the live validation owns that probe", () => {
+    expect(planModelDiscovery({ ...SAVED, manual: false, typedKey: "sk-typed" })).toEqual({
+      action: "skip",
+    });
+  });
+
   it("reuses this session's list instead of re-probing on every provider flip", () => {
     expect(planModelDiscovery({ ...SAVED, manual: false, alreadyDiscovered: true })).toEqual({
       action: "skip",
