@@ -3168,17 +3168,18 @@ prefsJetstreamPreset.addEventListener("click", () => {
 // URL now on screen. Anything already fetched belongs to the saved URL too,
 // so it stops being this provider's list the moment the field diverges.
 prefsBaseUrl.addEventListener("input", () => {
-  modelDiscoverySeq++;
+  retireModelDiscovery();
   const state = prefsProviderStates[prefsActiveProvider];
   if (state && prefsBaseUrl.value.trim() !== state.savedBaseUrl.trim()) {
     state.discoveredModels = undefined;
+    setModelStatus("", "");
   }
 });
 // Clear the "✓ Key stored" indicator as soon as the user starts typing.
 prefsApiKey.addEventListener("input", () => {
   // A stored-key probe still in flight is about a key the user is replacing;
   // let the typed-key validation own the dropdown from here.
-  modelDiscoverySeq++;
+  retireModelDiscovery();
   if (prefsApiKeyStatus.classList.contains("stored")) {
     prefsApiKeyStatus.className = "api-key-status";
     prefsApiKeyStatus.textContent = "";
@@ -3405,6 +3406,16 @@ let modelDiscoveryInFlight = 0;
 function setModelStatus(cls: "" | "checking" | "valid" | "invalid", text: string): void {
   prefsModelStatus.className = `api-key-status${cls ? " " + cls : ""}`;
   prefsModelStatus.textContent = text;
+}
+
+/**
+ * Disown any in-flight discovery -- what it reports no longer describes what's
+ * on screen. The retired reply returns without touching the label, so drop its
+ * "Fetching…" here or it sits there forever.
+ */
+function retireModelDiscovery(): void {
+  modelDiscoverySeq++;
+  if (prefsModelStatus.classList.contains("checking")) setModelStatus("", "");
 }
 
 /**
