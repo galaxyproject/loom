@@ -55,6 +55,8 @@
     "lint:fix": "eslint . --fix",
     "precommit": "lint-staged",
     "prepare": "husky",
+    "check:install": "node scripts/install-freshness.mjs",
+    "pretest": "node scripts/install-freshness.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "evals": "tsx evals/run.ts",

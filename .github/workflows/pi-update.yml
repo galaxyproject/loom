@@ -1,0 +1,154 @@
+# Open a single coordinated pi bump.
+#
+# pi lives in two trees that install separately: the root project and app/.
+# They must resolve the same version -- when they drift, both copies land on
+# disk, a bare import resolves to a different module instance depending on who
+# imported it, and anything pi holds in module-level state splits in two. That
+# is what check-version-lockstep.mjs exists to catch, and it is why Dependabot
+# is not allowed near these packages: its grouping is either per-directory or
+# per-dependency, so it would bump one tree and leave the other behind.
+#
+# This workflow resolves ONE target version and applies it everywhere, so the
+# resulting PR is lockstep by construction.
+name: pi update
+
+on:
+  schedule:
+    # Monday 06:00 UTC, ahead of the week rather than during it.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            app/package-lock.json
+
+      # pi-coding-agent is the package that pulls the rest, so its latest
+      # release is the version the whole set moves to.
+      - name: Resolve target version
+        id: target
+        run: |
+          current=$(node -p "require('./package.json').dependencies['@earendil-works/pi-coding-agent'].replace(/^[^0-9]*/, '')")
+          latest=$(npm view @earendil-works/pi-coding-agent version)
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          if [ "$current" = "$latest" ]; then
+            echo "pi is already at $latest"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "pi $current -> $latest"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check for an existing branch
+        if: steps.target.outputs.changed == 'true'
+        id: branch
+        run: |
+          branch="deps/pi-${{ steps.target.outputs.latest }}"
+          echo "name=$branch" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "$branch already exists -- nothing to do"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install
+        if: steps.target.outputs.changed == 'true' && steps.branch.outputs.exists == 'false'
+        run: |
+          npm ci
+          cd app && npm ci
+
+      # One version, every manifest. pi-ai is a devDependency at the root and a
+      # runtime dependency in app/, so the flags differ but the version cannot.
+      - name: Bump pi everywhere
+        if: steps.target.outputs.changed == 'true' && steps.branch.outputs.exists == 'false'
+        run: |
+          V="${{ steps.target.outputs.latest }}"
+          npm install --save "@earendil-works/pi-coding-agent@$V" "@earendil-works/pi-tui@$V"
+          npm install --save-dev "@earendil-works/pi-ai@$V"
+          cd app && npm install --save "@earendil-works/pi-ai@$V"
+
+      # Every check that build.yml would run, minus the OS matrix and the
+      # Electron package step. Failures are recorded, not fatal: a pi release
+      # that needs a code migration should still produce a PR saying so --
+      # that is the most useful thing this workflow can tell a human.
+      - name: Validate
+        if: steps.target.outputs.changed == 'true' && steps.branch.outputs.exists == 'false'
+        id: validate
+        run: |
+          status() { if [ "$1" -eq 0 ]; then echo "pass"; else echo "FAIL"; fi; }
+          set +e
+          npm run check:versions;   lockstep=$?
+          npm run typecheck;        tc_root=$?
+          (cd app && npx tsc --noEmit); tc_app=$?
+          npm test;                 tests=$?
+          npm run smoke:pack;       smoke=$?
+          set -e
+          {
+            echo "lockstep=$(status $lockstep)"
+            echo "typecheck_root=$(status $tc_root)"
+            echo "typecheck_app=$(status $tc_app)"
+            echo "tests=$(status $tests)"
+            echo "smoke=$(status $smoke)"
+          } >> "$GITHUB_OUTPUT"
+          if [ $((lockstep + tc_root + tc_app + tests + smoke)) -eq 0 ]; then
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open the pull request
+        if: steps.target.outputs.changed == 'true' && steps.branch.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V="${{ steps.target.outputs.latest }}"
+          BRANCH="${{ steps.branch.outputs.name }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add package.json package-lock.json app/package.json app/package-lock.json
+          git commit -m "Move pi to $V
+
+          Automated lockstep bump: one version applied to the root and app/
+          trees together, so neither can resolve a pi package the other does
+          not. Validation results are in the pull request body."
+          git push origin "$BRANCH"
+
+          cat > /tmp/pr-body.md <<'BODY'
+          Moves pi from `${{ steps.target.outputs.current }}` to `${{ steps.target.outputs.latest }}` across both trees in one commit, so the root and `app/` cannot drift apart.
+
+          | check | result |
+          | --- | --- |
+          | version lockstep | ${{ steps.validate.outputs.lockstep }} |
+          | typecheck (root) | ${{ steps.validate.outputs.typecheck_root }} |
+          | typecheck (app) | ${{ steps.validate.outputs.typecheck_app }} |
+          | tests | ${{ steps.validate.outputs.tests }} |
+          | packed-tarball smoke | ${{ steps.validate.outputs.smoke }} |
+
+          Run on ubuntu only. **`build.yml` does not run on this PR** -- GitHub does not trigger workflows for events raised by `GITHUB_TOKEN`. Push a commit, or close and reopen, to get the full three-OS matrix. (Swapping in a PAT or GitHub App token would fix that permanently.)
+
+          Deliberately a draft. Every pi minor so far has needed hand-written migration -- 0.80 moved pi-ai's globals to `/compat`, 0.83 dropped APIs outright, 0.84 changed the OAuth login prompt contract -- and the 0.80 break was a runtime one that a green typecheck sailed straight past. Read the table as "here is what a bump would cost", not as a merge signal.
+          BODY
+
+          gh pr create --draft --base main --head "$BRANCH" \
+            --title "Move pi to $V" \
+            --body-file /tmp/pr-body.md
+
+          # Non-fatal: the branch and PR exist by this point, and a missing
+          # label is not worth failing the run over.
+          gh pr edit "$BRANCH" --add-label dependencies || true

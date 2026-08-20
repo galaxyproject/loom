@@ -1,0 +1,50 @@
+# Dependabot covers the root-only runtime dependencies that have broken us
+# before. It deliberately does NOT touch the pi packages: those must move in
+# lockstep across the root and app/ trees, and Dependabot cannot express that.
+#
+# Grouping is per-directory unless you set `group-by: dependency-name`, which
+# is per-dependency instead -- neither gives one PR spanning both trees AND all
+# three pi packages. A partial pi bump fails check-version-lockstep by design
+# (the root tree would resolve one pi-ai while app/ resolves another), so
+# letting Dependabot near pi would just mint red PRs on every release.
+# .github/workflows/pi-update.yml handles pi as a single coordinated bump.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+    # Allowlist, not a denylist: anything not named here is ignored, so a new
+    # dependency cannot quietly opt itself into automated bumps.
+    allow:
+      - dependency-name: pi-mcp-adapter
+      - dependency-name: "@anthropic-ai/sandbox-runtime"
+      - dependency-name: "@modelcontextprotocol/*"
+    groups:
+      runtime-deps:
+        patterns:
+          - pi-mcp-adapter
+          - "@anthropic-ai/sandbox-runtime"
+          - "@modelcontextprotocol/*"
+    commit-message:
+      prefix: "deps"
+
+  # GitHub's own actions drift quietly and break nothing until a runner image
+  # retires a Node version out from under them.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    labels:
+      - dependencies
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci"
