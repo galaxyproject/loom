@@ -135,6 +135,7 @@ export interface OrbitAPI {
     chromeVersion: string;
     platform: string;
     arch: string;
+    wsl: boolean;
   }>;
   openIssueReport(payload: { title: string; body: string }): Promise<{ opened: boolean }>;
   submitFeedback(

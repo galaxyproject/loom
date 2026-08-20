@@ -10,6 +10,8 @@ import { loadProfiles } from "./profiles.js";
 import { appendFileSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import { release } from "os";
+import { isWsl } from "../../shared/wsl.js";
 
 // Endpoint base is the shared constant; LOOM_FEEDBACK_URL overrides it for local
 // dev (point at http://localhost:8787 while running `wrangler dev`).
@@ -50,6 +52,7 @@ export function buildBrainSysinfo(): FeedbackSysinfo {
     appVersion: readLoomVersion(),
     platform: process.platform,
     arch: process.arch,
+    wsl: isWsl({ platform: process.platform, env: process.env, release: release() }),
     node: process.versions.node,
     llmProvider: active,
     llmModel: active ? cfg.llm?.providers?.[active]?.model : undefined,

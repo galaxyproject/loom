@@ -30,6 +30,7 @@ import { checkLatestVersion } from "./version-check.js";
 import { resolveReleasePageUrl } from "./release-page.js";
 import { postFeedback } from "./feedback.js";
 import type { FeedbackPayload } from "../../../shared/feedback-contract.js";
+import { buildReportSysinfo } from "./report-sysinfo.js";
 import {
   getOAuthStatus,
   isOAuthProvider,
@@ -665,15 +666,19 @@ export function registerIpcHandlers(agent: AgentManager): void {
   });
 
   // Issue reporter: returns sysinfo for the renderer to bundle into the
-  // report body. No secrets — just versions + platform + arch.
-  ipc.handle("report:sysinfo", () => ({
-    appVersion: app.getVersion(),
-    electronVersion: process.versions.electron,
-    nodeVersion: process.versions.node,
-    chromeVersion: process.versions.chrome,
-    platform: process.platform,
-    arch: process.arch,
-  }));
+  // report body. No secrets — just versions + platform + arch + a WSL flag.
+  ipc.handle("report:sysinfo", () =>
+    buildReportSysinfo({
+      appVersion: app.getVersion(),
+      electronVersion: process.versions.electron,
+      nodeVersion: process.versions.node,
+      chromeVersion: process.versions.chrome,
+      platform: process.platform,
+      arch: process.arch,
+      env: process.env,
+      release: os.release(),
+    }),
+  );
 
   // Version checker: surfaces a "new release available" banner in the
   // renderer. No auto-install (unsigned macOS builds can't be patched by

@@ -7,6 +7,14 @@ export interface FeedbackSysinfo {
   appVersion?: string;
   platform?: string;
   arch?: string;
+  /**
+   * True when the client runs under WSL. WSL reports `platform: "linux"`, so
+   * without this a WSL report is indistinguishable from a native Linux one --
+   * and GUI/windowing, xdg-open and sandbox behaviour all differ there.
+   * Optional + additive, so schemaVersion stays 1; absent means the report came
+   * from a client that predates the field.
+   */
+  wsl?: boolean;
   electron?: string;
   chrome?: string;
   node?: string;
