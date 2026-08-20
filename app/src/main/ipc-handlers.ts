@@ -12,6 +12,7 @@ import {
   encryptSecret,
   isAvailable as safeStorageAvailable,
   resolveGalaxyApiKey,
+  resolveProviderApiKey,
 } from "./secure-config.js";
 import {
   resolveGalaxyStatus,
@@ -26,6 +27,7 @@ import { normalizeGalaxyUrl, validateGalaxyUrl } from "./galaxy-url.js";
 // directly or these are undefined at runtime.
 import { getProviders, getModels } from "@earendil-works/pi-ai/compat";
 import { isDeprecatedModelId } from "./model-catalog.js";
+import { discoverProviderModels } from "./model-discovery.js";
 import { checkLatestVersion } from "./version-check.js";
 import { resolveReleasePageUrl } from "./release-page.js";
 import { postFeedback } from "./feedback.js";
@@ -375,6 +377,22 @@ export function registerIpcHandlers(agent: AgentManager): void {
       return validateApiKey(provider, key, baseUrl);
     },
   );
+
+  // Re-run OpenAI-compatible model discovery for a saved provider (#432).
+  // Preferences can't do this itself: config:get is masked, so the renderer
+  // only knows *that* a key is stored, never its value -- which is why the
+  // discovered list used to vanish on reopen until the user retyped the key.
+  // The renderer passes only a provider name; the base URL and the key both
+  // come from disk, so this can never send the credential anywhere the user
+  // hasn't already configured.
+  ipc.handle("models:discover", async (_e, provider: unknown) => {
+    const name = typeof provider === "string" ? provider : "";
+    return discoverProviderModels(name, {
+      config: loadConfig(),
+      resolveKey: resolveProviderApiKey,
+      probe: (baseUrl, key) => validateApiKey(name, key, baseUrl),
+    });
+  });
 
   // Top-level config keys the renderer is allowed to set. Anything else
   // submitted via config:save is dropped before saveConfig() runs — the

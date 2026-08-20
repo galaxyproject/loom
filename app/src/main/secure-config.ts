@@ -1,5 +1,5 @@
 import { app, safeStorage } from "electron";
-import type { LoomConfig } from "../../../shared/loom-config.js";
+import type { LlmProviderConfig, LoomConfig } from "../../../shared/loom-config.js";
 import { loadConfig, saveConfig } from "../../../shared/loom-config.js";
 
 function log(...args: unknown[]): void {
@@ -46,6 +46,17 @@ function tryDecrypt(b64: string | undefined): string | null {
 }
 
 /**
+ * Resolve one provider entry's API key, preferring the encrypted field.
+ * `null` means the entry carries no usable key.
+ */
+export function resolveProviderApiKey(entry: LlmProviderConfig | undefined): string | null {
+  if (!entry) return null;
+  if (entry.apiKey) return entry.apiKey;
+  if (entry.apiKeyEncrypted && isAvailable()) return tryDecrypt(entry.apiKeyEncrypted);
+  return null;
+}
+
+/**
  * Resolve the LLM API key for the active provider. Returns the plaintext value
  * if available, preferring the encrypted field. `null` means no key is
  * available via config (env vars may still supply one).
@@ -53,11 +64,7 @@ function tryDecrypt(b64: string | undefined): string | null {
 export function resolveLlmApiKey(config: LoomConfig): string | null {
   const llm = config.llm;
   if (!llm?.active || !llm.providers) return null;
-  const p = llm.providers[llm.active];
-  if (!p) return null;
-  if (p.apiKey) return p.apiKey;
-  if (p.apiKeyEncrypted && isAvailable()) return tryDecrypt(p.apiKeyEncrypted);
-  return null;
+  return resolveProviderApiKey(llm.providers[llm.active]);
 }
 
 /**
