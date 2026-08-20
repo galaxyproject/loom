@@ -39,39 +39,101 @@ const SIGN_IN_TIMEOUT_MS = 5 * 60 * 1000;
  * 0.81 each provider carries its own `auth.oauth`, so we read the list off the
  * registry instead of hardcoding it and going stale the next time pi adds one.
  *
+ * What we must NOT read off it is "therefore this provider has no API key".
+ * pi models the two independently: `openai-codex` carries `auth.oauth` alone,
+ * while anthropic, xai, openrouter, kimi-coding, github-copilot and radius
+ * carry `auth.apiKey` AND `auth.oauth`. Collapsing sign-in-capable into
+ * OAuth-only is what broke #429 -- Orbit stopped showing, storing, reporting
+ * and injecting the Anthropic API key the moment pi taught Anthropic to
+ * sign in, and the brain then judged the provider unusable.
+ *
  * That read is async and several callers are sync, so prime the cache once at
  * startup (primeOAuthProviders) and let the sync accessors serve from it. The
- * seed keeps pre-prime calls honest for the provider we know ships enabled --
- * without it a status check racing startup would report "not an OAuth provider"
- * and the UI would offer an API-key field for an account that has none.
+ * seed keeps pre-prime calls honest for the provider we know ships enabled;
+ * every other provider reads as "takes an API key" until the registry lands,
+ * which is the safe default -- it offers a key field rather than hiding one.
  */
-const SEED_OAUTH_PROVIDERS = ["openai-codex"];
-let oauthProviders: Map<string, string> = new Map(SEED_OAUTH_PROVIDERS.map((id) => [id, ""]));
-
-/** Read the OAuth-capable providers off pi's registry. Call once at startup. */
-export async function primeOAuthProviders(): Promise<ReadonlyMap<string, string>> {
-  try {
-    const runtime = await ModelRuntime.create({ authPath: getAuthPath() });
-    const found = new Map<string, string>();
-    for (const provider of await runtime.getProviders()) {
-      const oauth = provider.auth?.oauth;
-      if (oauth?.login) found.set(provider.id, oauth.loginLabel || oauth.name || "");
-    }
-    // Never shrink below the seed -- an empty read means something is wrong with
-    // the registry, not that sign-in stopped existing.
-    if (found.size > 0) oauthProviders = found;
-  } catch (err) {
-    console.error("[oauth] could not read providers from the registry:", err);
-  }
-  return oauthProviders;
+export interface ProviderAuthCaps {
+  /** Sign-in button label, e.g. "OpenAI (ChatGPT Plus/Pro)". "" when pi gives none. */
+  signInLabel: string;
+  /** pi defines an API-key auth path for this provider (dual-auth when it also signs in). */
+  acceptsApiKey: boolean;
 }
 
-export function isOAuthProvider(provider: string | undefined): boolean {
+/**
+ * Classify one provider's auth surface. Returns null when the provider offers
+ * no sign-in at all. Pure and exported so the OAuth-only predicate -- the thing
+ * #429 got wrong -- is testable without an Electron or pi runtime.
+ */
+export function classifyProviderAuth(provider: {
+  id: string;
+  auth?: {
+    apiKey?: unknown;
+    oauth?: { login?: unknown; name?: string; loginLabel?: string };
+  };
+}): ProviderAuthCaps | null {
+  const oauth = provider.auth?.oauth;
+  if (!oauth?.login) return null;
+  return {
+    signInLabel: oauth.loginLabel || oauth.name || "",
+    acceptsApiKey: Boolean(provider.auth?.apiKey),
+  };
+}
+
+const SEED_OAUTH_PROVIDERS: Array<[string, ProviderAuthCaps]> = [
+  ["openai-codex", { signInLabel: "", acceptsApiKey: false }],
+];
+let oauthProviders: Map<string, ProviderAuthCaps> = new Map(SEED_OAUTH_PROVIDERS);
+let priming: Promise<ReadonlyMap<string, ProviderAuthCaps>> | null = null;
+
+/** Read the sign-in-capable providers off pi's registry. Call once at startup. */
+export async function primeOAuthProviders(): Promise<ReadonlyMap<string, ProviderAuthCaps>> {
+  priming ??= (async () => {
+    try {
+      const runtime = await ModelRuntime.create({ authPath: getAuthPath() });
+      const found = new Map<string, ProviderAuthCaps>();
+      for (const provider of await runtime.getProviders()) {
+        const caps = classifyProviderAuth(provider);
+        if (caps) found.set(provider.id, caps);
+      }
+      // Never shrink below the seed -- an empty read means something is wrong with
+      // the registry, not that sign-in stopped existing.
+      if (found.size > 0) oauthProviders = found;
+    } catch (err) {
+      console.error("[oauth] could not read providers from the registry:", err);
+    }
+    return oauthProviders;
+  })();
+  return priming;
+}
+
+/**
+ * Resolve once the registry read has landed. The renderer pulls the provider map
+ * exactly once at startup, so serving it a pre-prime snapshot would strand that
+ * window on the seed for the whole session.
+ */
+export function whenOAuthProvidersReady(): Promise<ReadonlyMap<string, ProviderAuthCaps>> {
+  return priming ?? primeOAuthProviders();
+}
+
+/** Does this provider offer a sign-in flow? True for dual-auth providers too. */
+export function providerOffersSignIn(provider: string | undefined): boolean {
   return Boolean(provider && oauthProviders.has(provider));
 }
 
-/** id -> button label, e.g. "openai-codex" -> "OpenAI (ChatGPT Plus/Pro)". */
-export function listOAuthProviders(): Record<string, string> {
+/**
+ * Does this provider authenticate ONLY by sign-in? Gates every "there is no API
+ * key here" behavior: hiding the key field, masking `hasApiKey`, and skipping
+ * key injection into the brain. Dual-auth providers must answer false.
+ */
+export function isOAuthOnlyProvider(provider: string | undefined): boolean {
+  if (!provider) return false;
+  const caps = oauthProviders.get(provider);
+  return Boolean(caps && !caps.acceptsApiKey);
+}
+
+/** id -> auth capabilities, for the renderer's one-shot fetch. */
+export function listOAuthProviders(): Record<string, ProviderAuthCaps> {
   return Object.fromEntries(oauthProviders);
 }
 

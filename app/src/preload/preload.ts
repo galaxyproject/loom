@@ -90,8 +90,8 @@ export interface OrbitAPI {
     key: string,
     baseUrl?: string,
   ): Promise<{ valid: boolean; error?: string; models?: string[] }>;
-  /** Provider id -> sign-in button label, sourced from pi's registry. */
-  oauthProviders(): Promise<Record<string, string>>;
+  /** Provider id -> auth capabilities, sourced from pi's registry. */
+  oauthProviders(): Promise<Record<string, { signInLabel: string; acceptsApiKey: boolean }>>;
   oauthStatus(
     provider: string,
   ): Promise<{ signedIn: boolean; expiresInSeconds?: number; accountId?: string }>;

@@ -12,7 +12,7 @@ import { buildBrainEnv as buildBaseBrainEnv } from "../../../shared/brain-env.js
 import { noLocalShellSpawnExtras } from "./local-shell.js";
 import { TurnWatchdog } from "./turn-watchdog.js";
 import { formatWindowTitle } from "./window-title.js";
-import { isOAuthProvider } from "./oauth-handler.js";
+import { isOAuthOnlyProvider } from "./oauth-handler.js";
 
 /**
  * How long the brain may stay completely silent mid-turn before Orbit treats the
@@ -42,11 +42,13 @@ function buildSecretEnv(): Record<string, string> {
 
   const provider = cfg.llm?.active || "anthropic";
   const isCustom = Boolean(cfg.llm?.providers?.[provider]?.baseUrl);
-  // OAuth providers ignore env-var keys -- the brain reads ~/.pi/agent/auth.json.
+  // OAuth-ONLY providers ignore env-var keys -- the brain reads ~/.pi/agent/auth.json.
+  // Dual-auth providers (anthropic, xai, ...) still need their key injected: pi
+  // consults ambient env whenever auth.json holds nothing for them (#429).
   // If the user switched away from an API-key provider the old key is still in
   // config.json (preserved on purpose so they can switch back); don't leak it
   // into the env under a misrouted variable name.
-  if (!isOAuthProvider(provider)) {
+  if (!isOAuthOnlyProvider(provider)) {
     // Custom OpenAI-compatible endpoints route through pi's --api-key via
     // LOOM_ACTIVE_LLM_API_KEY; built-in providers use their own env var.
     const targetVar = isCustom

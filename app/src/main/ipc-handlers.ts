@@ -32,7 +32,9 @@ import { postFeedback } from "./feedback.js";
 import type { FeedbackPayload } from "../../../shared/feedback-contract.js";
 import {
   getOAuthStatus,
-  isOAuthProvider,
+  isOAuthOnlyProvider,
+  providerOffersSignIn,
+  whenOAuthProvidersReady,
   listOAuthProviders,
   signInOAuth,
   signOutOAuth,
@@ -70,12 +72,13 @@ function maskConfig(cfg: LoomConfig): MaskedLoomConfig {
           {
             model: v.model,
             baseUrl: v.baseUrl,
-            // OAuth providers authenticate via ~/.pi/agent/auth.json -- an
+            // OAuth-ONLY providers authenticate via ~/.pi/agent/auth.json -- an
             // orphan apiKey on the entry (manual edit, or the legacy-shape
             // migrator) is dead weight, not a real credential. Don't surface
             // it to the renderer or it'll mis-render "Key stored" UI for
-            // an account that actually authenticates by sign-in.
-            hasApiKey: isOAuthProvider(k) ? false : Boolean(v.apiKey || v.apiKeyEncrypted),
+            // an account that actually authenticates by sign-in. A dual-auth
+            // provider's key is real, though, so report it honestly (#429).
+            hasApiKey: isOAuthOnlyProvider(k) ? false : Boolean(v.apiKey || v.apiKeyEncrypted),
           },
         ]),
       ),
@@ -521,16 +524,21 @@ export function registerIpcHandlers(agent: AgentManager): void {
   });
 
   ipc.handle("oauth:status", (_e, provider: string) => {
-    if (!isOAuthProvider(provider)) {
+    if (!providerOffersSignIn(provider)) {
       return { signedIn: false };
     }
     return getOAuthStatus(provider);
   });
 
-  ipc.handle("oauth:providers", () => listOAuthProviders());
+  // Await the registry read: the renderer fetches this map exactly once, so a
+  // pre-prime answer would pin it to the seed for the rest of the session.
+  ipc.handle("oauth:providers", async () => {
+    await whenOAuthProvidersReady();
+    return listOAuthProviders();
+  });
 
   ipc.handle("oauth:sign-in", async (_e, provider: string) => {
-    if (!isOAuthProvider(provider)) {
+    if (!providerOffersSignIn(provider)) {
       return { ok: false as const, error: `Unknown OAuth provider: ${provider}` };
     }
     try {
@@ -545,7 +553,7 @@ export function registerIpcHandlers(agent: AgentManager): void {
   });
 
   ipc.handle("oauth:sign-out", async (_e, provider: string) => {
-    if (!isOAuthProvider(provider)) {
+    if (!providerOffersSignIn(provider)) {
       return { ok: false as const, error: `Unknown OAuth provider: ${provider}` };
     }
     try {
