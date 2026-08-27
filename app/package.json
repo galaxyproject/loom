@@ -13,12 +13,12 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@dagrejs/dagre": "^3.0.0",
+    "@dagrejs/dagre": "^3.1.1",
     "@earendil-works/pi-ai": "^0.84.1",
-    "@types/dompurify": "^3.0.5",
-    "@xyflow/react": "^12.10.2",
-    "dompurify": "^3.4.1",
-    "marked": "^18.0.0",
+    "@types/dompurify": "^3.2.0",
+    "@xyflow/react": "^12.11.3",
+    "dompurify": "^3.4.14",
+    "marked": "^18.0.10",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "update-electron-app": "^3.2.0"
@@ -33,11 +33,11 @@
     "@electron-forge/plugin-vite": "^7.11.1",
     "@playwright/test": "^1.50.0",
     "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.2.0",
-    "electron": "^41.2.1",
-    "typescript": "^6.0.2",
-    "vite": "^6.4.2"
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.0",
+    "electron": "^43.4.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
   },
   "overrides": {
     "@electron/rebuild": "^4.0.4",
