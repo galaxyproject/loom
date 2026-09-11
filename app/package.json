@@ -31,11 +31,11 @@
     "@electron-forge/maker-squirrel": "^7.11.1",
     "@electron-forge/maker-zip": "^7.11.1",
     "@electron-forge/plugin-vite": "^7.11.1",
-    "@playwright/test": "^1.50.0",
+    "@playwright/test": "^1.63.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.5",
     "@vitejs/plugin-react": "^5.2.0",
-    "electron": "^41.2.1",
+    "electron": "^41.10.7",
     "typescript": "^6.0.2",
     "vite": "^6.4.2"
   },
