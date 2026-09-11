@@ -18,6 +18,8 @@ import express from "express";
 import { WebSocketServer, WebSocket } from "ws";
 
 import { buildBrainEnv } from "../shared/brain-env.js";
+import { summarizeStartupFailure, appendStderr } from "../shared/brain-exit.js";
+import { encodeEventPayload } from "./event-payload.js";
 import { evaluateBind, authorizeWsUpgrade } from "./auth.js";
 import { isForwardableUiResponse } from "./rpc-guard.js";
 import { isCustomProvider } from "../shared/custom-provider.js";
@@ -244,13 +246,28 @@ function startLoom(): void {
     sendEvent("agent:event", data);
   });
 
+  // Kept, not just logged: when the brain dies during startup its stderr is the
+  // only account of why, and the browser has no terminal to read it in (#439).
+  let stderr = "";
   loomProcess.stderr?.on("data", (chunk: Buffer) => {
-    log("loom stderr:", chunk.toString().trimEnd());
+    const text = chunk.toString();
+    stderr = appendStderr(stderr, text);
+    log("loom stderr:", text.trimEnd());
   });
 
   loomProcess.on("exit", (code, signal) => {
     log("loom exited", { code, signal });
     loomProcess = null;
+    // A nonzero exit used to report a bare "stopped", which is indistinguishable
+    // from someone closing the session deliberately.
+    if (code !== 0 && code !== null) {
+      const { summary, detail } = summarizeStartupFailure(code, stderr);
+      // Chat first: the renderer's error handler resets the badge to a bare
+      // "error", so the summary has to be the later of the two writes.
+      sendEvent("agent:event", { type: "error", message: detail });
+      sendEvent("agent:status", "error", summary);
+      return;
+    }
     sendEvent("agent:status", "stopped");
   });
 
@@ -358,7 +375,7 @@ function sendEvent(event: string, ...payload: unknown[]): void {
   activeSocket.send(
     JSON.stringify({
       _event: event,
-      _payload: payload.length === 1 ? payload[0] : payload,
+      _payload: encodeEventPayload(payload),
     }),
   );
 }

@@ -372,6 +372,7 @@ describe("BUILTIN_CATALOG", () => {
       "collection-manipulation/SKILL.md",
       "galaxy-integration/mcp-reference/SKILL.md",
       "udt-authoring/SKILL.md",
+      "workflow-reports/SKILL.md",
     ]);
     for (const e of entries) expect(e.surfaces).toContain("loom");
   });

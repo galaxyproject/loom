@@ -21,11 +21,15 @@ import { registerActivityHooks } from "./activity-hooks";
 import { registerExecutionCommands } from "./execution-commands";
 import { registerFeedbackCommand } from "./feedback-command";
 import { registerTesterIdCommand } from "./tester-id-command";
+import { registerInstructionsCommand } from "./instructions-command";
 import { registerTeamTools } from "./teams/tool";
 import { isTeamDispatchEnabled } from "./teams/is-enabled";
 import { registerSessionIndexTools } from "./session-index/tools";
 import { isSessionIndexEnabled } from "./session-index/is-enabled";
 import { registerConfusablesHint } from "./confusables-hint";
+import { registerInvocationFailureHint } from "./invocation-failure-hint";
+import { registerEvidenceGate } from "./evidence-gate";
+import { registerEvidenceOverrideCommand } from "./evidence-override-command";
 import { registerExecGuard } from "./exec-guard";
 import { registerSandbox } from "./sandbox";
 import { isLocalExecDisabled } from "./local-exec";
@@ -92,7 +96,11 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   registerExecutionCommands(pi);
   registerFeedbackCommand(pi);
   registerTesterIdCommand(pi);
+  registerInstructionsCommand(pi);
   registerConfusablesHint(pi);
+  registerInvocationFailureHint(pi);
+  registerEvidenceGate(pi);
+  registerEvidenceOverrideCommand(pi);
   if (isTeamDispatchEnabled()) {
     registerTeamTools(pi);
   }

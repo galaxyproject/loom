@@ -156,13 +156,79 @@
               </svg>
             </button>
             <span class="pane-title-label orbit-title-brand" aria-label="Orbit">
-              <img
+              <!--
+                Inlined, not <img src>, because an externally-referenced SVG
+                can't read this page's custom properties -- and this mark needs
+                two of them: currentColor for the ink, and --masthead for the
+                disc that hides the back half of the orbit ring. Design source
+                of truth is site/public/orbit-logo-classic.svg; keep the two in
+                step if the artwork changes.
+              -->
+              <svg
                 class="orbit-title-logo"
-                src="./assets/galaxy_dark_theme2.png"
-                alt=""
+                viewBox="0 0 1368 340"
+                fill="none"
                 aria-hidden="true"
-              />
-              <span class="orbit-title-text">ORBIT</span>
+                focusable="false"
+              >
+                <defs>
+                  <linearGradient id="orbit-brand-fade" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0" stop-color="#d0bd2a" />
+                    <stop offset="1" stop-color="#d0bd2a" stop-opacity="0" />
+                  </linearGradient>
+                  <clipPath id="orbit-brand-planet">
+                    <circle cx="170" cy="170" r="86" />
+                  </clipPath>
+                </defs>
+                <g transform="rotate(-18 170 170)">
+                  <path
+                    d="M 15,170 A 155,52 0 0 1 325,170"
+                    stroke="currentColor"
+                    stroke-width="14"
+                    stroke-linecap="round"
+                  />
+                </g>
+                <g clip-path="url(#orbit-brand-planet)">
+                  <circle cx="170" cy="170" r="86" fill="var(--masthead)" />
+                  <rect x="104" y="112" width="100" height="30" rx="9" fill="currentColor" />
+                  <rect x="104" y="152" width="62" height="30" rx="9" fill="currentColor" />
+                  <rect
+                    x="134"
+                    y="192"
+                    width="100"
+                    height="30"
+                    rx="9"
+                    fill="url(#orbit-brand-fade)"
+                  />
+                </g>
+                <circle cx="170" cy="170" r="86" stroke="currentColor" stroke-width="14" />
+                <g transform="rotate(-18 170 170)">
+                  <path
+                    d="M 15,170 A 155,52 0 0 0 325,170"
+                    stroke="currentColor"
+                    stroke-width="14"
+                    stroke-linecap="round"
+                  />
+                </g>
+                <circle cx="50" cy="236" r="17" fill="#d0bd2a" />
+                <g
+                  stroke="currentColor"
+                  stroke-width="24"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <ellipse cx="500" cy="170" rx="82" ry="100" />
+                  <path d="M 660,270 V 70" />
+                  <path d="M 660,70 h 66 a 52,52 0 0 1 0,104 h -66" />
+                  <path d="M 700,174 L 782,270" />
+                  <path d="M 860,270 V 70" />
+                  <path d="M 860,70 h 58 a 50,50 0 0 1 0,100 h -58" />
+                  <path d="M 860,170 h 68 a 50,50 0 0 1 0,100 h -68" />
+                  <path d="M 1058,70 V 270" />
+                  <path d="M 1160,70 h 180" />
+                  <path d="M 1250,70 V 270" />
+                </g>
+              </svg>
             </span>
             <button
               id="export-chat-btn"
@@ -834,6 +900,7 @@
         </div>
         <div class="modal-body">
           <div id="ext-message" class="ext-message hidden"></div>
+          <pre id="ext-detail" class="ext-detail hidden"></pre>
           <input id="ext-input" type="text" class="ext-input hidden" />
           <div id="ext-options" class="ext-options hidden"></div>
         </div>

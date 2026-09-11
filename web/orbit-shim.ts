@@ -6,6 +6,8 @@
  * JSON-lines stdin/stdout -- same RPC protocol, different pipe.
  */
 
+import { decodeEventPayload } from "./event-payload.js";
+
 type Callback<T extends unknown[]> = (...args: T) => void;
 
 interface PendingRequest {
@@ -112,7 +114,7 @@ function connect(): void {
     // Agent event forwarded from server
     const type = data._event as string | undefined;
     if (type) {
-      emit(type, data._payload);
+      emit(type, ...decodeEventPayload(data._payload));
       return;
     }
   };

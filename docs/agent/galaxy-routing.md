@@ -94,6 +94,36 @@ as verified-result state: a YAML `completed` invocation still needs
 output inspection and notebook evidence before the corresponding step is
 marked `- [x]`.
 
+### The evidence gate checks that
+
+This is no longer only advice. Loom watches every `Edit`/`Write` to
+`notebook.md` and reads the file as it stood _before_ the write. A plan
+step going `- [ ]` → `- [x]` while the `loom-invocation` block bound to
+its anchor still reads `status: in_progress` is a contradiction: a
+verified result claimed for a run Galaxy says has not finished. That
+status is written by the poller from Galaxy job state, not by you, so
+rewriting it in the same edit does not clear the contradiction.
+
+The gate ships in `warn` mode -- the write goes through and the decision
+is recorded to `activity.jsonl` as an `evidence.decision` event. In
+`deny` mode the write is refused, and the way forward is one of: leave
+the step pending while the run is going, mark it `- [!]` and record what
+failed, or -- if Galaxy has actually finished and the block is stale --
+call `galaxy_invocation_check_all`, inspect the outputs, record that
+evidence, and then flip the checkbox.
+
+Deliberately narrow, so it does not fire on honest work: a flip with no
+bound invocation gets no opinion, a `failed` block is never gated (it is
+sticky and cannot be re-polled), and a rerun that leaves a stale block
+beside a `completed` one for the same anchor is not a contradiction.
+
+A refused write stays refused for as long as the contradiction stands.
+Do not retry it unchanged. The exception belongs to the user, not to
+you: if you think the gate is wrong, say so and ask them to run
+`/override <step-anchor> <reason>`, which clears that one step for one
+write and records the reason. Repeating the write is not a way to get
+past it.
+
 ## Artifact verification
 
 Generated Galaxy artifacts are not complete just because a file exists

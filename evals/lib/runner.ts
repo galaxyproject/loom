@@ -19,7 +19,7 @@ import * as os from "os";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import { writePiModelsConfig } from "./matrix.js";
-import type { AnyEvent, ModelEntry, Scenario, ScenarioRun } from "./types.js";
+import type { ActivityEvent, AnyEvent, ModelEntry, Scenario, ScenarioRun } from "./types.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(__filename), "..", "..");
@@ -53,6 +53,7 @@ export async function runScenario(
     const result = await spawnLoom(scenario, model, tmpCwd, tmpAgentDir, tmpRoot);
     const events = parseJsonLines(result.stdout);
     const notebookContent = readNotebook(tmpCwd);
+    const activityEvents = readActivityLog(tmpCwd);
     return {
       scenarioDir,
       scenario,
@@ -62,6 +63,7 @@ export async function runScenario(
       stdout: result.stdout,
       stderr: result.stderr,
       notebookContent,
+      activityEvents,
       failures: [],
       durationMs: Date.now() - start,
     };
@@ -78,6 +80,32 @@ function readNotebook(cwd: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * The harness's own audit trail, read from the temp cwd before cleanup. In
+ * `--mode json` there is no UI, so `ctx.ui.notify` is a no-op and a command
+ * that records a decision leaves no trace in the event stream; this file is
+ * where it lands. Malformed lines are skipped rather than failing the run,
+ * matching how the brain hydrates it.
+ */
+function readActivityLog(cwd: string): ActivityEvent[] {
+  const file = path.join(cwd, "activity.jsonl");
+  if (!fs.existsSync(file)) return [];
+  const out: ActivityEvent[] = [];
+  try {
+    for (const line of fs.readFileSync(file, "utf-8").split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        out.push(JSON.parse(line) as ActivityEvent);
+      } catch {
+        // skip
+      }
+    }
+  } catch {
+    return out;
+  }
+  return out;
 }
 
 interface SpawnResult {

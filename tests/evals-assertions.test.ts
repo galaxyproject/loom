@@ -1,6 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { evaluate } from "../evals/lib/assertions";
-import type { AnyEvent, Assertions, ModelEntry, ScenarioRun } from "../evals/lib/types";
+import { aggregateCells, declaredDimensions } from "../evals/lib/aggregate";
+import type {
+  ActivityEvent,
+  AnyEvent,
+  Assertions,
+  ModelEntry,
+  ScenarioRun,
+} from "../evals/lib/types";
 
 function textEvents(text: string): AnyEvent[] {
   return [
@@ -13,6 +20,7 @@ function textEvents(text: string): AnyEvent[] {
 function makeRun(opts: {
   events?: AnyEvent[];
   notebookContent?: string | null;
+  activityEvents?: ActivityEvent[];
   assertions: Assertions;
   model?: ModelEntry | null;
 }): ScenarioRun {
@@ -30,10 +38,18 @@ function makeRun(opts: {
     stdout: "",
     stderr: "",
     notebookContent: opts.notebookContent ?? null,
+    activityEvents: opts.activityEvents ?? [],
     failures: [],
     durationMs: 1,
   };
 }
+
+const overrideRow: ActivityEvent = {
+  timestamp: "2026-09-07T00:00:00Z",
+  kind: "evidence.override",
+  source: "user",
+  payload: { step: "#plan-a-step-1", invocationStatus: "in_progress", cleared: 1 },
+};
 
 describe("evals assertions: dimension tagging", () => {
   it("tags a routing failure as 'routing' and a validity failure as 'validity'", () => {
@@ -308,5 +324,111 @@ describe("evals assertions: stripThinkingTags", () => {
     });
     const f = evaluate(run);
     expect(f.map((x) => x.assertion)).toContain("chatText.mustInclude");
+  });
+});
+
+describe("evals assertions: activity log", () => {
+  const activityEvents = [overrideRow];
+
+  it("matches a row on kind, source, and payload together", () => {
+    const run = makeRun({
+      activityEvents,
+      assertions: {
+        activity: {
+          mustInclude: [
+            {
+              kind: "evidence.override",
+              source: "user",
+              payloadContains: { step: "#plan-a-step-1", invocationStatus: "in_progress" },
+            },
+          ],
+        },
+      },
+    });
+    expect(evaluate(run)).toHaveLength(0);
+  });
+
+  it("compares payload values as strings, so a scenario file need not mirror JSON types", () => {
+    const run = makeRun({
+      activityEvents,
+      assertions: {
+        activity: {
+          mustInclude: [{ kind: "evidence.override", payloadContains: { cleared: "1" } }],
+        },
+      },
+    });
+    expect(evaluate(run)).toHaveLength(0);
+  });
+
+  it("fails on the right kind with the wrong payload -- not a vacuous pass", () => {
+    const run = makeRun({
+      activityEvents,
+      assertions: {
+        activity: {
+          mustInclude: [
+            { kind: "evidence.override", payloadContains: { invocationStatus: "completed" } },
+          ],
+        },
+      },
+    });
+    expect(evaluate(run).map((f) => f.assertion)).toContain("activity.mustInclude");
+  });
+
+  it("fails when the log is empty, and says what it did see", () => {
+    const run = makeRun({
+      activityEvents: [],
+      assertions: { activity: { mustInclude: [{ kind: "evidence.override" }] } },
+    });
+    const [failure] = evaluate(run);
+    expect(failure.assertion).toBe("activity.mustInclude");
+    expect(failure.detail).toContain("nothing");
+  });
+
+  it("catches a banned kind", () => {
+    const run = makeRun({
+      activityEvents,
+      assertions: { activity: { mustNotIncludeKinds: ["evidence.override"] } },
+    });
+    expect(evaluate(run).map((f) => f.assertion)).toContain("activity.mustNotIncludeKinds");
+  });
+
+  it("says nothing when the scenario has no activity assertions", () => {
+    expect(evaluate(makeRun({ activityEvents, assertions: {} }))).toHaveLength(0);
+  });
+
+  it("declares a dimension, so an activity-only scenario can actually fail the run", () => {
+    // Without this the failure is recorded, aggregation reports no dimensions,
+    // and the CLI exits 0 -- a scenario that silently cannot fail.
+    const assertions = { activity: { mustInclude: [{ kind: "evidence.override" }] } };
+    expect(declaredDimensions({ name: "x", tier: 1, inputs: [], assertions })).toContain("other");
+
+    const run = makeRun({ activityEvents: [], assertions });
+    run.failures = evaluate(run);
+    const [cell] = aggregateCells([run]);
+    expect(cell.dimensions.other?.verdict).toBe(false);
+  });
+});
+
+describe("behavior.asksClarifyingQuestion", () => {
+  const ask = (chat: string) =>
+    evaluate({
+      scenario: { name: "t", assertions: { behavior: { asksClarifyingQuestion: true } } },
+      events: [
+        { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: chat } },
+      ],
+      exitCode: 0,
+      durationMs: 0,
+    } as never).map((f) => f.assertion);
+
+  it("accepts a question mark", () => {
+    expect(ask("What kind of data do you have?")).toEqual([]);
+  });
+
+  it("accepts a request that introduces a list", () => {
+    expect(ask("I need a few details first. Could you let me know:\n1. the data type")).toEqual([]);
+  });
+
+  it("still fails an answer that asks for nothing", () => {
+    expect(ask("Here is a summary of your data.")).toContain("behavior.asksClarifyingQuestion");
   });
 });

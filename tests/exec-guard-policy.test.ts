@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import { describe, it, expect } from "vitest";
 import { decide } from "../extensions/loom/exec-guard/policy";
 import type {
@@ -221,6 +222,54 @@ describe("decide", () => {
         req({ cwd: wcwd, toolName: "write", toolInput: { path: `${wcwd}/.git/hooks/pre-commit` } }),
         wdeps,
       ).decision,
+    ).toBe("ask");
+  });
+  it("a bash write into the Orbit analysis workspace prompts, it is not denied (P0.8)", () => {
+    // Parity with the write tool three tests up: the same file, the same
+    // workspace. The catastrophic pattern for Loom state used to deny this
+    // outright because Orbit's DEFAULT_CWD lives under ~/.loom.
+    const wcwd = "/home/alice/.loom/analyses/proj";
+    const wdeps = {
+      resolver: { contains: (p: string) => ({ resolved: p, inside: p.startsWith(wcwd) }) },
+      home: HOME,
+    };
+    const r = decide(req({ cwd: wcwd, toolInput: { command: `echo x > ${wcwd}/out.txt` } }), wdeps);
+    expect(r.decision).toBe("ask");
+    expect(r.category).toBe("bash:unknown");
+    // Loom's own state on the same session is still an unappealable deny.
+    for (const command of [
+      `echo x > ${HOME}/.loom/config.json`,
+      `cp evil ${wcwd}/.loom/activity.jsonl`,
+    ]) {
+      const d = decide(req({ cwd: wcwd, toolInput: { command } }), wdeps);
+      expect(d.decision, command).toBe("deny");
+      expect(d.category, command).toBe("bash:catastrophic");
+    }
+  });
+  it("a bash write through a symlink into Loom state is still catastrophic (P0.8)", () => {
+    // The classifier only sees the string. A path that looks like ordinary work
+    // product but realpaths into Loom's own state has to come back as a deny --
+    // this is the resolver the file-tool branch has always had.
+    const wcwd = "/home/alice/.loom/analyses/proj";
+    const link = `${wcwd}/link`;
+    const sdeps = {
+      resolver: {
+        contains: (p: string) => ({
+          resolved:
+            path.normalize(p) === path.normalize(link)
+              ? path.normalize("/home/alice/.loom/config.json")
+              : p,
+          inside: path.normalize(p).startsWith(path.normalize(wcwd)),
+        }),
+      },
+      home: HOME,
+    };
+    const r = decide(req({ cwd: wcwd, toolInput: { command: `cp evil ${link}` } }), sdeps);
+    expect(r.decision).toBe("deny");
+    expect(r.category).toBe("bash:catastrophic");
+    // the same command at a target that really is work product still prompts
+    expect(
+      decide(req({ cwd: wcwd, toolInput: { command: `cp evil ${wcwd}/out.txt` } }), sdeps).decision,
     ).toBe("ask");
   });
   it("gates a .git write even when cwd is inside the .git dir (no carve-away)", () => {
@@ -494,5 +543,168 @@ describe("decide -- destructive Galaxy operations (#338)", () => {
     );
     expect(r.decision).toBe("deny");
     expect(r.category).toBe("bash:catastrophic");
+  });
+});
+
+// pi declares its file tools with a `path` parameter, but every one of their
+// renderers reads `file_path ?? path` (dist/core/tools/{edit,write,read}.js) --
+// the Anthropic spelling shows up often enough that pi displays it. A floor
+// cannot assume one spelling, so the guard resolves both keys and each check
+// runs across every path-shaped argument: a benign `path` must not launder a
+// sensitive `file_path` past the gate, and the human prompt must be about the
+// same file the tool would touch.
+describe("decide -- the file_path alias (P0.3)", () => {
+  const KEYS = ["path", "file_path"] as const;
+  const TIERS = ["trusted", "weak"] as const;
+
+  it("a credential-store read is denied under either key, at both tiers", () => {
+    for (const key of KEYS)
+      for (const modelTier of TIERS)
+        expect(
+          decide(
+            req({ toolName: "read", modelTier, toolInput: { [key]: "/home/alice/.ssh/id_rsa" } }),
+            deps,
+          ).decision,
+          `${key}/${modelTier}`,
+        ).toBe("deny");
+  });
+
+  it("a credential-shaped read asks/denies by tier under either key", () => {
+    for (const key of KEYS) {
+      expect(
+        decide(
+          req({ toolName: "read", toolInput: { [key]: "/home/alice/project/server.key" } }),
+          deps,
+        ).decision,
+        key,
+      ).toBe("ask");
+      expect(
+        decide(
+          req({
+            toolName: "read",
+            modelTier: "weak",
+            toolInput: { [key]: "/home/alice/project/server.key" },
+          }),
+          deps,
+        ).decision,
+        `${key}/weak`,
+      ).toBe("deny");
+    }
+  });
+
+  it("grep/ls/find outside the workspace prompt under either key", () => {
+    for (const toolName of ["grep", "ls", "find"])
+      for (const key of KEYS) {
+        expect(
+          decide(req({ toolName, toolInput: { [key]: "/home/alice/Desktop" } }), deps).decision,
+          `${toolName}/${key}`,
+        ).toBe("ask");
+        expect(
+          decide(
+            req({ toolName, modelTier: "weak", toolInput: { [key]: "/home/alice/Desktop" } }),
+            deps,
+          ).decision,
+          `${toolName}/${key}/weak`,
+        ).toBe("deny");
+      }
+  });
+
+  it("a protected write (.git/.loom) prompts under either key", () => {
+    for (const key of KEYS)
+      for (const toolName of ["write", "edit"]) {
+        const r = decide(
+          req({ toolName, toolInput: { [key]: "/home/alice/project/.git/hooks/pre-commit" } }),
+          deps,
+        );
+        expect(r.decision, `${toolName}/${key}`).toBe("ask");
+        expect(r.category, `${toolName}/${key}`).toBe("write:protected");
+        expect(
+          decide(
+            req({
+              toolName,
+              modelTier: "weak",
+              toolInput: { [key]: "/home/alice/project/.loom/activity.jsonl" },
+            }),
+            deps,
+          ).decision,
+          `${toolName}/${key}/weak`,
+        ).toBe("deny");
+      }
+  });
+
+  it("a write outside the workspace prompts (trusted) / denies (weak) under either key", () => {
+    for (const key of KEYS) {
+      const r = decide(req({ toolName: "write", toolInput: { [key]: "/etc/cron.d/x" } }), deps);
+      expect(r.decision, key).toBe("ask");
+      expect(r.category, key).toBe("write:escape");
+      expect(
+        decide(
+          req({ toolName: "write", modelTier: "weak", toolInput: { [key]: "/etc/cron.d/x" } }),
+          deps,
+        ).decision,
+        `${key}/weak`,
+      ).toBe("deny");
+    }
+  });
+
+  it("a sensitive write is floored under either key", () => {
+    for (const key of KEYS)
+      expect(
+        decide(req({ toolName: "write", toolInput: { [key]: "/home/alice/project/id_rsa" } }), deps)
+          .decision,
+        key,
+      ).toBe("ask");
+  });
+
+  it("a benign `path` does not launder a sensitive `file_path` (both keys are checked)", () => {
+    // The pairing pi's own renderer would display as the second path while the
+    // guard, resolving `path` alone, would have judged the first.
+    expect(
+      decide(
+        req({
+          toolName: "read",
+          toolInput: {
+            path: "/home/alice/project/notes.txt",
+            file_path: "/home/alice/.ssh/id_rsa",
+          },
+        }),
+        deps,
+      ).decision,
+    ).toBe("deny");
+    const w = decide(
+      req({
+        toolName: "write",
+        toolInput: { path: "/home/alice/project/out.txt", file_path: "/etc/cron.d/x" },
+      }),
+      deps,
+    );
+    expect(w.decision).toBe("ask");
+    expect(w.category).toBe("write:escape");
+  });
+
+  it("an in-workspace write under either key is still allowed (no new prompts)", () => {
+    for (const key of KEYS)
+      expect(
+        decide(
+          req({ toolName: "write", toolInput: { [key]: "/home/alice/project/out.txt" } }),
+          deps,
+        ).decision,
+        key,
+      ).toBe("allow");
+    expect(
+      decide(
+        req({
+          toolName: "read",
+          toolInput: { path: "/home/alice/project/a.txt", file_path: "/home/alice/project/b.txt" },
+        }),
+        deps,
+      ).decision,
+    ).toBe("allow");
+  });
+
+  it("a write with neither key still asks (write:no-path unchanged)", () => {
+    const r = decide(req({ toolName: "write", toolInput: { content: "x" } }), deps);
+    expect(r.decision).toBe("ask");
+    expect(r.category).toBe("write:no-path");
   });
 });

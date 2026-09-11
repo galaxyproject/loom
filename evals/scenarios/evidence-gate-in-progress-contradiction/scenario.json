@@ -1,0 +1,34 @@
+{
+  "name": "the evidence gate treats a completion flipped over an in_progress invocation as a contradiction",
+  "description": "Step 1 is marked `- [x]` while the loom-invocation block bound to its anchor still reads `status: in_progress` -- the exact shape the evidence gate fires on. `/override` resolves that binding synchronously and records `evidence.override` with the invocation status it found, so this asserts the gate's predicate, its anchor binding, and its default mode without an LLM call. Step 2 has no bound invocation and must stay untouched: the gate has no opinion about a step it isn't holding, and neither does the override.",
+  "tier": 1,
+  "inputs": ["/override plan-a-step-1 checked the BAM in the Galaxy UI, the block is stale"],
+  "env": {
+    "ANTHROPIC_API_KEY": "fake-eval-key"
+  },
+  "timeoutMs": 10000,
+  "assertions": {
+    "events": {
+      "mustNotInclude": ["agent_start", "tool_execution_start", "turn_start"]
+    },
+    "activity": {
+      "mustInclude": [
+        {
+          "kind": "evidence.override",
+          "source": "user",
+          "payloadContains": {
+            "step": "#plan-a-step-1",
+            "stepState": "x",
+            "invocationId": "abc0000000000001",
+            "invocationStatus": "in_progress",
+            "mode": "warn",
+            "reason": "checked the BAM in the Galaxy UI, the block is stale"
+          }
+        }
+      ]
+    },
+    "notebook": {
+      "contains": ["- [ ] 2. **Call variants** {#plan-a-step-2}"]
+    }
+  }
+}

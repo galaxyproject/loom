@@ -185,6 +185,9 @@ describe("checkInvocations concurrency (#391)", () => {
   });
 
   it("does not announce a transition another poller already recorded", async () => {
+    // Seconds ahead, not years: a reading further out than any clock drift is a
+    // hand edit, and applyInvocationUpdates stopped honouring those.
+    const aheadOfUs = new Date(Date.now() + 5_000).toISOString();
     writeFileSync(nbPath, `# Notes\n\n${renderInvocationYaml(invocation())}`, "utf-8");
     vi.spyOn(galaxyApi, "galaxyGet").mockImplementation(async () => {
       // A second checker got there first with a strictly later reading.
@@ -194,7 +197,7 @@ describe("checkInvocations concurrency (#391)", () => {
           invocation({
             status: "completed",
             summary: "Workflow completed: 1 jobs succeeded",
-            lastPolledAt: "2099-01-01T00:00:00Z",
+            lastPolledAt: aheadOfUs,
           }),
         )}`,
         "utf-8",
@@ -205,7 +208,7 @@ describe("checkInvocations concurrency (#391)", () => {
     const result = await checkInvocations(undefined);
 
     expect(JSON.parse(result.content[0].text).results[0].autoAction).toBeUndefined();
-    expect(readFileSync(nbPath, "utf-8")).toContain("last_polled_at: 2099-01-01T00:00:00Z");
+    expect(readFileSync(nbPath, "utf-8")).toContain(`last_polled_at: ${aheadOfUs}`);
   });
 
   it("does not re-announce a completion another poll recorded first", async () => {

@@ -12,6 +12,7 @@ import { isUvxAvailable, uvxMissingNotice } from "./uvx-check.js";
 import { resolveHideThinking, isInteractiveTerminal } from "./thinking-pref.js";
 import { hasStoredCredential, isProviderUsable, pickSignedInFallback } from "./provider-auth.js";
 import { SEED_OAUTH_ONLY_PROVIDERS } from "../shared/provider-auth-caps.js";
+import { EX_CONFIG } from "../shared/brain-exit.js";
 import { resolvePiExtensionDir } from "./pi-extension-path.js";
 import { pickChannel } from "../shared/version-compare.js";
 import {
@@ -445,6 +446,13 @@ or unset "llm.active" in ~/.loom/config.json.`;
   * Unset "llm.active" in ~/.loom/config.json.`;
 }
 
+/**
+ * Every exit below is EX_CONFIG, not 1: each one has already diagnosed the
+ * problem and printed the fix for it, and none of them can come out differently
+ * on a second attempt. A shell reads that code as "show this, don't retry"
+ * (#439) -- under the old blanket 1, Orbit restarted three times and replaced
+ * these messages with a generic crash box.
+ */
 function checkLLMProvider() {
   const skipFlags = ["--version", "--help", "-h", "--api-key", "--list-models"];
   if (userArgs.some((a) => skipFlags.some((f) => a.startsWith(f)))) return;
@@ -466,7 +474,7 @@ function checkLLMProvider() {
 
 ${credentialFixHint(activeLlmProvider, { canUseApiKey: false })}
 `);
-    process.exit(1);
+    process.exit(EX_CONFIG);
   }
 
   // Custom OpenAI-compatible provider: usable when a key is resolvable from the
@@ -511,7 +519,7 @@ decrypted here, so no credential reached the agent. (apiKeyEncrypted in
 
 ${credentialFixHint(activeLlmProvider, { canUseApiKey: true })}
 `);
-    process.exit(1);
+    process.exit(EX_CONFIG);
   }
 
   // Any stored pi login at all -- the user may have signed in via `--provider`
@@ -533,7 +541,7 @@ ${credentialFixHint(activeLlmProvider, { canUseApiKey: true })}
 Open Preferences, pick a provider and add its API key (or sign in to it),
 then start a new session.
 `);
-    process.exit(1);
+    process.exit(EX_CONFIG);
   }
 
   console.error(`loom requires an LLM provider to function.
@@ -563,7 +571,7 @@ Set up one of the following:
      Run with --provider anthropic (or openai, google, etc.)
      and follow the login prompts.
 `);
-  process.exit(1);
+  process.exit(EX_CONFIG);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

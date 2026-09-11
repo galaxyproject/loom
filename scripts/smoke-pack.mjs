@@ -6,7 +6,7 @@
 // Usage: `npm run smoke:pack` (also wired as `prepublishOnly`).
 
 import { execFileSync, execSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -38,7 +38,13 @@ try {
 
   // 3. Install runtime deps -- mirrors what `npm install -g` would do.
   console.log(`[smoke] npm install (runtime deps only) -- this takes ~30s`);
-  execSync("npm install --omit=dev --omit=optional --no-audit --no-fund", {
+  const pkgJsonPath = join(pkgDir, "package.json");
+  const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf8"));
+  delete pkg.devDependencies;
+  if (pkg.scripts) delete pkg.scripts.prepare;
+  writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2));
+
+  execSync("npm install --omit=dev --omit=optional --no-audit --no-fund --ignore-scripts", {
     cwd: pkgDir,
     stdio: "inherit",
   });

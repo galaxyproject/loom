@@ -130,8 +130,9 @@ export async function galaxyPut<T = unknown>(
 }
 
 /**
- * Fetch job details from Galaxy. Returns the full response; callers typically
- * only need `tool_version`.
+ * Fetch job details from Galaxy: `id`, `state`, `tool_id`, `tool_version`,
+ * and `params`. The invocation poller is the only caller today and reads
+ * only `state`.
  */
 export async function galaxyGetJobDetails(
   jobId: string,

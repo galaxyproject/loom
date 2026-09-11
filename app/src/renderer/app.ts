@@ -15,12 +15,19 @@ import { refreshGalaxyHistory } from "./galaxy-history.js";
 import { formatGalaxyTooltip } from "./galaxy-tooltip.js";
 import { PromptQueue, queuedPreview } from "./prompt-queue.js";
 import { FeedbackDraftStore } from "./feedback-draft.js";
+import {
+  ProviderFieldStore,
+  captureProviderState,
+  providerStateFor,
+  snapshotProviderState,
+  type ProviderFields,
+  type ProviderState,
+} from "./provider-state.js";
 import { applyOrbitTheme } from "./theme.js";
 import { caretVisualLineFlags, shouldRecallOnArrow } from "./input-history-nav.js";
 import { shouldAcceptSlashCommandOnEnter } from "./slash-popup-nav.js";
 import { buildDiscoveredModelOptions, type ModelOption } from "./model-options.js";
 import { planModelDiscovery } from "./model-discovery-gate.js";
-import { snapshotProviderState, type ProviderState } from "./provider-state.js";
 import { LoomWidgetKey, decodeMarkdownWidget } from "../../../shared/loom-shell-contract.js";
 import { ALLOWED_SKILLS_PREFIX, isAllowedSkillUrl } from "../../../shared/loom-config.js";
 import {
@@ -35,6 +42,7 @@ import changelogRaw from "../../../CHANGELOG.md?raw";
 import { parseChangelog, decideWhatsNew, releaseUrlFor } from "../../../shared/whats-new.js";
 import { isOAuthOnly, SEED_PROVIDER_AUTH_CAPS } from "../../../shared/provider-auth-caps.js";
 import type { ProviderAuthCaps } from "../../../shared/provider-auth-caps.js";
+import { splitApprovalPrompt } from "../../../shared/approval-prompt.js";
 import { openReleaseWithFallback, clearReleaseFallback } from "./update-banner.js";
 
 declare global {
@@ -477,10 +485,12 @@ modelIndicatorEl.addEventListener("click", () => {
 const ARTIFACT_COLLAPSED_KEY = "orbit.artifactCollapsed";
 const exportChatBtn = document.getElementById("export-chat-btn")!;
 const artifactToggleBtn = document.getElementById("artifact-toggle")!;
+const chatPane = document.getElementById("chat-pane")!;
 
 // Apply visual state without persisting; used by responsive auto-collapse.
 function applyArtifactCollapsed(collapsed: boolean): void {
   document.body.classList.toggle("artifact-collapsed", collapsed);
+  if (collapsed) chatPane.style.flex = "";
 }
 // User-initiated toggle; persists to localStorage.
 function setArtifactCollapsed(collapsed: boolean): void {
@@ -945,18 +955,64 @@ function wireApiKeyValidation(
   baseUrlEl?.addEventListener("input", schedule);
 }
 
-function populateWelcomeModels(provider: string): void {
+function populateWelcomeModels(provider: string, selected?: string): void {
   welcomeModel.innerHTML = "";
   const models = MODELS_BY_PROVIDER[provider] || [];
   for (const m of models) {
     const opt = document.createElement("option");
     opt.value = m.id;
     opt.textContent = m.label;
+    if (selected && m.id === selected) opt.selected = true;
+    welcomeModel.appendChild(opt);
+  }
+  // A model the catalog doesn't carry (custom endpoint, Jetstream preset) still
+  // has to survive a trip through another provider and back.
+  if (selected && !models.some((m) => m.id === selected)) {
+    const opt = document.createElement("option");
+    opt.value = selected;
+    opt.textContent = `${selected} (custom)`;
+    opt.selected = true;
     welcomeModel.appendChild(opt);
   }
 }
+
+// Per-provider field state, same idea as Preferences: the overlay shows one set
+// of inputs, so switching the dropdown has to stash the old provider's fields
+// and restore the new one's. Without it the key typed for provider A stayed in
+// the input and got saved as provider B's credential (#401).
+const welcomeProviders = new ProviderFieldStore(welcomeProvider.value);
+
+function readWelcomeFields(): ProviderFields {
+  return {
+    typedKey: welcomeApiKey.value,
+    model: welcomeModel.value,
+    baseUrl: welcomeBaseUrl.value,
+  };
+}
+
+function showWelcomeFields(provider: string, state: ProviderState): void {
+  populateWelcomeModels(provider, state.model || undefined);
+  welcomeApiKey.value = state.typedKey;
+  welcomeBaseUrl.value = state.baseUrl;
+  // The validation verdict belongs to the key that just left the field.
+  welcomeApiKeyStatus.className = "api-key-status";
+  welcomeApiKeyStatus.textContent = "";
+}
+
+/** Point the overlay at `provider`, stashing whatever is on screen first. */
+function selectWelcomeProvider(provider: string): void {
+  showWelcomeFields(provider, welcomeProviders.select(provider, readWelcomeFields()));
+}
+
+/** Wipe the typed keys once they've been handed off (or abandoned). */
+function forgetWelcomeKeys(): void {
+  welcomeProviders.clear();
+  welcomeApiKey.value = "";
+  welcomeBaseUrl.value = "";
+}
+
 welcomeProvider.addEventListener("change", () => {
-  populateWelcomeModels(welcomeProvider.value);
+  selectWelcomeProvider(welcomeProvider.value);
   void updateWelcomeAuthUi();
 });
 wireApiKeyValidation(
@@ -1044,6 +1100,7 @@ welcomeSave.addEventListener("click", async () => {
       welcomeError.textContent = res.error || "Could not start the agent with that key";
       return;
     }
+    forgetWelcomeKeys();
     welcomeOverlay.classList.add("hidden");
     await refreshGalaxyStatus();
     return;
@@ -1083,20 +1140,22 @@ welcomeSave.addEventListener("click", async () => {
     return;
   }
 
-  // OAuth-only providers persist their credential in ~/.pi/agent/auth.json
-  // (written by the sign-in flow above), not in config.json. Skip writing apiKey
-  // for those so a leftover plaintext field doesn't shadow the real auth path.
-  // Skip it for an empty value too: "" means CLEAR to the reconciler, which would
-  // wipe a stored key for a dual-auth provider the user chose to sign into.
-  const providerEntry: Record<string, unknown> = { model: welcomeModel.value || undefined };
-  if (!oauthOnly && apiKey) providerEntry.apiKey = apiKey;
-  if (welcomeBaseUrl.value.trim()) providerEntry.baseUrl = welcomeBaseUrl.value.trim();
+  // Persist every provider that got a key, each under its own name, with the
+  // selected one active -- so a key typed before switching the dropdown isn't
+  // lost (or, worse, saved as the wrong provider's). OAuth-only providers persist
+  // their credential in ~/.pi/agent/auth.json (written by the sign-in flow
+  // above), not in config.json, so no apiKey is written for those.
+  welcomeProviders.snapshot(readWelcomeFields());
   const cfg: Record<string, unknown> = {
     llm: {
       active: welcomeProvider.value,
-      providers: {
-        [welcomeProvider.value]: providerEntry,
-      },
+      providers: welcomeProviders.saveEntries({
+        isOAuthProvider: isOAuthOnlyProvider,
+        // Only the provider on screen gets the base-URL check above, so a
+        // custom endpoint the user stashed half-configured is dropped rather
+        // than written as an unreachable key.
+        requiresBaseUrl: (provider) => provider === "openai-compatible",
+      }),
     },
   };
 
@@ -1110,7 +1169,15 @@ welcomeSave.addEventListener("click", async () => {
   const cwd = welcomeCwd.value.trim();
   if (cwd) cfg.defaultCwd = cwd;
 
-  await window.orbit.saveConfig(cfg);
+  // Keep the overlay (and the typed keys) if main rejected the config -- e.g.
+  // a Galaxy URL that fails validation. Dismissing here would drop every key
+  // the user entered without any of them having been persisted.
+  const result = await window.orbit.saveConfig(cfg);
+  if (!result.success) {
+    welcomeError.textContent = result.error || "Could not save your settings";
+    return;
+  }
+  forgetWelcomeKeys();
   welcomeOverlay.classList.add("hidden");
   await refreshGalaxyStatus();
 });
@@ -1120,6 +1187,7 @@ welcomeSave.addEventListener("click", async () => {
 // in chat where to come back when they're ready.
 const welcomeSkip = document.getElementById("welcome-skip")!;
 welcomeSkip.addEventListener("click", () => {
+  forgetWelcomeKeys();
   welcomeOverlay.classList.add("hidden");
   chat.addInfoMessage(
     `<i>No LLM provider configured yet. Open <code>Preferences</code> ` +
@@ -1149,7 +1217,7 @@ async function checkFirstRun(): Promise<void> {
     if (!hasKey) {
       remoteKeyEntry = true;
       if (active) welcomeProvider.value = active;
-      populateWelcomeModels(welcomeProvider.value);
+      selectWelcomeProvider(welcomeProvider.value);
       void updateWelcomeAuthUi();
       // Remote: cwd is fixed (/tmp/loom-session) and Galaxy creds are injected,
       // so hide both optional <details> sections; "Skip" would leave no agent.
@@ -1170,7 +1238,7 @@ async function checkFirstRun(): Promise<void> {
   }
   const hasKey = active ? Boolean(cfg.llm?.providers?.[active]?.hasApiKey) : false;
   if (!hasKey) {
-    populateWelcomeModels(welcomeProvider.value);
+    selectWelcomeProvider(welcomeProvider.value);
     void updateWelcomeAuthUi();
     welcomeOverlay.classList.remove("hidden");
   }
@@ -2704,6 +2772,7 @@ window.orbit.onAgentEvent((event) => {
 const extOverlay = document.getElementById("ext-overlay")!;
 const extTitleEl = document.getElementById("ext-title")!;
 const extMessageEl = document.getElementById("ext-message")!;
+const extDetailEl = document.getElementById("ext-detail")!;
 const extInputEl = document.getElementById("ext-input") as HTMLInputElement;
 const extOptionsEl = document.getElementById("ext-options")!;
 const extCancelBtn = document.getElementById("ext-cancel") as HTMLButtonElement;
@@ -2714,12 +2783,14 @@ const extDenyBtn = document.getElementById("ext-deny") as HTMLButtonElement;
 function hideExtModal(): void {
   extOverlay.classList.add("hidden");
   extMessageEl.classList.add("hidden");
+  extDetailEl.classList.add("hidden");
   extInputEl.classList.add("hidden");
   extOptionsEl.classList.add("hidden");
   extConfirmBtn.classList.add("hidden");
   extAcceptBtn.classList.add("hidden");
   extDenyBtn.classList.add("hidden");
   extOptionsEl.innerHTML = "";
+  extDetailEl.textContent = "";
   extInputEl.value = "";
 }
 
@@ -2760,7 +2831,15 @@ function openExtInput(id: string, title: string, placeholder?: string): void {
 }
 
 function openExtSelect(id: string, title: string, options: string[]): void {
-  extTitleEl.textContent = title;
+  // The brain has only the title string to work with, so anything below the
+  // first blank line is the thing being approved -- render it in the body,
+  // where it can scroll and keep its newlines. #399
+  const { heading, detail } = splitApprovalPrompt(title);
+  extTitleEl.textContent = heading;
+  // Assigned unconditionally so a detail-less prompt can never inherit the
+  // previous prompt's command, even if the modal was left un-reset.
+  extDetailEl.textContent = detail;
+  extDetailEl.classList.toggle("hidden", !detail);
   extOptionsEl.classList.remove("hidden");
   extOverlay.classList.remove("hidden");
 
@@ -3048,7 +3127,6 @@ void window.orbit.getAgentStatus().then(({ status, message }) => {
 // ── Draggable Divider ─────────────────────────────────────────────────────────
 
 const divider = document.getElementById("divider")!;
-const chatPane = document.getElementById("chat-pane")!;
 
 let dragging = false;
 
@@ -3603,13 +3681,7 @@ prefsModelRefresh.addEventListener("click", () => {
 
 /** Load a provider's stored state into the visible fields. */
 function loadProviderFields(provider: string): void {
-  const state = prefsProviderStates[provider] ?? {
-    hadKey: false,
-    typedKey: "",
-    model: "",
-    baseUrl: "",
-    savedBaseUrl: "",
-  };
+  const state = providerStateFor(prefsProviderStates, provider);
   populateModels(provider, state.model || undefined, state.discoveredModels);
   setModelStatus("", "");
   prefsApiKey.value = state.typedKey;

@@ -291,6 +291,74 @@ describe("applyInvocationUpdates", () => {
     expect(content).toContain("status: completed");
   });
 
+  it("ignores a last_polled_at further ahead than any clock could be", () => {
+    // A model that writes itself a future timestamp would otherwise silence the
+    // poller for this invocation permanently: every later update reads as stale.
+    const onDisk = renderInvocationYaml({
+      ...base,
+      lastPolledAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    const { content, applied, transitioned } = applyInvocationUpdates(onDisk, [
+      poll({
+        lastPolledAt: new Date().toISOString(),
+        transition: { status: "completed", summary: "all done" },
+      }),
+    ]);
+    expect(applied).toEqual(["inv-1"]);
+    expect(transitioned).toEqual(["inv-1"]);
+    expect(content).toContain("status: completed");
+  });
+
+  it("still yields to a competing poller whose clock runs slightly ahead", () => {
+    const onDisk = renderInvocationYaml({
+      ...base,
+      status: "completed",
+      lastPolledAt: new Date(Date.now() + 5_000).toISOString(),
+    });
+    const { applied } = applyInvocationUpdates(onDisk, [
+      poll({ lastPolledAt: new Date().toISOString() }),
+    ]);
+    expect(applied).toEqual([]);
+  });
+
+  it("refuses to reopen a block another checker already finished", () => {
+    // The "a job failed while others run" verdict writes in_progress on
+    // purpose. Delivered late -- after a faster checker recorded the real end
+    // -- it would walk a terminal block back to running, and the next poll
+    // would announce the failure all over again.
+    const onDisk = renderInvocationYaml({
+      ...base,
+      status: "failed",
+      summary: "Workflow failed: 1 job(s) errored, 1 succeeded",
+    });
+    const { content, applied } = applyInvocationUpdates(onDisk, [
+      poll({
+        failedJobs: 1,
+        transition: {
+          status: "in_progress",
+          summary: "Workflow in progress: 1 job(s) failed, 1 still running",
+        },
+      }),
+    ]);
+    expect(applied).toEqual([]);
+    expect(content).toBe(onDisk);
+  });
+
+  it("still writes an in_progress summary onto a block that is still running", () => {
+    const { content, applied, transitioned } = applyInvocationUpdates(renderInvocationYaml(base), [
+      poll({
+        failedJobs: 1,
+        transition: {
+          status: "in_progress",
+          summary: "Workflow in progress: 1 job(s) failed, 1 still running",
+        },
+      }),
+    ]);
+    expect(applied).toEqual(["inv-1"]);
+    expect(transitioned).toEqual([]);
+    expect(content).toContain("1 job(s) failed, 1 still running");
+  });
+
   it("applies when the block on disk has never been polled", () => {
     const { applied } = applyInvocationUpdates(renderInvocationYaml(base), [poll()]);
     expect(applied).toEqual(["inv-1"]);

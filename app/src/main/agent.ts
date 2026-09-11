@@ -9,6 +9,12 @@ import { resolveLlmApiKey, resolveGalaxyApiKey } from "./secure-config.js";
 import { loadSessionHistory, newestSessionFile } from "./session-replay.js";
 import { collectDescendantsOf } from "./proc-monitor.js";
 import { buildBrainEnv as buildBaseBrainEnv } from "../../../shared/brain-env.js";
+import {
+  isConfigFailure,
+  summarizeStartupFailure,
+  stderrTail,
+  appendStderr,
+} from "../../../shared/brain-exit.js";
 import { noLocalShellSpawnExtras } from "./local-shell.js";
 import { TurnWatchdog } from "./turn-watchdog.js";
 import { formatWindowTitle } from "./window-title.js";
@@ -433,7 +439,7 @@ export class AgentManager {
 
     this.process.stderr?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
-      this.stderr += text;
+      this.stderr = appendStderr(this.stderr, text);
       log("stderr:", text.trimEnd());
     });
 
@@ -456,6 +462,19 @@ export class AgentManager {
         return;
       }
 
+      // A diagnosed configuration failure. The brain has already explained
+      // itself on stderr and will reach the same conclusion every time, so
+      // retrying only buries the explanation under two more attempts (#439).
+      if (isConfigFailure(code)) {
+        log(`agent exited with a configuration failure (code ${code}); not restarting`);
+        const { summary, detail } = summarizeStartupFailure(code, this.stderr);
+        // Chat first, then the badge: the chat error handler resets the badge to
+        // a bare "error", so the summary has to be the later of the two writes.
+        this.emitChatError(detail);
+        this.setStatus("error", summary);
+        return;
+      }
+
       // Crash. Try a bounded silent restart before surfacing to the user.
       if (this.shouldAutoRestart()) {
         const attempt = this.crashRestartTimes.length;
@@ -473,6 +492,15 @@ export class AgentManager {
       this.appendShellNote(
         `[orbit] brain has crashed too many times in 60s; auto-restart disabled`,
       );
+      // Even an undiagnosed crash usually said something on the way out; a bare
+      // exit code has never been enough to act on. The pill can't hold it, so
+      // the stderr goes to chat and the pill keeps its one-liner.
+      const tail = stderrTail(this.stderr, { maxLines: 12 });
+      if (tail) {
+        this.emitChatError(
+          `The agent crashed repeatedly (code ${code}) and stopped retrying.\n\n${tail}`,
+        );
+      }
       this.setStatus(
         "error",
         `Agent crashed repeatedly (code ${code}). Click status badge to open Preferences.`,
@@ -512,6 +540,18 @@ export class AgentManager {
   private appendShellNote(text: string): void {
     if (this.window.isDestroyed()) return;
     this.window.webContents.send("agent:shell", { kind: "info", text });
+  }
+
+  /**
+   * Put a message in the chat pane, the one surface that renders multi-line
+   * text. Same channel the stall watchdog uses (#185); the renderer turns it
+   * into an error card. Deliberately not appendShellNote -- that writes to
+   * "agent:shell", which no preload bridge or renderer listener subscribes to,
+   * so every note it has ever sent went nowhere.
+   */
+  private emitChatError(message: string): void {
+    if (this.window.isDestroyed()) return;
+    this.window.webContents.send("agent:event", { type: "error", message });
   }
 
   stop(): void {

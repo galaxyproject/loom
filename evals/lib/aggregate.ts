@@ -24,7 +24,7 @@ export function declaredDimensions(scenario: Scenario): Set<Dimension> {
     if (p.exists !== undefined || p.minPendingSteps !== undefined || p.eachStepHasDescription)
       dims.add("validity");
     if (p.routingIn) dims.add("routing");
-    if (p.mentionsOneOf || p.mentionsNoneOf) dims.add("tools");
+    if (p.mentionsOneOf || p.mentionsAllOf || p.mentionsNoneOf) dims.add("tools");
   }
   if (a.behavior?.asksClarifyingQuestion) dims.add("behavior");
   if (otherDeclared(a)) dims.add("other");
@@ -37,6 +37,7 @@ function otherDeclared(a: Assertions): boolean {
     a.toolCalls ||
     a.events ||
     a.chatText ||
+    a.activity ||
     a.notebook?.contains?.length ||
     a.notebook?.mustNotContain?.length ||
     a.notebook?.exists !== undefined,

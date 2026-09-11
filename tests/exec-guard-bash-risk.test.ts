@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import { describe, it, expect } from "vitest";
 import { classifyBash } from "../extensions/loom/exec-guard/bash-risk";
 
@@ -209,5 +210,313 @@ describe("classifyBash -- sensitiveReadPaths (pipe-evasion floor)", () => {
   it("is empty for commands with no content-read verb", () => {
     expect(classifyBash("ls -la /home/alice/.ssh").sensitiveReadPaths).toEqual([]);
     expect(classifyBash("python train.py").sensitiveReadPaths).toEqual([]);
+  });
+});
+
+// Orbit's DEFAULT_CWD is ~/.loom/analyses (app/src/main/main.ts), so every
+// desktop analysis workspace sits under a `.loom` segment. The catastrophic
+// pattern for "write to the Loom config directory" matched any write verb
+// followed anywhere by `.loom/`, which made an ordinary redirect into the
+// workspace -- the same file the write TOOL allows without a prompt -- an
+// unappealable deny. The carve-out mirrors isProtectedWritePath: under
+// $HOME/.loom/analyses with no nested `.loom` is work product, everything else
+// is Loom's own state.
+describe("classifyBash -- .loom writes vs Orbit's default workspace (#P0.8)", () => {
+  const ANALYSIS = `${HOME}/.loom/analyses/proj`;
+
+  it("real Loom state stays catastrophic", () => {
+    for (const c of [
+      `echo '{}' > ${HOME}/.loom/config.json`,
+      "sed -i 's/false/true/' ~/.loom/config.json",
+      "tee ~/.loom/config.json",
+      `cp evil ${HOME}/.loom/cache/skills/x.md`,
+      `mv x ${HOME}/.loom/sessions/s1/activity.jsonl`,
+      // a nested .loom INSIDE an analysis is the workspace's own state
+      `cp evil ${ANALYSIS}/.loom/activity.jsonl`,
+      `echo x > ~/.loom/analyses/proj/.loom/activity.jsonl`,
+      // escaping back out of the analyses tree
+      `echo x > ${ANALYSIS}/../../config.json`,
+    ])
+      expect(classifyBash(c, HOME).kind, c).toBe("catastrophic");
+  });
+
+  it("an ordinary write inside the analysis workspace is not catastrophic", () => {
+    for (const c of [
+      `echo x > ${ANALYSIS}/out.txt`,
+      `echo x >> ${ANALYSIS}/notebook.md`,
+      "echo x > ~/.loom/analyses/proj/out.txt",
+      "echo x > $HOME/.loom/analyses/proj/out.txt",
+      "echo x > ${HOME}/.loom/analyses/proj/out.txt",
+      `cp results.csv ${ANALYSIS}/results.csv`,
+      `mv ${ANALYSIS}/a.txt ${ANALYSIS}/b.txt`,
+      `sed -i 's/a/b/' ${ANALYSIS}/notebook.md`,
+      `python3 run.py | tee ${ANALYSIS}/log.txt`,
+      `cp "${ANALYSIS}/a.txt" "${ANALYSIS}/b.txt"`,
+    ])
+      expect(classifyBash(c, HOME).kind, c).not.toBe("catastrophic");
+  });
+
+  it("but it is not auto-allowed either -- it prompts as an unrecognized command", () => {
+    // The point of the carve-out is parity with the write tool's `ask`, not a
+    // silent pass: `>` is shell meta and `cp` is off the safe allowlist.
+    expect(classifyBash(`echo x > ${ANALYSIS}/out.txt`, HOME).kind).toBe("unknown");
+    expect(classifyBash(`cp a.txt ${ANALYSIS}/b.txt`, HOME).kind).toBe("unknown");
+  });
+
+  it("keeps denying every form it cannot resolve to an absolute path", () => {
+    for (const c of [
+      // relative: classifyBash has no cwd, so this could be any .loom
+      "echo x > .loom/config.json",
+      "cp evil ../.loom/config.json",
+      // an unexpanded variable or a glob could stand for anything
+      "echo x > $LOOM_DIR/.loom/analyses/proj/out.txt",
+      `echo x > ${HOME}/.loom/analyses/*/out.txt`,
+      "cp evil ~other/.loom/analyses/proj/out.txt",
+    ])
+      expect(classifyBash(c, HOME).kind, c).toBe("catastrophic");
+  });
+
+  it("judges a quoted target whole, so a space cannot truncate the path", () => {
+    // Truncating the token at the first space would leave
+    // "$HOME/.loom/analyses/x" -- carved out -- while the real target walks back
+    // up to Loom's own state. A quoted target has to be read to its closing quote.
+    expect(classifyBash(`cp evil "${HOME}/.loom/analyses/x ../../../config.json"`, HOME).kind).toBe(
+      "catastrophic",
+    );
+    expect(classifyBash(`cp evil '${HOME}/.loom/analyses/x ../../../config.json'`, HOME).kind).toBe(
+      "catastrophic",
+    );
+    // an inner command in quotes is not a path at all -- keep denying
+    expect(classifyBash(`bash -c "echo x > ${HOME}/.loom/config.json"`, HOME).kind).toBe(
+      "catastrophic",
+    );
+    // ...while an ordinary quoted workspace path, spaces and all, still passes
+    expect(classifyBash(`cp a.txt "${HOME}/.loom/analyses/my proj/out.txt"`, HOME).kind).not.toBe(
+      "catastrophic",
+    );
+  });
+
+  it("an escaped space makes a target unresolvable, so it keeps denying", () => {
+    expect(classifyBash(`cp evil ${HOME}/.loom/analyses/x\\ ../../../config.json`, HOME).kind).toBe(
+      "catastrophic",
+    );
+  });
+
+  it("brace expansion is unresolvable, so it keeps denying", () => {
+    // `{proj,..}` expands to two words, one of which walks out of the analyses
+    // tree; the single token it looks like resolves to neither.
+    expect(classifyBash(`cp evil ${HOME}/.loom/analyses/{proj,..}/config.json`, HOME).kind).toBe(
+      "catastrophic",
+    );
+    expect(classifyBash(`cp evil ${HOME}/.loom/{analyses/proj,}/config.json`, HOME).kind).toBe(
+      "catastrophic",
+    );
+  });
+
+  it("surfaces carved-out targets so the policy layer can realpath them", () => {
+    // classifyBash judges strings; only the policy layer has a resolver, so a
+    // carved-out target is handed over rather than declared safe outright.
+    expect(classifyBash(`cp a.txt ${ANALYSIS}/b.txt`, HOME).loomWriteTargets).toEqual([
+      path.normalize(`${ANALYSIS}/b.txt`),
+    ]);
+    expect(classifyBash(`echo x > ${HOME}/.loom/config.json`, HOME).loomWriteTargets).toEqual([]);
+    expect(classifyBash(`cat ${ANALYSIS}/notebook.md`, HOME).loomWriteTargets).toEqual([]);
+    expect(classifyBash("ls -la", HOME).loomWriteTargets).toEqual([]);
+  });
+
+  it("a quote does not end the shell word", () => {
+    // bash concatenates adjacent quoted and unquoted fragments into one word, so
+    // reading only up to the quote hands back the carved-out directory prefix
+    // while the real target walks out of the tree.
+    for (const c of [
+      `cp evil "${ANALYSIS}/"../../config.json`,
+      `cp evil ${HOME}/.loom/analyses/"../config.json"`,
+      `echo x > ${HOME}/.loom/analyses/''../config.json`,
+    ])
+      expect(classifyBash(c, HOME).kind, c).toBe("catastrophic");
+  });
+
+  it("neither does `=`, which is an ordinary character in a pathname", () => {
+    expect(classifyBash(`echo x > ${HOME}/.loom/analyses/=/../../config.json`, HOME).kind).toBe(
+      "catastrophic",
+    );
+  });
+
+  it("command substitution and bracket globs keep denying", () => {
+    for (const c of [
+      "echo x > " + HOME + "/.loom/analyses/`printf ../config.json`",
+      `echo x > ${HOME}/.loom/analyses/$(printf ../config.json)`,
+      `echo x > ${HOME}/.loom/analyses/.[.]/config.json`,
+    ])
+      expect(classifyBash(c, HOME).kind, c).toBe("catastrophic");
+  });
+
+  it("expands ~ and $HOME the way the shell does, quoting included", () => {
+    // single quotes suppress both; double quotes suppress ~ but not $HOME.
+    expect(classifyBash("echo x > '~/.loom/analyses/proj/out.txt'", HOME).kind).toBe(
+      "catastrophic",
+    );
+    expect(classifyBash(`echo x > '$HOME/.loom/analyses/proj/out.txt'`, HOME).kind).toBe(
+      "catastrophic",
+    );
+    expect(classifyBash(`echo x > "$HOME/.loom/analyses/proj/out.txt"`, HOME).kind).not.toBe(
+      "catastrophic",
+    );
+  });
+
+  it("treats any .. segment as unresolvable", () => {
+    // The policy layer's resolver collapses `link/..` lexically before it
+    // realpaths, so a `..` after a symlink would never be inspected.
+    expect(classifyBash(`echo x > ${ANALYSIS}/link/../config.json`, HOME).kind).toBe(
+      "catastrophic",
+    );
+  });
+
+  it("looks at an uppercase .LOOM target too (macOS is case-insensitive)", () => {
+    expect(classifyBash(`sed -i 's/a/b/' ${HOME}/.LOOM/config.json`, HOME).kind).toBe(
+      "catastrophic",
+    );
+    // the regression that matters: a carved-out lowercase target on the same
+    // line must not stop the uppercase one from being examined.
+    expect(
+      classifyBash(`echo x > ${ANALYSIS}/out.txt; cp evil ${HOME}/.LOOM/config.json`, HOME).kind,
+    ).toBe("catastrophic");
+  });
+
+  it("a directory that merely ends in .loom is not Loom state", () => {
+    expect(classifyBash("cp x /data/My.loom/foo", HOME).kind).not.toBe("catastrophic");
+  });
+
+  it("does not manufacture an expansion the shell would not perform", () => {
+    // Quote removal must not be followed by a fresh reading of the result: bash
+    // decides `~` and `$HOME` per fragment, at parse time. Each of these leaves
+    // a literal or relative target, never $HOME.
+    for (const c of [
+      `echo x > "$"HOME/.loom/analyses/out.txt`,
+      `echo x > $'HOME/.loom/analyses/out.txt'`,
+      `echo x > ~"/.loom/analyses/out.txt"`,
+      `echo x > $HO"ME"/.loom/analyses/out.txt`,
+    ])
+      expect(classifyBash(c, HOME).kind, c).toBe("catastrophic");
+    // ...while an empty leading fragment must not suppress a real expansion
+    expect(classifyBash(`echo x > ''"$HOME/.loom/analyses/proj/out.txt"`, HOME).kind).not.toBe(
+      "catastrophic",
+    );
+  });
+
+  it("sees a backslash-escaped .loom target", () => {
+    // bash strips the backslash; the word has to be recognized as a candidate
+    // before its backslash can disqualify it.
+    expect(
+      classifyBash(`echo x > ${ANALYSIS}/out.txt; cp evil ${HOME}/.\\loom/config.json`, HOME).kind,
+    ).toBe("catastrophic");
+  });
+
+  it("only ASCII whitespace ends a word", () => {
+    // JS \s matches U+00A0; bash does not, so it stays inside the pathname.
+    expect(
+      classifyBash(`echo x > ${HOME}/.loom/analyses/\u00a0/../../config.json`, HOME).kind,
+    ).toBe("catastrophic");
+  });
+
+  it("ignores comment lines the way the shell does", () => {
+    // An unbalanced quote inside a comment would otherwise stitch two lines into
+    // one fictitious word and hide the real target on the line between them.
+    const c = `cd ${HOME}\n# "${HOME}/.loom/analyses/\necho x > .loom/config.json\n# "`;
+    expect(classifyBash(c, HOME).kind).toBe("catastrophic");
+  });
+
+  it("does not read a key=value operand as a path, so dd keeps denying", () => {
+    // `of=/path` is one word to bash and a path only to dd; `> of=/path` is an
+    // ordinary relative filename. Telling those apart needs the verb, so neither
+    // is resolved and both stay denied -- conservative, and dd is not how the
+    // agent writes a file into a workspace.
+    expect(classifyBash(`dd if=/dev/null of=${ANALYSIS}/out.txt`, HOME).kind).toBe("catastrophic");
+    expect(classifyBash(`dd if=/dev/null of=~/.loom/config.json`, HOME).kind).toBe("catastrophic");
+    expect(classifyBash(`echo x > of=${ANALYSIS}/out.txt`, HOME).kind).toBe("catastrophic");
+    // Known limitation, unchanged by this rule: the trigger needs the write verb
+    // ahead of the path, so an assignment first -- and the indirection through
+    // the variable after it -- never reaches this rule at all.
+    expect(classifyBash(`OUT=~/.loom/config.json cp evil $OUT`, HOME).kind).toBe("unknown");
+  });
+
+  it("does not let an empty quote or an escaped space manufacture a comment", () => {
+    // bash keeps `#` inside a word once the word has started, so the command
+    // after the `;` really runs.
+    for (const c of [
+      `echo ${ANALYSIS}/out.txt ''#; echo x > ${HOME}/.loom/config.json`,
+      `echo ${ANALYSIS}/out.txt \\ #; echo x > ${HOME}/.loom/config.json`,
+    ])
+      expect(classifyBash(c, HOME).kind, c).toBe("catastrophic");
+  });
+
+  it("a tilde only expands when the word begins with it", () => {
+    // An empty quoted fragment in front leaves the tilde literal, so the target
+    // is relative, not the home directory.
+    for (const c of [
+      `echo x > ''~/.loom/analyses/proj/out.txt`,
+      `echo x > ""~/.loom/analyses/proj/out.txt`,
+    ])
+      expect(classifyBash(c, HOME).kind, c).toBe("catastrophic");
+  });
+
+  it("$HOME still expands when the slash sits in the next fragment", () => {
+    for (const c of [
+      `echo x > "$HOME"/.loom/analyses/proj/out.txt`,
+      `echo x > "\${HOME}"/.loom/analyses/proj/out.txt`,
+    ])
+      expect(classifyBash(c, HOME).kind, c).not.toBe("catastrophic");
+  });
+
+  it("an escaped ~ or $ is literal, not an expansion", () => {
+    // The backslash makes the character ordinary, so these targets are relative.
+    for (const c of [
+      `echo x > \\~/.loom/analyses/proj/out.txt`,
+      `echo x > \\$HOME/.loom/analyses/proj/out.txt`,
+      `echo x > "\\$HOME/.loom/analyses/proj/out.txt"`,
+    ])
+      expect(classifyBash(c, HOME).kind, c).toBe("catastrophic");
+  });
+
+  it("a line continuation does not start a word, so the next # is still a comment", () => {
+    const c = [
+      `echo ${ANALYSIS}/out.txt \\`,
+      `# "${HOME}/.loom/analyses/`,
+      `echo x > .loom/config.json`,
+      `# "`,
+    ].join("\n");
+    expect(classifyBash(c, HOME).kind).toBe("catastrophic");
+  });
+
+  it("a carriage return stays inside the word", () => {
+    expect(classifyBash(`echo x > ${HOME}/.loom/analyses/\r/../../config.json`, HOME).kind).toBe(
+      "catastrophic",
+    );
+  });
+
+  it("without a home there is no carve-out, so it keeps denying", () => {
+    expect(classifyBash(`echo x > ${ANALYSIS}/out.txt`).kind).toBe("catastrophic");
+  });
+
+  it("one unresolved target keeps the whole line denied", () => {
+    expect(classifyBash(`cp ${ANALYSIS}/a.txt ~/.loom/config.json`, HOME).kind).toBe(
+      "catastrophic",
+    );
+  });
+
+  it("a read of the workspace no longer turns catastrophic because of a redirect elsewhere", () => {
+    // [^\n]* spans `;` and `&&`, so any redirect or cp anywhere on the line used
+    // to poison every later mention of .loom/ -- including a plain read.
+    expect(classifyBash(`ls > /tmp/x; cat ${ANALYSIS}/notebook.md`, HOME).kind).not.toBe(
+      "catastrophic",
+    );
+    expect(classifyBash(`cp a b && head ${ANALYSIS}/notebook.md`, HOME).kind).not.toBe(
+      "catastrophic",
+    );
+    // ...but a read of real Loom state on such a line still is (it also has the
+    // sensitive-read floor behind it).
+    expect(classifyBash(`ls > /tmp/x; cat ${HOME}/.loom/config.json`, HOME).kind).toBe(
+      "catastrophic",
+    );
   });
 });

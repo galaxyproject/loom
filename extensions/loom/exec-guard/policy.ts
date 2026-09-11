@@ -1,5 +1,10 @@
 import { classifyBash } from "./bash-risk";
-import { isSensitivePath, isCredentialStore, isProtectedWritePath } from "./sensitive-read";
+import {
+  isSensitivePath,
+  isCredentialStore,
+  isProtectedWritePath,
+  isLoomStatePath,
+} from "./sensitive-read";
 import type { PolicyDeps, PolicyRequest, PolicyResult } from "./types";
 import {
   classifyGalaxyDestructive,
@@ -31,6 +36,30 @@ const FILE_READ_TOOLS = new Set(["read", "grep", "ls", "find", "glob"]);
 function pick(toolInput: Record<string, unknown>, key: string): string | undefined {
   const v = toolInput[key];
   return typeof v === "string" ? v : undefined;
+}
+
+// pi declares its file tools with a `path` parameter, but every one of their
+// renderers resolves `file_path ?? path` (dist/core/tools/{edit,write,read}.js):
+// the Anthropic spelling arrives often enough that pi displays it. A floor must
+// not assume one spelling, so both keys are collected and each check below runs
+// across all of them -- a benign `path` cannot launder a sensitive `file_path`,
+// and the path the human is asked about is one the tool could actually touch.
+const PATH_KEYS = ["path", "file_path"];
+
+interface PathTarget {
+  raw: string;
+  resolved: string;
+  inside: boolean;
+}
+
+function pathTargets(req: PolicyRequest, deps: PolicyDeps): PathTarget[] {
+  const out: PathTarget[] = [];
+  for (const key of PATH_KEYS) {
+    const raw = pick(req.toolInput, key);
+    if (!raw || out.some((t) => t.raw === raw)) continue;
+    out.push({ raw, ...deps.resolver.contains(raw) });
+  }
+  return out;
 }
 
 // Apply the weak-model + non-interactive modifiers to an `ask`.
@@ -79,6 +108,18 @@ export function decide(req: PolicyRequest, deps: PolicyDeps): PolicyResult {
     const c = classifyBash(command, deps.home);
     if (c.kind === "catastrophic") {
       return { decision: "deny", category: "bash:catastrophic", reason: c.reason };
+    }
+    // The classifier judges the command string; only this layer has a resolver.
+    // A write target that looks like ordinary work product in the analysis
+    // workspace but realpaths into Loom's own state is still Loom's own state.
+    for (const p of c.loomWriteTargets) {
+      if (isLoomStatePath(deps.resolver.contains(p).resolved, deps.home)) {
+        return {
+          decision: "deny",
+          category: "bash:catastrophic",
+          reason: "write to the Loom config directory",
+        };
+      }
     }
     // Sensitive-read floor: every content-read target, including inside a pipe or
     // compound command (closes the `cat secret | tool` evasion). A dedicated
@@ -154,43 +195,54 @@ export function decide(req: PolicyRequest, deps: PolicyDeps): PolicyResult {
   }
 
   if (FILE_READ_TOOLS.has(toolName)) {
-    const p = pick(req.toolInput, "path");
-    if (p) {
-      const { inside, resolved } = deps.resolver.contains(p);
-      if (isCredentialStore(resolved, deps.home)) {
-        return denyCredentialStore(p);
+    // Each floor sweeps every target before the next one runs, so the strictest
+    // verdict wins no matter which key carries the offending path.
+    const targets = pathTargets(req, deps);
+    for (const t of targets) {
+      if (isCredentialStore(t.resolved, deps.home)) return denyCredentialStore(t.raw);
+    }
+    for (const t of targets) {
+      if (isSensitivePath(t.resolved, deps.home)) {
+        return finalizeAsk(req, "read:sensitive", `${req.toolName} of sensitive path ${t.raw}`);
       }
-      if (isSensitivePath(resolved, deps.home)) {
-        return finalizeAsk(req, "read:sensitive", `${req.toolName} of sensitive path ${p}`);
-      }
-      // Out-of-workspace reads prompt. Sensitive paths are floored above.
-      if (!inside) {
-        return finalizeAsk(req, "read:escape", `${req.toolName} outside workspace: ${p}`);
+    }
+    // Out-of-workspace reads prompt. Sensitive paths are floored above.
+    for (const t of targets) {
+      if (!t.inside) {
+        return finalizeAsk(req, "read:escape", `${req.toolName} outside workspace: ${t.raw}`);
       }
     }
     return { decision: "allow", category: "read:ok", reason: "non-sensitive read" };
   }
 
   if (FILE_WRITE_TOOLS.has(toolName)) {
-    const p = pick(req.toolInput, "path");
-    if (!p) return finalizeAsk(req, "write:no-path", "write with no resolvable path");
-    const { inside, resolved } = deps.resolver.contains(p);
+    const targets = pathTargets(req, deps);
+    if (targets.length === 0) {
+      return finalizeAsk(req, "write:no-path", "write with no resolvable path");
+    }
     // Credential-shaped writes are floored regardless of jail membership, mirroring
     // the read branch -- a secret dropped inside the workspace is still a secret.
-    if (isSensitivePath(resolved, deps.home)) {
-      return finalizeAsk(req, "write:sensitive", `write to sensitive path ${p}`);
+    for (const t of targets) {
+      if (isSensitivePath(t.resolved, deps.home)) {
+        return finalizeAsk(req, "write:sensitive", `write to sensitive path ${t.raw}`);
+      }
     }
     // Gated even inside the jail: a script under .git/hooks runs on the next git
     // operation, and .loom/ is Loom's own state -- these always prompt, regardless
     // of being in the workspace. The lone carve-out is the $HOME/.loom/analyses
     // tree (Orbit's default cwd), where the analysis's own files are work product;
     // a .git/.loom nested inside an analysis still gates. See isProtectedWritePath.
-    if (isProtectedWritePath(resolved, deps.home)) {
-      return finalizeAsk(req, "write:protected", `write to protected path ${p}`);
+    for (const t of targets) {
+      if (isProtectedWritePath(t.resolved, deps.home)) {
+        return finalizeAsk(req, "write:protected", `write to protected path ${t.raw}`);
+      }
     }
-    if (inside)
-      return { decision: "allow", category: "write:in-jail", reason: "write inside workspace" };
-    return finalizeAsk(req, "write:escape", `write outside workspace: ${p}`);
+    for (const t of targets) {
+      if (!t.inside) {
+        return finalizeAsk(req, "write:escape", `write outside workspace: ${t.raw}`);
+      }
+    }
+    return { decision: "allow", category: "write:in-jail", reason: "write inside workspace" };
   }
 
   // Destructive Galaxy MCP operations (whole-history delete/purge) -- called directly or

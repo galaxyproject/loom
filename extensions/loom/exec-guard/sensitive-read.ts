@@ -64,12 +64,19 @@ function hasSegment(p: string, name: string): boolean {
 // workspace is never legitimately inside one. Pass home="" for the plain
 // absolute check (callers without a home / the unit tests).
 export function isProtectedWritePath(absPath: string, home = ""): boolean {
+  if (hasSegment(path.normalize(absPath), ".git")) return true;
+  return isLoomStatePath(absPath, home);
+}
+
+// Loom's own state: a path with a `.loom` segment that is NOT the analyses tree
+// Orbit hands the agent as a workspace. Split out of isProtectedWritePath so the
+// bash classifier can reuse exactly this carve-out without also inheriting the
+// `.git` rule -- a `.git` write through bash is an ordinary unrecognized command,
+// not a catastrophic one. (home is compared un-realpath'd, matching
+// isSensitivePath; pass home="" for the plain absolute check.)
+export function isLoomStatePath(absPath: string, home = ""): boolean {
   const norm = path.normalize(absPath);
-  if (hasSegment(norm, ".git")) return true;
   if (!hasSegment(norm, ".loom")) return false;
-  // A `.loom` segment is present. It's benign only as the $HOME/.loom/analyses
-  // ancestor of a user workspace; a `.loom` anywhere below that (or outside it)
-  // is real Loom state. (home is compared un-realpath'd, matching isSensitivePath.)
   if (home) {
     const analyses = path.join(home, ".loom", "analyses");
     if (within(norm, analyses) && !hasSegment(path.relative(analyses, norm), ".loom")) {

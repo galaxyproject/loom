@@ -320,14 +320,20 @@ export interface InvocationPollUpdate {
  * pre-poll snapshot (#391). Each update is merged onto the block as it exists
  * in `content`, so fields the poller doesn't own survive.
  *
- * Two updates are dropped rather than applied:
+ * Three updates are dropped rather than applied:
  *   - the block is gone from `content` — someone deleted it while we were
  *     talking to Galaxy, and `upsertInvocationBlock` would resurrect it at the
  *     end of the file;
  *   - the block on disk carries a newer `last_polled_at` than ours — a second
  *     poller (another Loom process, or the agent calling check_all while the
  *     background timer is mid-tick) already recorded a later reading, and our
- *     counters would walk it backwards.
+ *     counters would walk it backwards;
+ *   - the update would reopen a block that is already terminal on disk. A poll
+ *     that saw a job erroring while others ran writes `in_progress` on purpose,
+ *     and a slow round trip can deliver that verdict *after* a faster checker
+ *     recorded the run's real end — our timestamp is later, our snapshot isn't.
+ *     Nothing ever moves a terminal block back to running, so the reopening is
+ *     always the stale one.
  *
  * A transition always lands, including one terminal state correcting another:
  * completion is inferred from the jobs Galaxy has materialized so far, so a
@@ -351,6 +357,7 @@ export function applyInvocationUpdates(
     const current = findInvocationBlocks(next).find((b) => b.invocationId === update.invocationId);
     if (!current) continue;
     if (isNewerPoll(current.lastPolledAt, update.lastPolledAt)) continue;
+    if (update.transition?.status === "in_progress" && current.status !== "in_progress") continue;
     const merged: InvocationYaml = {
       ...current,
       totalSteps: update.totalSteps,
@@ -368,12 +375,29 @@ export function applyInvocationUpdates(
   return { content: next, applied, transitioned };
 }
 
-/** True when `onDisk` is a strictly later poll timestamp than `ours`. */
+/**
+ * How far ahead of now an on-disk `last_polled_at` may sit and still be read as
+ * a real reading. A competing poller stamps its update within milliseconds of
+ * ours -- the window only has to cover clock differences between two writers of
+ * the same file, which is seconds at worst.
+ */
+const MAX_POLL_CLOCK_SKEW_MS = 60_000;
+
+/**
+ * True when `onDisk` is a strictly later poll timestamp than `ours`.
+ *
+ * A timestamp further ahead than the skew window did not come from a poll: it
+ * came from someone editing the block, and honouring it silences the poller for
+ * that invocation permanently -- every later update looks stale forever. Nobody
+ * can outrun the clock, so an implausible future reading is ignored rather than
+ * obeyed.
+ */
 function isNewerPoll(onDisk: string | undefined, ours: string | undefined): boolean {
   if (!onDisk || !ours) return false;
   const a = Date.parse(onDisk);
   const b = Date.parse(ours);
   if (Number.isNaN(a) || Number.isNaN(b)) return false;
+  if (a > Date.now() + MAX_POLL_CLOCK_SKEW_MS) return false;
   return a > b;
 }
 

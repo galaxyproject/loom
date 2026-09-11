@@ -4,6 +4,17 @@ Notable, user-facing changes to Loom and Orbit. Each release lists a short set o
 highlights; the full commit-level notes live on the GitHub release pages. Add a
 new `## [<version>] - <date>` block with a `### Highlights` list at release time.
 
+## [0.6.0] - 2026-08-14
+
+### Highlights
+
+- Orbit can now run as a Galaxy Interactive Tool as well as standalone, with the notebook syncing to and from a Galaxy Page
+- Galaxy job tracking is sturdier: the poller now tracks individual tool runs (not just workflow invocations), reconnects cleanly after a long-idle MCP session, and no longer clobbers notebook edits made mid-poll -- timed-out Galaxy calls and a missing `uv`/`uvx` now come with guidance that actually gets you unstuck
+- pi bumped to 0.83 and then 0.84.1, bringing the 5-series models; OAuth sign-in now drives off each provider's own registry entry instead of a hardcoded path, fixing sign-in hangs in Orbit and extending sign-in to more providers
+- Orbit polish: light/dark appearance themes, the notebook auto-loads on startup and re-syncs after external writes, inline HTML previews in the file pane, the footer status pill and chat copy button stay put, Enter accepts the highlighted slash command, and symlinked files show up correctly in the files tab
+- macOS builds are signed by Loom directly instead of going through osxSign, and Loom approves the install scripts npm now gates by default so `npm install` doesn't break
+- Fixed a weak-tier model-id matching bug that misclassified some Gemini models
+
 ## [0.5.1] - 2026-06-20
 
 ### Highlights

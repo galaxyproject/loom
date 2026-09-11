@@ -1,0 +1,16 @@
+{
+  "name": "plan creation: consult the IWC registry before drafting",
+  "description": "The drafting procedure tells the agent to search the IWC workflow registry first and, on a full match, propose a single invocation rather than a step-by-step plan. Nothing asserted that until now, so the instruction was carried without evidence it changes behaviour. The request names a workflow-shaped task that IWC covers, and the assertion is on the search call rather than on which workflow is chosen -- the registry's contents move, and the behaviour under test is consulting it before deciding, not picking a particular entry.",
+  "tier": 2,
+  "requiresModel": true,
+  "inputs": [
+    "I have paired-end Illumina reads and want a standard quality-control and contamination-screening run before assembly. Draft a plan; don't execute anything yet."
+  ],
+  "timeoutMs": 420000,
+  "assertions": {
+    "toolCalls": {
+      "mustInclude": [{ "name": "galaxy_search_iwc" }]
+    },
+    "plan": { "exists": true }
+  }
+}

@@ -58,6 +58,17 @@ Plans are read from wherever they land (`plan.source` defaults to `"any"` =
 notebook if it has a plan, else chat), because the matrix models don't
 reliably follow Loom's draft-in-chat-then-write gate.
 
+## Asserting on the activity log
+
+`assertions.activity` matches rows of the `activity.jsonl` the run wrote
+beside its notebook -- `{ kind, source?, payloadContains? }` per entry,
+plus `mustNotIncludeKinds`. This is the surface for anything the harness
+decides rather than the model: gate adjudications, overrides, poller
+transitions. It matters most in Tier 1, where there is no model, no
+assistant text, and no tool call to look at: `--mode json` attaches no
+UI, so `ctx.ui.notify` is a no-op and a synchronous command that records
+a decision leaves no other trace.
+
 Each (scenario, model) cell runs **n=3** times by default (`scenario.runs`
 overrides; Tier 1 runs once). A dimension's cell verdict is a majority of the
 runs (`pass >= ceil(total/2)`), so a flaky model shows as a pass-rate rather
@@ -82,22 +93,12 @@ end-to-end execution against a recorded/live Galaxy MCP, and notebook
 discipline / session-lifecycle scenarios. The assertion library leaves seams
 for each. See the plan for sequencing.
 
-## Known issue
+## Poller exit (fixed)
 
-Loom does not exit cleanly under `--mode json` after a single slash-command
-invocation -- the Galaxy poller's `setInterval` keeps the event loop alive
-even when print mode finishes. The runner SIGTERMs each scenario at its
-`timeoutMs`, so this doesn't break evals, but it bloats wall-clock and is
-worth fixing Loom-side (either `unref()` the poller's timer or wire
-`stopGalaxyPoller` into print-mode dispose). Scenarios with no Galaxy
-configured (smoke-echo, plan-creation) exit cleanly in ~2s, so this only
-bites Galaxy-connected scenarios.
-
-## Known issue
-
-Loom does not exit cleanly under `--mode json` after a single slash-command
-invocation -- the Galaxy poller's `setInterval` keeps the event loop alive
-even when print mode finishes. The runner SIGTERMs each scenario at its
-`timeoutMs`, so this doesn't break evals, but it bloats wall-clock and is
-worth fixing Loom-side (either `unref()` the poller's timer or wire
-`stopGalaxyPoller` into print-mode dispose).
+`--mode json` runs used to sit until the runner's `timeoutMs` SIGTERM: the
+Galaxy poller's `setInterval` keeps the event loop alive, and print mode has
+nothing else holding it. `session_shutdown` clears the timer, so this only
+bit runs where shutdown didn't get there first -- but the timer is now
+`unref()`ed as well, which takes the poller out of the exit path entirely.
+Interactive and Orbit sessions are held open by stdin, so nothing changes for
+them.

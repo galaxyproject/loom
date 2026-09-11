@@ -21,7 +21,7 @@ That web shell already has a working seed today: a browser-served build of the O
 1. You open Orbit (or run `loom`) in an analysis directory. A `notebook.md` is created on first launch and committed to git.
 2. You chat with the agent: ask questions, drop file paths, request data lookups. None of this requires a "plan" — the conversation is just a conversation.
 3. When you ask for a plan, the agent drafts it **in chat** as a markdown section, then waits for you to approve. Once you approve, it asks you to review parameters; once you approve those too, it writes the plan section into `notebook.md` and starts executing.
-4. If Galaxy is connected, the agent considers per-step routing during drafting (does an IWC workflow match? does Galaxy have the heavy tool installed?) and tags each step `[local]`, `[hybrid]`, or `[remote]` in the markdown.
+4. If Galaxy is connected, the agent considers per-step routing during drafting (does an IWC workflow match? does Galaxy have the heavy tool installed?) and tags each step `[galaxy]`, `[local]`, `[hybrid]`, or `[remote]` in the markdown.
 5. While a Galaxy step runs, a `loom-invocation` YAML block in the notebook tracks the invocation. The polling tool reads those blocks, queries Galaxy, and updates them in place when jobs finish or fail.
 6. Multiple plans coexist in the notebook. After interpreting one analysis, ask for another — the new plan section appends below the previous one.
 7. Come back the next day, open the same directory, the notebook is the project. Sessions resume automatically.
@@ -122,7 +122,7 @@ frequencies across tissues.
 
 Conventions:
 
-- Routing tag in the section header: `[local]`, `[hybrid]`, or `[remote]`. Literal so future tooling can grep.
+- Routing tag in the section header: `[galaxy]`, `[hybrid]`, `[local]`, or `[remote]`. Literal so future tooling can grep.
 - Step status by the checkbox: `- [ ]` pending, `- [x]` verified completed, `- [!]` failed.
 - If verification is blocked or inconclusive but the step itself has not failed, leave the step pending and record the blocker.
 - Anchors `{#plan-X-step-N}` so Galaxy invocation YAML can reference individual steps.
@@ -166,6 +166,28 @@ summary: ""
 ```
 
 The polling tool `galaxy_invocation_check_all` scans the notebook for in-flight blocks, polls Galaxy for each, and applies deterministic state transitions (all-jobs-ok → `completed`, any-error → `failed`) by rewriting the YAML in place. No external state store; the notebook is authoritative.
+
+### The evidence gate
+
+Most of what Loom enforces mechanically is about safety -- don't shell out, don't leak the key, don't delete the history. The epistemic discipline the product actually exists for ("evidence comes before assertion") was prose in the system prompt, and nothing checked it.
+
+The evidence gate is the first check on that. It watches `Edit`/`Write` calls against `notebook.md` and reads the file as it stood _before_ the write. A plan step going `- [ ]` → `- [x]` while the `loom-invocation` block bound to its anchor still reads `status: in_progress` is a contradiction: a verified result claimed for a run Galaxy says hasn't finished. That status comes from the poller, not the model, so it can't be satisfied by writing a convincing sentence -- and because the check reads the pre-image, rewriting `status:` in the same edit doesn't clear it either.
+
+It's deliberately narrow. Absence of evidence isn't decidable from a single write (the honest sequence Loom teaches spans two edits), so absence is never gated -- only contradiction is. A flip with no bound invocation gets no opinion, a `failed` block is never gated because it's sticky and can't be re-polled, and a rerun that leaves a stale block beside a `completed` one for the same anchor reads as fine.
+
+Modes are `off | warn | deny`, default **warn**: the write goes through and the decision lands in `activity.jsonl` as an `evidence.decision` event, so the real false-positive rate can be measured before anyone makes it a hard failure. Set it in `~/.loom/config.json`:
+
+```json
+{ "evidenceGate": { "mode": "warn" } }
+```
+
+or per session with `LOOM_EVIDENCE_GATE=deny`.
+
+In `deny` the refusal stands for as long as the contradiction does. An earlier cut let the model's second attempt through, on the theory that an unwinnable retry loop is worse than an unevidenced claim -- but that made the decision advisory, since a model that disagrees only has to ask twice. The exception is yours instead: `/override <step-anchor> <reason>` clears one named step for one write and records the step, the invocation status at the time, and your reason to `activity.jsonl` as an `evidence.override` event. A contradiction that recurs on that step is refused again. Bare `/override` lists what the gate is currently holding.
+
+A clearance is for one named step _and the run in flight when you granted it_: if that run fails and a rerun starts, the next contradiction is refused again, because what you approved was that run being ahead of its checkbox, not the step forever. It is also session-scoped and held in memory, so granting one in the CLI and then resuming in Orbit means granting it again. That is deliberate for now -- a durable clearance is a durable record, which is the registry's job -- but it is the rough edge to watch if `deny` ever becomes the default. If a key you type could name two steps, the command says so and asks you to quote the one you mean rather than guessing.
+
+Several gaps are known and pinned by tests rather than papered over, and they share one root: step identity and the poller's status both live in text the model may rewrite. A forgery can be split across two edits (rewrite `status:`, then flip); renaming the step's anchor, or the plan heading above it, in the same edit as the flip stops it reading as a flip at all; `bash` writes never reach the hook, since it watches the file tools; and `activity.jsonl` is itself an ordinary workspace file. The first three close when the poller's verdict is held out of band where the model can't author it. The last two are the exec-guard's write policy rather than a second gate here.
 
 ### Git-tracked notebooks
 
@@ -532,6 +554,38 @@ For the **CLI**, add a provider entry with a `baseUrl` to `~/.loom/config.json`:
 
 The `baseUrl` marks the entry as a custom endpoint: Loom registers it with Pi for you (writing the matching `~/.pi/agent/models.json` entry, with sensible metadata defaults) and passes the key to Pi at runtime, so the key never lands in `models.json`. The provider name is yours to choose -- `"openai-compatible"` is just a convention.
 
+### Standing instructions (`LOOM.md`)
+
+Preferences you'd otherwise repeat every session belong in a `LOOM.md` file,
+which Loom loads into every conversation:
+
+```
+Always end an analysis with a visualization.
+Prefer IWC workflows over hand-assembled tool chains.
+Use HISAT2 for RNA-seq alignment, not bowtie.
+```
+
+Loom reads two places:
+
+- `~/.pi/agent/LOOM.md` -- yours, applied to every session. Run
+  `/instructions init` to create it.
+- `LOOM.md` in your project directory, or any directory above it -- applied to
+  work in that directory. `/instructions init project` creates one.
+
+Run `/instructions` to see exactly which files loaded, which is the fastest way
+to answer "why isn't it doing what I told it."
+
+The two are not equally trusted, on purpose. Your global file is your own voice
+and goes into the system prompt. A project file travels with the folder -- a
+cloned repo, a shared drive, something a collaborator sent you -- so it is
+supplied as reference material instead: it can steer tool choice and output
+conventions, but it cannot grant permissions, skip a confirmation prompt, or
+override anything Loom was told at startup.
+
+Files are capped at 8KB or 200 lines and at eight files total; anything past
+that is dropped, and `/instructions` tells you when it happened. Edits take
+effect on your next message -- no restart.
+
 ## Local execution safety
 
 Loom drives a real coding agent: alongside the Galaxy tools, the model has `bash`, `write`, `edit`, and `read` on your machine. That's the point -- local analysis needs it -- but it means a misreading model, or one that's been prompt-injected by untrusted content (a Galaxy dataset, tool output, a fetched page), could run something destructive as you. This risk is higher with cheaper, less-capable models, which Loom lets you pick to save money.
@@ -591,11 +645,13 @@ Type `/` in the chat to open the autocomplete popup. Tab to accept; Enter still 
 | `/chat`                   | Restore the chat pane from the session transcript without restarting the agent     |
 | `/notebook`               | Show the notebook content in the Notebook tab                                      |
 | `/status`                 | Galaxy connection + notebook path summary                                          |
+| `/instructions`           | Show the `LOOM.md` standing instructions loaded this session                       |
 | `/summarize [N [M]]`      | Append a summary of prompts N..M into the notebook                                 |
 | `/cost`                   | Append the session token/cost breakdown to the notebook                            |
 | `/connect [name]`         | Open Galaxy connection settings (or switch to an existing profile)                 |
 | `/profiles`               | List saved Galaxy server profiles                                                  |
 | `/execute` (alias `/run`) | Tell the agent to advance the next pending step in the latest plan section         |
+| `/override <step> <why>`  | Clear the evidence gate for one plan step, once, with a recorded reason            |
 | `/help`                   | Show this list                                                                     |
 
 ## Tool reference

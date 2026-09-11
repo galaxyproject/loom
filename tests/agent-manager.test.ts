@@ -257,4 +257,134 @@ describe("AgentManager", () => {
     manager.setCwd("/tmp/home/projectC");
     expect(setTitle).toHaveBeenLastCalledWith("~/projectC — Orbit");
   });
+
+  /**
+   * #439: a deterministic config failure (EX_CONFIG) is not a crash. Retrying
+   * it cannot change the answer, and the three silent restarts replaced the
+   * brain's own explanation with a generic "crashed repeatedly" box.
+   */
+  describe("startup failure surfacing (#439)", () => {
+    // makeProcess() stubs stderr.on, which would swallow the brain's output
+    // before AgentManager could buffer it. These tests need the real emitter.
+    function makeProcessWithStderr(pid: number) {
+      const proc = makeProcess(pid);
+      const stderr = proc.stderr as unknown as EventEmitter;
+      proc.stderr.on = stderr.addListener.bind(stderr) as never;
+      return proc;
+    }
+
+    function statusEvents(window: { webContents: { send: ReturnType<typeof vi.fn> } }) {
+      return window.webContents.send.mock.calls.filter((c: unknown[]) => c[0] === "agent:status");
+    }
+
+    function makeWindow() {
+      return {
+        isDestroyed: () => false,
+        setTitle: vi.fn(),
+        webContents: { send: vi.fn() },
+      };
+    }
+
+    it("does not retry a config failure, and shows what the brain said", async () => {
+      vi.useFakeTimers();
+      try {
+        const proc = makeProcessWithStderr(101);
+        spawnMock.mockReturnValue(proc);
+
+        const { AgentManager } = await import("../app/src/main/agent.js");
+        const window = makeWindow();
+        const manager = new AgentManager(window as any, "/analysis");
+        manager.start();
+
+        proc.stderr.emit(
+          "data",
+          Buffer.from('loom: provider "openai-codex" requires a sign-in.\n'),
+        );
+        proc.emit("exit", 78, null);
+
+        // The restart path defers by 100ms; give it every chance to fire.
+        vi.advanceTimersByTime(5000);
+        expect(spawnMock).toHaveBeenCalledTimes(1);
+
+        // The chat pane is the only surface that renders multi-line text, so
+        // the brain's full message goes there...
+        const chatError = window.webContents.send.mock.calls.find(
+          (c: unknown[]) => c[0] === "agent:event" && (c[1] as { type?: string })?.type === "error",
+        );
+        expect((chatError?.[1] as { message: string }).message).toContain("requires a sign-in");
+
+        // ...and the width-capped pill gets a one-liner. It must be the LAST
+        // status write: the renderer's chat-error handler resets the badge to a
+        // bare "error", so a summary sent first would be clobbered.
+        const last = statusEvents(window).at(-1);
+        expect(last?.[1]).toBe("error");
+        expect(last?.[2]).toContain("requires a sign-in");
+        expect(last?.[2]).not.toContain("\n");
+        // The generic crash text is precisely what this replaces.
+        expect(last?.[2]).not.toContain("crashed repeatedly");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("still retries an ordinary crash", async () => {
+      vi.useFakeTimers();
+      try {
+        const first = makeProcessWithStderr(101);
+        const second = makeProcessWithStderr(202);
+        spawnMock.mockReturnValueOnce(first).mockReturnValueOnce(second);
+
+        const { AgentManager } = await import("../app/src/main/agent.js");
+        const window = makeWindow();
+        const manager = new AgentManager(window as any, "/analysis");
+        manager.start();
+
+        // Exit 1 stays "something went wrong" -- a transient fault earns a retry.
+        first.emit("exit", 1, null);
+        vi.advanceTimersByTime(200);
+
+        expect(spawnMock).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("attaches the stderr tail once the retry budget is spent", async () => {
+      vi.useFakeTimers();
+      try {
+        const procs = [101, 202, 303, 404].map(makeProcessWithStderr);
+        spawnMock.mockImplementation(() => procs.shift()!);
+        const all = [...procs];
+
+        const { AgentManager } = await import("../app/src/main/agent.js");
+        const window = makeWindow();
+        const manager = new AgentManager(window as any, "/analysis");
+        manager.start();
+
+        // Three restarts are allowed in the window; the fourth exit gives up.
+        for (const proc of all) {
+          proc.stderr.emit("data", Buffer.from("pi: connection reset by peer\n"));
+          proc.emit("exit", 1, null);
+          vi.advanceTimersByTime(200);
+        }
+
+        const last = statusEvents(window).at(-1);
+        expect(last?.[1]).toBe("error");
+        expect(last?.[2]).toContain("crashed repeatedly");
+        // The stderr rides the chat channel, not the pill.
+        expect(last?.[2]).not.toContain("connection reset by peer");
+        const chatError = window.webContents.send.mock.calls
+          .filter(
+            (c: unknown[]) =>
+              c[0] === "agent:event" && (c[1] as { type?: string })?.type === "error",
+          )
+          .at(-1);
+        expect((chatError?.[1] as { message: string }).message).toContain(
+          "connection reset by peer",
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
 });

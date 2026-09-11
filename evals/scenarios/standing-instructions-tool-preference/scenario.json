@@ -1,0 +1,22 @@
+{
+  "name": "standing instructions: a project LOOM.md steers the plan",
+  "description": "A LOOM.md in the project directory names HISAT2 for alignment and asks that every analysis end with a MultiQC report. The drafted plan should honour both. This exercises the WORKSPACE path -- the lower-authority context-message channel -- which is the harder of the two to survive, so a pass implies the global path works. Both preferences are asserted with mentionsAllOf: checking only one would let a model pass by accident while ignoring the other. Deliberately no mentionsNoneOf on a banned aligner -- that scans the whole surface, so a compliant plan saying 'HISAT2 rather than bowtie' would fail for quoting the instruction back.",
+  "tier": 2,
+  "requiresModel": true,
+  "loomArgs": ["--tools", "read,write,edit"],
+  "inputs": [
+    "I have paired-end RNA-seq FASTQ files from a mouse experiment and I want a gene-level count table at the end. Draft a plan. Don't run anything yet.",
+    "Yes, mm39 is the right reference. Go ahead and draft the formal plan now."
+  ],
+  "timeoutMs": 150000,
+  "assertions": {
+    "events": { "mustInclude": ["agent_start", "turn_end"] },
+    "plan": {
+      "exists": true,
+      "source": "any",
+      "minPendingSteps": 3,
+      "eachStepHasDescription": true,
+      "mentionsAllOf": ["HISAT2", "MultiQC"]
+    }
+  }
+}

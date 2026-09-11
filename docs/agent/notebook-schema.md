@@ -58,7 +58,10 @@ Conventions:
   evidence required before completion.
 - Mark step status by editing the checkbox: `- [ ]` pending, `- [x]`
   verified completed, `- [!]` failed. Do not mark `- [x]` until the
-  verification evidence is written into the notebook.
+  verification evidence is written into the notebook. Flipping a step to
+  `- [x]` while the `loom-invocation` block bound to its anchor still
+  reads `status: in_progress` is checked by the harness, not just asked
+  for. See the evidence gate in `docs/agent/galaxy-routing.md`.
 - If a verification check is blocked or inconclusive but the step itself
   has not failed, leave the checkbox pending and record the blocker.
 - Multiple plans coexist; append new plan sections at the bottom of the

@@ -1,0 +1,27 @@
+{
+  "name": "execution: an approved plan is actually executed",
+  "description": "Every other scenario in this suite stops at or before approval, so all of them grade planning. That leaves a hole a planning-only agent passes through: a model can score full marks on validity, tools and behavior while calling zero tools, and then fail on the first real invocation because it printed tool calls as code blocks instead of emitting them. This scenario asserts the other half of the gate -- once approval is given and the parameters are reviewed, the agent must actually call the tool. Three turns, because the gate is meant to hold twice before anything runs. Runs with the full tool surface deliberately: the scenario is about emitting a real tool call, which a trimmed surface makes impossible.",
+  "tier": 2,
+  "requiresModel": true,
+  "inputs": [
+    "Run the Add column tool (tool id `addValue`) on dataset f2db41e1fa331b3e in history hist1, adding the value 7 as a new column. Draft a plan first and wait for my approval.",
+    "I approve the plan above. Show the full parameter table for review before executing.",
+    "The parameters look right. Go ahead and run it."
+  ],
+  "timeoutMs": 420000,
+  "assertions": {
+    "messages": {
+      "repliesInChat": true
+    },
+    "toolCalls": {
+      "mustInclude": [
+        {
+          "name": "galaxy_run_tool",
+          "argsContains": {
+            "tool_id": "addValue"
+          }
+        }
+      ]
+    }
+  }
+}

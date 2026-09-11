@@ -10,6 +10,8 @@
 
 import { parseLatestPlan } from "./notebook-parser.js";
 import type {
+  ActivityAssertions,
+  ActivityEvent,
   AnyEvent,
   Assertions,
   BehaviorAssertions,
@@ -56,8 +58,52 @@ export function evaluate(run: ScenarioRun): ScenarioFailure[] {
   evaluateUnifiedPlan(run, a.plan, stripThink, failures);
   evaluateBehavior(run, a.behavior, stripThink, failures);
   evaluateNotebook(run.notebookContent, a.notebook, failures);
+  evaluateActivity(run.activityEvents, a.activity, failures);
 
   return failures;
+}
+
+/**
+ * Assert on the harness's own audit trail. Tier 1 scenarios drive a
+ * synchronous command with no model attached, so there is no assistant text
+ * and no tool call to look at -- if the thing under test records a decision,
+ * activity.jsonl is the only place it shows up.
+ */
+function evaluateActivity(
+  events: ActivityEvent[],
+  a: ActivityAssertions | undefined,
+  failures: ScenarioFailure[],
+): void {
+  if (!a) return;
+
+  for (const expected of a.mustInclude ?? []) {
+    const hit = events.some((e) => {
+      if (e.kind !== expected.kind) return false;
+      if (expected.source && e.source !== expected.source) return false;
+      return Object.entries(expected.payloadContains ?? {}).every(
+        ([k, v]) => String((e.payload ?? {})[k]) === v,
+      );
+    });
+    if (!hit) {
+      failures.push({
+        assertion: "activity.mustInclude",
+        detail:
+          `no activity row matched ${JSON.stringify(expected)}; saw ` +
+          `[${events.map((e) => e.kind).join(", ") || "nothing"}]`,
+        dimension: "other",
+      });
+    }
+  }
+
+  for (const banned of a.mustNotIncludeKinds ?? []) {
+    if (events.some((e) => e.kind === banned)) {
+      failures.push({
+        assertion: "activity.mustNotIncludeKinds",
+        detail: `banned activity kind '${banned}' was recorded`,
+        dimension: "other",
+      });
+    }
+  }
 }
 
 function evaluateToolCalls(events: AnyEvent[], a: Assertions, failures: ScenarioFailure[]): void {
@@ -235,6 +281,21 @@ function getChatText(events: AnyEvent[], stripThinkingTags: boolean): string {
   return stripThinkingTags ? stripThinking(text) : text;
 }
 
+/**
+ * A request for information, which is not always a sentence ending in "?".
+ *
+ * A well-formed clarification often introduces a list instead -- "Could you let me
+ * know:", "Please tell me:" -- and a question-mark-only test scores that as a refusal
+ * to ask. The forms below are the ones that introduce a request; the check stays a
+ * heuristic either way, and a judge is the real answer.
+ */
+function asksForInformation(chat: string): boolean {
+  if (chat.includes("?")) return true;
+  return /\b(could|can|would|will) you (let me know|tell me|share|provide|specify|confirm|clarify)\b|\b(please )?(tell me|let me know|specify|clarify|confirm)\b|\bi need to know\b|\bwhich of\b/i.test(
+    chat,
+  );
+}
+
 function evaluateBehavior(
   run: ScenarioRun,
   a: BehaviorAssertions | undefined,
@@ -244,7 +305,7 @@ function evaluateBehavior(
   if (!a) return;
   if (a.asksClarifyingQuestion) {
     const chat = getChatText(run.events, stripThinkingTags);
-    const askedQuestion = chat.includes("?");
+    const askedQuestion = asksForInformation(chat);
     const chatPlan = parseLatestPlan(chat);
     const notebookPlan = run.notebookContent ? parseLatestPlan(run.notebookContent) : null;
     const fabricatedPlan = chatPlan !== null || notebookPlan !== null;
@@ -252,7 +313,7 @@ function evaluateBehavior(
     if (!askedQuestion) {
       failures.push({
         assertion: "behavior.asksClarifyingQuestion",
-        detail: "agent did not ask a clarifying question (no '?' in chat)",
+        detail: "agent did not ask for clarification",
         dimension: "behavior",
       });
     }
@@ -385,6 +446,7 @@ function evaluatePlan(
       a.minPendingSteps !== undefined ||
       a.eachStepHasDescription ||
       a.mentionsOneOf ||
+      a.mentionsAllOf ||
       a.mentionsNoneOf
     ) {
       // Validity is the gate -- emit the primary existence failure first.
@@ -402,7 +464,7 @@ function evaluatePlan(
           dimension: "routing",
         });
       }
-      if (a.mentionsOneOf?.length || a.mentionsNoneOf?.length) {
+      if (a.mentionsOneOf?.length || a.mentionsAllOf?.length || a.mentionsNoneOf?.length) {
         failures.push({
           assertion: `${prefix}.mentions`,
           detail: `no plan in ${surfaceLabel}, so tools could not be graded`,
@@ -464,6 +526,15 @@ function evaluatePlan(
       failures.push({
         assertion: `${prefix}.mentionsOneOf`,
         detail: `${surfaceLabel} mentions none of [${a.mentionsOneOf.join(", ")}]`,
+        dimension: "tools",
+      });
+    }
+  }
+  for (const required of a.mentionsAllOf ?? []) {
+    if (!lower.includes(required.toLowerCase())) {
+      failures.push({
+        assertion: `${prefix}.mentionsAllOf`,
+        detail: `${surfaceLabel} never mentions '${required}'`,
         dimension: "tools",
       });
     }
