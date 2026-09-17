@@ -414,17 +414,23 @@ whole wrapper — keep its keys, replace every placeholder (\`<value>\`,
 control back to the user.** Do NOT block the turn polling a Galaxy job to
 completion; the user wants to keep working with you while it runs.
 
-This applies to single **tool** runs too, not just workflows — record those
-with \`galaxy_job_record({ jobId, notebookAnchor, label })\` right after
-\`galaxy_run_tool\` returns a job id. An unrecorded run is invisible to the
-poller: nothing advances it, nothing notices when it finishes, and the
-analysis stalls until the user asks. If you did not record it, you must not
-claim a poller is watching it.
+**The harness records the run; you name the step it belongs to.** Loom
+writes the notebook block itself the moment a Galaxy submission answers,
+reading the id out of Galaxy's own response, so the poller is already
+watching the run before your next turn starts. What it cannot know is which
+plan step the run is for when you submit outside an \`/execute\`, and that is
+what the two record calls are for now.
+
+This applies to single **tool** runs too, not just workflows — bind those
+with \`galaxy_job_record({ jobId, notebookAnchor, label })\` after
+\`galaxy_run_tool\` returns a job id.
 
 After invoking via Galaxy MCP and getting an \`invocationId\` back:
 1. Call \`galaxy_invocation_record({ invocationId, notebookAnchor, label })\`.
    The \`notebookAnchor\` is a stable id like \`plan-1-step-3\` that
-   matches an anchor you wrote in the markdown plan section.
+   matches an anchor you wrote in the markdown plan section. It sets the
+   label and the anchor on the block Loom already wrote, and writes a new
+   block only if nothing in the notebook carries that id.
 2. **Return to the user now.** Tell them it's submitted and running in the
    background (the Activity tab shows live progress), and stop. Leave the
    step's checkbox \`- [ ]\`. A background poller advances the invocation's

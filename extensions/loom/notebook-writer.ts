@@ -10,6 +10,16 @@
 import { randomBytes } from "crypto";
 import * as fs from "fs/promises";
 import * as path from "path";
+import {
+  appendIndexOutsideOpenFence,
+  blockLine,
+  scanFencedBlocks,
+  mergeHarnessFields,
+  parseHarnessFields,
+  renderHarnessFieldLines,
+  stripHarnessFields,
+  type HarnessBlockFields,
+} from "./harness-block-fields";
 
 /**
  * Generate slug from title for default filename.
@@ -251,7 +261,7 @@ export function getDefaultNotebookPath(_title: string, directory: string): strin
  * the invocation polling tools (see tools.ts). The block is the source of
  * truth — there's no in-memory cache.
  */
-export interface InvocationYaml {
+export interface InvocationYaml extends HarnessBlockFields {
   invocationId: string;
   galaxyServerUrl: string;
   notebookAnchor: string;
@@ -291,11 +301,11 @@ const INVOCATION_FENCE_CLOSE = "```";
 export function renderInvocationYaml(inv: InvocationYaml): string {
   const lines: string[] = [
     INVOCATION_FENCE_OPEN,
-    `invocation_id: ${inv.invocationId}`,
-    `galaxy_server_url: ${inv.galaxyServerUrl}`,
-    `notebook_anchor: ${inv.notebookAnchor}`,
+    blockLine("invocation_id", inv.invocationId, "invocationId"),
+    blockLine("galaxy_server_url", inv.galaxyServerUrl),
+    blockLine("notebook_anchor", inv.notebookAnchor, "notebookAnchor"),
     `label: ${escapeYaml(inv.label)}`,
-    `submitted_at: ${inv.submittedAt}`,
+    blockLine("submitted_at", inv.submittedAt),
     `status: ${inv.status}`,
     `summary: ${escapeYaml(inv.summary ?? "")}`,
   ];
@@ -305,7 +315,8 @@ export function renderInvocationYaml(inv: InvocationYaml): string {
   if (inv.totalJobs !== undefined) lines.push(`total_jobs: ${inv.totalJobs}`);
   if (inv.completedJobs !== undefined) lines.push(`completed_jobs: ${inv.completedJobs}`);
   if (inv.failedJobs !== undefined) lines.push(`failed_jobs: ${inv.failedJobs}`);
-  if (inv.lastPolledAt) lines.push(`last_polled_at: ${inv.lastPolledAt}`);
+  if (inv.lastPolledAt) lines.push(blockLine("last_polled_at", inv.lastPolledAt));
+  lines.push(...renderHarnessFieldLines(inv));
   lines.push(INVOCATION_FENCE_CLOSE);
   return lines.join("\n") + "\n";
 }
@@ -315,25 +326,38 @@ export function renderInvocationYaml(inv: InvocationYaml): string {
  * each into an InvocationYaml. Skips blocks that fail validation.
  */
 export function findInvocationBlocks(content: string): InvocationYaml[] {
-  const result: InvocationYaml[] = [];
   const lines = content.split("\n");
-  let i = 0;
-  while (i < lines.length) {
-    if (lines[i].trim() === INVOCATION_FENCE_OPEN) {
-      const start = i + 1;
-      let end = start;
-      while (end < lines.length && lines[end].trim() !== INVOCATION_FENCE_CLOSE) {
-        end++;
-      }
-      const blockLines = lines.slice(start, end);
-      const parsed = parseInvocationBlock(blockLines);
-      if (parsed) result.push(parsed);
-      i = end + 1;
-    } else {
-      i++;
-    }
+  const result: InvocationYaml[] = [];
+  for (const range of scanFencedBlocks(lines, INVOCATION_FENCE_OPEN)) {
+    const parsed = parseInvocationBlock(lines.slice(range.start + 1, range.end));
+    if (parsed) result.push(parsed);
   }
   return result;
+}
+
+/**
+ * Find the first `loom-invocation` block physically carrying this id, and what
+ * it parses to.
+ *
+ * Two lookups used to answer "is there a block for this id": the range finder,
+ * which matches an `invocation_id:` line inside a fence, and
+ * `findInvocationBlocks`, which additionally requires the block to be
+ * well-formed. They can disagree -- a block with an empty `label` is found by
+ * the first and rejected by the second -- and every caller that asked one
+ * question of one and one of the other was reading a different block than the
+ * one it was about to overwrite. This answers both from the same physical
+ * block, so they cannot drift apart. `present` with a null `record` means the
+ * block is there but unreadable, which is a refusal, not a licence to
+ * overwrite it.
+ */
+export function locateInvocationBlock(
+  content: string,
+  invocationId: string,
+): { present: boolean; record: InvocationYaml | null } {
+  const lines = content.split("\n");
+  const range = findInvocationBlockRanges(content).find((b) => b.invocationId === invocationId);
+  if (!range) return { present: false, record: null };
+  return { present: true, record: parseInvocationBlock(lines.slice(range.start + 1, range.end)) };
 }
 
 /**
@@ -341,20 +365,85 @@ export function findInvocationBlocks(content: string): InvocationYaml[] {
  * `invocation_id`. If a block with the same id exists, replace it in
  * place (preserving surrounding whitespace). Otherwise append at the
  * end of the file with a leading blank line for readability.
+ *
+ * Harness-only fields on `inv` are always discarded. They come either from
+ * the block already on disk (so an agent or poller write carries them
+ * forward untouched) or from the explicit `harness` argument, which only the
+ * auto-registration and enrichment paths pass. A caller cannot set
+ * `submitted_by: harness` by spreading tool arguments into the record, which
+ * is the whole point of that field. `server_verified` is not one of them --
+ * see harness-block-fields.ts -- so the record tools' and the poller's writes
+ * of it pass straight through.
  */
-export function upsertInvocationBlock(content: string, inv: InvocationYaml): string {
+export function upsertInvocationBlock(
+  content: string,
+  inv: InvocationYaml,
+  harness?: HarnessBlockFields,
+): string {
   const blocks = findInvocationBlockRanges(content);
   const lines = content.split("\n");
-  const newBlock = renderInvocationYaml(inv).trimEnd().split("\n");
 
-  const existing = blocks.find((b) => b.invocationId === inv.invocationId);
+  const existing = blocks.find(
+    (b) => b.invocationId === inv.invocationId && isUnambiguousRange(lines, b.start),
+  );
+  // Provenance comes off the block this write is about to replace, read from
+  // its raw lines rather than from a second scan of the file. A scan can land
+  // on a different block with the same id, and it drops a block the strict
+  // parser rejects -- either way the carry-forward would be sourced from
+  // somewhere other than the bytes being overwritten.
+  const onDiskRaw = existing
+    ? rawInvocationFields(lines.slice(existing.start + 1, existing.end))
+    : {};
+  const onDisk = parseHarnessFields((key) => onDiskRaw[key]);
+  const merged: InvocationYaml = {
+    ...stripHarnessFields(inv),
+    ...mergeHarnessFields(onDisk, harness ?? {}),
+  };
+  const newBlock = renderInvocationYaml(merged).trimEnd().split("\n");
+
   if (existing) {
     const before = lines.slice(0, existing.start);
     const after = lines.slice(existing.end + 1);
     return [...before, ...newBlock, ...after].join("\n");
   }
 
-  // Append at end with separator
+  return appendBlock(content, newBlock);
+}
+
+/**
+ * Whether a block starting here can be replaced in place.
+ *
+ * Only when no Loom fence before it is still open. Past an unclosed opener the
+ * scanners cannot tell whose closing fence is whose: a bare ``` after an
+ * unterminated `loom-job` and a `loom-invocation` opener could end either one,
+ * and reading it as the invocation's means its "body" runs through whatever
+ * the user wrote in between. Field-shaped prose (`note: keep this`) sits
+ * inside that body and a replacement would take it with it.
+ *
+ * Refusing to replace is the answer rather than a stricter body rule, because
+ * "every line is a field this version knows" is not a property we can require:
+ * a notebook written by a newer Loom carries fields this one has never heard
+ * of, and the parsers ignore unknown keys on purpose. So a block in the
+ * ambiguous region is left exactly as it is and a clean one is written above
+ * the orphan. That costs one duplicate in an already-broken notebook, and the
+ * duplicate is unambiguous, so it is the one every write after this finds.
+ */
+export function isUnambiguousRange(lines: readonly string[], start: number): boolean {
+  return start < appendIndexOutsideOpenFence(lines);
+}
+
+/**
+ * Append a rendered block, or slot it in ahead of an unclosed fence so its own
+ * closing line cannot become that fence's. See `appendIndexOutsideOpenFence`.
+ */
+export function appendBlock(content: string, newBlock: string[]): string {
+  const lines = content.split("\n");
+  const at = appendIndexOutsideOpenFence(lines);
+  if (at < lines.length) {
+    const before = lines.slice(0, at).join("\n").replace(/\s+$/, "");
+    const sep = before.length > 0 ? "\n\n" : "";
+    return `${before}${sep}${newBlock.join("\n")}\n\n${lines.slice(at).join("\n")}`;
+  }
   const trimmed = content.replace(/\s+$/, "");
   const sep = trimmed.length > 0 ? "\n\n" : "";
   return trimmed + sep + newBlock.join("\n") + "\n";
@@ -488,26 +577,15 @@ interface InvocationBlockRange {
 }
 
 function findInvocationBlockRanges(content: string): InvocationBlockRange[] {
-  const result: InvocationBlockRange[] = [];
   const lines = content.split("\n");
-  let i = 0;
-  while (i < lines.length) {
-    if (lines[i].trim() === INVOCATION_FENCE_OPEN) {
-      const start = i;
-      let end = start + 1;
-      let invocationId: string | null = null;
-      while (end < lines.length && lines[end].trim() !== INVOCATION_FENCE_CLOSE) {
-        const m = lines[end].match(/^invocation_id:\s*(.+)$/);
-        if (m) invocationId = m[1].trim();
-        end++;
-      }
-      if (invocationId) {
-        result.push({ invocationId, start, end });
-      }
-      i = end + 1;
-    } else {
-      i++;
+  const result: InvocationBlockRange[] = [];
+  for (const range of scanFencedBlocks(lines, INVOCATION_FENCE_OPEN)) {
+    let invocationId: string | null = null;
+    for (let i = range.start + 1; i < range.end; i++) {
+      const m = lines[i].match(/^invocation_id:\s*(.+)$/);
+      if (m) invocationId = m[1].trim();
     }
+    if (invocationId) result.push({ invocationId, start: range.start, end: range.end });
   }
   return result;
 }
@@ -523,16 +601,38 @@ function parseBooleanField(raw: string | undefined): boolean | undefined {
   return undefined;
 }
 
-function parseInvocationBlock(blockLines: string[]): InvocationYaml | null {
-  const fields: Record<string, string> = {};
+/**
+ * The block's `key: value` lines, untouched.
+ *
+ * Harness fields are bare tokens or single-line JSON, so they are read from
+ * the raw text: running `unescapeYaml` over a JSON array would strip nothing
+ * today but would silently mangle the first value that starts and ends with a
+ * quote. The upsert reads carry-forward provenance through here too, which is
+ * why it is separate from `parseInvocationBlock` -- provenance has to survive
+ * a block the strict parser rejects.
+ */
+function rawInvocationFields(blockLines: string[]): Record<string, string> {
+  const rawFields: Record<string, string> = {};
   for (const line of blockLines) {
     const m = line.match(/^([a-z_]+):\s*(.*)$/);
-    if (m) fields[m[1]] = unescapeYaml(m[2].trim());
+    if (m) rawFields[m[1]] = m[2].trim();
   }
+  return rawFields;
+}
+
+function parseInvocationBlock(blockLines: string[]): InvocationYaml | null {
+  const rawFields = rawInvocationFields(blockLines);
+  const fields: Record<string, string> = {};
+  for (const [key, value] of Object.entries(rawFields)) fields[key] = unescapeYaml(value);
   const status = fields.status as InvocationYaml["status"];
+  // `galaxy_server_url` is metadata, not identity, and it is deliberately not
+  // required: it comes from GALAXY_URL, which can be absent (or arrive later
+  // via /connect) while the submission itself is perfectly real. Requiring it
+  // meant a block written without it parsed back as null, so the poller never
+  // saw the run and the notebook looked like it had a record when nothing was
+  // watching. The job block has always tolerated an empty one; these now agree.
   if (
     !fields.invocation_id ||
-    !fields.galaxy_server_url ||
     !fields.notebook_anchor ||
     !fields.label ||
     !fields.submitted_at ||
@@ -548,7 +648,7 @@ function parseInvocationBlock(blockLines: string[]): InvocationYaml | null {
   };
   return {
     invocationId: fields.invocation_id,
-    galaxyServerUrl: fields.galaxy_server_url,
+    galaxyServerUrl: fields.galaxy_server_url ?? "",
     notebookAnchor: fields.notebook_anchor,
     label: fields.label,
     submittedAt: fields.submitted_at,
@@ -561,6 +661,7 @@ function parseInvocationBlock(blockLines: string[]): InvocationYaml | null {
     completedJobs: numField("completed_jobs"),
     failedJobs: numField("failed_jobs"),
     lastPolledAt: fields.last_polled_at || undefined,
+    ...parseHarnessFields((key) => rawFields[key]),
   };
 }
 
@@ -756,17 +857,33 @@ function parseSessionSummaryBlock(blockLines: string[]): SessionSummaryYaml | nu
   };
 }
 
+/**
+ * Quote a free-text value so it stays on one line.
+ *
+ * `JSON.stringify` rather than hand-rolled quoting: the old version escaped
+ * quotes but passed a newline straight through, so a label spanning two lines
+ * rendered as two block fields and the second one was read back as a field of
+ * the caller's choosing. A label is agent-supplied on both record tools, which
+ * made that a way to write provenance the writers refuse.
+ */
 function escapeYaml(value: string): string {
   // Quote if contains characters that would confuse the line parser.
-  if (/[:#\n]/.test(value)) {
-    return `"${value.replace(/"/g, '\\"')}"`;
+  if (/[:#"\\\u0000-\u001f\u007f-\u009f]/.test(value)) {
+    return JSON.stringify(value);
   }
   return value;
 }
 
 function unescapeYaml(value: string): string {
   if (value.startsWith('"') && value.endsWith('"')) {
-    return value.slice(1, -1).replace(/\\"/g, '"');
+    try {
+      return JSON.parse(value) as string;
+    } catch {
+      // Blocks written before escapeYaml used JSON quoting: quotes were
+      // escaped, a lone backslash was not, so JSON.parse can fail on a value
+      // that was perfectly readable under the old rule.
+      return value.slice(1, -1).replace(/\\"/g, '"');
+    }
   }
   return value;
 }

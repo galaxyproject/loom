@@ -1,0 +1,3 @@
+{"tool": "galaxy_run_tool", "args": {"tool_id": "bwa_mem2"}, "stepAnchor": "plan-a-step-1", "result": {"content": [{"type": "text", "text": "Started your tool in history 0a248a1f62a0cc04; the dataset is d5e6f7a8b9c0d1e2"}], "details": {"server": "galaxy"}}}
+{"tool": "galaxy_invoke_workflow", "args": {"workflow_id": "c0ffee1234567890"}, "stepAnchor": "plan-a-step-1", "result": {"content": [{"type": "text", "text": "{\"data\": {\"id\": \"1a2b3c4d5e6f7a8b\", \"model_class\": \"Job\"}, \"success\": true}"}], "details": {"server": "galaxy", "tool": "x"}}}
+{"tool": "galaxy_run_tool", "args": {"tool_id": "bwa_mem2"}, "result": {"content": [{"type": "text", "text": "{\"data\": {\"jobs\": [{\"id\": \"1a2b"}], "details": {"server": "galaxy"}}}

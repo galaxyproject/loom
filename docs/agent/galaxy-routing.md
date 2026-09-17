@@ -78,8 +78,10 @@ galaxy_invocation_record({
 })
 ```
 
-This writes a `loom-invocation` YAML block to the notebook so polling
-tools can find it later.
+Loom already wrote the `loom-invocation` block itself when the submission
+answered, so this normally just sets the label and the anchor on it --
+naming the plan step the run belongs to. It writes a new block only when
+nothing in the notebook carries that invocation id.
 
 Periodically call `galaxy_invocation_check_all` to advance in-flight
 work. The tool auto-transitions YAML status (all-jobs-ok → completed,

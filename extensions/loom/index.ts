@@ -18,6 +18,8 @@ import { setupUIBridge } from "./ui-bridge";
 import { registerSessionLifecycle } from "./session-lifecycle";
 import { recordGalaxyConnected } from "./galaxy-cred-drift";
 import { registerActivityHooks } from "./activity-hooks";
+import { registerSubmissionCapture } from "./galaxy-submission-capture";
+import { isSubmissionReplayEnabled, registerSubmissionReplay } from "./submission-replay";
 import { registerExecutionCommands } from "./execution-commands";
 import { registerFeedbackCommand } from "./feedback-command";
 import { registerTesterIdCommand } from "./tester-id-command";
@@ -87,6 +89,18 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   setupUIBridge(pi);
   registerSessionLifecycle(pi);
   registerActivityHooks(pi);
+  // Auto-registration of Galaxy submissions. Mode-independent on purpose: it
+  // must not live inside the exec-guard, which is skipped entirely when
+  // LOOM_LOCAL_EXEC=off (the web/container shell), and capture has to work
+  // there too. Registered after the session lifecycle so the notebook path is
+  // already set by the time anything can fire.
+  registerSubmissionCapture(pi);
+  // Eval-only seam: replays recorded submission results through the hook above
+  // so the Tier-1 scenarios can pin capture behavior without a model. Off
+  // unless LOOM_SUBMISSION_REPLAY names a file inside the session directory.
+  if (isSubmissionReplayEnabled()) {
+    registerSubmissionReplay(pi);
+  }
 
   registerPlanTools(pi);
   registerGalaxyUploadTool(pi);

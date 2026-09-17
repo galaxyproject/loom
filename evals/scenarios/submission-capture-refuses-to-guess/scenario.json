@@ -1,0 +1,47 @@
+{
+  "name": "an unparseable submission result records nothing and says so",
+  "description": "Three results that carry no id the harness can stand behind: prose naming a history id and a dataset id that a 16-hex regex fallback would have registered as a job, a success whose data.model_class is Job where an invocation belongs (registering it would send the pollers to /api/invocations/<job id>), and JSON cut off mid-string. Each must log submission.unparsed and leave the notebook alone -- a wrong id binds the record to work nobody did, which is worse than no id.",
+  "tier": 1,
+  "inputs": ["/status"],
+  "env": {
+    "ANTHROPIC_API_KEY": "fake-eval-key",
+    "LOOM_SUBMISSION_REPLAY": "submissions.jsonl",
+    "GALAXY_URL": "https://usegalaxy.org",
+    "GALAXY_API_KEY": "fake-eval-galaxy-key"
+  },
+  "timeoutMs": 15000,
+  "assertions": {
+    "events": {
+      "mustNotInclude": ["agent_start", "tool_execution_start", "turn_start"]
+    },
+    "activity": {
+      "mustNotIncludeKinds": ["submission.registered"],
+      "mustInclude": [
+        {
+          "kind": "submission.unparsed",
+          "source": "submission-capture",
+          "payloadContains": {
+            "tool": "galaxy_run_tool",
+            "step_anchor": "plan-a-step-1"
+          }
+        },
+        {
+          "kind": "submission.unparsed",
+          "source": "submission-capture",
+          "payloadContains": {
+            "tool": "galaxy_invoke_workflow"
+          }
+        }
+      ]
+    },
+    "notebook": {
+      "mustNotContain": [
+        "```loom-job",
+        "```loom-invocation",
+        "0a248a1f62a0cc04",
+        "d5e6f7a8b9c0d1e2",
+        "1a2b3c4d5e6f7a8b"
+      ]
+    }
+  }
+}

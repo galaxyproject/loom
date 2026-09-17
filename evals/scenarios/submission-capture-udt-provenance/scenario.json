@@ -1,0 +1,43 @@
+{
+  "name": "creating a user-defined tool preserves its definition outside Galaxy",
+  "description": "A UDT lives in Galaxy's database scoped to one user, so without this the notebook says a tool ran and nothing says what it was. Creating one has to write the definition Galaxy stored to .loom/provenance/udt/<tool_id>-<uuid>.yaml and leave a loom-udt block pointing at it, keyed on the uuid that run_user_tool takes. The uuid is in the filename because it is what identifies a definition: naming by tool id alone meant recreating the same tool overwrote the earlier record while both blocks went on pointing at the survivor. The written path is reported on the activity row from what actually landed, so the row cannot claim a file that was never written.",
+  "tier": 1,
+  "inputs": ["/status"],
+  "env": {
+    "ANTHROPIC_API_KEY": "fake-eval-key",
+    "LOOM_SUBMISSION_REPLAY": "submissions.jsonl",
+    "GALAXY_URL": "https://usegalaxy.org",
+    "GALAXY_API_KEY": "fake-eval-galaxy-key"
+  },
+  "timeoutMs": 15000,
+  "assertions": {
+    "events": {
+      "mustNotInclude": ["agent_start", "tool_execution_start", "turn_start"]
+    },
+    "activity": {
+      "mustNotIncludeKinds": ["submission.unparsed"],
+      "mustInclude": [
+        {
+          "kind": "submission.registered",
+          "source": "submission-capture",
+          "payloadContains": {
+            "tool": "galaxy_create_user_tool",
+            "kind": "udt",
+            "tool_id": "clean_table",
+            "tool_uuid": "8d5f1c2e-9a0b-4c3d-8e7f-1a2b3c4d5e6f",
+            "definition": ".loom/provenance/udt/clean_table-8d5f1c2e-9a0b-4c3d-8e7f-1a2b3c4d5e6f.yaml",
+            "step_anchor": "plan-a-step-1"
+          }
+        }
+      ]
+    },
+    "notebook": {
+      "contains": [
+        "```loom-udt",
+        "tool_uuid: 8d5f1c2e-9a0b-4c3d-8e7f-1a2b3c4d5e6f",
+        "definition: .loom/provenance/udt/clean_table-8d5f1c2e-9a0b-4c3d-8e7f-1a2b3c4d5e6f.yaml",
+        "notebook_anchor: plan-a-step-1"
+      ]
+    }
+  }
+}
