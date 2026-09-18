@@ -74,6 +74,26 @@ type PollerNotify = (text: string, level: "info" | "warning" | "error") => void;
 let notify: PollerNotify | null = null;
 
 /**
+ * Extra work to run on each tick, handed the notebook this tick already read.
+ *
+ * One hook rather than a second `setInterval`, because everything a second
+ * timer would need is already here: the cadence, the notebook read, and the
+ * knowledge of what is in flight. A second timer would also be a second thing
+ * to remember to stop. The live Galaxy panel registers through this.
+ */
+type PollTickHook = (content: string | null) => Promise<void>;
+let tickHook: PollTickHook | null = null;
+
+export function setPollTickHook(hook: PollTickHook | null): void {
+  tickHook = hook;
+}
+
+/** For tests: whether anything is registered, and what. */
+export function getPollTickHook(): PollTickHook | null {
+  return tickHook;
+}
+
+/**
  * Hand a finished run back to the agent as a queued follow-up, so it verifies
  * outputs itself instead of the toast asking the user to relay. Null when
  * auto-resume is off, which is the default.
@@ -466,6 +486,24 @@ async function runTick(): Promise<void> {
     // One read per tick, shared by everything below: what the notebook says is
     // in flight is the whole of the poller's worklist.
     const content = await readNotebookOrNull();
+    // Before the early returns below: a hook that only ran when the notebook
+    // had in-flight blocks would be a hook that stops the moment the analysis
+    // goes quiet, which is exactly when a panel still has to say something.
+    //
+    // Deliberately not awaited. A hook is an extra, and this tick's real work
+    // -- advancing in-flight invocations and jobs -- must not wait behind one
+    // that is talking to a Galaxy that has stopped answering. The hook is
+    // responsible for its own re-entrancy; both failure paths are swallowed
+    // here so a rejection cannot surface as an unhandled one.
+    if (tickHook) {
+      try {
+        void tickHook(content).catch((err) => {
+          console.error("[galaxy-poller] tick hook failed:", err);
+        });
+      } catch (err) {
+        console.error("[galaxy-poller] tick hook threw:", err);
+      }
+    }
     if (content === null) {
       // The notebook itself is gone, so every block we were watching went with
       // it -- same silencing, one level up. An unreadable-but-present notebook

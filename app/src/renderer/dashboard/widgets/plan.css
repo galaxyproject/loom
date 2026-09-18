@@ -1,0 +1,230 @@
+/* Plan-progress widget. Loaded through the @import in dashboard.css.
+   Every custom property used here is already defined in styles.css. */
+.dash-plan {
+  /* The word carries the state, the colour only reinforces it -- but the
+     colour still has to pass AA, and --accent and --error as text do not. */
+  --plan-done: var(--success);
+  --plan-running: var(--accent);
+  --plan-failed: #fca5a5;
+  /* Inherited by everything below. A step detail is usually a file path, and
+     one unbroken 180-character path will otherwise scroll the whole panel
+     sideways in a pane that is 360px wide. */
+  overflow-wrap: anywhere;
+}
+:root[data-theme="light"] .dash-plan {
+  --plan-running: var(--accent-hover);
+  --plan-failed: var(--error);
+}
+
+.dash-plan-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dash-plan-empty {
+  margin: 0;
+  color: var(--dash-text-meta);
+  line-height: 1.5;
+}
+
+.dash-plan-title {
+  font-weight: 600;
+  color: var(--text-bright);
+  line-height: 1.35;
+}
+
+.dash-plan-routing {
+  line-height: 1.4;
+}
+
+.dash-plan .dash-meta {
+  font-size: 11px;
+  color: var(--dash-text-meta);
+}
+
+.dash-plan .state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dash-plan .state-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.dash-plan .state-done {
+  color: var(--plan-done);
+}
+.dash-plan .state-running {
+  color: var(--plan-running);
+}
+.dash-plan .state-failed {
+  color: var(--plan-failed);
+}
+.dash-plan .state-waiting,
+.dash-plan .state-unknown {
+  color: var(--dash-text-meta);
+}
+
+.dash-plan .state-running .state-glyph {
+  animation: dash-plan-pulse 1.6s ease-in-out infinite;
+}
+@keyframes dash-plan-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dash-plan .state-running .state-glyph {
+    animation: none;
+  }
+}
+
+.dash-plan .dash-bar {
+  display: flex;
+  height: 6px;
+  background: var(--bg-subtle-hover);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.dash-plan .dash-bar-done {
+  background: var(--success);
+}
+.dash-plan .dash-bar-fail {
+  background: var(--error);
+  /* Hatched so the failed slice is findable in greyscale. */
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(0, 0, 0, 0.32) 0 3px,
+    transparent 3px 6px
+  );
+}
+
+.dash-plan-next {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg-subtle);
+  padding: 6px 8px;
+}
+.dash-plan-next.is-failed {
+  border-left-color: var(--error);
+  background: var(--error-bg);
+}
+.dash-plan-next-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.dash-plan-next-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--dash-text-meta);
+}
+.dash-plan-next-title {
+  margin-top: 2px;
+  color: var(--text);
+  line-height: 1.35;
+}
+.dash-plan-next-detail {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--dash-text-meta);
+}
+
+.dash-plan .dash-rows {
+  display: flex;
+  flex-direction: column;
+}
+.dash-plan .dash-row-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.dash-plan .dash-row-item:last-child {
+  border-bottom: 0;
+}
+.dash-plan .dash-row-item.is-failed {
+  background: var(--error-bg);
+  margin: 0 -10px;
+  padding: 4px 10px;
+  border-bottom-color: transparent;
+}
+.dash-plan .dash-row-main {
+  flex: 1;
+  min-width: 0;
+}
+.dash-plan .dash-row-title {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-plan .dash-row-title.is-muted {
+  color: var(--dash-text-meta);
+}
+.dash-plan-hidden {
+  padding-top: 4px;
+}
+
+.dash-plan-older {
+  margin-top: 2px;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+.dash-plan-older-head {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 10px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.dash-plan-older-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.dash-plan-older-row:hover .dash-row-title {
+  color: var(--text-bright);
+}
+.dash-plan-older-row:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+.dash-plan-older-count {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+}
+.dash-plan-older-detail {
+  padding: 0 0 4px 20px;
+}

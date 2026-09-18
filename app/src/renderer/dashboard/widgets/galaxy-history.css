@@ -1,0 +1,200 @@
+/* Live Galaxy history panel.
+
+   Pulled into dashboard.css with one @import rather than pasted into it: that
+   file is shared by every widget and this keeps the whole of one panel's
+   styling in one place. Every custom property used here is defined in
+   styles.css; --dash-text-meta comes from dashboard.css, which raises the
+   app's --text-dim above the 4.5:1 floor for the 10-11px text a dashboard is
+   mostly made of. */
+
+.gx-live {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  min-height: 0;
+  font-size: 12px;
+  color: var(--text);
+}
+
+/* Only the list scrolls. The name, the counts and the staleness line stay put,
+   because a panel three rows tall cannot afford to hide the line that says how
+   old these numbers are. */
+.gx-live-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.gx-live-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.gx-live-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+
+.gx-live-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.gx-live-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gx-live-host {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--dash-text-meta);
+  font-family: var(--font);
+}
+
+.gx-live-counts,
+.gx-live-more,
+.gx-live-empty,
+.gx-live-checked {
+  margin: 0;
+  font-size: 11px;
+  color: var(--dash-text-meta);
+  line-height: 1.45;
+}
+
+.gx-live-counts {
+  color: var(--text);
+}
+
+/* Numbers nobody has refreshed must not read like live ones. */
+.gx-live-checked.gx-live-stale {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.gx-live-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.gx-live-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* The pane is ~400px wide, so at two columns a panel is under 180px and the
+   extension/collection column is the first thing that has to go. */
+.gx-live-row .gx-live-kind {
+  display: none;
+}
+
+@container dashboard (min-width: 560px) {
+  .gx-live-row {
+    grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  }
+  .gx-live-row .gx-live-kind {
+    display: inline;
+  }
+}
+
+.gx-live-row:last-child {
+  border-bottom: none;
+}
+
+.gx-live-row:nth-child(even) {
+  background: var(--bg-stripe);
+}
+
+.gx-live-hid {
+  color: var(--dash-text-meta);
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  text-align: right;
+}
+
+.gx-live-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gx-live-kind {
+  color: var(--dash-text-meta);
+  font-size: 10px;
+  font-family: var(--font);
+}
+
+/* Tinted background, coloured border, ordinary bright text. Colour-on-tint at
+   10px falls under 4.5:1 for --accent in the light theme, and the badge recipe
+   the Activity tab uses (--accent background, dark text) is 3.53:1 there. The
+   state also reads without colour at all: the mark and the word carry it. */
+.gx-live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-inset);
+  color: var(--text-bright);
+}
+
+.gx-live-mark {
+  font-size: 9px;
+  line-height: 1;
+}
+
+.gx-live-done {
+  background: var(--success-bg);
+  border-color: var(--success);
+}
+
+.gx-live-done .gx-live-mark {
+  color: var(--success);
+}
+
+.gx-live-busy {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+
+.gx-live-busy .gx-live-mark {
+  color: var(--accent);
+}
+
+.gx-live-warn {
+  border-color: var(--warning);
+}
+
+.gx-live-warn .gx-live-mark {
+  color: var(--warning);
+}
+
+.gx-live-bad {
+  background: var(--error-bg);
+  border-color: var(--error);
+}
+
+.gx-live-bad .gx-live-mark {
+  color: var(--error);
+}
+
+.gx-live-unknown .gx-live-mark {
+  color: var(--dash-text-meta);
+}

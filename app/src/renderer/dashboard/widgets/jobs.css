@@ -1,0 +1,261 @@
+/* Running-on-Galaxy widget. Loaded through the @import in dashboard.css.
+   Every custom property used here is already defined in styles.css. */
+/* State colours as their own tokens, because the product's --accent, --warning
+   and --error are each under the 4.5:1 floor for 11px text in one theme or the
+   other: amber on white is 3.7:1 in light, salmon on the tinted failed row is
+   3.4:1 in dark. Same values the dashboard mockups settled on. */
+.dash-jobs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  --jobs-running: var(--accent);
+  --jobs-paused: var(--warning);
+  --jobs-done: var(--success);
+  --jobs-failed: #fca5a5;
+}
+:root[data-theme="light"] .dash-jobs {
+  --jobs-running: var(--accent-hover);
+  --jobs-paused: var(--accent-hover);
+  --jobs-failed: var(--error);
+}
+.dash-jobs-alert {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  margin: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--error);
+  border-radius: 4px;
+  background: var(--error-bg);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.dash-jobs-alert-glyph {
+  color: var(--jobs-failed);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+/* display:flex above is an author rule and beats the UA stylesheet's
+   [hidden] { display: none }, so without this the strip never hides. It works
+   in the real pane only because the dashboard host has its own [hidden] rule;
+   this widget should not need the host to be there. */
+.dash-jobs-alert[hidden] {
+  display: none;
+}
+.dash-jobs-rows {
+  display: flex;
+  flex-direction: column;
+}
+.dash-jobs-row {
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.dash-jobs-row:first-child {
+  padding-top: 0;
+}
+.dash-jobs-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.dash-jobs-row.is-failed {
+  margin: 0 -10px;
+  padding-left: 10px;
+  padding-right: 10px;
+  background: var(--error-bg);
+  border-bottom-color: transparent;
+  box-shadow: inset 3px 0 0 var(--error);
+}
+.dash-jobs-title {
+  font-size: 12.5px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-jobs-row.is-done .dash-jobs-title {
+  color: var(--dash-text-meta);
+}
+.dash-jobs-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.dash-jobs-glyph {
+  display: inline-block;
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.dash-jobs-state.state-running {
+  color: var(--jobs-running);
+}
+.dash-jobs-state.state-queued,
+.dash-jobs-state.state-stopping,
+.dash-jobs-state.state-unknown,
+.dash-jobs-state.state-cancelled,
+.dash-jobs-state.state-skipped {
+  color: var(--dash-text-meta);
+}
+.dash-jobs-state.state-paused {
+  color: var(--jobs-paused);
+}
+.dash-jobs-state.state-finished {
+  color: var(--jobs-done);
+}
+.dash-jobs-state.state-failed {
+  color: var(--jobs-failed);
+}
+.dash-jobs-state.state-running .dash-jobs-glyph {
+  animation: dash-jobs-pulse 1.6s ease-in-out infinite;
+}
+@keyframes dash-jobs-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dash-jobs-state.state-running .dash-jobs-glyph {
+    animation: none;
+  }
+}
+.dash-jobs-bar {
+  display: flex;
+  height: 6px;
+  margin: 6px 0 4px;
+  border-radius: 3px;
+  background: var(--bg-subtle-hover);
+  overflow: hidden;
+}
+.dash-jobs-bar-done {
+  background: var(--success);
+}
+.dash-jobs-bar-fail {
+  background: var(--error);
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(0, 0, 0, 0.32) 0 3px,
+    transparent 3px 6px
+  );
+}
+.dash-jobs-say {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+}
+.dash-jobs-row.is-stale .dash-jobs-say {
+  color: var(--dash-text-meta);
+}
+/* A bar nobody has refreshed should not look as solid as one we just read. */
+.dash-jobs-row.is-stale .dash-jobs-bar {
+  opacity: 0.5;
+}
+.dash-jobs-why {
+  margin: 3px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--dash-text-meta);
+}
+.dash-jobs-meta {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--dash-text-meta);
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.dash-jobs-link {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--jobs-running);
+  text-decoration: none;
+}
+/* The product's global a:hover swaps in --accent-hover, which over the
+   tinted failure row in dark is 3.9:1. Keep our own colour and add the
+   underline, which is the affordance the hover was for. */
+.dash-jobs-link:hover {
+  color: var(--jobs-running);
+  text-decoration: underline;
+}
+.dash-jobs-raw {
+  margin-top: 5px;
+  font-size: 11px;
+}
+.dash-jobs-raw > summary {
+  cursor: pointer;
+  color: var(--dash-text-meta);
+}
+.dash-jobs-raw dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 2px 8px;
+  margin: 5px 0 0;
+  font-size: 11px;
+}
+.dash-jobs-raw dt {
+  color: var(--dash-text-meta);
+  white-space: nowrap;
+}
+.dash-jobs-raw dd {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font);
+  overflow-wrap: anywhere;
+}
+.dash-jobs-more {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--dash-text-meta);
+}
+.dash-jobs-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 48px;
+  padding: 6px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--dash-text-meta);
+}
+.dash-jobs-empty strong {
+  color: var(--text);
+  font-weight: 600;
+}
+/* The host's panel button is borderless until hover, which is too quiet for
+   the only way back to the runs this filter is hiding. */
+.dash-jobs-empty .dash-panel-btn {
+  border-color: var(--border-strong);
+}
+.dash-jobs-count {
+  background: var(--accent-bg);
+  border: 1px solid var(--accent);
+  color: var(--text-bright);
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font);
+}
+.dash-jobs-count.zero {
+  background: var(--bg-deep);
+  border-color: var(--border);
+  color: var(--dash-text-meta);
+}
+.dash-jobs-count.bad {
+  background: var(--error-bg);
+  border-color: var(--error);
+  color: var(--text-bright);
+}

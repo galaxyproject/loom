@@ -1,11 +1,13 @@
 /**
- * ArtifactPanel renders the right-hand pane with three tabs:
- *   Notebook, Activity, File.
+ * ArtifactPanel renders the right-hand pane with four tabs:
+ *   Notebook, Activity, Dashboard, File.
  *
  * - Notebook tab: live notebook.md markdown emitted by the brain.
  * - Activity tab: live shell stream + proc-monitor table. The DOM for both
  *   sub-sections lives in index.html and is driven by app.ts (ShellPanel,
  *   renderProcs); this class only owns tab visibility.
+ * - Dashboard tab: user-defined panels, drawn by app/src/renderer/dashboard.
+ *   This class owns only the container and the tab.
  * - File tab: hidden until a file is opened from the files sidebar.
  */
 
@@ -15,8 +17,9 @@ import { renderMarkdown } from "../chat/markdown.js";
 // Dedicated Marked instance for the notebook pane. Relative image srcs (e.g.
 // `10_figures/foo.png`) are rewritten to the `orbit-artifact://` scheme served
 // by the main process out of the current analysis cwd. Chat messages keep the
-// default `marked` so agent-authored URLs aren't touched.
-const notebookMarked = new Marked({
+// default `marked` so agent-authored URLs aren't touched. Exported so the
+// dashboard's notebook widget renders figures the same way this tab does.
+export const notebookMarked = new Marked({
   renderer: {
     image({ href, title, text }) {
       const rewritten = rewriteArtifactHref(href);
@@ -55,11 +58,12 @@ const NOTEBOOK_EMPTY_HTML = `
   </div>
 `;
 
-type TabKey = "notebook" | "activity" | "file";
+type TabKey = "notebook" | "activity" | "dashboard" | "file";
 
 export class ArtifactPanel {
   private notebookEl: HTMLElement;
   private activityEl: HTMLElement;
+  private dashboardEl: HTMLElement;
   private fileEl: HTMLElement;
   private fileTabBtn: HTMLButtonElement;
   private tabButtons: HTMLButtonElement[];
@@ -72,6 +76,7 @@ export class ArtifactPanel {
   constructor() {
     this.notebookEl = document.getElementById("notebook-view")!;
     this.activityEl = document.getElementById("activity-view")!;
+    this.dashboardEl = document.getElementById("dashboard-view")!;
     this.fileEl = document.getElementById("file-view")!;
     this.tabButtons = Array.from(
       document.querySelectorAll<HTMLButtonElement>("#artifact-tabs .pane-tab"),
@@ -96,6 +101,11 @@ export class ArtifactPanel {
       this.hideFileTab();
       this.onFileTabClose?.();
     });
+  }
+
+  /** Returns the Dashboard tab container so the dashboard host can mount its DOM. */
+  getDashboardContainer(): HTMLElement {
+    return this.dashboardEl;
   }
 
   /** Returns the File tab container so the FileViewer can mount its DOM. */
@@ -161,6 +171,7 @@ export class ArtifactPanel {
     }
     this.notebookEl.classList.toggle("hidden", tab !== "notebook");
     this.activityEl.classList.toggle("hidden", tab !== "activity");
+    this.dashboardEl.classList.toggle("hidden", tab !== "dashboard");
     this.fileEl.classList.toggle("hidden", tab !== "file");
   }
 

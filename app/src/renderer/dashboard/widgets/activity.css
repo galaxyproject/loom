@@ -1,0 +1,161 @@
+/* Analysis-log widget. Loaded through the @import in dashboard.css.
+   Every custom property used here is already defined in styles.css. */
+.dash-activity {
+  padding: 0;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.dash-activity-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 10px;
+}
+.dash-activity-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.dash-activity-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+.dash-activity-note {
+  margin: 0;
+  color: var(--dash-text-meta);
+  line-height: 1.5;
+}
+/* Outside the scroller: with the newest entry at the bottom, a line at the top
+   of the list is the first thing to scroll out of sight. */
+.dash-activity-trim {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--dash-text-meta);
+  border-bottom: 1px solid var(--border);
+}
+.dash-activity-trim[hidden] {
+  display: none;
+}
+.dash-activity-day {
+  margin: 8px 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--dash-text-meta);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 2px;
+}
+.dash-activity-day:first-child {
+  margin-top: 0;
+}
+.dash-activity-row {
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.dash-activity-row:last-child {
+  border-bottom: 0;
+}
+.dash-activity-row-plain {
+  padding-left: 15px;
+}
+.dash-activity-row > summary {
+  cursor: pointer;
+}
+.dash-activity-row > summary::-webkit-details-marker {
+  color: var(--dash-text-meta);
+}
+.dash-activity-row > summary:hover .dash-activity-text {
+  color: var(--text-bright);
+}
+.dash-activity-time {
+  display: inline-block;
+  min-width: 52px;
+  font-family: var(--font);
+  font-size: 10.5px;
+  color: var(--dash-text-meta);
+  font-variant-numeric: tabular-nums;
+}
+/* min-width, not width: the blocked glyph is wider than the box and would sit
+   on top of the first word of its own sentence. */
+.dash-activity-glyph {
+  display: inline-block;
+  min-width: 13px;
+  margin-right: 4px;
+  text-align: center;
+  font-size: 11px;
+}
+.dash-activity-text {
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+.dash-activity-tone-ok .dash-activity-glyph {
+  color: var(--success);
+}
+.dash-activity-tone-failed .dash-activity-glyph {
+  color: var(--error);
+}
+.dash-activity-tone-failed .dash-activity-text {
+  color: var(--text-bright);
+  font-weight: 500;
+}
+.dash-activity-tone-blocked .dash-activity-glyph {
+  color: var(--warning);
+}
+.dash-activity-tone-running .dash-activity-glyph {
+  color: var(--accent);
+}
+.dash-activity-tone-info .dash-activity-glyph {
+  color: var(--dash-text-meta);
+}
+.dash-activity-tone-unknown .dash-activity-glyph {
+  color: var(--dash-text-meta);
+}
+.dash-activity-detail {
+  margin: 4px 0 6px 15px;
+  padding: 6px 8px;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font);
+  font-size: 10.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+.dash-activity-jump {
+  position: absolute;
+  right: 14px;
+  bottom: 8px;
+  z-index: 1;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 1px 4px var(--shadow-soft);
+  padding: 2px 9px;
+  color: var(--text);
+}
+.dash-activity-jump:hover {
+  border-color: var(--accent);
+  color: var(--text-bright);
+}
+.dash-activity-filter {
+  width: 84px;
+  min-width: 0;
+  background: var(--bg-deep);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font: inherit;
+  font-size: 11px;
+}
+.dash-activity-filter:focus {
+  outline: none;
+  border-color: var(--accent);
+}

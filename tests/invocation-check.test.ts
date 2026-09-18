@@ -6,6 +6,7 @@ import { resetState, setNotebookPath } from "../extensions/loom/state";
 import { renderInvocationYaml, type InvocationYaml } from "../extensions/loom/notebook-writer";
 import * as galaxyApi from "../extensions/loom/galaxy-api";
 import { checkInvocations } from "../extensions/loom/tools";
+import { foldInvocationState } from "../app/src/renderer/dashboard/widgets/jobs";
 
 function invocation(overrides: Partial<InvocationYaml> = {}): InvocationYaml {
   return {
@@ -239,6 +240,68 @@ describe("checkInvocations completion predicate", () => {
     expect(notebook).toContain("status: in_progress");
     expect(notebook).toContain("failed_jobs: 1");
     expect(notebook).toContain("1 job(s) failed, 1 still running");
+  });
+
+  it("names the cancel while Galaxy is still deleting its jobs", async () => {
+    // The window this is about: Galaxy has moved the invocation to `cancelled`
+    // but is still deleting the jobs one at a time, so `deleted` lands in the
+    // same counter as a real error and a `deleting` job keeps the block off its
+    // terminal branch. Without a word for it in the summary, the only thing the
+    // renderer sees is a failure count, and the loudest surface in the product
+    // raises a red alarm about something the user asked for.
+    const { entry, notebook } = await poll("cancelled", ["deleted", "deleting"]);
+
+    expect(entry.autoAction).toBe("cancelling");
+    expect(notebook).toContain("status: in_progress");
+    expect(notebook).toContain("Workflow cancelling: 1 job(s) did not finish, 1 still running");
+  });
+
+  it("does not call a cancel that is nearly done a scheduling problem", async () => {
+    // Every job already deleted but Galaxy has not moved the invocation off
+    // `cancelling` yet. The tail on this branch is written for a workflow that
+    // is still handing out jobs, and on a cancel it said the invocation was
+    // "still scheduling", which is the one thing it is certainly not doing.
+    const { entry, notebook } = await poll("cancelling", ["deleted", "deleted"]);
+
+    expect(entry.autoAction).toBe("cancelling");
+    expect(notebook).toContain("Workflow cancelling: 2 job(s) did not finish, waiting for Galaxy");
+    expect(notebook).not.toContain("still scheduling");
+  });
+
+  it("names the cancel before any job has been deleted, not only after", async () => {
+    // The moment the user cancels, Galaxy flips the invocation while the jobs
+    // are still running -- so nothing has landed in the failed counter yet.
+    // Gating the cancel wording on that counter left this first window saying
+    // the run was going along fine.
+    const { entry, notebook } = await poll("cancelled", ["running", "running"]);
+
+    expect(entry.autoAction).toBe("cancelling");
+    expect(notebook).toContain("Workflow cancelling: 0 job(s) did not finish, 2 still running");
+    expect(foldInvocationState("in_progress", "Workflow cancelling: 0 job(s) did not finish")).toBe(
+      "stopping",
+    );
+  });
+
+  it("does not call a deleted job and an errored one by the same word", async () => {
+    // rollUpInvocationJobs scores a `deleted` job in the same counter as a
+    // genuinely errored one, so a run that broke and was then cancelled has
+    // both in that number and the brain cannot say which is which. "did not
+    // finish" is true of both, and is the word the panel uses for this row.
+    const { notebook } = await poll("cancelled", ["error", "deleted", "deleting"]);
+
+    expect(notebook).toContain("2 job(s) did not finish");
+    expect(notebook).not.toContain("job(s) failed");
+  });
+
+  it("writes a cancelling summary the jobs panel actually reads as stopping", async () => {
+    // The panel has no invocation state to look at, so it reads this sentence.
+    // That coupling is deliberate and documented at CANCELLED_SUMMARY; this is
+    // the test that fails if either side changes the wording alone. The import
+    // is test-only -- the brain does not know the renderer exists.
+    const { notebook } = await poll("cancelled", ["deleted", "deleting"]);
+    const summary = /summary: (.*)/.exec(notebook)?.[1] ?? "";
+
+    expect(foldInvocationState("in_progress", JSON.parse(summary))).toBe("stopping");
   });
 
   it("transitions to failed once nothing is active", async () => {

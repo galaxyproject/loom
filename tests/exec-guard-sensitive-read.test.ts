@@ -36,6 +36,36 @@ describe("isSensitivePath", () => {
 // agent has no business reading, so reads are denied for ALL model tiers (not
 // downgraded to an ask). This is the floor that closes #183 -- ~/.loom/config.json
 // is a store; a credential-SHAPED file that might be a project fixture is not.
+describe("credential stores on a case-insensitive filesystem", () => {
+  // macOS is case-insensitive and its realpath does not normalize case, so an
+  // exact-case list only half-covers these directories: `library/keychains`
+  // and `Library/Keychains` are the same folder and only one of them was
+  // refused. The web file surface reads through this policy, so the miss was
+  // reachable from a browser with the session cwd at $HOME.
+  it.each([
+    "/home/alice/library/keychains/user.kb",
+    "/home/alice/LIBRARY/KEYCHAINS/user.kb",
+    "/home/alice/.SSH/known_hosts",
+    "/home/alice/.Config/GCloud/creds.db",
+    "/home/alice/.AWS/credentials.bak",
+  ])("refuses %s whatever case it is written in", (p) => {
+    expect(isCredentialStore(p, HOME), p).toBe(true);
+    expect(isSensitivePath(p, HOME), p).toBe(true);
+  });
+
+  it.each(["/home/alice/.NETRC", "/home/alice/.Loom/Config.json"])(
+    "refuses the exact-file entry %s whatever case it is written in",
+    (p) => {
+      expect(isCredentialStore(p, HOME), p).toBe(true);
+    },
+  );
+
+  it("still lets an ordinary file through", () => {
+    expect(isCredentialStore("/home/alice/project/Library/notes.md", HOME)).toBe(false);
+    expect(isSensitivePath("/home/alice/project/Keychains.md", HOME)).toBe(false);
+  });
+});
+
 describe("isCredentialStore", () => {
   it("flags the dedicated home credential stores (dirs + exact files)", () => {
     for (const p of [

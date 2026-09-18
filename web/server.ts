@@ -25,6 +25,9 @@ import { isForwardableUiResponse } from "./rpc-guard.js";
 import { isCustomProvider } from "../shared/custom-provider.js";
 import { hasProviderKey, llmKeyEnvVar } from "./llm-credentials.js";
 import { resolveShutdownGraceMs } from "./shutdown-grace.js";
+import { DASHBOARD_FILENAME, DASHBOARD_MAX_BYTES } from "../shared/dashboard-contract.js";
+import { casWriteLayoutFile, readLayoutFile } from "../shared/dashboard-layout-store.js";
+import { listFilesForWeb, readFileForWeb, readNotebookForWeb } from "./files-surface.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // In dev this file runs from web/; the container bundles it to web/build/ and
@@ -517,6 +520,78 @@ wss.on("connection", (socket) => {
     }
     if (channel === "agent:get-cwd") {
       respond(id, cwd);
+      return;
+    }
+    // notebook.md is in the session cwd and the server already owns that path.
+    // Without this the web shell shows an empty Notebook tab -- and an empty
+    // dashboard -- until the brain happens to push a widget mid-turn, even
+    // though the file is right there. Same response shape as the Electron
+    // handler so the renderer cannot tell the two apart.
+    if (channel === "notebook:load") {
+      // Through the same jail the file surface uses: the filename is fixed, but
+      // the name itself can be a symlink and following one handed the browser
+      // whatever it pointed at. Still answered in remote mode -- notebook.md is
+      // the one file that mode is built around; see readNotebookForWeb.
+      const notebookPath = join(cwd, "notebook.md");
+      void readNotebookForWeb(cwd, { remote: IS_REMOTE_MODE }).then(
+        (res) =>
+          respond(
+            id,
+            res.ok
+              ? { ok: true, content: res.content, path: res.path }
+              : { ok: false, content: null, path: notebookPath },
+          ),
+        () => respond(id, { ok: false, content: null, path: notebookPath }),
+      );
+      return;
+    }
+    // Dashboard layout: one fixed filename in the session cwd, alongside
+    // notebook.md. Allowed in remote mode -- it is pane layout, not config, and
+    // the renderer is the only thing that reads it. No path argument, so there
+    // is nothing to traverse with.
+    if (channel === "dashboard:load") {
+      void readLayoutFile(join(cwd, DASHBOARD_FILENAME), DASHBOARD_MAX_BYTES).then(
+        (result) => respond(id, result),
+        (err) =>
+          respond(id, { ok: false, error: err instanceof Error ? err.message : String(err) }),
+      );
+      return;
+    }
+    if (channel === "dashboard:save") {
+      const baseRevision = args.length > 1 ? (args[1] as string | null) : undefined;
+      void casWriteLayoutFile(
+        join(cwd, DASHBOARD_FILENAME),
+        args[0] as string,
+        baseRevision,
+        DASHBOARD_MAX_BYTES,
+      ).then(
+        (result) => respond(id, result),
+        (err) =>
+          respond(id, { ok: false, error: err instanceof Error ? err.message : String(err) }),
+      );
+      return;
+    }
+    // The read-only file surface. The desktop answers these from the main
+    // process; here they are a network surface onto the analysis directory, so
+    // the jail lives in files-surface.ts and is tested on its own. It is
+    // anchored on the same `cwd` the brain is spawned in, which `agent:set-cwd`
+    // moves -- so the surface is exactly as wide as the directory this session
+    // is pointed at, and no wider.
+    if (channel === "files:list") {
+      void listFilesForWeb(cwd, { remote: IS_REMOTE_MODE }).then(
+        (result) => respond(id, result),
+        // Neither of these should reject, but a channel that answers nothing
+        // leaves the caller's promise pending for the life of the socket.
+        () => respond(id, { ok: false, error: "the files could not be listed" }),
+      );
+      return;
+    }
+    if (channel === "files:read") {
+      const opts = (args[1] ?? undefined) as { tail?: boolean } | undefined;
+      void readFileForWeb(cwd, args[0], opts, { remote: IS_REMOTE_MODE }).then(
+        (result) => respond(id, result),
+        () => respond(id, { ok: false, error: "the file could not be read" }),
+      );
       return;
     }
     if (channel === "agent:set-cwd") {

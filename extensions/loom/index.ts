@@ -19,6 +19,8 @@ import { registerSessionLifecycle } from "./session-lifecycle";
 import { recordGalaxyConnected } from "./galaxy-cred-drift";
 import { registerActivityHooks } from "./activity-hooks";
 import { registerExecutionCommands } from "./execution-commands";
+import { registerDashboardTools } from "./dashboard-tools";
+import { registerDashboardCommands } from "./dashboard-commands";
 import { registerFeedbackCommand } from "./feedback-command";
 import { registerTesterIdCommand } from "./tester-id-command";
 import { registerInstructionsCommand } from "./instructions-command";
@@ -94,6 +96,8 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   registerSyncCommand(pi);
   registerSkillsCommand(pi);
   registerExecutionCommands(pi);
+  registerDashboardTools(pi);
+  registerDashboardCommands(pi);
   registerFeedbackCommand(pi);
   registerTesterIdCommand(pi);
   registerInstructionsCommand(pi);

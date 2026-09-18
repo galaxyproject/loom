@@ -1024,19 +1024,46 @@ export async function checkInvocations(
           };
           autoAction = "completed";
         }
-      } else if (summary.error > 0) {
-        // A failure with work still in flight. Keep the block in_progress so the
-        // rest stays under observation -- terminal blocks are never polled again
-        // -- but say so in the summary and let the poller raise it once.
+      } else {
+        // A cancel is not instant: Galaxy moves the invocation to `cancelled`
+        // and then deletes its jobs one at a time. Naming it is what lets the
+        // renderer tell a deliberate stop from a failure -- it has no
+        // invocation state to look at, only this sentence -- and without it the
+        // loudest surface in the product raises a red alarm about something the
+        // user asked for.
+        const stopping = inv.state === "cancelled" || inv.state === "cancelling";
         const tail =
           activeJobs > 0
             ? `${activeJobs} still running`
-            : `invocation still scheduling (state: ${inv.state})`;
-        transition = {
-          status: "in_progress",
-          summary: `Workflow in progress: ${summary.error} job(s) failed, ${tail}`,
-        };
-        autoAction = "failing";
+            : stopping
+              ? `waiting for Galaxy to finish the cancel (state: ${inv.state})`
+              : `invocation still scheduling (state: ${inv.state})`;
+        if (stopping) {
+          // Deliberately not gated on the failed counter. Right after a cancel
+          // every job is still running, so nothing has landed in it yet -- and
+          // that is exactly the window where the panel would otherwise say the
+          // run is going along fine.
+          //
+          // "did not finish" rather than "failed" because the counter cannot
+          // tell the two apart: rollUpInvocationJobs scores a `deleted` job
+          // beside a genuinely errored one, so a run that broke and was then
+          // cancelled has both in the same number. It is the word the panel
+          // itself uses for a stopping row.
+          transition = {
+            status: "in_progress",
+            summary: `Workflow cancelling: ${summary.error} job(s) did not finish, ${tail}`,
+          };
+          autoAction = "cancelling";
+        } else if (summary.error > 0) {
+          // A failure with work still in flight. Keep the block in_progress so
+          // the rest stays under observation -- terminal blocks are never polled
+          // again -- but say so in the summary and let the poller raise it once.
+          transition = {
+            status: "in_progress",
+            summary: `Workflow in progress: ${summary.error} job(s) failed, ${tail}`,
+          };
+          autoAction = "failing";
+        }
       }
 
       // Always update the block — even if the rolled-up status didn't
@@ -1106,16 +1133,17 @@ export async function checkInvocations(
     // flag on a block that was deleted mid-poll — or that another poller had
     // already advanced — would announce a state change nothing wrote.
     //
-    // "failing" never changes the status, so it can't be checked against the
-    // transitions; it's news as long as the counters and summary carrying it
-    // landed somewhere.
+    // "failing" and "cancelling" never change the status, so they can't be
+    // checked against the transitions; they're news as long as the counters
+    // and summary carrying them landed somewhere.
     for (const entry of results) {
       const announced =
         entry.autoAction === "completed" ||
         entry.autoAction === "failed" ||
         entry.autoAction === "cancelled";
       if (announced && !transitioned.has(entry.invocationId)) entry.autoAction = undefined;
-      if (entry.autoAction === "failing" && !applied.has(entry.invocationId)) {
+      const midFlight = entry.autoAction === "failing" || entry.autoAction === "cancelling";
+      if (midFlight && !applied.has(entry.invocationId)) {
         entry.autoAction = undefined;
       }
     }

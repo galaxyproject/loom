@@ -19,6 +19,17 @@
     />
     <title>orbit</title>
     <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./dashboard/dashboard.css" />
+    <!-- After dashboard.css on purpose: a widget rule and a shared rule are often
+         both one class on the same element, so the widget sheet has to come last
+         to win the tie. -->
+    <link rel="stylesheet" href="./dashboard/widgets/jobs.css" />
+    <link rel="stylesheet" href="./dashboard/widgets/plan.css" />
+    <link rel="stylesheet" href="./dashboard/widgets/activity.css" />
+    <link rel="stylesheet" href="./dashboard/widgets/results.css" />
+    <link rel="stylesheet" href="./dashboard/widgets/galaxy-history.css" />
+    <link rel="stylesheet" href="./dashboard/widgets/html-sandbox.css" />
+    <link rel="stylesheet" href="./dashboard/editor/editor.css" />
   </head>
   <body>
     <div id="app">
@@ -345,6 +356,7 @@
           <div class="pane-title pane-tabs" id="artifact-tabs">
             <button class="pane-tab active" data-tab="notebook">Notebook</button>
             <button class="pane-tab" data-tab="activity">Activity</button>
+            <button class="pane-tab" data-tab="dashboard">Dashboard</button>
             <button class="pane-tab pane-tab-closeable" data-tab="file" hidden>
               <span class="pane-tab-label">File</span>
               <span class="pane-tab-close" id="file-tab-close" title="Close file">×</span>
@@ -364,6 +376,7 @@
                 </p>
               </div>
             </div>
+            <div id="dashboard-view" class="pane-body hidden"></div>
             <div id="activity-view" class="pane-body hidden">
               <div id="activity-galaxy-history-section" class="hidden">
                 <div class="activity-section-header">

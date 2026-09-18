@@ -21,6 +21,24 @@ function within(abs: string, dir: string): boolean {
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
+/**
+ * `within`, case-folded. Only the credential-store lists use it.
+ *
+ * macOS is case-insensitive and its realpath does not normalize case, so
+ * `Library/Keychains` and `library/keychains` name one directory that an
+ * exact-case list only half-covers -- `library/keychains/user.kb` walked
+ * straight past this check. Folding can over-match a literally lowercase
+ * `library/keychains` on Linux, which errs toward refusing a read, and that is
+ * the safe direction for a list whose whole purpose is credential stores.
+ *
+ * Deliberately NOT used by the write-protection carve-out below: there a match
+ * means "this is an analysis workspace, so allow the write", and folding would
+ * widen an exemption rather than a refusal.
+ */
+function withinFolded(abs: string, dir: string): boolean {
+  return within(abs.toLowerCase(), dir.toLowerCase());
+}
+
 // Dedicated credential stores: the home-relative dirs and exact files above
 // that exist solely to hold secrets. The agent has no legitimate reason to read
 // their CONTENTS, so reads are denied for every model tier (not just downgraded
@@ -29,8 +47,10 @@ function within(abs: string, dir: string): boolean {
 // stores: those can be project fixtures, so they keep the ask/deny-by-tier path.
 export function isCredentialStore(absPath: string, home: string): boolean {
   const norm = path.normalize(absPath);
-  for (const d of SENSITIVE_HOME_DIRS) if (within(norm, path.join(home, d))) return true;
-  for (const f of SENSITIVE_HOME_FILES) if (norm === path.join(home, f)) return true;
+  for (const d of SENSITIVE_HOME_DIRS) if (withinFolded(norm, path.join(home, d))) return true;
+  for (const f of SENSITIVE_HOME_FILES) {
+    if (norm.toLowerCase() === path.join(home, f).toLowerCase()) return true;
+  }
   return false;
 }
 

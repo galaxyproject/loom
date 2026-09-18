@@ -1,0 +1,277 @@
+/* Dashboard tab. Loaded by a <link> in index.html rather than folded into
+   styles.css, which several branches edit at once. Every custom property used
+   here is already defined in styles.css. */
+
+/* Per-widget and editor styles live next to the code that draws them, and are
+   linked from index.html AFTER this file rather than @imported from it. An
+   @import has to precede every rule in its own stylesheet, which would put
+   every widget sheet ahead of the shared rules below -- and a widget rule and a
+   shared rule are often both a single class on the same element (a widget's own
+   button also carries .dash-panel-btn), so source order is the whole tie-break.
+   Importing here silently handed those to the shared rule. */
+
+#dashboard-view {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  padding: 16px;
+  /* The pane is a draggable fraction of the window, so column count has to
+     follow the pane's width, not the viewport's. */
+  container-type: inline-size;
+  container-name: dashboard;
+  /* --bg-surface (the panel) and --bg-artifact (the pane) are both #ffffff in
+     the light theme, which leaves a panel with no edge. */
+  background: var(--bg);
+}
+
+/* styles.css toggles visibility with a `.hidden` class and has no unscoped rule
+   for the attribute, so anything here that is display:flex and toggled with
+   [hidden] would stay on screen. */
+#dashboard-view [hidden] {
+  display: none !important;
+}
+
+#dashboard-view.hidden {
+  display: none;
+}
+
+#dashboard-view::-webkit-scrollbar {
+  width: 6px;
+}
+
+#dashboard-view::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+
+.dash-root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 100%;
+}
+
+.dash-banner {
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg-selected);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dash-banner.hidden {
+  display: none;
+}
+
+/* Owned by the layout editor. Stays empty, and collapses, until there is one. */
+.dash-toolbar:empty {
+  display: none;
+}
+
+.dash-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dash-grid {
+  --dash-row: 72px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* Height in the same system as width: `rows` is a grid-row span, not a CSS
+     height, so two panels of different heights in one row stop leaving a
+     ragged gap under the shorter one. */
+  grid-auto-rows: var(--dash-row);
+  gap: 12px;
+  align-content: start;
+}
+
+/* One column in a narrow pane: two 50% columns of a 300px pane are unreadable.
+   The media query is the fallback for a renderer without container queries;
+   the container query is the one that is actually right. */
+@media (max-width: 560px) {
+  .dash-grid {
+    grid-template-columns: minmax(0, 1fr);
+    /* One column: a fixed height is all dead space. Let a short panel shrink
+       and cap a long one where its author said. */
+    grid-auto-rows: min-content;
+  }
+  .dash-panel {
+    grid-column: span 1 !important;
+    grid-row: auto !important;
+    max-height: calc(var(--dash-row) * var(--dash-panel-rows) + 6px);
+  }
+}
+
+@container dashboard (max-width: 560px) {
+  .dash-grid {
+    grid-template-columns: minmax(0, 1fr);
+    /* One column: a fixed height is all dead space. Let a short panel shrink
+       and cap a long one where its author said. */
+    grid-auto-rows: min-content;
+  }
+  .dash-panel {
+    grid-column: span 1 !important;
+    grid-row: auto !important;
+    max-height: calc(var(--dash-row) * var(--dash-panel-rows) + 6px);
+  }
+}
+
+.dash-panel {
+  --dash-panel-rows: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.dash-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-selected);
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.dash-panel-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Widget-owned controls sit left of the editor's, and push them to the edge. */
+.dash-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.dash-panel-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* --text-dim is under the 4.5:1 floor over the panel surface in both themes,
+   and a dashboard is mostly 10-11px meta text. */
+.dash-panel {
+  --dash-text-meta: rgba(248, 250, 252, 0.72);
+}
+
+:root[data-theme="light"] .dash-panel {
+  --dash-text-meta: rgba(31, 41, 55, 0.72);
+}
+
+.dash-panel-btn {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dash-text-meta);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+
+.dash-panel-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.dash-panel-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.dash-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+  font-size: 12px;
+}
+
+.dash-panel-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dash-panel-body::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+
+/* Placeholder / error / stub cards. */
+.dash-card {
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  padding: 10px;
+  color: var(--dash-text-meta);
+}
+
+.dash-card-title {
+  margin: 0 0 4px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.dash-card-detail {
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Deliberately not red. Red in this app means the analysis is in trouble, and
+   "the box that draws your jobs broke" is not that. */
+.dash-card-error {
+  border-style: solid;
+}
+
+.dash-card-detail-raw {
+  margin-top: 8px;
+  font-size: 11px;
+}
+
+.dash-card-detail-raw pre {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11px;
+}
+
+.dash-card-retry {
+  margin-top: 8px;
+}
+
+/* Notebook widget. */
+.dash-notebook {
+  padding: 0;
+}
+
+.dash-notebook-scroll {
+  height: 100%;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.dash-notebook-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dash-notebook-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}

@@ -13,6 +13,9 @@ vi.mock("../extensions/loom/state.js", () => ({
 vi.mock("../extensions/loom/galaxy-poller.js", () => ({
   startGalaxyPoller: vi.fn(),
   stopGalaxyPoller: vi.fn(),
+  // The live Galaxy panel registers and clears its tick hook here; shutdown
+  // clears it, so a mock without this member makes the handler throw.
+  setPollTickHook: vi.fn(),
 }));
 
 import * as poller from "../extensions/loom/galaxy-poller.js";

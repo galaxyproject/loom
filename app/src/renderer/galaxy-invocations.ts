@@ -10,7 +10,7 @@
  * so users see the final completed/failed state).
  */
 
-interface Invocation {
+export interface Invocation {
   invocationId: string;
   galaxyServerUrl: string;
   notebookAnchor: string;
@@ -47,7 +47,7 @@ function unescape(value: string): string {
 
 export function parseInvocationBlocks(content: string): Invocation[] {
   const out: Invocation[] = [];
-  const lines = content.split("\n");
+  const lines = content.split(/\r?\n/);
   let i = 0;
   while (i < lines.length) {
     if (lines[i].trim() === FENCE_OPEN) {
