@@ -5,6 +5,8 @@
  * Provides typed wrappers for the specific endpoints used by invocation polling.
  */
 
+import { fetchSameOriginOnly } from "../../shared/redirect-guard.js";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Galaxy API response types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -51,6 +53,16 @@ export interface GalaxyConfig {
   apiKey: string;
 }
 
+/**
+ * How the redirect guard names things when it refuses one. `GALAXY_URL` is the
+ * right thing to name here even for a profile-configured server: `/connect`
+ * publishes the active profile into the env, so that is the value in play.
+ */
+const GALAXY_REDIRECT_LABELS = {
+  serverLabel: "Galaxy",
+  urlSettingLabel: "GALAXY_URL",
+} as const;
+
 export function getGalaxyConfig(): GalaxyConfig | null {
   const url = process.env.GALAXY_URL;
   const apiKey = process.env.GALAXY_API_KEY;
@@ -91,10 +103,14 @@ export async function galaxyGet<T = unknown>(path: string, signal?: AbortSignal)
   if (!config) throw new Error("Galaxy credentials not configured (GALAXY_URL, GALAXY_API_KEY)");
 
   const url = `${config.url}/api${path}`;
-  const resp = await fetch(url, {
-    headers: { "x-api-key": config.apiKey },
-    signal,
-  });
+  const resp = await fetchSameOriginOnly(
+    url,
+    {
+      headers: { "x-api-key": config.apiKey },
+      signal,
+    },
+    GALAXY_REDIRECT_LABELS,
+  );
 
   if (!resp.ok) {
     const body = await resp.text().catch(() => "");
@@ -114,15 +130,19 @@ async function galaxyMutate<T>(
   if (!config) throw new Error("Galaxy credentials not configured (GALAXY_URL, GALAXY_API_KEY)");
 
   const url = `${config.url}/api${path}`;
-  const resp = await fetch(url, {
-    method,
-    headers: {
-      "x-api-key": config.apiKey,
-      "Content-Type": "application/json",
+  const resp = await fetchSameOriginOnly(
+    url,
+    {
+      method,
+      headers: {
+        "x-api-key": config.apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal,
     },
-    body: JSON.stringify(body),
-    signal,
-  });
+    GALAXY_REDIRECT_LABELS,
+  );
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");
