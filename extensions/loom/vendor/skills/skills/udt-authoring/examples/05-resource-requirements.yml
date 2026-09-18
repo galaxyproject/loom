@@ -1,0 +1,25 @@
+# Request cores with a resource requirement; read the allocation at runtime via
+# the $GALAXY_SLOTS shell variable (no parentheses -> not a $() expression).
+class: GalaxyUserTool
+id: report-cores
+version: "0.1.0"
+name: Report allocated cores
+description: Write the number of CPU cores Galaxy allocated to this job
+container: busybox
+requirements:
+  - type: resource
+    cores_min: 2
+shell_command: |
+  echo "$GALAXY_SLOTS" > galaxy_cores.txt
+outputs:
+  - name: cores
+    type: data
+    format: txt
+    from_work_dir: galaxy_cores.txt
+    label: Allocated cores
+help:
+  format: markdown
+  content: |
+    Reports the number of CPU cores Galaxy allocated to the job (from `$GALAXY_SLOTS`).
+
+    **Outputs** -- `cores`: a one-line text file with the core count.

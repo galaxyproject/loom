@@ -1,0 +1,51 @@
+{
+  "type": "cli-command",
+  "tool": "gxwf",
+  "command": "draft-extract",
+  "summary": "Extract the concrete subset of a draft workflow: trim drafty steps, strip `_plan_*`, promote class when fully resolved.",
+  "source_path": "content/cli/gxwf/draft-extract.md",
+  "source_revision": 1,
+  "package": "@galaxy-tool-util/cli",
+  "description": "Extract the concrete subset of a draft workflow (drop drafty steps, strip _plan_* fields, promote class when fully concrete)",
+  "synopsis": "gxwf draft-extract [options] <file>",
+  "args": [
+    {
+      "raw": "file",
+      "name": "file",
+      "required": true,
+      "variadic": false,
+      "description": "Draft workflow file (.gxwf.yml)"
+    }
+  ],
+  "options": [
+    {
+      "flags": "-o, --output <file>",
+      "name": "output",
+      "short": "-o",
+      "description": "Write extracted workflow to file (default: stdout)",
+      "takesArgument": true,
+      "argumentPlaceholder": "<file>",
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--report-json [file]",
+      "name": "reportJson",
+      "description": "Write extraction report JSON (drops, rewrites, class flip) — to file or stdout if omitted",
+      "takesArgument": true,
+      "argumentPlaceholder": "[file]",
+      "optionalArgument": true,
+      "negatable": false
+    },
+    {
+      "flags": "--format <fmt>",
+      "name": "format",
+      "description": "Force input format: format2 (default; native is rejected)",
+      "takesArgument": true,
+      "argumentPlaceholder": "<fmt>",
+      "optionalArgument": false,
+      "negatable": false
+    }
+  ],
+  "body": "# `gxwf draft-extract`\n\nTransform a draft workflow into its already-concretized subset. Pipes three operations from `@galaxy-tool-util/schema` in order:\n\n1. `extractConcreteSubset` — drop steps that still carry `TODO_*` or `_plan_*`; cascade through dead `in:` deps; rewrite multi-source inputs to the surviving subset; fall back to `default:` when a single source dies; recurse into draft subworkflows; drop orphan workflow outputs.\n2. `stripPlanFields` — remove `_plan_*` planning fields from every surviving step and from the workflow root.\n3. `promoteFullyConcreteDrafts` — flip `class: GalaxyWorkflowDraft` → `class: GalaxyWorkflow` on any (sub)workflow now carrying zero TODOs and zero `_plan_*`. Inner draft with remaining work blocks outer promotion.\n\nNative (.ga) input is rejected — drafts are format2-only. Output format is inferred from the `-o` extension (`.ga` / `.json` → native JSON; otherwise format2 YAML) or, when emitting to stdout, matches the input format. Promoted from the earlier hidden `_draft-extract` command — same behavior, same flags, now first-class in `gxwf --help`.\n\n## Output\n\nBy default, the trimmed workflow is written to stdout. With `-o <file>`, written to that file. `--report-json [file]` emits a `SingleDraftExtractReport` sidecar with `dropped_steps`, `dropped_outputs`, `rewritten_step_inputs`, and the post-extract class.\n\n## Examples\n\n```bash\ngxwf draft-extract workflow.gxwf.yml > concrete.gxwf.yml\ngxwf draft-extract workflow.gxwf.yml -o concrete.gxwf.yml --report-json report.json\ngxwf draft-extract workflow.gxwf.yml -o concrete.ga\ngxwf draft-extract workflow.gxwf.yml | gxwf validate -\n```\n\n## Exit codes\n\n- `0` — input parsed and the extract pipeline ran (including the empty-extract case).\n- `2` — parse / read failure, native input rejected, or a stdout-sink collision between the workflow output and `--report-json=-` both targeting stdout.\n\n## Gotchas\n\n- This command is **a transformation, not a validator**. To validate the concrete subset against full `gxformat2` rules, pipe to validate (or invoke draft-validate with `--concrete`, which runs the same pipeline internally).\n- The trimmed workflow may still be `class: GalaxyWorkflowDraft` — promotion only fires when zero TODOs and zero `_plan_*` remain anywhere (including inside draft subworkflows).\n- `extractConcreteSubset` operates as a fixpoint and is deterministic per-level: drops within a level sort by `(round, path)`; inner-level drops follow their containing surviving subworkflow in source iteration order.\n- Outer subworkflow steps are never shrunk in v1 — inner workflows shrink in place. A drafty step at the outer level either survives whole or is dropped whole.\n- Use `--report-json` whenever a cast skill needs to surface which steps were trimmed (e.g., to explain why a downstream test fails on a workflow that \"validates fine but is missing the step you asked about\")."
+}

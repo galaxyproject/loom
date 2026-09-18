@@ -12,18 +12,22 @@ export function registerSkillsCommand(pi: ExtensionAPI): void {
           ctx.ui.notify("Refreshing skill catalogs…", "info");
           const results = await refreshAllCatalogs();
           const summary = results
-            .map((r) => (r.ok ? `${r.repo}: ${r.count}` : `${r.repo}: failed (${r.error})`))
+            .map((r) => {
+              if (r.bundled) return `${r.repo}: ${r.count} (bundled, nothing to fetch)`;
+              return r.ok ? `${r.repo}: ${r.count}` : `${r.repo}: failed (${r.error})`;
+            })
             .join(", ");
           ctx.ui.notify(`Skills refreshed (${summary}). Takes effect next session.`, "info");
           return;
         }
         if (sub === "status") {
           const summary = catalogSummary()
-            .map((r) =>
-              r.cached
+            .map((r) => {
+              if (r.bundled) return `${r.repo}: ${r.count} skill(s) bundled with Loom`;
+              return r.cached
                 ? `${r.repo}: ${r.count} skill(s) cached`
-                : `${r.repo}: not cached yet (run /skills refresh to fetch the latest)`,
-            )
+                : `${r.repo}: not cached yet (run /skills refresh to fetch the latest)`;
+            })
             .join("\n");
           ctx.ui.notify(summary || "No skill repos enabled.", "info");
           return;

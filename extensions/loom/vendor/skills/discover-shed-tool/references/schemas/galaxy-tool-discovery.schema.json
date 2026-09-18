@@ -1,0 +1,231 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://galaxyproject.org/foundry/schemas/galaxy-tool-discovery.schema.json",
+  "$comment": "Canonical source: packages/gxwf-foundry/src/schemas/galaxy-tool-discovery/galaxy-tool-discovery.schema.json in galaxyproject/foundry. Mold frontmatter cites this schema via [[galaxy-tool-discovery]] wiki-links; the cast pipeline imports the `galaxyToolDiscoverySchema` runtime export and serializes it into cast bundles.",
+  "title": "Galaxy Tool Discovery Recommendation",
+  "description": "Structured recommendation emitted by the discover-shed-tool Mold after searching the Galaxy Tool Shed and resolving any selected candidate to a pinnable Tool Shed version and changeset revision.",
+  "$ref": "#/$defs/DiscoveryRecommendation",
+  "$defs": {
+    "DiscoveryRecommendation": {
+      "title": "DiscoveryRecommendation",
+      "description": "Top-level output from discover-shed-tool. A hit or weak result carries a selected candidate; a miss carries null candidate plus fallthrough rationale.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "candidate",
+        "alternates",
+        "rationale",
+        "warnings"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "hit",
+            "weak",
+            "miss"
+          ],
+          "description": "Recommendation class. hit means proceed with the selected Tool Shed pin; weak means candidate exists but needs confirmation or may fall through; miss means no usable wrapper was found."
+        },
+        "candidate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolCandidate"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Selected candidate for hit/weak results. Null for miss."
+        },
+        "alternates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ToolCandidate"
+          },
+          "description": "Runner-up candidates worth surfacing to the user or harness. Empty when no plausible alternates were found."
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Short explanation of why this status and candidate were selected, including ambiguity or fallthrough reasoning."
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Warning"
+          },
+          "description": "Advisory issues that do not invalidate the recommendation but affect confidence or downstream binding."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "hit",
+                  "weak"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "candidate": {
+                "$ref": "#/$defs/ToolCandidate"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "miss"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "candidate": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ToolCandidate": {
+      "title": "ToolCandidate",
+      "description": "One Tool Shed candidate plus the version and changeset pin needed by downstream caching and gxformat2 authoring.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tool_shed_url",
+        "owner",
+        "repo",
+        "tool_id",
+        "trs_tool_id",
+        "version",
+        "changeset_revision",
+        "score",
+        "matched_terms",
+        "match_fields",
+        "rationale"
+      ],
+      "properties": {
+        "tool_shed_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Tool Shed base URL searched, normally https://toolshed.g2.bx.psu.edu."
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Tool Shed repository owner, e.g. devteam or iuc."
+        },
+        "repo": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Tool Shed repository name containing the wrapper. Maps from gxwf search's repoName field."
+        },
+        "tool_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Galaxy XML tool id inside the repository."
+        },
+        "trs_tool_id": {
+          "type": "string",
+          "pattern": "^[^~]+~[^~]+~[^~]+$",
+          "description": "Tool Shed TRS-style id: <owner>~<repo>~<tool_id>. Used for gxwf tool-versions and tool-revisions."
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Selected Galaxy XML tool version, usually the newest installable version unless the caller requested a specific version."
+        },
+        "changeset_revision": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Selected Tool Shed Mercurial changeset revision for reproducible gxformat2 tool_shed_repository pinning."
+        },
+        "score": {
+          "type": "number",
+          "description": "Search score or cast-skill confidence score used to rank this candidate. Higher is better."
+        },
+        "matched_terms": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Query terms or exact hints that matched this candidate. Empty only when the candidate came from a non-lexical hint."
+        },
+        "match_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "tool_id",
+              "name",
+              "description",
+              "help",
+              "owner",
+              "repo",
+              "exact_name_hint",
+              "owner_hint",
+              "version_hint"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "Candidate fields or hints that matched the query. Preserves the older sketch's name/description-style evidence separately from matched_terms."
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Candidate-specific explanation, especially for alternates and weak recommendations."
+        }
+      }
+    },
+    "Warning": {
+      "title": "Warning",
+      "description": "Advisory confidence issue surfaced by discover-shed-tool.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "ambiguous-owner",
+            "duplicate-tool-id",
+            "deprecated-suspected",
+            "stale-index-suspected",
+            "weak-name-match",
+            "version-resolution-gap",
+            "changeset-resolution-gap",
+            "manual-confirmation-needed",
+            "other"
+          ],
+          "description": "Machine-stable warning category."
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable warning detail."
+        }
+      }
+    }
+  }
+}

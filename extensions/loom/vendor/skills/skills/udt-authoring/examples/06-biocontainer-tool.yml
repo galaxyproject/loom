@@ -1,0 +1,38 @@
+# Realistic capstone: a real bioinformatics tool in a biocontainer, multiple data
+# inputs joined with .map().join(), threads from $GALAXY_SLOTS, tabular output.
+#
+# IMPORTANT: verify the exact container tag exists before use -- do not guess.
+# Browse https://quay.io/repository/biocontainers/seqkit?tab=tags for current tags.
+class: GalaxyUserTool
+id: seqkit-stats
+version: "0.1.0"
+name: SeqKit sequence statistics
+description: Summary statistics (num seqs, length, N50, GC) for FASTA/FASTQ files
+container: quay.io/biocontainers/seqkit:2.8.2--h9ee0642_0
+requirements:
+  - type: resource
+    cores_min: 2
+shell_command: |
+  seqkit stats --tabular --all --threads $GALAXY_SLOTS $(inputs.input_files.map((f) => f.path).join(' ')) > stats.tsv
+inputs:
+  - name: input_files
+    type: data
+    format: [fasta, fastq]
+    multiple: true
+    label: Input sequence file(s)
+    help: One or more FASTA or FASTQ files to summarize.
+outputs:
+  - name: report
+    type: data
+    format: tabular
+    from_work_dir: stats.tsv
+    label: Sequence statistics (TSV)
+help:
+  format: markdown
+  content: |
+    Computes summary statistics (num seqs, length, N50, GC) for FASTA/FASTQ files with `seqkit stats`.
+
+    **Inputs** -- `input_files`: one or more FASTA/FASTQ files.
+    **Outputs** -- `report`: a tabular statistics report.
+
+    Uses the job's allocated cores (`$GALAXY_SLOTS`).

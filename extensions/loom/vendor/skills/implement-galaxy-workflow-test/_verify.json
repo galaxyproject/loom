@@ -1,0 +1,17 @@
+{
+  "verify_schema_version": 1,
+  "entries": [
+    {
+      "artifact_id": "galaxy-test-plan",
+      "direction": "input",
+      "kind": "yaml",
+      "default_filename": "galaxy-test-plan.yml",
+      "schema": "[[galaxy-workflow-test-plan]]",
+      "validator_bin": "foundry",
+      "args": [
+        "validate-galaxy-workflow-test-plan",
+        "{artifact_path}"
+      ]
+    }
+  ]
+}

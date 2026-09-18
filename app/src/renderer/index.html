@@ -668,14 +668,15 @@
           <section class="prefs-section" id="prefs-section-skills">
             <h3>Skills</h3>
             <p class="prefs-help">
-              GitHub repos with Claude-Code-style skills (top-level
-              <code>AGENTS.md</code> + nested <code>SKILL.md</code> files). The agent fetches them
-              on demand via the <code>skills_fetch</code> tool.
+              GitHub repos of <code>SKILL.md</code> files. The agent loads them on demand via the
+              <code>skills_fetch</code> tool. A repo marked <em>bundled</em> ships inside Loom at
+              the commit shown and is read from disk, so it works offline; point one at a different
+              branch or URL and it is fetched from GitHub instead.
               <strong>Alpha restriction:</strong> only repos under
               <code>github.com/galaxyproject/*</code> are accepted (the agent treats fetched skills
               as authoritative instructions, so the allowlist limits prompt-injection surface).
-              <code>galaxy-skills</code> is the default and ships with Loom; you can disable or
-              remove it, but a default is re-seeded if all repos are removed.
+              <code>galaxy-skills</code> is the default; you can disable or remove it, but a default
+              is re-seeded if all repos are removed.
             </p>
             <table id="prefs-skills-table" class="prefs-table">
               <thead>

@@ -140,7 +140,7 @@ Maverick especially shows nondeterminism on tool-call format.)
 ### udt-authoring-threads: progressive disclosure universal, outcome gates on capability
 
 First run of the UDT-authoring scenario (added alongside the skills-router
-fix). All three models called `skills_fetch({ path: "udt-authoring/..." })` --
+fix). All three models called `skills_fetch({ path: "udt-authoring/..." })` (the path gained a `skills/` prefix when the catalog moved into the package) --
 the router steering works across the whole matrix. The `$GALAXY_SLOTS` outcome
 split on capability: Qwen3-32B drafted a full `class: GalaxyUserTool` YAML
 wiring `$GALAXY_SLOTS` into the thread flag (pass); Llama-3.3-70B ran to the

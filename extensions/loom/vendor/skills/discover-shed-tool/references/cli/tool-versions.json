@@ -1,0 +1,39 @@
+{
+  "type": "cli-command",
+  "tool": "gxwf",
+  "command": "tool-versions",
+  "summary": "List TRS-published versions of a Tool Shed tool, oldest→newest. Second step in the discover-and-pin sequence.",
+  "source_path": "content/cli/gxwf/tool-versions.md",
+  "source_revision": 2,
+  "package": "@galaxy-tool-util/cli",
+  "description": "List TRS-published versions of a Tool Shed tool (newest last)",
+  "synopsis": "gxwf tool-versions [options] <tool-id>",
+  "args": [
+    {
+      "raw": "tool-id",
+      "name": "tool-id",
+      "required": true,
+      "variadic": false,
+      "description": "TRS id (owner~repo~tool_id) or pretty form (owner/repo/tool_id)"
+    }
+  ],
+  "options": [
+    {
+      "flags": "--json",
+      "name": "json",
+      "description": "Emit machine-readable JSON envelope",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--latest",
+      "name": "latest",
+      "description": "Print only the latest version",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    }
+  ],
+  "body": "# `gxwf tool-versions`\n\nList the TRS-published versions of a Tool Shed tool, ordered oldest→newest (newest last). Used after tool-search has surfaced a candidate `trsToolId` and the caller needs to pick a version to cache.\n\n`<tool-id>` accepts both forms:\n- TRS form: `owner~repo~tool_id` (e.g. `devteam~fastqc~fastqc`).\n- Pretty form: `owner/repo/tool_id` (e.g. `devteam/fastqc/fastqc`).\n\nThe `~` form is the Tool Shed's TRS encoding (slashes break FastAPI path-param decoding); the CLI accepts both and normalizes.\n\n## Output\n\nDefault: one version string per line, oldest first.\n\n`--json`:\n\n```json\n{\n  \"trsToolId\": \"devteam~fastqc~fastqc\",\n  \"versions\": [\"0.72+galaxy1\", \"0.73+galaxy0\", \"0.74+galaxy0\"]\n}\n```\n\n`--latest --json`:\n\n```json\n{\n  \"trsToolId\": \"devteam~fastqc~fastqc\",\n  \"versions\": [\"0.74+galaxy0\"]\n}\n```\n\n## Examples\n\n```bash\ngxwf tool-versions devteam/fastqc/fastqc\ngxwf tool-versions devteam~fastqc~fastqc --latest\ngxwf tool-versions devteam/fastqc/fastqc --json\n```\n\n## Gotchas\n\n- **TRS dedupes by version string.** If multiple changesets publish the same `version` (which is legal — the XML version field is not monotonic and not enforced unique), only the last-seen one appears. The other changesets are invisible at this layer. To see the full set of changesets that publish a given version, use tool-revisions. See component-tool-shed-search §3 and §5.\n- **`--latest` returns the lexicographically/iteration-order last item, not a semver-parsed maximum.** In practice the TRS list is ordered consistent with the Tool Shed's installable-revisions ordering, so \"newest\" is normally what you want — but do not assume strict semver semantics.\n- **Versions ≠ changesets.** A single TRS version can correspond to multiple changesets in the underlying Mercurial repo. Pinning a workflow for reproducible reinstall requires a `(name, owner, changeset_revision)` triple, not just a version — that is what tool-revisions produces.\n- **Stub list endpoint.** The Tool Shed's TRS `/tools` enumerator is unimplemented (returns `[]`). You cannot bulk-list tools via TRS; you must already have a `trsToolId` from search or a known input.\n\n## Pairs with\n\n- tool-search — produces the `trsToolId` consumed here.\n- tool-revisions — drills from a `(trsToolId, version)` down to changeset revisions.\n- `galaxy-tool-cache add toolshed.g2.bx.psu.edu/repos/<owner>/<repo>/<tool_id> --tool-version <v>` — caches the picked version's `ParsedTool`."
+}

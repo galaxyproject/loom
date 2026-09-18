@@ -2532,6 +2532,19 @@ body.platform-darwin #files-title {
 .prefs-table .prefs-skills-branch {
   width: 12%;
 }
+.prefs-skills-bundled:not(:empty) {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  line-height: 1.6;
+  white-space: nowrap;
+  color: var(--text-dim);
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+}
+
 .prefs-table .prefs-skills-enabled {
   width: 8%;
   text-align: center;

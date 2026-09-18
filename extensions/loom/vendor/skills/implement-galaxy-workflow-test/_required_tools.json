@@ -1,0 +1,28 @@
+[
+  {
+    "tool": "gxwf",
+    "origin": "npm",
+    "package": "@galaxy-tool-util/cli",
+    "package_version": "^1.8.1",
+    "invoke": "gxwf",
+    "invoke_fallback": "npx --yes --package @galaxy-tool-util/cli@1.8.1 gxwf",
+    "availability_check": "gxwf --help | grep -q draft-validate",
+    "docs_url": "https://github.com/jmchilton/galaxy-tool-util-ts/tree/main/packages/cli",
+    "source": "implied",
+    "implied_by": [
+      "gxwf validate-tests"
+    ]
+  },
+  {
+    "tool": "planemo",
+    "origin": "pypi",
+    "package": "planemo",
+    "package_version": "0.75.47",
+    "invoke": "planemo",
+    "invoke_fallback": "uvx --from planemo==0.75.47 planemo",
+    "availability_check": "planemo --version",
+    "docs_url": "https://planemo.readthedocs.io/",
+    "reference": "references/cli/planemo.md",
+    "source": "referenced"
+  }
+]

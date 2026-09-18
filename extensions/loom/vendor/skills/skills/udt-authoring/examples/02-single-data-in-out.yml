@@ -1,0 +1,27 @@
+# One data input referenced by .path, transformed, one output claimed by from_work_dir.
+class: GalaxyUserTool
+id: to-uppercase
+version: "0.1.0"
+name: Uppercase a text file
+description: Convert all letters in a text file to uppercase
+container: busybox
+shell_command: |
+  tr '[:lower:]' '[:upper:]' < '$(inputs.input.path)' > upper.txt
+inputs:
+  - name: input
+    type: data
+    format: txt
+    label: Input text file
+outputs:
+  - name: output
+    type: data
+    format: txt
+    from_work_dir: upper.txt
+    label: Uppercased text
+help:
+  format: markdown
+  content: |
+    Converts all letters in a text file to uppercase.
+
+    **Inputs** -- `input`: a text file.
+    **Outputs** -- `output`: the same text, uppercased.

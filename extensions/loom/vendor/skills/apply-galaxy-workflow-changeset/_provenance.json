@@ -1,0 +1,133 @@
+{
+  "provenance_schema_version": 4,
+  "cast_target": "claude",
+  "mold": {
+    "name": "apply-galaxy-workflow-changeset",
+    "path": "content/molds/apply-galaxy-workflow-changeset/index.md",
+    "revision": 3,
+    "content_hash": "82d8e6e440fc48fdb4e7c5a5e25591ecc8e8a248ea03cc950df5096256656b62",
+    "commit": "63a3f9cf9c97a637fe1628d298e524f35709e289"
+  },
+  "cast_at": "2026-09-13T20:58:26.175Z",
+  "refs": [
+    {
+      "kind": "cli-command",
+      "mode": "sidecar",
+      "ref": "[[draft-validate]]",
+      "src": "content/cli/gxwf/draft-validate.md",
+      "dst": "references/cli/draft-validate.json",
+      "used_at": "runtime",
+      "load": "on-demand",
+      "evidence": "hypothesis",
+      "purpose": "Validate the emitted draft against draft-contract rules (sentinel form, topology, _plan_* placement) before handing off to the per-step loop.",
+      "trigger": "After writing the modified draft workflow file.",
+      "verification": "Cast the skill, run on a representative workflow + change-set, confirm draft-validate diagnostics route back.",
+      "src_hash": "37cded427fbccf49ff19a6fe8b03f9e90857afe556e5db0e51a01402fbf33f1e",
+      "dst_hash": "afa59b0815308a340780247df0548909518564d58352a0c695ceca37a07eee5b",
+      "source": "deterministic"
+    },
+    {
+      "kind": "research",
+      "mode": "verbatim",
+      "ref": "[[galaxy-workflow-draft-format]]",
+      "src": "content/research/galaxy-workflow-draft-format/index.md",
+      "dst": "references/notes/galaxy-workflow-draft-format.md",
+      "used_at": "runtime",
+      "load": "upfront",
+      "evidence": "hypothesis",
+      "purpose": "Represent the whole workflow as a draft: carry untouched steps at Resolved tier, inject tool-introducing/replacing edits as drafty steps with _plan_state / _plan_context / _plan_in / _plan_out.",
+      "verification": "Promote after a downstream advance-galaxy-draft-step run drains the injected drafty steps without round-tripping back through the change-set.",
+      "src_hash": "93f3b231dd063bf059c550f18b2200c61909af0da9408e0d43351116e886bf7b",
+      "dst_hash": "93f3b231dd063bf059c550f18b2200c61909af0da9408e0d43351116e886bf7b",
+      "source": "deterministic"
+    },
+    {
+      "kind": "research",
+      "mode": "verbatim",
+      "ref": "[[open-requirements-ledger]]",
+      "src": "content/research/open-requirements-ledger/index.md",
+      "dst": "references/notes/open-requirements-ledger.md",
+      "used_at": "runtime",
+      "load": "upfront",
+      "evidence": "hypothesis",
+      "purpose": "Close the open entries the change-set discharges, and append a blocking entry for an edited region whose output the rewired inputs cannot supply, so an edit-introduced gap is recorded rather than discovered downstream.",
+      "verification": "Promote after a worked run shows entries this Mold appends or resolves are consumed downstream without re-derivation.",
+      "src_hash": "e1d5e3a4d6d650af5b2efc4703fe6f79bb4d0cc12e6cd14e841c5b91df122ea0",
+      "dst_hash": "e1d5e3a4d6d650af5b2efc4703fe6f79bb4d0cc12e6cd14e841c5b91df122ea0",
+      "source": "deterministic"
+    },
+    {
+      "kind": "schema",
+      "mode": "verbatim",
+      "ref": "[[galaxy-workflow-draft]]",
+      "src": "package://@galaxy-tool-util/schema#galaxyWorkflowDraftJsonSchema",
+      "dst": "references/schemas/galaxy-workflow-draft.schema.json",
+      "used_at": "runtime",
+      "load": "upfront",
+      "evidence": "cast-validated",
+      "purpose": "Output contract: the emitted gxformat2 draft conforms to [[galaxy-workflow-draft]]. Cast bundles the JSON Schema so the skill carries its output shape alongside [[draft-validate]] checks.",
+      "license": "MIT",
+      "license_file": "LICENSES/galaxy-tool-util-ts.LICENSE",
+      "src_hash": "86822b6bf4c11ba1d9eaa12d9e442db7f7d28b2734a2daddf62b5cdd2f1f75aa",
+      "dst_hash": "86822b6bf4c11ba1d9eaa12d9e442db7f7d28b2734a2daddf62b5cdd2f1f75aa",
+      "source": "deterministic",
+      "license_file_hash": "383450c494c01c466bcf22df102540a39ac89da50563fd7be686ba06772f96b3"
+    }
+  ],
+  "artifacts": {
+    "produces": [
+      {
+        "id": "galaxy-workflow-draft",
+        "kind": "yaml",
+        "default_filename": "galaxy-workflow-draft.gxwf.yml",
+        "schema": "[[galaxy-workflow-draft]]",
+        "description": "gxformat2 draft (see [[galaxy-workflow-draft-format]]) of the whole workflow: untouched steps carried at Resolved tier verbatim; tool-introducing/replacing edits injected as drafty steps with _plan_* fields for the per-step loop; direct edits applied inline."
+      },
+      {
+        "id": "open-requirements-ledger",
+        "kind": "yaml",
+        "default_filename": "open-requirements.ledger.yml",
+        "description": "Carried obligations ledger re-emitted by this step: entries it appended or closed updated, every other entry passed through with its provenance intact."
+      }
+    ],
+    "consumes": [
+      {
+        "id": "starting-galaxy-workflow",
+        "description": "The normalized concrete gxformat2 workflow being modified, emitted by [[summarize-galaxy-workflow]] (passthrough when already gxformat2, the `.ga`→gxformat2 conversion otherwise). The substrate edits apply to — untouched regions must survive byte-for-byte.",
+        "producers": [
+          "summarize-galaxy-workflow"
+        ]
+      },
+      {
+        "id": "galaxy-workflow-changeset",
+        "description": "Reviewed, step-anchored change-set from [[interview-to-galaxy-workflow-changeset]]; the edit intents to realize.",
+        "producers": [
+          "interview-to-galaxy-workflow-changeset"
+        ]
+      },
+      {
+        "id": "open-requirements-ledger",
+        "description": "Carried obligations ledger [[open-requirements-ledger]]: the run's open, resolved, and surrendered entries with their provenance. Absent on the first Mold of a run; start an empty one.",
+        "producers": [
+          "advance-galaxy-draft-step",
+          "apply-galaxy-workflow-changeset",
+          "compare-against-iwc-exemplar",
+          "cwl-summary-to-galaxy-data-flow",
+          "cwl-summary-to-galaxy-interface",
+          "cwl-summary-to-galaxy-template",
+          "freeform-summary-to-galaxy-data-flow",
+          "freeform-summary-to-galaxy-interface",
+          "freeform-summary-to-galaxy-template",
+          "implement-galaxy-tool-step",
+          "interview-to-galaxy-workflow-changeset",
+          "mature-galaxy-workflow-for-iwc",
+          "nextflow-summary-to-galaxy-data-flow",
+          "nextflow-summary-to-galaxy-interface",
+          "nextflow-summary-to-galaxy-reference-data",
+          "nextflow-summary-to-galaxy-template",
+          "repair-galaxy-draft-topology"
+        ]
+      }
+    ]
+  }
+}

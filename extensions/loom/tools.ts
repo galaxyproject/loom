@@ -43,7 +43,12 @@ import {
 } from "./galaxy-api";
 import { listEnabledSkillRepos, findSkillRepo } from "./skills";
 import { fetchSkillFile, githubRawBase } from "./skills-discovery";
-import { VENDOR_REPO_NAME, readVendoredSkill } from "./vendor-skills";
+import {
+  VENDOR_REPO_NAME,
+  hasBundledContent,
+  isBundledRepo,
+  readBundledRepoFile,
+} from "./vendor-skills";
 import { parse as parseHtml } from "node-html-parser";
 
 /**
@@ -356,14 +361,16 @@ analyses in Galaxy.`,
   pi.registerTool({
     name: "skills_fetch",
     label: "Fetch Skill",
-    description: `Fetch operational know-how from a configured skills repo. The
-system prompt's "Skills repositories" section lists the available repos and the
-canonical paths inside each. Results are cached locally for 24h. If \`repo\` is
-omitted, the first enabled repo is used (typically \`galaxy-skills\`).
+    description: `Load operational know-how from a skills repo. The system
+prompt's "Skills repositories" section lists the repos and the canonical paths
+inside each; a repo marked bundled there is read from the package, and any other
+is fetched and cached locally for 24h. If \`repo\` is omitted, the first enabled
+repo is used (typically \`galaxy-skills\`).
 
-\`repo: "${VENDOR_REPO_NAME}"\` reads Galaxy reference material bundled with Loom
-(offline, no network). It is not listed in the skills router; hints name the
-exact file when it becomes relevant.`,
+\`repo: "${VENDOR_REPO_NAME}"\` reads Galaxy workflow reference material bundled
+with Loom, always offline. It is deliberately absent from the router, so its
+paths are not listed there: a hint names the exact file when it becomes
+relevant, and a wrong path answers with the entry points that do exist.`,
     parameters: Type.Object({
       repo: Type.Optional(
         Type.String({
@@ -375,41 +382,51 @@ exact file when it becomes relevant.`,
       ),
       path: Type.String({
         description:
-          "Relative path inside the repo, e.g. 'collection-manipulation/SKILL.md', " +
-          "'galaxy-integration/mcp-reference/gotchas.md'.",
+          "Relative path inside the repo. For a repo the router lists, use the " +
+          "path it prints, e.g. 'skills/collection-manipulation/SKILL.md'; a " +
+          "skill's own reference docs sit beside it, e.g. " +
+          `'skills/galaxy-mcp-reference/gotchas.md'. For '${VENDOR_REPO_NAME}', ` +
+          "use the path a hint gave you.",
       }),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
-      // Bundled reference ships inside the package -- resolve it from disk
-      // before the configured-repo path, which is GitHub-backed and cached.
-      // On a miss, fall through to a configured repo of the same name rather
-      // than erroring: `galaxyproject/foundry` is a repo a user may well add,
-      // and the bundled set must not silently shadow the whole thing.
-      if (params.repo === VENDOR_REPO_NAME) {
-        const res = readVendoredSkill(params.path);
+      // Normalised once, up front, so every branch below reasons about the same
+      // string. The reserved-name branch used to take the model's raw input.
+      const cleanPath = params.path.replace(/^\/+/, "").replace(/\\/g, "/");
+      if (cleanPath.includes("..") || cleanPath === "") {
+        return {
+          content: [{ type: "text", text: `Error: Invalid skill path "${params.path}"` }],
+          details: { error: true },
+        };
+      }
+
+      // The reserved name reads bundled reference material, but only when the
+      // user has not claimed it: configuring a repo called "foundry" has to win,
+      // or an explicitly chosen branch is silently answered from the package.
+      // Checked before the read, not after a miss, because the bundled tree now
+      // holds a whole skills mirror and would answer for paths that belong to it.
+      if (params.repo === VENDOR_REPO_NAME && !findSkillRepo(VENDOR_REPO_NAME)) {
+        const res = readBundledRepoFile({ name: VENDOR_REPO_NAME }, cleanPath);
         if (res.ok) {
           return {
             content: [{ type: "text", text: res.text }],
             details: {
               repo: VENDOR_REPO_NAME,
-              path: params.path,
+              path: cleanPath,
               length: res.text.length,
-              cached: true,
+              bundled: true,
             },
           };
         }
-        if (!findSkillRepo(VENDOR_REPO_NAME)) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Error: ${res.error}. Bundled files: ${res.available.join(", ") || "(none)"}.`,
-              },
-            ],
-            details: { error: true, repo: VENDOR_REPO_NAME, path: params.path },
-          };
-        }
-        // A repo named "foundry" is configured — let the normal path serve it.
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error: ${res.error}. Available: ${res.available.join(", ") || "(none)"}.`,
+            },
+          ],
+          details: { error: true, repo: VENDOR_REPO_NAME, path: cleanPath },
+        };
       }
 
       const repo = findSkillRepo(params.repo);
@@ -431,11 +448,30 @@ exact file when it becomes relevant.`,
         };
       }
 
-      const cleanPath = params.path.replace(/^\/+/, "").replace(/\\/g, "/");
-      if (cleanPath.includes("..") || cleanPath === "") {
+      // A repo still on its shipped URL and branch is served from the package:
+      // the content was reviewed at a pinned commit and works with no network.
+      // Point it at another branch and it goes back to being fetched, which is
+      // how a skill author evaluates a change before it is merged.
+      //
+      // Gated on the content actually being there. If the vendor tree is missing
+      // -- a packaging regression, a half-finished install -- falling through to
+      // the network is a worse day than usual, not a session with no skills.
+      if (isBundledRepo(repo) && hasBundledContent(repo.name)) {
+        const res = readBundledRepoFile(repo, cleanPath);
+        if (res.ok) {
+          return {
+            content: [{ type: "text", text: res.text }],
+            details: { repo: repo.name, path: cleanPath, length: res.text.length, bundled: true },
+          };
+        }
         return {
-          content: [{ type: "text", text: `Error: Invalid skill path "${params.path}"` }],
-          details: { error: true },
+          content: [
+            {
+              type: "text",
+              text: `Error: ${res.error}. Available: ${res.available.join(", ") || "(none)"}.`,
+            },
+          ],
+          details: { error: true, repo: repo.name, path: cleanPath },
         };
       }
 
@@ -479,10 +515,17 @@ exact file when it becomes relevant.`,
     },
     renderResult: (result) => {
       const d = result.details as
-        | { repo?: string; path?: string; length?: number; cached?: boolean; error?: boolean }
+        | {
+            repo?: string;
+            path?: string;
+            length?: number;
+            cached?: boolean;
+            bundled?: boolean;
+            error?: boolean;
+          }
         | undefined;
       if (d?.error) return new Text("❌ Skill fetch failed");
-      const tag = d?.cached ? "(cached)" : "(fetched)";
+      const tag = d?.bundled ? "(bundled)" : d?.cached ? "(cached)" : "(fetched)";
       return new Text(`📘 ${d?.repo}/${d?.path} ${tag} (${d?.length || 0} chars)`);
     },
   });

@@ -1,0 +1,198 @@
+{
+  "provenance_schema_version": 4,
+  "cast_target": "claude",
+  "mold": {
+    "name": "compare-against-iwc-exemplar",
+    "path": "content/molds/compare-against-iwc-exemplar/index.md",
+    "revision": 10,
+    "content_hash": "5b198e9b87cf554cb01aceaa14a5aaa3ab24c6a35afc35dab7d09ce154cc3a77",
+    "commit": "63a3f9cf9c97a637fe1628d298e524f35709e289"
+  },
+  "cast_at": "2026-09-13T20:58:26.504Z",
+  "cast_date": "2026-05-07",
+  "cast_revision": 3,
+  "cast_history": [
+    {
+      "rev": 1,
+      "date": "2026-05-06",
+      "note": "cast requested nextflow-to-galaxy chain"
+    },
+    {
+      "rev": 2,
+      "date": "2026-05-06",
+      "note": "deterministic skill render"
+    },
+    {
+      "rev": 3,
+      "date": "2026-05-07",
+      "note": "runtime-facing deterministic skill render"
+    }
+  ],
+  "refs": [
+    {
+      "kind": "cli-command",
+      "mode": "sidecar",
+      "ref": "[[convert]]",
+      "src": "content/cli/gxwf/convert.md",
+      "dst": "references/cli/convert.json",
+      "used_at": "runtime",
+      "load": "on-demand",
+      "evidence": "corpus-observed",
+      "purpose": "Normalize fetched IWC workflows into a consistent representation for structural comparison, and surface the nearest exemplar forward as a cleaned gxformat2 view (sibling file plus inline excerpt) for the downstream template Mold.",
+      "trigger": "After fetching a candidate IWC workflow file and before structural comparison; and again on the nearest exemplar after ranking to emit the iwc-exemplar-gxformat2 view.",
+      "src_hash": "1bb19d20b4a39b1708d8f5346a0294616cdb9df83ba5255c4a90d97030d13b83",
+      "dst_hash": "1cdf49f10f77039af6efc5b82fe79720bb18e50d1f57d653670697f7262c7640",
+      "source": "deterministic"
+    },
+    {
+      "kind": "research",
+      "mode": "verbatim",
+      "ref": "[[galaxy-data-flow-draft-contract]]",
+      "src": "content/research/galaxy-data-flow-draft-contract/index.md",
+      "dst": "references/notes/galaxy-data-flow-draft-contract.md",
+      "used_at": "runtime",
+      "load": "on-demand",
+      "evidence": "hypothesis",
+      "purpose": "Compare against the design briefs' abstract intent without turning exemplar comparison into tool resolution.",
+      "trigger": "When deciding whether to compare abstract data-flow shape, interface structure, or speculative implementation details.",
+      "verification": "Promote after exemplar comparison flags structural issues without resolving concrete tool metadata.",
+      "src_hash": "f8f75f5a4ff750bff5f682847466492dd8a9910b95b5078373567f84ce16fb54",
+      "dst_hash": "f8f75f5a4ff750bff5f682847466492dd8a9910b95b5078373567f84ce16fb54",
+      "source": "deterministic"
+    },
+    {
+      "kind": "research",
+      "mode": "verbatim",
+      "ref": "[[iwc-shortcuts-anti-patterns]]",
+      "src": "content/research/iwc-shortcuts-anti-patterns/index.md",
+      "dst": "references/notes/iwc-shortcuts-anti-patterns.md",
+      "used_at": "runtime",
+      "load": "on-demand",
+      "evidence": "corpus-observed",
+      "purpose": "Flag proposed shortcuts that are accepted in IWC versus shortcuts that should be treated as smells.",
+      "trigger": "When the design briefs propose tests, assertions, labels, or expected-output comparisons.",
+      "src_hash": "14cc27c6a3e01588b06151535afdcb671cadd8e10dc960a248934e9133ebc8ab",
+      "dst_hash": "14cc27c6a3e01588b06151535afdcb671cadd8e10dc960a248934e9133ebc8ab",
+      "source": "deterministic"
+    },
+    {
+      "kind": "research",
+      "mode": "verbatim",
+      "ref": "[[iwc-test-data-conventions]]",
+      "src": "content/research/iwc-test-data-conventions/index.md",
+      "dst": "references/notes/iwc-test-data-conventions.md",
+      "used_at": "runtime",
+      "load": "on-demand",
+      "evidence": "corpus-observed",
+      "purpose": "Compare proposed test-data placement and fixture shapes against IWC conventions.",
+      "trigger": "When the design briefs hint at workflow tests or input fixture organization.",
+      "src_hash": "1921e939703444604440e0768caca6e6b834a73dcfa964f450fa081143e008d3",
+      "dst_hash": "1921e939703444604440e0768caca6e6b834a73dcfa964f450fa081143e008d3",
+      "source": "deterministic"
+    },
+    {
+      "kind": "research",
+      "mode": "verbatim",
+      "ref": "[[open-requirements-ledger]]",
+      "src": "content/research/open-requirements-ledger/index.md",
+      "dst": "references/notes/open-requirements-ledger.md",
+      "used_at": "runtime",
+      "load": "upfront",
+      "evidence": "hypothesis",
+      "purpose": "Close the open entries a corpus exemplar answers — a collection idiom, a label convention, a structural shape the corpus already settles — and append the ones no exemplar covers, so a structural divergence with no corpus precedent reaches the template tier as a recorded obligation.",
+      "verification": "Promote after a worked run shows entries this Mold appends or resolves are consumed downstream without re-derivation.",
+      "src_hash": "e1d5e3a4d6d650af5b2efc4703fe6f79bb4d0cc12e6cd14e841c5b91df122ea0",
+      "dst_hash": "e1d5e3a4d6d650af5b2efc4703fe6f79bb4d0cc12e6cd14e841c5b91df122ea0",
+      "source": "deterministic"
+    }
+  ],
+  "artifacts": {
+    "produces": [
+      {
+        "id": "iwc-comparison-notes",
+        "kind": "markdown",
+        "default_filename": "iwc-comparison-notes.md",
+        "description": "Structural diff against the nearest IWC exemplar(s); guidance for the downstream *-summary-to-galaxy-template Mold before per-step authoring. Carries an inline, bounded gxformat2 excerpt of the nearest exemplar's relevant subgraph under a labeled section, cross-referencing the iwc-exemplar-gxformat2 sibling file."
+      },
+      {
+        "id": "iwc-exemplar-gxformat2",
+        "kind": "yaml",
+        "default_filename": "iwc-exemplar.gxwf.yml",
+        "description": "Cleaned gxformat2 conversion (via [[convert]] --to format2 --compact) of the nearest IWC exemplar's relevant subgraph — the concrete idiom the downstream template draft pattern-matches against. Bounded to the relevant subgraph, not the whole workflow. Absent when no nearest exemplar is found."
+      },
+      {
+        "id": "open-requirements-ledger",
+        "kind": "yaml",
+        "default_filename": "open-requirements.ledger.yml",
+        "description": "Carried obligations ledger re-emitted by this step: entries it appended or closed updated, every other entry passed through with its provenance intact."
+      }
+    ],
+    "consumes": [
+      {
+        "id": "nextflow-galaxy-interface",
+        "description": "Galaxy interface brief from [[nextflow-summary-to-galaxy-interface]] when running the NEXTFLOW → GALAXY pipeline.",
+        "producers": [
+          "nextflow-summary-to-galaxy-interface"
+        ]
+      },
+      {
+        "id": "nextflow-galaxy-data-flow",
+        "description": "Galaxy data-flow brief from [[nextflow-summary-to-galaxy-data-flow]] when running the NEXTFLOW → GALAXY pipeline.",
+        "producers": [
+          "nextflow-summary-to-galaxy-data-flow"
+        ]
+      },
+      {
+        "id": "cwl-galaxy-interface",
+        "description": "Galaxy interface brief from [[cwl-summary-to-galaxy-interface]] when running the CWL → GALAXY pipeline.",
+        "producers": [
+          "cwl-summary-to-galaxy-interface"
+        ]
+      },
+      {
+        "id": "cwl-galaxy-data-flow",
+        "description": "Galaxy data-flow brief from [[cwl-summary-to-galaxy-data-flow]] when running the CWL → GALAXY pipeline.",
+        "producers": [
+          "cwl-summary-to-galaxy-data-flow"
+        ]
+      },
+      {
+        "id": "freeform-galaxy-interface",
+        "description": "Galaxy interface brief from [[freeform-summary-to-galaxy-interface]] when running the PAPER → GALAXY or INTERVIEW → GALAXY pipelines.",
+        "producers": [
+          "freeform-summary-to-galaxy-interface"
+        ]
+      },
+      {
+        "id": "freeform-galaxy-data-flow",
+        "description": "Galaxy data-flow brief from [[freeform-summary-to-galaxy-data-flow]] when running the PAPER → GALAXY or INTERVIEW → GALAXY pipelines.",
+        "producers": [
+          "freeform-summary-to-galaxy-data-flow"
+        ]
+      },
+      {
+        "id": "open-requirements-ledger",
+        "description": "Carried obligations ledger [[open-requirements-ledger]]: the run's open, resolved, and surrendered entries with their provenance. Absent on the first Mold of a run; start an empty one.",
+        "producers": [
+          "advance-galaxy-draft-step",
+          "apply-galaxy-workflow-changeset",
+          "compare-against-iwc-exemplar",
+          "cwl-summary-to-galaxy-data-flow",
+          "cwl-summary-to-galaxy-interface",
+          "cwl-summary-to-galaxy-template",
+          "freeform-summary-to-galaxy-data-flow",
+          "freeform-summary-to-galaxy-interface",
+          "freeform-summary-to-galaxy-template",
+          "implement-galaxy-tool-step",
+          "interview-to-galaxy-workflow-changeset",
+          "mature-galaxy-workflow-for-iwc",
+          "nextflow-summary-to-galaxy-data-flow",
+          "nextflow-summary-to-galaxy-interface",
+          "nextflow-summary-to-galaxy-reference-data",
+          "nextflow-summary-to-galaxy-template",
+          "repair-galaxy-draft-topology"
+        ]
+      }
+    ]
+  }
+}

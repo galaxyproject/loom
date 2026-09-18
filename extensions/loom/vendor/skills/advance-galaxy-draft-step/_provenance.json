@@ -1,0 +1,218 @@
+{
+  "provenance_schema_version": 4,
+  "cast_target": "claude",
+  "mold": {
+    "name": "advance-galaxy-draft-step",
+    "path": "content/molds/advance-galaxy-draft-step/index.md",
+    "revision": 7,
+    "content_hash": "ae19f7e5f5ac9434e31302efd88bb5f5db484caf0145951dd27dfe19247f2ea9",
+    "commit": "215b0a4c80c752a9eef2801d46accc4acce88af2"
+  },
+  "cast_at": "2026-09-17T11:40:06.540Z",
+  "refs": [
+    {
+      "kind": "cli-command",
+      "mode": "sidecar",
+      "ref": "[[add]]",
+      "src": "content/cli/galaxy-tool-cache/add.md",
+      "dst": "references/cli/add.json",
+      "used_at": "runtime",
+      "load": "on-demand",
+      "evidence": "corpus-observed",
+      "purpose": "Cache the resolved wrapper for summarization and validation, using its confirmed tool version.",
+      "trigger": "After resolving the wrapper and version, if the shared cache lacks that pin.",
+      "verification": "Confirm add caches the resolved pin and draft-validate --concrete --strict-state --json validates its state using the same --cache-dir.",
+      "src_hash": "6cb4b61fbdd1aa49a5052abb24020c43bdf57e0360643a65e55b23b42155f561",
+      "dst_hash": "85e3bb884171beb69631186ca6f0f7552e6c6d0721383ab6653e7a32c84a1b71",
+      "source": "deterministic"
+    },
+    {
+      "kind": "cli-command",
+      "mode": "sidecar",
+      "ref": "[[draft-extract]]",
+      "src": "content/cli/gxwf/draft-extract.md",
+      "dst": "references/cli/draft-extract.json",
+      "used_at": "runtime",
+      "load": "on-demand",
+      "evidence": "hypothesis",
+      "purpose": "At loop endstate, extract the concrete gxformat2 workflow from the fully-concretized draft — drop drafty steps, strip `_plan_*` fields, promote `class` to `GalaxyWorkflow` — and write it as the runnable `galaxy-workflow.gxwf.yml`.",
+      "trigger": "When [[draft-next-step]] reports `draft: false` (no remaining drafty steps).",
+      "verification": "Cast the skill, run the loop to endstate on an IWC-derived draft, confirm draft-extract emits a `class: GalaxyWorkflow` file that passes terminal `gxwf validate` with no `_plan_*` fields or drafty steps.",
+      "src_hash": "f8e9350c96ce005ed5e38deefff6c993824c951784f17f79f7e60d1ad664d8d7",
+      "dst_hash": "c59fbafbe6cf53cd7bcdd867d73b69d078c949c0dfa83abdc084f309793a60aa",
+      "source": "deterministic"
+    },
+    {
+      "kind": "cli-command",
+      "mode": "sidecar",
+      "ref": "[[draft-next-step]]",
+      "src": "content/cli/gxwf/draft-next-step.md",
+      "dst": "references/cli/draft-next-step.json",
+      "used_at": "runtime",
+      "load": "upfront",
+      "evidence": "hypothesis",
+      "purpose": "Deterministically pick the next drafty step (or report no remaining work). The orchestrator owns the loop oracle so the harness reduces to `while draft: invoke skill`.",
+      "trigger": "At the start of every iteration, before any per-step work.",
+      "verification": "Cast the skill, run on a multi-step IWC-derived draft, confirm the orchestrator picks one step per call and exits when draft: false.",
+      "src_hash": "d4fe7945945a57846fe8b168e7bacba04f739de1d86bc613ae6f0e5879ac2f55",
+      "dst_hash": "8638645f5974d8072dc3c63e522b7ab25d562f8d6217ea93b61f0a29f371d6f7",
+      "source": "deterministic"
+    },
+    {
+      "kind": "cli-command",
+      "mode": "sidecar",
+      "ref": "[[draft-validate]]",
+      "src": "content/cli/gxwf/draft-validate.md",
+      "dst": "references/cli/draft-validate.json",
+      "used_at": "runtime",
+      "load": "on-demand",
+      "evidence": "hypothesis",
+      "purpose": "Validate the draft and its concrete subset with --concrete --strict-state --json; skipped tool-state checks must fail the gate.",
+      "trigger": "After implementing or modifying the chosen step in the draft.",
+      "verification": "Cast the skill, exercise on an IWC-derived draft, confirm both draft-contract diagnostics and concrete-projection diagnostics route back to the step the iteration touched.",
+      "src_hash": "37cded427fbccf49ff19a6fe8b03f9e90857afe556e5db0e51a01402fbf33f1e",
+      "dst_hash": "afa59b0815308a340780247df0548909518564d58352a0c695ceca37a07eee5b",
+      "source": "deterministic"
+    },
+    {
+      "kind": "cli-command",
+      "mode": "sidecar",
+      "ref": "[[list]]",
+      "src": "content/cli/galaxy-tool-cache/list.md",
+      "dst": "references/cli/list.json",
+      "used_at": "runtime",
+      "load": "on-demand",
+      "evidence": "corpus-observed",
+      "purpose": "Read a stock tool's cached version when the step plan has no version pin.",
+      "trigger": "In step 2, when the chosen step's tool is a bare/stock id and its concrete version isn't already known from a step-plan pin.",
+      "verification": "Cast the skill, populate a cache with a stock tool, run list --json, confirm the reported version is what add's --tool-version uses for that bare id.",
+      "src_hash": "e352306726b54752ad63ac68b2a468d49eb22cebd7b367344ee6b10c8e790434",
+      "dst_hash": "92d336667531c34180db6f75b9fdf87261923c1e85567dce3b21a6d87d9543bd",
+      "source": "deterministic"
+    },
+    {
+      "kind": "research",
+      "mode": "verbatim",
+      "ref": "[[galaxy-tool-job-failure-reference]]",
+      "src": "content/research/galaxy-tool-job-failure-reference/index.md",
+      "dst": "references/notes/galaxy-tool-job-failure-reference.md",
+      "used_at": "runtime",
+      "load": "on-demand",
+      "evidence": "corpus-observed",
+      "purpose": "Classify [[draft-validate]] diagnostics against wrapper-defined runtime failure semantics so the iteration routes back to the right authoring surface (implementation vs. wrapper choice).",
+      "trigger": "When draft-validate fails after a step has been implemented, or when a selected wrapper has explicit failure semantics that may surface at runtime.",
+      "src_hash": "bf6530fca24f40780836e92d8d263f789038a6e0a722351ab8e8c9aa42646e2c",
+      "dst_hash": "bf6530fca24f40780836e92d8d263f789038a6e0a722351ab8e8c9aa42646e2c",
+      "source": "deterministic"
+    },
+    {
+      "kind": "research",
+      "mode": "verbatim",
+      "ref": "[[open-requirements-ledger]]",
+      "src": "content/research/open-requirements-ledger/index.md",
+      "dst": "references/notes/open-requirements-ledger.md",
+      "used_at": "runtime",
+      "load": "upfront",
+      "evidence": "hypothesis",
+      "purpose": "Read the ledger after each step implementation for a newly appended blocking entry, count the open blocking entries the convergence gate reads, and maintain the topology_repair escalation budget the loop's termination guard depends on.",
+      "verification": "Promote after a run where a blocking entry appended by implement is detected here and drives an escalation that strictly reduces the open count.",
+      "src_hash": "e1d5e3a4d6d650af5b2efc4703fe6f79bb4d0cc12e6cd14e841c5b91df122ea0",
+      "dst_hash": "e1d5e3a4d6d650af5b2efc4703fe6f79bb4d0cc12e6cd14e841c5b91df122ea0",
+      "source": "deterministic"
+    },
+    {
+      "kind": "schema",
+      "mode": "verbatim",
+      "ref": "[[galaxy-tool-summary]]",
+      "src": "package://@galaxy-foundry/gxwf-foundry#galaxyToolSummarySchema",
+      "dst": "references/schemas/galaxy-tool-summary.schema.json",
+      "used_at": "runtime",
+      "load": "on-demand",
+      "evidence": "corpus-observed",
+      "purpose": "Bind the chosen step against the deterministic tool summary manifest emitted by [[summarize-galaxy-tool]] — read `parsed_tool` for ports/datatypes and `input_schemas.workflow_step_linked` for valid step `state` shape.",
+      "trigger": "After a wrapper has been resolved for the chosen step and before implementing it.",
+      "src_hash": "bf77d0735410fa0028bc9bea08edaff3016580508bf27851fdcae65d038f2d94",
+      "dst_hash": "bf77d0735410fa0028bc9bea08edaff3016580508bf27851fdcae65d038f2d94",
+      "source": "deterministic"
+    },
+    {
+      "kind": "schema",
+      "mode": "verbatim",
+      "ref": "[[galaxy-workflow-draft]]",
+      "src": "package://@galaxy-tool-util/schema#galaxyWorkflowDraftJsonSchema",
+      "dst": "references/schemas/galaxy-workflow-draft.schema.json",
+      "used_at": "runtime",
+      "load": "upfront",
+      "evidence": "cast-validated",
+      "purpose": "In/out contract: the draft this Mold reads and mutates one step per iteration conforms to [[galaxy-workflow-draft]]. Cast bundles the JSON Schema alongside the [[draft-validate]] CLI checks.",
+      "license": "MIT",
+      "license_file": "LICENSES/galaxy-tool-util-ts.LICENSE",
+      "src_hash": "86822b6bf4c11ba1d9eaa12d9e442db7f7d28b2734a2daddf62b5cdd2f1f75aa",
+      "dst_hash": "86822b6bf4c11ba1d9eaa12d9e442db7f7d28b2734a2daddf62b5cdd2f1f75aa",
+      "source": "deterministic",
+      "license_file_hash": "383450c494c01c466bcf22df102540a39ac89da50563fd7be686ba06772f96b3"
+    }
+  ],
+  "artifacts": {
+    "produces": [
+      {
+        "id": "galaxy-workflow-draft",
+        "kind": "yaml",
+        "default_filename": "galaxy-workflow-draft.gxwf.yml",
+        "schema": "[[galaxy-workflow-draft]]",
+        "description": "Same draft with one additional step concretized (one loop iteration). Once every step is concrete, [[draft-next-step]] reports `draft: false` and the harness exits the loop."
+      },
+      {
+        "id": "galaxy-workflow",
+        "kind": "yaml",
+        "default_filename": "galaxy-workflow.gxwf.yml",
+        "description": "Concrete gxformat2 workflow (`class: GalaxyWorkflow`) extracted from the fully-concretized draft at loop endstate via [[draft-extract]]: drafty steps dropped, `_plan_*` planning fields stripped, class promoted. The runnable, testable artifact that downstream Molds ([[implement-galaxy-workflow-test]], [[validate-galaxy-workflow]], [[run-workflow-test]]) consume."
+      },
+      {
+        "id": "open-requirements-ledger",
+        "kind": "yaml",
+        "default_filename": "open-requirements.ledger.yml",
+        "description": "Carried obligations ledger re-emitted by this step: entries it appended or closed updated, every other entry passed through with its provenance intact."
+      }
+    ],
+    "consumes": [
+      {
+        "id": "galaxy-workflow-draft",
+        "description": "gxformat2 draft (see [[galaxy-workflow-draft-format]]) mutated in-place across iterations; topology is fully concrete, individual tool steps may still carry `TODO_*` sentinels and `_plan_*` planning fields.",
+        "inherited_schema": "[[galaxy-workflow-draft]]",
+        "producers": [
+          "advance-galaxy-draft-step",
+          "apply-galaxy-workflow-changeset",
+          "cwl-summary-to-galaxy-template",
+          "freeform-summary-to-galaxy-template",
+          "implement-galaxy-tool-step",
+          "nextflow-summary-to-galaxy-template",
+          "repair-galaxy-draft-topology"
+        ]
+      },
+      {
+        "id": "open-requirements-ledger",
+        "description": "Carried obligations ledger [[open-requirements-ledger]]: the run's open, resolved, and surrendered entries with their provenance. Absent on the first Mold of a run; start an empty one.",
+        "producers": [
+          "advance-galaxy-draft-step",
+          "apply-galaxy-workflow-changeset",
+          "compare-against-iwc-exemplar",
+          "cwl-summary-to-galaxy-data-flow",
+          "cwl-summary-to-galaxy-interface",
+          "cwl-summary-to-galaxy-template",
+          "freeform-summary-to-galaxy-data-flow",
+          "freeform-summary-to-galaxy-interface",
+          "freeform-summary-to-galaxy-template",
+          "implement-galaxy-tool-step",
+          "interview-to-galaxy-workflow-changeset",
+          "mature-galaxy-workflow-for-iwc",
+          "nextflow-summary-to-galaxy-data-flow",
+          "nextflow-summary-to-galaxy-interface",
+          "nextflow-summary-to-galaxy-reference-data",
+          "nextflow-summary-to-galaxy-template",
+          "repair-galaxy-draft-topology"
+        ]
+      }
+    ]
+  }
+}

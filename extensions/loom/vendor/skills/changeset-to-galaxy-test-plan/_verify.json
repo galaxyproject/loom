@@ -1,0 +1,29 @@
+{
+  "verify_schema_version": 1,
+  "entries": [
+    {
+      "artifact_id": "summary-galaxy-workflow",
+      "direction": "input",
+      "kind": "json",
+      "default_filename": "summary-galaxy-workflow.json",
+      "schema": "[[summary-galaxy-workflow]]",
+      "validator_bin": "foundry",
+      "args": [
+        "validate-summary-galaxy-workflow",
+        "{artifact_path}"
+      ]
+    },
+    {
+      "artifact_id": "galaxy-test-plan",
+      "direction": "output",
+      "kind": "yaml",
+      "default_filename": "galaxy-test-plan.yml",
+      "schema": "[[galaxy-workflow-test-plan]]",
+      "validator_bin": "foundry",
+      "args": [
+        "validate-galaxy-workflow-test-plan",
+        "{artifact_path}"
+      ]
+    }
+  ]
+}

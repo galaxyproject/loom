@@ -1,0 +1,123 @@
+{
+  "type": "cli-command",
+  "tool": "gxwf",
+  "command": "convert",
+  "summary": "Convert a Galaxy workflow between native (.ga) and format2 (.gxwf.yml) representations.",
+  "source_path": "content/cli/gxwf/convert.md",
+  "source_revision": 2,
+  "package": "@galaxy-tool-util/cli",
+  "description": "Convert between native (.ga) and format2 (.gxwf.yml) formats",
+  "synopsis": "gxwf convert [options] <file>",
+  "args": [
+    {
+      "raw": "file",
+      "name": "file",
+      "required": true,
+      "variadic": false,
+      "description": "Workflow file (.ga, .gxwf.yml)"
+    }
+  ],
+  "options": [
+    {
+      "flags": "--to <format>",
+      "name": "to",
+      "description": "Target format: native or format2 (infers opposite by default)",
+      "takesArgument": true,
+      "argumentPlaceholder": "<format>",
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--output <file>",
+      "name": "output",
+      "description": "Write result to file (default: stdout)",
+      "takesArgument": true,
+      "argumentPlaceholder": "<file>",
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--compact",
+      "name": "compact",
+      "description": "Omit position info in format2 output",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--json",
+      "name": "json",
+      "description": "Force JSON output",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--yaml",
+      "name": "yaml",
+      "description": "Force YAML output",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--format <fmt>",
+      "name": "format",
+      "description": "Force source format (auto-detected by default)",
+      "takesArgument": true,
+      "argumentPlaceholder": "<fmt>",
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--stateful",
+      "name": "stateful",
+      "description": "Use cached tool definitions for schema-aware state re-encoding",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--cache-dir <dir>",
+      "name": "cacheDir",
+      "description": "Tool cache directory (for --stateful)",
+      "takesArgument": true,
+      "argumentPlaceholder": "<dir>",
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--strict",
+      "name": "strict",
+      "description": "Shorthand for --strict-structure --strict-encoding --strict-state",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--strict-structure",
+      "name": "strictStructure",
+      "description": "Reject unknown keys at envelope/step level",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--strict-encoding",
+      "name": "strictEncoding",
+      "description": "Reject JSON-string tool_state and format2 field misuse",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--strict-state",
+      "name": "strictState",
+      "description": "Require every tool step to validate; no skips allowed",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    }
+  ],
+  "body": "# `gxwf convert`\n\nConvert a Galaxy workflow between the native `.ga` JSON and the `.gxwf.yml` format2 representation. Use this to normalize fetched IWC workflows into a consistent comparison representation.\n\n## Output\n\nDefault output is the converted workflow on stdout. With `--output`, the result is written to a file. JSON output is selected with `--json` (or `--to native`); YAML output is selected with `--yaml` (or `--to format2`).\n\n## Examples\n\n```bash\ngxwf convert workflow.ga --to format2 --output workflow.gxwf.yml\ngxwf convert workflow.ga --to format2 --compact\ngxwf convert workflow.gxwf.yml --to native --output workflow.ga\n```\n\n## Gotchas\n\n- Default output is stdout; pipe or pass `--output` when persisting.\n- `--compact` drops node position metadata; useful for structural diffs and skeleton generation.\n- `--stateful` requires a populated tool cache (see `galaxy-tool-cache`); without it, tool-state stays as fetched."
+}

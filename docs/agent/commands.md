@@ -7,7 +7,7 @@ Loom registers a small set of tools at the extension layer:
 | Category                     | Tools                                                                                           |
 | ---------------------------- | ----------------------------------------------------------------------------------------------- |
 | GTN tutorials                | `gtn_search`, `gtn_fetch`                                                                       |
-| Skills                       | `skills_fetch` (fetch SKILL.md / reference docs from configured repos)                          |
+| Skills                       | `skills_fetch` (SKILL.md / reference docs; `repo: "foundry"` reads bundled Foundry casts)       |
 | Galaxy invocations           | `galaxy_invocation_record`, `galaxy_invocation_check_all`, `galaxy_invocation_check_one`        |
 | Multi-agent (experimental)   | `team_dispatch` (gated by `LOOM_TEAM_DISPATCH=1`)                                               |
 | Session index (experimental) | `chat_search`, `chat_session_context`, `chat_find_tool_calls` (gated by `LOOM_SESSION_INDEX=1`) |

@@ -1,0 +1,142 @@
+{
+  "type": "cli-command",
+  "tool": "gxwf",
+  "command": "validate",
+  "summary": "Validate Galaxy workflow structure, tool state, and optional connection compatibility before runtime execution.",
+  "source_path": "content/cli/gxwf/validate.md",
+  "source_revision": 3,
+  "package": "@galaxy-tool-util/cli",
+  "description": "Validate Galaxy workflow files (structure + optional tool state)",
+  "synopsis": "gxwf validate [options] <file>",
+  "args": [
+    {
+      "raw": "file",
+      "name": "file",
+      "required": true,
+      "variadic": false,
+      "description": "Workflow file (.ga, .gxwf.yml)"
+    }
+  ],
+  "options": [
+    {
+      "flags": "--format <fmt>",
+      "name": "format",
+      "description": "Force format: native or format2 (auto-detected by default)",
+      "takesArgument": true,
+      "argumentPlaceholder": "<fmt>",
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--no-tool-state",
+      "name": "toolState",
+      "description": "Skip tool state validation",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": true
+    },
+    {
+      "flags": "--cache-dir <dir>",
+      "name": "cacheDir",
+      "description": "Tool cache directory",
+      "takesArgument": true,
+      "argumentPlaceholder": "<dir>",
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--offline",
+      "name": "offline",
+      "description": "Do not fetch uncached tools; read only the local cache (uncached tools are skipped)",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--galaxy-url <url>",
+      "name": "galaxyUrl",
+      "description": "Galaxy instance to try as a tool source after the ToolShed when fetching uncached tools",
+      "takesArgument": true,
+      "argumentPlaceholder": "<url>",
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--mode <mode>",
+      "name": "mode",
+      "description": "Validation backend: effect (default) or json-schema",
+      "takesArgument": true,
+      "argumentPlaceholder": "<mode>",
+      "optionalArgument": false,
+      "negatable": false,
+      "defaultValue": "effect"
+    },
+    {
+      "flags": "--tool-schema-dir <dir>",
+      "name": "toolSchemaDir",
+      "description": "Directory of pre-exported per-tool JSON Schemas (for offline json-schema mode)",
+      "takesArgument": true,
+      "argumentPlaceholder": "<dir>",
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--json",
+      "name": "json",
+      "description": "Output structured JSON report",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--report-html [file]",
+      "name": "reportHtml",
+      "description": "Write HTML report to file (or stdout if omitted)",
+      "takesArgument": true,
+      "argumentPlaceholder": "[file]",
+      "optionalArgument": true,
+      "negatable": false
+    },
+    {
+      "flags": "--connections",
+      "name": "connections",
+      "description": "Validate connection-type compatibility (collection algebra, map-over)",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--strict",
+      "name": "strict",
+      "description": "Shorthand for --strict-structure --strict-encoding --strict-state",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--strict-structure",
+      "name": "strictStructure",
+      "description": "Reject unknown keys at envelope/step level",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--strict-encoding",
+      "name": "strictEncoding",
+      "description": "Reject JSON-string tool_state and format2 field misuse",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--strict-state",
+      "name": "strictState",
+      "description": "Require every tool step to validate; no skips allowed",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    }
+  ],
+  "body": "# `gxwf validate`\n\nValidate a Galaxy workflow source file before attempting runtime execution. Use this as the design-time guardrail after step implementation and again after final workflow assembly.\n\n## Output\n\nDefault output is human-readable diagnostics. JSON output should be treated as the preferred cast-skill interface; free-text diagnostics are a fallback for humans.\n\n## Examples\n\n```bash\ngxwf validate workflow.ga\ngxwf validate workflow.gxwf.yml --json\ngxwf validate workflow.gxwf.yml --json --connections --strict\ngxwf validate workflow.ga --mode json-schema --tool-schema-dir ./tool-schemas --json\n```\n\n## Gotchas\n\n- Validation is design-time structure checking. It does not prove that a workflow test will pass under Planemo.\n- Run after each generated Galaxy step when the harness can still attribute failures to the fresh step.\n- Run again after assembly to catch cross-step or workflow-level issues before runtime testing.\n- Prefer `--json` whenever a cast skill or harness needs to classify diagnostics.\n- Use `--connections` when tool cache metadata is available and data-shape compatibility matters, especially around collections and map-over.\n- `--no-tool-state` weakens validation. If used, record why tool metadata was unavailable and rerun without it before final runtime testing."
+}

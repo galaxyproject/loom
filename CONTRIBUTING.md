@@ -107,7 +107,7 @@ Linux, macOS, and Windows):
 ```bash
 npm run check:versions        # root and app/ must resolve the same pi version
 npm run typecheck
-npm run check:foundry-skills  # extensions/loom/vendor/ is generated -- this catches hand-edits
+npm run check:skills          # extensions/loom/vendor/ is generated -- this catches hand-edits
 cd app && npx tsc --noEmit && cd ..
 npm test
 npm run smoke:pack            # packs the tarball and installs it WITHOUT the lockfile
@@ -156,7 +156,7 @@ Four conventions worth knowing before you move code around:
 - **Cross-boundary contracts go in `shared/`**, not duplicated payload logic on
   each side.
 - **`extensions/loom/vendor/` is generated.** Edit
-  `scripts/foundry-skills.manifest.json` and run `npm run sync:foundry-skills`.
+  `scripts/skills.manifest.json` and run `npm run sync:skills`.
 
 ## Sending a pull request
 

@@ -1,0 +1,175 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://galaxyproject.org/foundry/schemas/galaxy-tool-summary.schema.json",
+  "$comment": "Canonical source: packages/gxwf-foundry/src/schemas/galaxy-tool-summary/galaxy-tool-summary.schema.json in galaxyproject/foundry. Mold frontmatter cites this as `content/schemas/galaxy-tool-summary.schema.json` for stability; the cast pipeline and Astro site resolve that ref back to this file at build time. The `$defs.ParsedTool` definition is a placeholder that the AJV validator replaces at compile time with the upstream `parsedToolSchema` from `@galaxy-tool-util/schema`. Static consumers that do not use the validator should consult `[[parsed-tool]]` for the upstream definition.",
+  "title": "Galaxy Tool Summary",
+  "description": "Deterministic per-tool manifest emitted by `galaxy-tool-cache summarize`. Bundles cache provenance, the upstream `ParsedTool` payload, and per-representation input JSON Schemas so downstream Molds can bind a single workflow step against a Galaxy tool wrapper without re-parsing XML.",
+  "$ref": "#/$defs/GalaxyToolSummary",
+  "$defs": {
+    "GalaxyToolSummary": {
+      "title": "GalaxyToolSummary",
+      "description": "Top-level shape. Every Galaxy tool summary is exactly this object.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "tool_id",
+        "tool_version",
+        "cache_key",
+        "source",
+        "artifacts",
+        "parsed_tool",
+        "input_schemas",
+        "warnings"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "const": 1,
+          "description": "Manifest schema version. v1 is the shape emitted by `galaxy-tool-cache summarize` in `@galaxy-tool-util/cli@1.3.x`."
+        },
+        "tool_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Tool id as it appears in the cached `ParsedTool`. For Tool Shed wrappers this is the short XML id, not the fully qualified `toolshed.g2.bx.psu.edu/repos/...` form."
+        },
+        "tool_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Tool version from the cached `ParsedTool`. Null only when the wrapper itself omits a version."
+        },
+        "cache_key": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`galaxy-tool-cache` cache key for the entry the manifest was built from. Stable across runs for a given (source, tool, version) triple."
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRecord"
+        },
+        "artifacts": {
+          "$ref": "#/$defs/Artifacts"
+        },
+        "parsed_tool": {
+          "$ref": "#/$defs/ParsedTool",
+          "description": "Upstream `ParsedTool` payload, validated against `parsedToolSchema` from `@galaxy-tool-util/schema`. See `[[parsed-tool]]` for the field-by-field reference."
+        },
+        "input_schemas": {
+          "$ref": "#/$defs/InputSchemas"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Advisory diagnostics emitted while building the manifest — typically input-schema generation failures for one of the workflow representations. Empty array on a clean run."
+        }
+      }
+    },
+    "SourceRecord": {
+      "title": "SourceRecord",
+      "description": "Where the cached tool came from. Mirrors the `source` field of a `galaxy-tool-cache` index entry.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "label",
+        "url",
+        "cached_at"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "toolshed",
+            "galaxy",
+            "local",
+            "orphan",
+            "unknown"
+          ],
+          "description": "Normalized source classification. `toolshed` covers any Tool Shed-derived entry (cache index `source: api`); `galaxy` and `local` come straight from the cache; `orphan` is for entries the cache index can no longer attribute; `unknown` is the fallback when no index entry is found."
+        },
+        "label": {
+          "type": "string",
+          "description": "Raw `source` string from the cache index entry, e.g. `api`, `galaxy`, `local`. Pass-through for debugging; downstream Molds should branch on `kind` instead."
+        },
+        "url": {
+          "type": "string",
+          "description": "Origin URL the cache entry was populated from. Empty string when the cache index has no recorded URL."
+        },
+        "cached_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "ISO 8601 timestamp the cache entry was written. Null when the cache index entry predates the timestamp field."
+        }
+      }
+    },
+    "Artifacts": {
+      "title": "Artifacts",
+      "description": "Filesystem paths to the cache files this manifest was derived from. Useful for debug, provenance, and lazy reloading; downstream Molds should not depend on these paths existing on a different machine.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parsed_tool_path",
+        "raw_tool_source_path"
+      ],
+      "properties": {
+        "parsed_tool_path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Absolute path to `<cache_key>.json` — the cached `ParsedTool` JSON the manifest was built from."
+        },
+        "raw_tool_source_path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Absolute path to `<cache_key>.source` (raw wrapper XML/YAML) when the cache has stored it. Null in @galaxy-tool-util/cli@1.3.x — raw source storage lands in galaxy-tool-util-ts#82."
+        }
+      }
+    },
+    "InputSchemas": {
+      "title": "InputSchemas",
+      "description": "Per-representation JSON Schemas describing the tool's accepted inputs at workflow-step authoring time. Generated from the `ParsedTool.inputs` parameter bundle via `effect/JSONSchema`. Each entry is null when generation failed (in which case `warnings[]` carries the reason).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workflow_step",
+        "workflow_step_linked"
+      ],
+      "properties": {
+        "workflow_step": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "JSON Schema for the `workflow_step` representation — values inline as a step `tool_state`. Null when the tool has parameters that the schema generator cannot render in this representation."
+        },
+        "workflow_step_linked": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "JSON Schema for the `workflow_step_linked` representation — datasets become workflow connections, scalars stay inline. Null when generation failed for this representation."
+        }
+      }
+    },
+    "ParsedTool": {
+      "title": "ParsedTool",
+      "description": "Placeholder. The validator replaces this `$def` at AJV-construction time with the runtime export `parsedToolSchema` from `@galaxy-tool-util/schema` so the parsed_tool subtree is validated against the upstream contract. Static schema consumers (site renderer, IDE) should follow the `[[parsed-tool]]` schema note for the inner shape.",
+      "type": "object"
+    }
+  }
+}

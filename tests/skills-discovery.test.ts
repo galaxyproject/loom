@@ -16,7 +16,6 @@ import {
   isCatalogStale,
   refreshCatalog,
   skillsCacheDir,
-  BUILTIN_CATALOG,
   refreshAllCatalogs,
 } from "../extensions/loom/skills-discovery";
 import { listEnabledSkillRepos } from "../extensions/loom/skills";
@@ -365,19 +364,6 @@ describe("catalog cache", () => {
   });
 });
 
-describe("BUILTIN_CATALOG", () => {
-  it("ships the curated galaxy-skills set, all loom-tagged", () => {
-    const entries = BUILTIN_CATALOG["galaxy-skills"];
-    expect(entries.map((e) => e.path)).toEqual([
-      "collection-manipulation/SKILL.md",
-      "galaxy-integration/mcp-reference/SKILL.md",
-      "udt-authoring/SKILL.md",
-      "workflow-reports/SKILL.md",
-    ]);
-    for (const e of entries) expect(e.surfaces).toContain("loom");
-  });
-});
-
 describe("refreshAllCatalogs", () => {
   let tmp: string;
   beforeEach(() => {
@@ -391,7 +377,9 @@ describe("refreshAllCatalogs", () => {
       path.join(tmp, ".loom", "config.json"),
       JSON.stringify({
         skills: {
-          repos: [{ name: "galaxy-skills", url: REPO.url, branch: "main", enabled: true }],
+          // A live repo on purpose: a seeded repo left at its default URL and
+          // branch reads from the package, so refreshing it fetches nothing.
+          repos: [{ name: "galaxy-skills-wip", url: REPO.url, branch: "main", enabled: true }],
         },
       }),
       "utf-8",
@@ -411,7 +399,28 @@ describe("refreshAllCatalogs", () => {
       }),
     );
     const summary = await refreshAllCatalogs();
-    expect(summary).toEqual([{ repo: "galaxy-skills", count: 1, ok: true }]);
+    expect(summary).toEqual([{ repo: "galaxy-skills-wip", count: 1, ok: true }]);
+  });
+
+  it("reports a bundled repo as bundled instead of walking it", async () => {
+    // Refreshing what ships in the package would report a count the router does
+    // not use, and offline it would report a failure for a repo that works.
+    fs.writeFileSync(
+      path.join(tmp, ".loom", "config.json"),
+      JSON.stringify({
+        skills: {
+          repos: [{ name: "galaxy-skills", url: REPO.url, branch: "main", enabled: true }],
+        },
+      }),
+      "utf-8",
+    );
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const summary = await refreshAllCatalogs();
+    expect(summary).toHaveLength(1);
+    expect(summary[0]).toMatchObject({ repo: "galaxy-skills", ok: true, bundled: true });
+    expect(summary[0].count).toBeGreaterThan(0);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("reports ok:false when a repo's tree-walk fails", async () => {
@@ -421,7 +430,7 @@ describe("refreshAllCatalogs", () => {
     );
     const summary = await refreshAllCatalogs();
     expect(summary).toHaveLength(1);
-    expect(summary[0].repo).toBe("galaxy-skills");
+    expect(summary[0].repo).toBe("galaxy-skills-wip");
     expect(summary[0].ok).toBe(false);
     expect(summary[0].error).toMatch(/403/);
   });

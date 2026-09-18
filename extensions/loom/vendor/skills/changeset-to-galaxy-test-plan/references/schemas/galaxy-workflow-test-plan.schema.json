@@ -1,0 +1,552 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://galaxyproject.org/foundry/schemas/galaxy-workflow-test-plan.schema.json",
+  "$comment": "Canonical source: packages/gxwf-foundry/src/schemas/galaxy-workflow-test-plan/galaxy-workflow-test-plan.schema.json in galaxyproject/foundry. Mold frontmatter cites this schema via [[galaxy-workflow-test-plan]] wiki-links; the cast pipeline imports the `galaxyWorkflowTestPlanSchema` runtime export and serializes it into cast bundles. The on-disk artifact is YAML; validate it with `foundry validate-galaxy-workflow-test-plan`.",
+  "title": "Galaxy Workflow Test Plan",
+  "description": "Intermediate, reviewable Galaxy workflow test-plan handoff produced by a *-test-to-galaxy-test-plan Mold (nextflow, cwl, freeform, or galaxy) and consumed by implement-galaxy-workflow-test. It preserves test intent, fixture provenance, assertion intent, tolerances, label assumptions, unresolved mappings, and intentional omissions before any concrete tests-format `*-tests.yml` is authored. It is NOT the final test artifact: assertion vocabulary is referenced by family name from the tests-format schema, not duplicated here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "plan_version",
+    "source",
+    "workflow",
+    "test_cases",
+    "unresolved",
+    "omissions",
+    "warnings"
+  ],
+  "properties": {
+    "plan_version": {
+      "type": "string",
+      "enum": [
+        "1"
+      ],
+      "description": "Test-plan schema major version."
+    },
+    "source": {
+      "$ref": "#/$defs/SourceRecord"
+    },
+    "workflow": {
+      "$ref": "#/$defs/WorkflowRef"
+    },
+    "test_cases": {
+      "type": "array",
+      "description": "One entry per planned Galaxy workflow test (each becomes one tests-format test entry downstream).",
+      "items": {
+        "$ref": "#/$defs/TestCase"
+      }
+    },
+    "unresolved": {
+      "type": "array",
+      "description": "Mappings the plan could not resolve and that implement-galaxy-workflow-test (or a reviewer) must settle before authoring the final test file.",
+      "items": {
+        "$ref": "#/$defs/UnresolvedItem"
+      }
+    },
+    "omissions": {
+      "type": "array",
+      "description": "Outputs or behaviors deliberately left unasserted, with rationale, so the gap is a recorded decision rather than an oversight.",
+      "items": {
+        "$ref": "#/$defs/Omission"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "description": "Plan-construction warnings: source-test evidence that could not be translated, expression-derived shapes, missing fixtures, and similar.",
+      "items": {
+        "$ref": "#/$defs/Warning"
+      }
+    }
+  },
+  "$defs": {
+    "SourceRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "name",
+        "derived_from",
+        "notes"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "nextflow",
+            "cwl",
+            "freeform",
+            "galaxy"
+          ],
+          "description": "Source family of the Galaxy-targeting translator that produced this plan. galaxy denotes a Galaxy→Galaxy update plan carried forward from an existing Galaxy workflow's own tests (the changeset-to-galaxy-test-plan case)."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-oriented workflow or source name the plan was derived from."
+        },
+        "derived_from": {
+          "type": "string",
+          "enum": [
+            "test-evidence",
+            "intent"
+          ],
+          "description": "Dominant basis for the plan: test-evidence means it was translated from existing upstream test fixtures/snapshots/job files (nf-test, CWL jobs); intent means it was synthesized from workflow intent and scenario-level expected outputs without upstream test evidence (freeform paper/interview sources)."
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Free-text provenance about the source and how test evidence was (or was not) available."
+        }
+      }
+    },
+    "WorkflowRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How the plan relates to the Galaxy workflow it tests, and where its input/output labels came from.",
+      "required": [
+        "title",
+        "label_source",
+        "notes"
+      ],
+      "properties": {
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Galaxy workflow title/name when known."
+        },
+        "label_source": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "interface-brief",
+            "assumed"
+          ],
+          "description": "Provenance of the input/output labels this plan references: draft means they were read from a concrete gxformat2 workflow draft (verifiable); interface-brief means they came from an upstream Galaxy interface brief; assumed means they were inferred and are unconfirmed against any workflow."
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Free-text notes about label confidence and workflow-binding assumptions."
+        }
+      }
+    },
+    "TestCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "doc",
+        "derived_from",
+        "provenance",
+        "job_inputs",
+        "expected_outputs"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable identifier for this planned test case."
+        },
+        "doc": {
+          "type": "string",
+          "description": "What this test exercises, in plain language; becomes the tests-format test `doc`."
+        },
+        "derived_from": {
+          "type": "string",
+          "enum": [
+            "test-evidence",
+            "intent",
+            "mixed"
+          ],
+          "description": "Basis for this case: translated from upstream test evidence, synthesized from intent, or a mix."
+        },
+        "provenance": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Where this case came from, e.g. an nf-test name, a CWL job file, a paper section, or an interview answer."
+        },
+        "job_inputs": {
+          "type": "array",
+          "description": "Planned workflow job inputs for this case.",
+          "items": {
+            "$ref": "#/$defs/JobInput"
+          }
+        },
+        "expected_outputs": {
+          "type": "array",
+          "description": "Planned workflow outputs to assert for this case.",
+          "items": {
+            "$ref": "#/$defs/ExpectedOutput"
+          }
+        }
+      }
+    },
+    "JobInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workflow_label",
+        "label_status",
+        "description",
+        "collection_shape",
+        "datatype",
+        "fixture"
+      ],
+      "properties": {
+        "workflow_label": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Workflow input label this job entry binds to; null when the label is not yet known."
+        },
+        "label_status": {
+          "type": "string",
+          "enum": [
+            "resolved",
+            "assumed",
+            "unresolved"
+          ],
+          "description": "resolved means the label matches a concrete workflow draft input; assumed means it is inferred from a brief; unresolved means the binding label is not yet decided."
+        },
+        "description": {
+          "type": "string",
+          "description": "What this input is and the role it plays in the test."
+        },
+        "collection_shape": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Galaxy collection shape when the input is a collection, e.g. list, paired, list:paired, list:list; null for a single dataset or when unknown."
+        },
+        "datatype": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Galaxy datatype/extension hint, e.g. fastqsanger.gz, fasta, tabular; null when undecided."
+        },
+        "fixture": {
+          "$ref": "#/$defs/Fixture"
+        }
+      }
+    },
+    "Fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "storage",
+        "location",
+        "checksum",
+        "provenance"
+      ],
+      "properties": {
+        "storage": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "remote-url",
+            "in-repo",
+            "cvmfs-string",
+            "generated-toy",
+            "unresolved",
+            null
+          ],
+          "description": "Where the fixture data lives or should live: remote-url (Zenodo/EBI/SRA location), in-repo (committed test-data path), cvmfs-string (data-table/built-in-index bare string), generated-toy (to be synthesized), or unresolved (not yet sourced)."
+        },
+        "location": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Concrete URL, repo-relative path, or data-table string when known; null when the fixture still needs resolution."
+        },
+        "checksum": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Integrity hash when available, e.g. SHA-1:<hex>; null when unknown."
+        },
+        "provenance": {
+          "type": "string",
+          "description": "Where this fixture comes from or how it was chosen, e.g. a translated source test-data reference, a Zenodo record, or a note that test-data-resolution must supply it."
+        }
+      }
+    },
+    "ExpectedOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workflow_label",
+        "label_status",
+        "description",
+        "output_kind",
+        "collection_shape",
+        "assertion_intent"
+      ],
+      "properties": {
+        "workflow_label": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Workflow output label to assert against; null when the output label is not yet known."
+        },
+        "label_status": {
+          "type": "string",
+          "enum": [
+            "resolved",
+            "assumed",
+            "unresolved"
+          ],
+          "description": "resolved means the label matches a concrete workflow draft output; assumed means it is inferred from a brief; unresolved means the output label is not yet decided."
+        },
+        "description": {
+          "type": "string",
+          "description": "What this output is and why it is worth asserting."
+        },
+        "output_kind": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "dataset",
+            "collection",
+            null
+          ],
+          "description": "Whether the output is a single dataset or a collection; null when undecided. Collection outputs carry element-level assertion intent via assertion_intent[].element_identifier."
+        },
+        "collection_shape": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Galaxy collection shape for collection outputs, e.g. list, list:paired, list:list; null otherwise."
+        },
+        "assertion_intent": {
+          "type": "array",
+          "description": "Assertion intent for this output. May be empty when the output is intentionally unasserted (record the reason in omissions). Each entry names a tests-format assertion family by name rather than duplicating its full parameter object.",
+          "items": {
+            "$ref": "#/$defs/AssertionIntent"
+          }
+        }
+      }
+    },
+    "AssertionIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family",
+        "intent",
+        "expected_value",
+        "tolerance",
+        "element_identifier",
+        "evidence",
+        "confidence"
+      ],
+      "properties": {
+        "family": {
+          "type": "string",
+          "description": "tests-format assertion family or compare operator this intent maps to, by name, e.g. has_text, has_n_lines, has_n_columns, has_size, has_image_width, has_h5_keys, file, compare:diff, compare:sim_size. Names reference the tests-format schema vocabulary; this plan does not restate parameter shapes."
+        },
+        "intent": {
+          "type": "string",
+          "description": "What this assertion verifies, in plain language, so implement-galaxy-workflow-test can materialize the concrete assertion without re-reading the source tests."
+        },
+        "expected_value": {
+          "type": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "null"
+          ],
+          "description": "Concrete expected token, count, size, or comparison fixture when known; null when synthesized from intent without a concrete value."
+        },
+        "tolerance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Tolerance"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Tolerance for the expected value when applicable; null for exact or existence-only assertions."
+        },
+        "element_identifier": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Collection element identifier this assertion targets, for element-level (element_tests) assertions; null for top-level dataset assertions."
+        },
+        "evidence": {
+          "type": "string",
+          "enum": [
+            "test-evidence",
+            "intent"
+          ],
+          "description": "Whether this assertion was translated from upstream test evidence or synthesized from intent."
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "description": "How firmly the expected value and family are believed correct; synthesized assertions are typically medium or low."
+        }
+      }
+    },
+    "Tolerance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "magnitude",
+        "rationale"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "delta",
+            "delta_frac",
+            "lines_diff",
+            "none"
+          ],
+          "description": "Tolerance operator: delta (absolute count/bytes, suffixes like 1K/1M allowed as strings), delta_frac (fraction such as 0.1), lines_diff (number of mutable header lines for compare:diff), or none."
+        },
+        "magnitude": {
+          "type": [
+            "string",
+            "number",
+            "integer",
+            "null"
+          ],
+          "description": "Tolerance magnitude, e.g. 6, \"10K\", or 0.1; null when kind is none or the magnitude is undecided."
+        },
+        "rationale": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Why this magnitude was chosen, e.g. mutable VCF header line count, percentage of typical file size, or nondeterministic output."
+        }
+      }
+    },
+    "UnresolvedItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "description",
+        "blocking",
+        "suggested_resolution"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "input-label",
+            "output-label",
+            "fixture",
+            "assertion",
+            "datatype",
+            "collection-shape",
+            "other"
+          ],
+          "description": "Category of the unresolved mapping."
+        },
+        "description": {
+          "type": "string",
+          "description": "What could not be resolved and why."
+        },
+        "blocking": {
+          "type": "boolean",
+          "description": "Whether implement-galaxy-workflow-test must resolve this before authoring a runnable test."
+        },
+        "suggested_resolution": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "A proposed way to resolve it when one is apparent; null otherwise."
+        }
+      }
+    },
+    "Omission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "reason",
+        "category"
+      ],
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "What is intentionally left unasserted, e.g. a workflow output label or a class of outputs."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why it is omitted, e.g. nondeterministic content, no stable checkpoint, or asserted only weakly elsewhere."
+        },
+        "category": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "nondeterministic",
+            "no-stable-checkpoint",
+            "weak-output",
+            "out-of-scope",
+            "other",
+            null
+          ],
+          "description": "Coarse omission category; null when none fits."
+        }
+      }
+    },
+    "Warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message",
+        "path"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Stable warning code, e.g. untranslatable-snapshot, missing-fixture, expression-derived-shape."
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable warning detail."
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Pointer into the source or plan the warning refers to; null when not applicable."
+        }
+      }
+    }
+  }
+}

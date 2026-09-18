@@ -1,0 +1,41 @@
+# Scalar parameter types: select (with options), integer (with bounds), and a
+# boolean turned into a flag via a ternary -- NOT truevalue/falsevalue.
+class: GalaxyUserTool
+id: repeat-greeting
+version: "0.1.0"
+name: Repeat a greeting
+description: Print a chosen greeting a number of times, optionally shouting
+container: busybox
+shell_command: |
+  yes "$(inputs.greeting)$(inputs.shout ? '!' : '')" | head -n $(inputs.count) > greetings.txt
+inputs:
+  - name: greeting
+    type: select
+    label: Greeting
+    help: Which greeting to print.
+    options:
+      - { label: Hi, value: Hi, selected: true }
+      - { label: Hello, value: Hello, selected: false }
+  - name: count
+    type: integer
+    value: 3
+    min: 1
+    max: 100
+    label: Number of lines
+  - name: shout
+    type: boolean
+    value: false
+    label: Add an exclamation mark
+outputs:
+  - name: output
+    type: data
+    format: txt
+    from_work_dir: greetings.txt
+    label: Greetings
+help:
+  format: markdown
+  content: |
+    Prints a chosen greeting a number of times, optionally with an exclamation mark.
+
+    **Inputs** -- `greeting` (Hi/Hello), `count` (1-100), `shout` (adds "!").
+    **Outputs** -- `output`: the greetings, one per line.

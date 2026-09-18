@@ -1,0 +1,687 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://galaxyproject.org/foundry/schemas/summary-galaxy-workflow.schema.json",
+  "$comment": "Canonical source: packages/gxwf-foundry/src/schemas/summary-galaxy-workflow/summary-galaxy-workflow.schema.json in galaxyproject/foundry. Mold frontmatter cites this schema via [[summary-galaxy-workflow]] wiki-links; the cast pipeline imports the `summaryGalaxyWorkflowSchema` runtime export and serializes it into cast bundles.",
+  "title": "Galaxy Workflow Summary",
+  "description": "Structured summary emitted by the summarize-galaxy-workflow Mold. Galaxy gxformat2 is already a typed workflow language, so this schema records validated and normalized workflow structure (inputs, outputs, steps, edges, existing tests) rather than inferred pipeline semantics. When the user supplies a legacy .ga workflow it is converted to gxformat2 first and the conversion is recorded under documents.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "summary_version",
+    "source",
+    "documents",
+    "workflow_inputs",
+    "workflow_outputs",
+    "steps",
+    "graph",
+    "tests",
+    "warnings"
+  ],
+  "properties": {
+    "summary_version": {
+      "type": "string",
+      "enum": [
+        "1"
+      ],
+      "description": "Summary schema major version."
+    },
+    "source": {
+      "$ref": "#/$defs/SourceRecord"
+    },
+    "documents": {
+      "$ref": "#/$defs/DocumentSet"
+    },
+    "workflow_inputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/WorkflowInput"
+      }
+    },
+    "workflow_outputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/WorkflowOutput"
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/WorkflowStep"
+      }
+    },
+    "graph": {
+      "$ref": "#/$defs/WorkflowGraph"
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/TestCase"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Warning"
+      }
+    }
+  },
+  "$defs": {
+    "SourceRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ecosystem",
+        "workflow",
+        "url",
+        "version",
+        "license",
+        "slug",
+        "format",
+        "original_format",
+        "release",
+        "annotation"
+      ],
+      "properties": {
+        "ecosystem": {
+          "type": "string",
+          "enum": [
+            "galaxy"
+          ],
+          "description": "Source ecosystem; fixed for this per-source schema."
+        },
+        "workflow": {
+          "type": "string",
+          "description": "Human-oriented workflow name, usually the gxformat2 `name:` or the source filename stem."
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Original path or URL supplied by the user."
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Pinned commit, tag, release, or digest when available."
+        },
+        "license": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "License identifier from the gxformat2 `license:` field or a detected license file."
+        },
+        "slug": {
+          "type": "string",
+          "description": "Stable kebab-case run slug."
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "gxformat2"
+          ],
+          "description": "Normalized workflow format this summary describes; always gxformat2."
+        },
+        "original_format": {
+          "type": "string",
+          "enum": [
+            "gxformat2",
+            "ga"
+          ],
+          "description": "Format the user supplied. `ga` means the legacy native format was converted to gxformat2 before summarizing (see documents.converted_path)."
+        },
+        "release": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "gxformat2 `release:` version string when present."
+        },
+        "annotation": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Workflow-level annotation/description when present."
+        }
+      }
+    },
+    "DocumentSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entrypoint",
+        "converted_path",
+        "validation"
+      ],
+      "properties": {
+        "entrypoint": {
+          "type": "string",
+          "description": "Local path or URL of the workflow document as supplied."
+        },
+        "converted_path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Path to the gxformat2 document produced by `gxwf convert` when the entrypoint was a legacy .ga; null when the entrypoint was already gxformat2."
+        },
+        "validation": {
+          "$ref": "#/$defs/ValidationResult"
+        }
+      }
+    },
+    "ValidationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command",
+        "status",
+        "diagnostics"
+      ],
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "Validation command or library operation used, e.g. `gxwf validate`."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "valid",
+            "warning",
+            "invalid",
+            "not-run"
+          ]
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "WorkflowInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "type",
+        "collection_type",
+        "optional",
+        "default",
+        "format",
+        "doc"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "gxformat2 input step key (label) that later edges address."
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "data",
+            "collection",
+            "parameter"
+          ],
+          "description": "Galaxy workflow input class: a single dataset, a dataset collection, or a runtime parameter."
+        },
+        "collection_type": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Galaxy collection type expression when type is collection, e.g. list, paired, list:paired."
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "default": {
+          "description": "Verbatim default value when present.",
+          "type": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "format": {
+          "type": [
+            "string",
+            "array",
+            "null"
+          ],
+          "description": "Declared datatype/extension restriction(s) when present.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "doc": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "WorkflowOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "source",
+        "type",
+        "doc"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Workflow output name as exposed in the gxformat2 `outputs:` block."
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Producing `step_label/output_name` this workflow output promotes."
+        },
+        "type": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Compact datatype/collection-shape hint when derivable."
+        },
+        "doc": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "WorkflowStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "type",
+        "tool_id",
+        "tool_version",
+        "tool_shed_repository",
+        "tool_state",
+        "in",
+        "out",
+        "when",
+        "annotation"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Step key/label as it appears in the gxformat2 `steps:` mapping; the anchor edits address."
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "tool",
+            "data_input",
+            "data_collection_input",
+            "parameter_input",
+            "subworkflow",
+            "pause"
+          ],
+          "description": "gxformat2 step class."
+        },
+        "tool_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Fully qualified Tool Shed tool id or short built-in id; null for non-tool steps."
+        },
+        "tool_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Pinned tool version when present."
+        },
+        "tool_shed_repository": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "owner",
+            "changeset_revision",
+            "tool_shed"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "owner": {
+              "type": "string"
+            },
+            "changeset_revision": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "tool_shed": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "description": "Pinned Tool Shed repository record when the step cites one."
+        },
+        "tool_state": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true,
+          "description": "Verbatim gxformat2 tool_state for this step, preserved so downstream change-set edits can address individual parameters. Null for non-tool steps."
+        },
+        "in": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StepInput"
+          }
+        },
+        "out": {
+          "type": "array",
+          "description": "Declared outputs this step produces, each with any gxformat2 post-job actions preserved verbatim so a downstream change-set can address a hidden/renamed/tagged output.",
+          "items": {
+            "$ref": "#/$defs/StepOutput"
+          }
+        },
+        "when": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Conditional-execution guard preserved verbatim when present."
+        },
+        "annotation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "StepInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "source",
+        "default",
+        "value_from"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Input connection name on this step."
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Upstream `step_label/output_name` or workflow input this connection reads; null when driven by a default or runtime value."
+        },
+        "default": {
+          "description": "Verbatim connection default when present.",
+          "type": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "value_from": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Runtime/expression source preserved verbatim when present."
+        }
+      }
+    },
+    "StepOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "actions"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Declared output name this step produces; the anchor edits and workflow outputs address."
+        },
+        "actions": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true,
+          "description": "Verbatim gxformat2 post-job actions on this output (e.g. hide, rename, add_tags, remove_tags, change_datatype, delete_intermediate), preserved uninterpreted like tool_state. Null when the output carries no actions."
+        }
+      }
+    },
+    "WorkflowGraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodes",
+        "edges"
+      ],
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GraphNode"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GraphEdge"
+          }
+        }
+      }
+    },
+    "GraphNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "label"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "workflow-input",
+            "step",
+            "workflow-output"
+          ]
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "GraphEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to",
+        "via"
+      ],
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "via": {
+          "type": "array",
+          "description": "Shape-affecting Galaxy features on this edge, e.g. map-over, batch, collection-reduction.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "TestCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "job_path",
+        "expected_outputs",
+        "provenance"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "job_path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Path to the tests YAML/job definition when discoverable, e.g. a sibling *-tests.yml."
+        },
+        "expected_outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExpectedOutputRef"
+          }
+        },
+        "provenance": {
+          "type": "string"
+        }
+      }
+    },
+    "ExpectedOutputRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "url",
+        "filetype",
+        "checksum",
+        "assertions"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filetype": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "checksum": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "assertions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "Warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message",
+        "path"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

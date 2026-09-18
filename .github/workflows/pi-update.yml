@@ -175,6 +175,7 @@ jobs:
           set +e
           npm run check:versions;   lockstep=$?
           npm run typecheck;        tc_root=$?
+          npm run check:skills;     skills=$?
           (cd app && npx tsc --noEmit); tc_app=$?
           npm test;                 tests=$?
           npm run smoke:pack;       smoke=$?
@@ -182,11 +183,12 @@ jobs:
           {
             echo "lockstep=$(status $lockstep)"
             echo "typecheck_root=$(status $tc_root)"
+            echo "vendored_skills=$(status $skills)"
             echo "typecheck_app=$(status $tc_app)"
             echo "tests=$(status $tests)"
             echo "smoke=$(status $smoke)"
           } >> "$GITHUB_OUTPUT"
-          if [ $((lockstep + tc_root + tc_app + tests + smoke)) -eq 0 ]; then
+          if [ $((lockstep + tc_root + skills + tc_app + tests + smoke)) -eq 0 ]; then
             echo "clean=true" >> "$GITHUB_OUTPUT"
           else
             echo "clean=false" >> "$GITHUB_OUTPUT"
@@ -207,6 +209,7 @@ jobs:
           V_PEERS: ${{ steps.bump.outputs.peers }}
           V_LOCKSTEP: ${{ steps.validate.outputs.lockstep }}
           V_TC_ROOT: ${{ steps.validate.outputs.typecheck_root }}
+          V_SKILLS: ${{ steps.validate.outputs.vendored_skills }}
           V_TC_APP: ${{ steps.validate.outputs.typecheck_app }}
           V_TESTS: ${{ steps.validate.outputs.tests }}
           V_SMOKE: ${{ steps.validate.outputs.smoke }}
@@ -239,6 +242,7 @@ jobs:
             ["peer ranges", e.V_PEERS],
             ["version lockstep", e.V_LOCKSTEP],
             ["typecheck (root)", e.V_TC_ROOT],
+            ["vendored skills", e.V_SKILLS],
             ["typecheck (app)", e.V_TC_APP],
             ["tests", e.V_TESTS],
             ["packed-tarball smoke", e.V_SMOKE],

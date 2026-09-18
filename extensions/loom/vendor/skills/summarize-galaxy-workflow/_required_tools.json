@@ -1,0 +1,28 @@
+[
+  {
+    "tool": "foundry",
+    "origin": "npm",
+    "package": "@galaxy-foundry/gxwf-foundry",
+    "invoke": "foundry",
+    "invoke_fallback": "npx --package @galaxy-foundry/gxwf-foundry foundry",
+    "availability_check": "foundry --help",
+    "docs_url": "https://github.com/galaxyproject/foundry/blob/main/packages/gxwf-foundry/README.md",
+    "reference": "references/cli/foundry.md",
+    "source": "referenced"
+  },
+  {
+    "tool": "gxwf",
+    "origin": "npm",
+    "package": "@galaxy-tool-util/cli",
+    "package_version": "^1.8.1",
+    "invoke": "gxwf",
+    "invoke_fallback": "npx --yes --package @galaxy-tool-util/cli@1.8.1 gxwf",
+    "availability_check": "gxwf --help | grep -q draft-validate",
+    "docs_url": "https://github.com/jmchilton/galaxy-tool-util-ts/tree/main/packages/cli",
+    "source": "implied",
+    "implied_by": [
+      "gxwf convert",
+      "gxwf validate"
+    ]
+  }
+]

@@ -1,0 +1,56 @@
+# Real-world pattern: a stdlib-only Python tool in an OFFICIAL python:3.x-slim image
+# (not a biocontainer whose build-hash tag you'd have to guess), with the script
+# embedded via a quoted heredoc. Modeled on a plotting UDT whose seaborn-biocontainer
+# tag did not exist at run time -- switching to python:3.11-slim + stdlib was the fix.
+class: GalaxyUserTool
+id: column-summary
+version: "0.1.0"
+name: Summarize a numeric column
+description: Report count, mean, min, and max of one numeric column in a tabular file
+container: python:3.11-slim
+shell_command: |
+  python <<'PY'
+  import csv
+  path = '$(inputs.table.path)'
+  column = '$(inputs.column)'
+  values = []
+  with open(path, newline='') as fh:
+      reader = csv.DictReader(fh, delimiter='\t')
+      for row in reader:
+          cell = row.get(column, '')
+          if cell not in ('', None):
+              values.append(float(cell))
+  if not values:
+      raise SystemExit(f'No numeric values found in column {column!r}')
+  n = len(values)
+  with open('summary.txt', 'w') as out:
+      out.write(f'column\t{column}\n')
+      out.write(f'count\t{n}\n')
+      out.write(f'mean\t{sum(values) / n}\n')
+      out.write(f'min\t{min(values)}\n')
+      out.write(f'max\t{max(values)}\n')
+  PY
+inputs:
+  - name: table
+    type: data
+    format: tabular
+    label: Tabular input
+  - name: column
+    type: text
+    label: Column name to summarize
+    help: Must match a column header in the tabular file.
+outputs:
+  - name: summary
+    type: data
+    format: txt
+    from_work_dir: summary.txt
+    label: Column summary
+help:
+  format: markdown
+  content: |
+    Reports count, mean, min, and max of one numeric column in a tabular file.
+
+    **Inputs** -- `table`: a tabular file; `column`: the column header to summarize.
+    **Outputs** -- `summary`: a small text report.
+
+    The column must match a header in the file; non-numeric/empty cells are skipped.

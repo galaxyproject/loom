@@ -1,0 +1,74 @@
+# Real-world pattern: run a longer script by NAME, and pass an untrusted `text`
+# parameter SAFELY. Two things to notice:
+#   1. The script is materialized by a `configfiles` entry whose `filename` is
+#      exactly what `shell_command` runs -- the critical rule from
+#      references/templating.md. (`python summarize.py` with no configfile that
+#      creates summarize.py would be broken -- the file wouldn't exist at run time.)
+#   2. The `column` value is a free-text input, so it is NOT interpolated into
+#      Python source (a quote or newline could break or inject into the code).
+#      Instead it's written to a JSON configfile via `JSON.stringify(...)` -- which
+#      safely encodes any string -- and the script reads it back as data.
+class: GalaxyUserTool
+id: column-summary-configfile
+version: "0.1.0"
+name: Summarize a numeric column (configfile)
+description: Report count, mean, min, and max of one numeric column in a tabular file
+container: python:3.11-slim
+configfiles:
+  - filename: params.json
+    content: |
+      {"table": $(JSON.stringify(inputs.table.path)), "column": $(JSON.stringify(inputs.column))}
+  - filename: summarize.py
+    content: |
+      import csv
+      import json
+
+      with open("params.json") as fh:
+          params = json.load(fh)
+      path = params["table"]
+      column = params["column"]
+
+      values = []
+      with open(path, newline="") as fh:
+          for row in csv.DictReader(fh, delimiter="\t"):
+              cell = row.get(column, "")
+              try:
+                  values.append(float(cell))
+              except (TypeError, ValueError):
+                  continue  # skip empty and non-numeric cells
+      if not values:
+          raise SystemExit(f"No numeric values found in column {column!r}")
+      n = len(values)
+      with open("summary.txt", "w") as out:
+          out.write(f"column\t{column}\n")
+          out.write(f"count\t{n}\n")
+          out.write(f"mean\t{sum(values) / n}\n")
+          out.write(f"min\t{min(values)}\n")
+          out.write(f"max\t{max(values)}\n")
+shell_command: python summarize.py
+inputs:
+  - name: table
+    type: data
+    format: tabular
+    label: Tabular input
+  - name: column
+    type: text
+    label: Column name to summarize
+    help: Must match a column header in the tabular file.
+outputs:
+  - name: summary
+    type: data
+    format: txt
+    from_work_dir: summary.txt
+    label: Column summary
+help:
+  format: markdown
+  content: |
+    Reports count, mean, min, and max of one numeric column in a tabular file.
+
+    **Inputs** -- `table`: a tabular file; `column`: the column header to summarize.
+    **Outputs** -- `summary`: a small text report.
+
+    The script is delivered as a configfile named `summarize.py` and run by name;
+    the column name is passed via a JSON configfile (not inlined into the code).
+    The column must match a header in the file; empty and non-numeric cells are skipped.

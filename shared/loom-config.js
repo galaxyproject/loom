@@ -20,6 +20,29 @@ export const DEFAULT_SKILLS = [
  * isAllowedSkillUrl() with a more permissive predicate.
  */
 export const ALLOWED_SKILLS_PREFIX = "https://github.com/galaxyproject/";
+
+/**
+ * A configured repo reads from the package when it is one of the defaults and is
+ * still pointed at that default's URL and branch. Anything else -- another
+ * branch, another URL, a repo we do not ship -- is fetched, which is what the
+ * skill-author workflow of pointing Loom at a branch depends on. Lives here
+ * because the brain and the Preferences table have to agree on the answer.
+ */
+export function isBundledSkillRepo(repo) {
+  if (!repo || typeof repo.name !== "string") return false;
+  const preset = DEFAULT_SKILLS.find((d) => d.name === repo.name);
+  if (!preset) return false;
+  const norm = (u) =>
+    String(u ?? "")
+      .trim()
+      .replace(/\.git$/, "")
+      .replace(/\/+$/, "")
+      .toLowerCase();
+  if (!norm(repo.url) || norm(repo.url) !== norm(preset.url)) return false;
+  const branch = (repo.branch ?? "").trim() || "main";
+  return branch === (preset.branch || "main");
+}
+
 const VALID_UI_THEMES = new Set(["light", "dark"]);
 
 export function isAllowedSkillUrl(url) {

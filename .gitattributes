@@ -1,0 +1,11 @@
+# The vendored tree is hash-gated with line endings normalised, but the files
+# still have to be checked out the same way everywhere: a CRLF checkout turns
+# any diff of them into every line, and the copy under review stops matching
+# the copy a Windows contributor sees.
+extensions/loom/vendor/** text eol=lf
+
+# The sync script starts with a #! line and is imported by the tests. Checked out
+# with CRLF, the test runner's module transform no longer recognises the hashbang
+# and the import dies with "Invalid or unexpected token", which is how the Windows
+# build found out. The gate hashes it with line endings normalised either way.
+scripts/sync-skills.mjs text eol=lf

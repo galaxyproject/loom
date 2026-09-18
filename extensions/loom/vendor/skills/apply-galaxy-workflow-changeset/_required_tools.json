@@ -1,0 +1,16 @@
+[
+  {
+    "tool": "gxwf",
+    "origin": "npm",
+    "package": "@galaxy-tool-util/cli",
+    "package_version": "^1.8.1",
+    "invoke": "gxwf",
+    "invoke_fallback": "npx --yes --package @galaxy-tool-util/cli@1.8.1 gxwf",
+    "availability_check": "gxwf --help | grep -q draft-validate",
+    "docs_url": "https://github.com/jmchilton/galaxy-tool-util-ts/tree/main/packages/cli",
+    "source": "implied",
+    "implied_by": [
+      "gxwf draft-validate"
+    ]
+  }
+]

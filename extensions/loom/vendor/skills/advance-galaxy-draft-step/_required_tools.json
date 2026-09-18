@@ -1,0 +1,33 @@
+[
+  {
+    "tool": "galaxy-tool-cache",
+    "origin": "npm",
+    "package": "@galaxy-tool-util/cli",
+    "package_version": "^1.8.1",
+    "invoke": "galaxy-tool-cache",
+    "invoke_fallback": "npx --yes --package @galaxy-tool-util/cli@1.8.1 galaxy-tool-cache",
+    "availability_check": "galaxy-tool-cache --help | grep -q summarize",
+    "docs_url": "https://github.com/jmchilton/galaxy-tool-util-ts/tree/main/packages/cli",
+    "source": "implied",
+    "implied_by": [
+      "galaxy-tool-cache add",
+      "galaxy-tool-cache list"
+    ]
+  },
+  {
+    "tool": "gxwf",
+    "origin": "npm",
+    "package": "@galaxy-tool-util/cli",
+    "package_version": "^1.8.1",
+    "invoke": "gxwf",
+    "invoke_fallback": "npx --yes --package @galaxy-tool-util/cli@1.8.1 gxwf",
+    "availability_check": "gxwf --help | grep -q draft-validate",
+    "docs_url": "https://github.com/jmchilton/galaxy-tool-util-ts/tree/main/packages/cli",
+    "source": "implied",
+    "implied_by": [
+      "gxwf draft-extract",
+      "gxwf draft-next-step",
+      "gxwf draft-validate"
+    ]
+  }
+]

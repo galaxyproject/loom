@@ -49,7 +49,7 @@ extensions/loom/                              bin/loom.js              terminal 
   profiles.ts   Galaxy server profiles
   teams/        team_dispatch (experimental)
 ~/.loom/config.json    shared brain config
-~/.loom/cache/skills/  per-repo skills cache (24h TTL)
+~/.loom/cache/skills/  fetched skill repos (24h TTL; bundled repos are not cached here)
 ~/.orbit/              Orbit-specific state (window geometry, etc.)
 ```
 
@@ -63,7 +63,7 @@ Implemented and locally tested.
 - Local automated suite: 261 tests passing (notebook I/O, invocation YAML round-trip, profile / credential handling, team-dispatch, session-index, Galaxy config).
 - Notebook is the source of truth -- there is no parallel plan struct to drift from it.
 - Galaxy invocation polling is exercised against the deterministic state-transition rules (`all-ok → completed`, `any-error → failed`).
-- Skills system fetches on demand from `galaxyproject/galaxy-skills` (shipped as default). Additional skill repos are restricted to `github.com/galaxyproject/*` (skill content is treated as authoritative agent instructions, so an arbitrary third-party repo would be a prompt-injection vector).
+- Skill content ships inside the package, vendored from `galaxyproject/agentic-plugins` at a pinned commit, so a fresh install has the full catalog with no network. A repo pointed at another branch or URL is fetched instead. Additional skill repos are restricted to `github.com/galaxyproject/*` (skill content is treated as authoritative agent instructions, so an arbitrary third-party repo would be a prompt-injection vector).
 - Galaxy API keys are encrypted at rest in Orbit via Electron `safeStorage`; the brain receives the decrypted key as an env var at spawn time. CLI users without `safeStorage` fall back to plaintext on disk.
 - End-to-end validation against a live Galaxy server is in progress.
 
@@ -212,9 +212,11 @@ The auto-created `.gitignore` excludes large bioinformatics files (FASTQ, BAM, V
 
 ## Skills system
 
-Loom can fetch operational know-how from curated GitHub repos following the Claude-Code skills convention (top-level `AGENTS.md` router + nested `SKILL.md` files). The agent calls `skills_fetch({ repo, path })` on demand.
+Loom loads operational know-how from repos of `SKILL.md` files, through `skills_fetch({ repo, path })`. Most of it ships inside the package: the content is vendored from [`galaxyproject/agentic-plugins`](https://github.com/galaxyproject/agentic-plugins) — the same source that distributes it to every other agent — at a commit pinned in `scripts/skills.manifest.json`, so a first run works offline and at a version that went through review. Preferences → Skills shows which repos are bundled and at which commit.
 
-**`galaxyproject/galaxy-skills` is shipped as the default** — when no skills are configured, Loom seeds it on first read. It covers:
+Point a repo at a different branch or URL and it goes back to being fetched from GitHub and cached for 24h, which is how a skill author evaluates a change before it is merged. Repos are restricted to `github.com/galaxyproject/*` either way.
+
+**`galaxyproject/galaxy-skills` is the default** — when no skills are configured, Loom seeds it on first read. It covers:
 
 - **Collection manipulation** (paired collections from PE FASTQ, mapping a tool over a collection, Apply Rules DSL, Galaxy Tools API patterns)
 - **Galaxy MCP usage and gotchas**
@@ -612,12 +614,12 @@ Type `/` in the chat to open the autocomplete popup. Tab to accept; Enter still 
 
 Loom registers a small set of extension tools. Plans, decisions, results, and interpretation all live as markdown sections in `notebook.md` — the agent maintains them via the standard `Edit`/`Write` tools.
 
-| Category                       | Tools                                                                                    |
-| ------------------------------ | ---------------------------------------------------------------------------------------- |
-| **GTN tutorials**              | `gtn_search`, `gtn_fetch`                                                                |
-| **Galaxy invocations**         | `galaxy_invocation_record`, `galaxy_invocation_check_all`, `galaxy_invocation_check_one` |
-| **Skills**                     | `skills_fetch` (fetch SKILL.md / reference docs from configured repos)                   |
-| **Multi-agent (experimental)** | `team_dispatch` (gated by `LOOM_TEAM_DISPATCH=1`)                                        |
+| Category                       | Tools                                                                                     |
+| ------------------------------ | ----------------------------------------------------------------------------------------- |
+| **GTN tutorials**              | `gtn_search`, `gtn_fetch`                                                                 |
+| **Galaxy invocations**         | `galaxy_invocation_record`, `galaxy_invocation_check_all`, `galaxy_invocation_check_one`  |
+| **Skills**                     | `skills_fetch` (SKILL.md / reference docs; `repo: "foundry"` reads bundled Foundry casts) |
+| **Multi-agent (experimental)** | `team_dispatch` (gated by `LOOM_TEAM_DISPATCH=1`)                                         |
 
 Galaxy MCP (registered separately when credentials are present) provides `galaxy_connect`, `galaxy_search_tools_by_name`, `galaxy_run_tool`, `galaxy_invoke_workflow`, `galaxy_search_iwc`, `get_iwc_workflows`, `import_workflow_from_iwc`, user-defined tool lifecycle (`galaxy_create_user_tool`, `galaxy_list_user_tools`, `galaxy_run_user_tool`, `galaxy_delete_user_tool`), history/dataset operations, and more.
 
@@ -659,7 +661,8 @@ For a full terminal-only runbook, see [docs/terminal-validation.md](docs/termina
 
 - [Galaxy](https://galaxyproject.org) — open-source platform for data-intensive biomedical research
 - [galaxy-mcp](https://github.com/galaxyproject/galaxy-mcp) — MCP server for the Galaxy API
-- [galaxy-skills](https://github.com/galaxyproject/galaxy-skills) — curated operational skills the agent fetches on demand
+- [galaxy-skills](https://github.com/galaxyproject/galaxy-skills) — curated operational skills, bundled with Loom at a pinned commit
+- [agentic-plugins](https://github.com/galaxyproject/agentic-plugins) — the pinned source Loom vendors its skill content from
 - [Pi coding agent](https://github.com/badlogic/pi-mono) — the Pi.dev agent framework
 - [CodeBurn](https://github.com/getagentseal/codeburn) — TUI dashboard for AI-coding cost observability (Pi is a first-class provider)
 

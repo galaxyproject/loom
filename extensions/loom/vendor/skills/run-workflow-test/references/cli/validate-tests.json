@@ -1,0 +1,40 @@
+{
+  "type": "cli-command",
+  "tool": "gxwf",
+  "command": "validate-tests",
+  "summary": "Validate Galaxy workflow test files and optionally cross-check labels against their workflow.",
+  "source_path": "content/cli/gxwf/validate-tests.md",
+  "source_revision": 3,
+  "package": "@galaxy-tool-util/cli",
+  "description": "Validate a workflow-test file (*-tests.yml, *.gxwf-tests.yml) against the Galaxy Tests schema",
+  "synopsis": "gxwf validate-tests [options] <file>",
+  "args": [
+    {
+      "raw": "file",
+      "name": "file",
+      "required": true,
+      "variadic": false,
+      "description": "Tests file (*-tests.yml)"
+    }
+  ],
+  "options": [
+    {
+      "flags": "--json",
+      "name": "json",
+      "description": "Output structured JSON report",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--workflow <path>",
+      "name": "workflow",
+      "description": "Cross-check job inputs + output assertions against a workflow (.ga / .gxwf.yml)",
+      "takesArgument": true,
+      "argumentPlaceholder": "<path>",
+      "optionalArgument": false,
+      "negatable": false
+    }
+  ],
+  "body": "# `gxwf validate-tests`\n\nValidate a Galaxy workflow test file (`*-tests.yml` or `*.gxwf-tests.yml`) against the Galaxy tests schema. Optionally cross-check the test file against a workflow so missing input labels, missing output labels, and type mismatches fail before a slow Planemo run.\n\n`<file>` is a workflow test YAML file, usually named `<workflow>-tests.yml` or `<workflow>.gxwf-tests.yml`.\n\n## Output\n\nDefault output is human-readable validation diagnostics.\n\nWith `--json`, the command emits a structured report describing schema errors and, when `--workflow` is supplied, workflow-coherence errors such as missing labels or incompatible input values.\n\n## Examples\n\n```bash\ngxwf validate-tests workflow-tests.yml\ngxwf validate-tests workflow-tests.yml --json\ngxwf validate-tests workflow-tests.yml --workflow workflow.gxwf.yml --json\n```\n\n## Gotchas\n\n- This is the cheap static gate before Planemo. It does not execute the workflow and does not prove assertions pass on real outputs.\n- Use `--workflow` whenever the workflow file is available. Schema-valid tests can still reference stale input/output labels after workflow edits.\n- Run this before `planemo workflow_test_on_invocation` or full `planemo test`; it catches authoring mistakes without starting Galaxy.\n- The assertion vocabulary itself comes from tests-format; strategy for choosing assertions lives in planemo-asserts-idioms."
+}

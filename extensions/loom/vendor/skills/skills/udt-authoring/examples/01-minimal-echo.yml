@@ -1,0 +1,27 @@
+# Smallest useful UDT: one text input, one captured output.
+class: GalaxyUserTool
+id: echo-message
+version: "0.1.0"
+name: Echo a message
+description: Write a user-provided message to a text file
+container: busybox
+shell_command: |
+  echo "$(inputs.message)" > out.txt
+inputs:
+  - name: message
+    type: text
+    value: "Hello, Galaxy!"
+    label: Message to write
+outputs:
+  - name: out
+    type: data
+    format: txt
+    from_work_dir: out.txt
+    label: Message file
+help:
+  format: markdown
+  content: |
+    Writes a user-provided message to a text file.
+
+    **Inputs** -- `message`: the text to write.
+    **Outputs** -- `out`: a text file containing the message.

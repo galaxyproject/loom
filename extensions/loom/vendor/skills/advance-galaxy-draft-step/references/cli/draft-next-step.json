@@ -1,0 +1,42 @@
+{
+  "type": "cli-command",
+  "tool": "gxwf",
+  "command": "draft-next-step",
+  "summary": "Pick the next drafty step a harness should work on, or report no remaining work; deterministic topological + alphabetical tiebreak.",
+  "source_path": "content/cli/gxwf/draft-next-step.md",
+  "source_revision": 1,
+  "package": "@galaxy-tool-util/cli",
+  "description": "Pick the next step a downstream agent should work on (or report no remaining work)",
+  "synopsis": "gxwf draft-next-step [options] <file>",
+  "args": [
+    {
+      "raw": "file",
+      "name": "file",
+      "required": true,
+      "variadic": false,
+      "description": "Draft workflow file (.gxwf.yml)"
+    }
+  ],
+  "options": [
+    {
+      "flags": "--format <fmt>",
+      "name": "format",
+      "description": "Force input format: format2 (default; native is rejected)",
+      "takesArgument": true,
+      "argumentPlaceholder": "<fmt>",
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--output-format <fmt>",
+      "name": "outputFormat",
+      "description": "Output format: json (default) or markdown",
+      "takesArgument": true,
+      "argumentPlaceholder": "<fmt>",
+      "optionalArgument": false,
+      "negatable": false,
+      "defaultValue": "json"
+    }
+  ],
+  "body": "# `gxwf draft-next-step`\n\nDeterministic next-step picker for the per-step authoring loop. Wraps `nextDraftStep` from `@galaxy-tool-util/schema`. Native (.ga) input is rejected — drafts are format2-only.\n\nThe harness loop reads as: `while (next = gxwf draft-next-step <wf>).draft: invoke per-step skill on next.step`.\n\n## Output\n\nDefault output is pretty JSON — the agent-loop wire format. Same input → byte-identical output. `--output-format markdown` renders a human-glance checklist instead.\n\nJSON fields:\n\n- `draft` (bool) — `true` while a drafty step remains, `false` at the terminal cases below.\n- `step` (string array) — the picked step's **path**: a single id at top level (`[\"merge assembled transcripts\"]`), or the full path through containing subworkflow steps when the pick is nested. The leaf (last element) is the step to work on.\n- `work` (string array) — the chosen step's remaining `TODO[...]` sentinels followed by its `_plan_*` fields, in checklist order.\n\nAt the terminal cases the object is just `{ \"draft\": false }` — no `step` or `work` keys.\n\nTwo terminal cases both surface as `draft: false`:\n\n- The workflow's class is already `GalaxyWorkflow` (concretization complete, class promoted).\n- The class is still `GalaxyWorkflowDraft` but every step is fully resolved (no `TODO_*`, no `_plan_*`). The harness's next move is draft-extract (which calls `promoteFullyConcreteDrafts` to flip the class) followed by terminal validate.\n\n## Examples\n\n```bash\ngxwf draft-next-step workflow.gxwf.yml\ngxwf draft-next-step workflow.gxwf.yml --output-format markdown\n```\n\nHarness loop sketch:\n\n```bash\nwhile [ \"$(gxwf draft-next-step workflow.gxwf.yml | jq -r .draft)\" = \"true\" ]; do\n  step=$(gxwf draft-next-step workflow.gxwf.yml | jq -r '.step | last')\n  # invoke per-step skill on step, which mutates workflow.gxwf.yml in place\ndone\n```\n\n## Gotchas\n\n- Pick order is **topological** (a step waits until its `in:` sources are concretized) with **alphabetical tiebreak** on step id at the same level. Same input across runs returns the same pick — safe to call repeatedly without state.\n- Descends into draft subworkflows; the returned `step` array is the full path through containing subworkflow steps (leaf last).\n- A `draft: false` result does **not** mean the workflow has passed validate yet. It means the per-step authoring loop is done; the harness still owns the promote + terminal-validate pass.\n- This command does not mutate the workflow file. It's a pure observer.\n- Insertion order of step dicts does not affect output — semantically equal workflows produce identical picks."
+}

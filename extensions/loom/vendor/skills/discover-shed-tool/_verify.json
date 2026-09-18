@@ -1,0 +1,17 @@
+{
+  "verify_schema_version": 1,
+  "entries": [
+    {
+      "artifact_id": "galaxy-tool-pin",
+      "direction": "output",
+      "kind": "json",
+      "default_filename": "galaxy-tool-pin.json",
+      "schema": "[[galaxy-tool-discovery]]",
+      "validator_bin": "foundry",
+      "args": [
+        "validate-galaxy-tool-discovery",
+        "{artifact_path}"
+      ]
+    }
+  ]
+}

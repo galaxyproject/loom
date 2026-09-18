@@ -29,7 +29,12 @@ import { shouldAcceptSlashCommandOnEnter } from "./slash-popup-nav.js";
 import { buildDiscoveredModelOptions, type ModelOption } from "./model-options.js";
 import { planModelDiscovery } from "./model-discovery-gate.js";
 import { LoomWidgetKey, decodeMarkdownWidget } from "../../../shared/loom-shell-contract.js";
-import { ALLOWED_SKILLS_PREFIX, isAllowedSkillUrl } from "../../../shared/loom-config.js";
+import {
+  ALLOWED_SKILLS_PREFIX,
+  isAllowedSkillUrl,
+  isBundledSkillRepo,
+} from "../../../shared/loom-config.js";
+import { SKILLS_PIN } from "../../../shared/skills-pin.js";
 import {
   SCHEMA_VERSION,
   formatActivityTail,
@@ -3626,9 +3631,25 @@ function renderSkillsRows(): void {
   }
   prefsSkillsState.forEach((repo, idx) => {
     const tr = document.createElement("tr");
-    tr.appendChild(makeSkillCell(repo, idx, "name", "text"));
-    tr.appendChild(makeSkillCell(repo, idx, "url", "text"));
-    tr.appendChild(makeSkillCell(repo, idx, "branch", "text"));
+    // A repo left at what we ship reads from the package, so say so and say at
+    // which commit -- otherwise the row claims a branch nothing is fetching.
+    const badge = document.createElement("span");
+    badge.className = "prefs-skills-bundled";
+    const refreshBadge = () => {
+      const bundled = isBundledSkillRepo(prefsSkillsState[idx]);
+      badge.textContent = bundled ? `bundled @${SKILLS_PIN.commit.slice(0, 7)}` : "";
+      badge.title = bundled
+        ? `Ships inside Loom from ${SKILLS_PIN.repo}@${SKILLS_PIN.commit}` +
+          `${SKILLS_PIN.commitDate ? ` (${SKILLS_PIN.commitDate})` : ""}. ` +
+          `Point it at another branch or URL to fetch it live instead.`
+        : "";
+    };
+    tr.appendChild(makeSkillCell(repo, idx, "name", "text", refreshBadge));
+    tr.appendChild(makeSkillCell(repo, idx, "url", "text", refreshBadge));
+    const branchTd = makeSkillCell(repo, idx, "branch", "text", refreshBadge);
+    branchTd.appendChild(badge);
+    refreshBadge();
+    tr.appendChild(branchTd);
 
     const enabledTd = document.createElement("td");
     enabledTd.className = "prefs-skills-enabled";
@@ -3665,6 +3686,7 @@ function makeSkillCell(
   idx: number,
   field: "name" | "url" | "branch",
   inputType: "text",
+  onInput?: () => void,
 ): HTMLTableCellElement {
   const td = document.createElement("td");
   td.className = `prefs-skills-${field}`;
@@ -3675,6 +3697,7 @@ function makeSkillCell(
   if (field === "branch") input.placeholder = "main";
   input.addEventListener("input", () => {
     prefsSkillsState[idx][field] = input.value.trim();
+    onInput?.();
   });
   td.appendChild(input);
   return td;

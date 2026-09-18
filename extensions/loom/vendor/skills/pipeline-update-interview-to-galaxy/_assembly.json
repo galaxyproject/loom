@@ -1,0 +1,23 @@
+{
+  "source_pipeline": "update-interview-to-galaxy",
+  "source_revision": 2,
+  "harness_name": "pipeline-update-interview-to-galaxy",
+  "options": ["use-subagents", "checkpoint", "feedback"],
+  "required_tools": [
+    { "tool": "foundry", "origin": "npm", "package": "@galaxy-foundry/gxwf-foundry", "invoke": "foundry", "invoke_fallback": "npx --package @galaxy-foundry/gxwf-foundry foundry", "availability_check": "foundry --help", "docs_url": "https://github.com/galaxyproject/foundry/blob/main/packages/gxwf-foundry/README.md", "source": "referenced" },
+    { "tool": "galaxy-tool-cache", "origin": "npm", "package": "@galaxy-tool-util/cli", "package_version": "^1.8.1", "invoke": "galaxy-tool-cache", "invoke_fallback": "npx --yes --package @galaxy-tool-util/cli@1.8.1 galaxy-tool-cache", "availability_check": "galaxy-tool-cache --help | grep -q summarize", "docs_url": "https://github.com/jmchilton/galaxy-tool-util-ts/tree/main/packages/cli", "source": "implied", "implied_by": ["galaxy-tool-cache add", "galaxy-tool-cache list"] },
+    { "tool": "gxwf", "origin": "npm", "package": "@galaxy-tool-util/cli", "package_version": "^1.8.1", "invoke": "gxwf", "invoke_fallback": "npx --yes --package @galaxy-tool-util/cli@1.8.1 gxwf", "availability_check": "gxwf --help | grep -q draft-validate", "docs_url": "https://github.com/jmchilton/galaxy-tool-util-ts/tree/main/packages/cli", "source": "implied", "implied_by": ["gxwf convert", "gxwf validate", "gxwf draft-validate", "gxwf draft-next-step", "gxwf draft-extract", "gxwf validate-tests"] },
+    { "tool": "planemo", "origin": "pypi", "package": "planemo", "package_version": "0.75.47", "invoke": "planemo", "invoke_fallback": "uvx --from planemo==0.75.47 planemo", "availability_check": "planemo --version", "docs_url": "https://planemo.readthedocs.io/", "source": "referenced" }
+  ],
+  "phases": [
+    { "phase": 1, "kind": "mold", "skill": "summarize-galaxy-workflow", "cast_present": true, "loop": false },
+    { "phase": 2, "kind": "mold", "skill": "interview-to-galaxy-workflow-changeset", "cast_present": true, "loop": false },
+    { "phase": 3, "kind": "mold", "skill": "apply-galaxy-workflow-changeset", "cast_present": true, "loop": false },
+    { "phase": 4, "kind": "mold", "skill": "advance-galaxy-draft-step", "cast_present": true, "loop": true },
+    { "phase": 5, "kind": "mold", "skill": "changeset-to-galaxy-test-plan", "cast_present": true, "loop": false },
+    { "phase": 6, "kind": "mold", "skill": "implement-galaxy-workflow-test", "cast_present": true, "loop": false },
+    { "phase": 7, "kind": "mold", "skill": "validate-galaxy-workflow", "cast_present": true, "loop": false },
+    { "phase": 8, "kind": "mold", "skill": "run-workflow-test", "cast_present": true, "loop": false },
+    { "phase": 9, "kind": "mold", "skill": "debug-galaxy-workflow-output", "cast_present": true, "loop": false }
+  ]
+}

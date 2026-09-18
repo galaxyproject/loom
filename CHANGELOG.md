@@ -4,6 +4,13 @@ Notable, user-facing changes to Loom and Orbit. Each release lists a short set o
 highlights; the full commit-level notes live on the GitHub release pages. Add a
 new `## [<version>] - <date>` block with a `### Highlights` list at release time.
 
+## [Unreleased]
+
+### Highlights
+
+- Galaxy skill content now ships inside Loom rather than being fetched from GitHub on first use, so a fresh install has the full catalog with no network and no waiting. Loom takes it from `galaxyproject/agentic-plugins` at a pinned commit -- the same source every other agent reads -- and Preferences shows which repos are bundled and at which commit. Point a repo at a branch and it goes back to being fetched, so evaluating an unmerged skill still works
+- The failure-triage guidance a failed workflow points at is now a whole Foundry cast rather than three files out of the middle of one, and eleven more casts covering finding, adapting and validating a workflow ship alongside it. None of them enter the system prompt; they are reached by name when they become relevant
+
 ## [0.7.0] - 2026-09-17
 
 ### Highlights

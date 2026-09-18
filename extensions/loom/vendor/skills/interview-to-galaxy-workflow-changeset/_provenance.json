@@ -1,0 +1,93 @@
+{
+  "provenance_schema_version": 4,
+  "cast_target": "claude",
+  "mold": {
+    "name": "interview-to-galaxy-workflow-changeset",
+    "path": "content/molds/interview-to-galaxy-workflow-changeset/index.md",
+    "revision": 3,
+    "content_hash": "9e2b8567ee121020d44ac03ff4e119393e799c6cb35a0f21b9d2ce1d4a21dce1",
+    "commit": "63a3f9cf9c97a637fe1628d298e524f35709e289"
+  },
+  "cast_at": "2026-09-13T20:58:28.260Z",
+  "refs": [
+    {
+      "kind": "research",
+      "mode": "verbatim",
+      "ref": "[[open-requirements-ledger]]",
+      "src": "content/research/open-requirements-ledger/index.md",
+      "dst": "references/notes/open-requirements-ledger.md",
+      "used_at": "runtime",
+      "load": "upfront",
+      "evidence": "hypothesis",
+      "purpose": "Record a requested change the workflow cannot support as described as an open entry, so an unsupportable request survives as a tracked obligation rather than a fabricated anchor or a silent drop.",
+      "verification": "Promote after a worked run shows entries this Mold appends are consumed by apply-galaxy-workflow-changeset or a reviewer without re-derivation.",
+      "src_hash": "e1d5e3a4d6d650af5b2efc4703fe6f79bb4d0cc12e6cd14e841c5b91df122ea0",
+      "dst_hash": "e1d5e3a4d6d650af5b2efc4703fe6f79bb4d0cc12e6cd14e841c5b91df122ea0",
+      "source": "deterministic"
+    },
+    {
+      "kind": "schema",
+      "mode": "verbatim",
+      "ref": "[[summary-galaxy-workflow]]",
+      "src": "package://@galaxy-foundry/gxwf-foundry#summaryGalaxyWorkflowSchema",
+      "dst": "references/schemas/summary-galaxy-workflow.schema.json",
+      "used_at": "runtime",
+      "load": "upfront",
+      "evidence": "cast-validated",
+      "purpose": "Input contract: read the existing-workflow summary to anchor every change-set entry to a real step/input/output.",
+      "license": "MIT",
+      "src_hash": "55831dd043243e137cae595badc7f1ecc9a84a44936c0e036c7c3f5d33978bb3",
+      "dst_hash": "55831dd043243e137cae595badc7f1ecc9a84a44936c0e036c7c3f5d33978bb3",
+      "source": "deterministic"
+    }
+  ],
+  "artifacts": {
+    "produces": [
+      {
+        "id": "galaxy-workflow-changeset",
+        "kind": "markdown",
+        "default_filename": "galaxy-workflow-changeset.md",
+        "description": "Reviewable, ordered list of edit intents, each anchored to an existing step/input/output by label (or marked `new`), with edit kind, target, intent, and acceptance note. The human approval gate before any edits are applied."
+      },
+      {
+        "id": "open-requirements-ledger",
+        "kind": "yaml",
+        "default_filename": "open-requirements.ledger.yml",
+        "description": "Carried obligations ledger re-emitted by this step: entries it appended or closed updated, every other entry passed through with its provenance intact."
+      }
+    ],
+    "consumes": [
+      {
+        "id": "summary-galaxy-workflow",
+        "description": "Structured summary of the existing workflow from [[summarize-galaxy-workflow]]; the anchor set the change-set addresses (step labels, input labels, output names, tool_state keys).",
+        "inherited_schema": "[[summary-galaxy-workflow]]",
+        "producers": [
+          "summarize-galaxy-workflow"
+        ]
+      },
+      {
+        "id": "open-requirements-ledger",
+        "description": "Carried obligations ledger [[open-requirements-ledger]]: the run's open, resolved, and surrendered entries with their provenance. Absent on the first Mold of a run; start an empty one.",
+        "producers": [
+          "advance-galaxy-draft-step",
+          "apply-galaxy-workflow-changeset",
+          "compare-against-iwc-exemplar",
+          "cwl-summary-to-galaxy-data-flow",
+          "cwl-summary-to-galaxy-interface",
+          "cwl-summary-to-galaxy-template",
+          "freeform-summary-to-galaxy-data-flow",
+          "freeform-summary-to-galaxy-interface",
+          "freeform-summary-to-galaxy-template",
+          "implement-galaxy-tool-step",
+          "interview-to-galaxy-workflow-changeset",
+          "mature-galaxy-workflow-for-iwc",
+          "nextflow-summary-to-galaxy-data-flow",
+          "nextflow-summary-to-galaxy-interface",
+          "nextflow-summary-to-galaxy-reference-data",
+          "nextflow-summary-to-galaxy-template",
+          "repair-galaxy-draft-topology"
+        ]
+      }
+    ]
+  }
+}

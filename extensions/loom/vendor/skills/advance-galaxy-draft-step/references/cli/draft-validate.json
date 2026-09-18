@@ -1,0 +1,140 @@
+{
+  "type": "cli-command",
+  "tool": "gxwf",
+  "command": "draft-validate",
+  "summary": "Validate a `class: GalaxyWorkflowDraft` workflow against draft-contract rules; with --concrete, also validate the extracted concrete subset.",
+  "source_path": "content/cli/gxwf/draft-validate.md",
+  "source_revision": 1,
+  "package": "@galaxy-tool-util/cli",
+  "description": "Validate a draft Galaxy workflow (class: GalaxyWorkflowDraft)",
+  "synopsis": "gxwf draft-validate [options] <file>",
+  "args": [
+    {
+      "raw": "file",
+      "name": "file",
+      "required": true,
+      "variadic": false,
+      "description": "Draft workflow file (.gxwf.yml)"
+    }
+  ],
+  "options": [
+    {
+      "flags": "--format <fmt>",
+      "name": "format",
+      "description": "Force format: format2 (native is rejected for drafts)",
+      "takesArgument": true,
+      "argumentPlaceholder": "<fmt>",
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--json",
+      "name": "json",
+      "description": "Output structured JSON report",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--report-html [file]",
+      "name": "reportHtml",
+      "description": "Write HTML report to file (or stdout if omitted)",
+      "takesArgument": true,
+      "argumentPlaceholder": "[file]",
+      "optionalArgument": true,
+      "negatable": false
+    },
+    {
+      "flags": "--report-markdown [file]",
+      "name": "reportMarkdown",
+      "description": "Write Markdown report to file (or stdout if omitted)",
+      "takesArgument": true,
+      "argumentPlaceholder": "[file]",
+      "optionalArgument": true,
+      "negatable": false
+    },
+    {
+      "flags": "--concrete",
+      "name": "concrete",
+      "description": "Additionally extract the concrete subset and run the regular `gxwf validate` checks on it",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--cache-dir <dir>",
+      "name": "cacheDir",
+      "description": "Tool cache directory (for --concrete tool-state validation)",
+      "takesArgument": true,
+      "argumentPlaceholder": "<dir>",
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--offline",
+      "name": "offline",
+      "description": "Do not fetch uncached tools; read only the local cache (uncached tools are skipped)",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--galaxy-url <url>",
+      "name": "galaxyUrl",
+      "description": "Galaxy instance to try as a tool source after the ToolShed when fetching uncached tools",
+      "takesArgument": true,
+      "argumentPlaceholder": "<url>",
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--no-tool-state",
+      "name": "toolState",
+      "description": "Skip tool-state validation in the --concrete pass (default: enabled when --concrete is set)",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": true
+    },
+    {
+      "flags": "--connections",
+      "name": "connections",
+      "description": "Validate connection-type compatibility on the --concrete subset (collection algebra, map-over)",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--strict",
+      "name": "strict",
+      "description": "Shorthand for --strict-structure --strict-encoding --strict-state",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--strict-structure",
+      "name": "strictStructure",
+      "description": "Reject unknown keys at envelope/step level",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--strict-encoding",
+      "name": "strictEncoding",
+      "description": "Reject JSON-string tool_state and format2 field misuse",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--strict-state",
+      "name": "strictState",
+      "description": "Require every tool step to validate; no skips allowed",
+      "takesArgument": false,
+      "optionalArgument": false,
+      "negatable": false
+    }
+  ],
+  "body": "# `gxwf draft-validate`\n\nValidate a draft Galaxy workflow against the **draft contract**: sentinel form, dangling edge references, top-level `_plan_*` placement, `_plan_*` on fully-resolved tool steps, and recursive draft subworkflows. Native (.ga) input is rejected — drafts are format2-only.\n\nDistinct from validate, which validates a fully concrete `class: GalaxyWorkflow` and would reject the draft relaxations outright. Use `draft-validate` during the per-step authoring loop; use `validate` at the terminal pass once `promoteFullyConcreteDrafts` has flipped the class.\n\n## Output\n\nDefault output is human-readable: counted buckets for structure / topology / semantic errors and warnings, plus a one-line survey (TODO sentinel count, paths carrying `_plan_*`). `--json` emits a `SingleDraftValidationReport`; `--report-html` and `--report-markdown` write the same data as a self-contained HTML page or templated Markdown. With `--concrete`, the report carries an optional `concrete: ConcreteValidationReport` whose buckets (`structure_errors`, `strict_structure_errors`, `strict_encoding_errors`, `strict_state_errors`, `tool_state`, `connection_report`) are **absent when the corresponding check did not run** — readers should treat absence as \"not run,\" not as \"passed.\"\n\n## Flags\n\n`--concrete` runs the extract+promote pipeline (`extractConcreteSubset` → `stripPlanFields` → `promoteFullyConcreteDrafts`) and applies the full concrete `gxformat2` validation surface to the result. The following pass-through flags only take effect under `--concrete`; passing them without it prints a stderr warning and no-ops:\n\n- `--cache-dir <dir>` — tool cache for tool-state lookups.\n- `--no-tool-state` — skip tool-state validation on the concrete pass. Combined with `--strict-state`, the strict flag warns + no-ops (there's no state to be strict about).\n- `--connections` — run connection validation on the concrete subset.\n- `--strict` — escalate every strict bucket (structure, encoding, state) to error.\n- `--strict-structure` / `--strict-encoding` / `--strict-state` — escalate one bucket only.\n\nDraft structural errors gate the concrete pass entirely — the pipeline would mutate a malformed input, so the concrete section is skipped and only the draft buckets populate.\n\n## Examples\n\n```bash\ngxwf draft-validate workflow.gxwf.yml\ngxwf draft-validate workflow.gxwf.yml --json\ngxwf draft-validate workflow.gxwf.yml --concrete --json\ngxwf draft-validate workflow.gxwf.yml --concrete --strict --cache-dir ~/.cache/gxwf\ngxwf draft-validate workflow.gxwf.yml --report-html report.html\n```\n\n## Exit codes\n\n- `0` — clean draft (no structure / topology / semantic errors; warnings allowed). Under `--concrete`, also requires the concrete pass to be clean.\n- `1` — draft validation errors (topology or semantic). With `--concrete`, also returned when the concrete projection fails — including strict-* failures that `gxwf validate` would have exited `2` on standalone. The asymmetry is deliberate: the draft itself parsed, only its projection failed.\n- `2` — parse failure, native input rejected, structural decode failure (class is not `GalaxyWorkflowDraft`), or a stdout-sink collision between `--json` and `--report-{html,markdown}=-`.\n\n## Gotchas\n\n- The draft validator is **contract-shaped**, not workflow-shaped. It will not catch tool-state errors, parameter-name mismatches, or other concerns that belong to validate on the concretized subset. Use `--concrete` (or run draft-extract | validate manually) when you need both surfaces.\n- A draft with zero implemented steps still runs the `--concrete` pipeline, but the projection is empty — the concrete buckets report `skipped` semantics (absent in the JSON) rather than a green pass. Signal grows as the loop fills steps in; do not interpret early-loop runs as evidence the workflow concretizes correctly.\n- `_plan_*` on a fully-resolved tool step is a `semanticError`, not a warning. Strip planning fields explicitly via draft-extract (or `stripPlanFields`) when a step concretizes; the per-step Mold should never carry them forward.\n- Subworkflow draft roots are validated recursively; diagnostics carry the outer step path.\n- `TODO`, `TODO_x`, `TODO-x` are sentinels; `TODONE` and `TODOLIST` are not.\n- Prefer `--json` whenever a cast skill or harness needs to classify diagnostics."
+}

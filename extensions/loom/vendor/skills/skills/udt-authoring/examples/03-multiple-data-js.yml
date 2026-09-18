@@ -1,0 +1,28 @@
+# A multiple:true data input is an array -- map over it to build the command.
+# format_source copies the output datatype from an input instead of hardcoding it.
+class: GalaxyUserTool
+id: concatenate-files
+version: "0.1.0"
+name: Concatenate files
+description: Concatenate one or more files head-to-tail
+container: busybox
+shell_command: |
+  cat $(inputs.datasets.map((input) => input.path).join(' ')) > output.txt
+inputs:
+  - name: datasets
+    type: data
+    multiple: true
+    label: Files to concatenate
+outputs:
+  - name: output
+    type: data
+    format_source: datasets
+    from_work_dir: output.txt
+    label: Concatenated output
+help:
+  format: markdown
+  content: |
+    Concatenates one or more files head-to-tail into a single file.
+
+    **Inputs** -- `datasets`: one or more files.
+    **Outputs** -- `output`: the concatenated result (datatype copied from the inputs).

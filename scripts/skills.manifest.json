@@ -1,0 +1,42 @@
+{
+  "$comment": "Skill content vendored into Loom. The source is galaxyproject/agentic-plugins, which mirrors galaxy-skills and the Foundry casts at pins of its own; the pin recorded here is a commit because tags are mutable, and `tag` is a label that stays null while the pinned commit is ahead of the newest tag upstream. Regenerate with `npm run sync:skills`; verify with `npm run check:skills`. Do not hand-edit files under extensions/loom/vendor/skills/. `as` is the prefix each plugin's content is written under, relative to its `skills/` root, chosen so a bundled path is the same string as the path a live fetch would use. `repo` names the configured skills repo a plugin backs, and `router: \"catalog\"` puts its SKILL.md frontmatter into _catalog.json; `never` keeps a plugin out of the system prompt entirely. An exclude is content Loom has no use for, such as a cast's feedback ledger, which belongs to a review loop Loom does not run.",
+  "repo": "galaxyproject/agentic-plugins",
+  "commit": "aa4da4bd68eb00e360dfd5aa6e998feb5de0ac49",
+  "commitDate": "2026-09-17",
+  "tag": null,
+  "plugins": [
+    {
+      "plugin": "galaxy-skills",
+      "repo": "galaxy-skills",
+      "as": "skills",
+      "router": "catalog",
+      "transforms": [],
+      "why": "Using and building Galaxy: collection manipulation, the MCP tool surface, user-defined tools, workflow reports, reproducibility.",
+      "include": ["**"],
+      "exclude": []
+    },
+    {
+      "plugin": "foundry-skills",
+      "repo": "foundry",
+      "as": "",
+      "router": "never",
+      "transforms": ["rewrite-local-paths", "strip-wiki-links"],
+      "why": "Workflow construction cast bundles: finding and reading a community workflow, adapting one through the update-interview phases, and triaging a run that failed.",
+      "include": [
+        "advance-galaxy-draft-step/**",
+        "apply-galaxy-workflow-changeset/**",
+        "changeset-to-galaxy-test-plan/**",
+        "compare-against-iwc-exemplar/**",
+        "debug-galaxy-workflow-output/**",
+        "discover-shed-tool/**",
+        "implement-galaxy-workflow-test/**",
+        "interview-to-galaxy-workflow-changeset/**",
+        "pipeline-update-interview-to-galaxy/**",
+        "run-workflow-test/**",
+        "summarize-galaxy-workflow/**",
+        "validate-galaxy-workflow/**"
+      ],
+      "exclude": ["**/_feedback.md"]
+    }
+  ]
+}

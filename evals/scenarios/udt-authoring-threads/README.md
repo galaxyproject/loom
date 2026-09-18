@@ -11,7 +11,7 @@ Two things, in order:
 1. **Progressive disclosure** -- did the agent fetch `udt-authoring` at all?
    The prompt asks for a `samtools sort` UDT, which is squarely the kind of
    glue-tool the skill exists to teach. If the router does its job the agent
-   calls `skills_fetch({ path: "udt-authoring/SKILL.md" })` instead of drafting
+   calls `skills_fetch({ path: "skills/udt-authoring/SKILL.md" })` instead of drafting
    the YAML from training priors. Asserted via the `skills_fetch` tool call.
 
 2. **The outcome** -- does the drafted UDT wire `$GALAXY_SLOTS` into the thread
@@ -39,9 +39,10 @@ proxy -- if the thread flag is fed by `$GALAXY_SLOTS`, it isn't hardcoded.
 - A Tier-2 model with credentials in `evals/.env` (this scenario sets
   `requiresModel: true`, so it runs across every model in `evals/models.json`
   whose env vars are present).
-- Network access for `skills_fetch` to reach the galaxy-skills repo.
-- The `$GALAXY_SLOTS` chatText assertion needs `udt-authoring` to be fetchable on
-  the seeded galaxy-skills branch, since the skill content is what teaches the
+- No network is needed for `skills_fetch`: galaxy-skills ships inside the package
+  at a pinned commit, and a repo left at its default URL and branch reads from disk.
+- The `$GALAXY_SLOTS` chatText assertion needs `udt-authoring` to be fetchable from
+  the bundled galaxy-skills catalog, since the skill content is what teaches the
   `$GALAXY_SLOTS` pattern. As of this scenario, `udt-authoring` is merged to
   galaxy-skills `main` (PR #30) with `metadata.surfaces: [loom]`, so this
   prerequisite is satisfied on the default branch.

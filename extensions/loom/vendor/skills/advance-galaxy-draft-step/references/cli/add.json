@@ -1,0 +1,50 @@
+{
+  "type": "cli-command",
+  "tool": "galaxy-tool-cache",
+  "command": "add",
+  "summary": "Fetch a tool from the Tool Shed (shed-path or bare/stock id) and cache its ParsedTool locally for later summarize/schema.",
+  "source_path": "content/cli/galaxy-tool-cache/add.md",
+  "source_revision": 2,
+  "package": "@galaxy-tool-util/cli",
+  "description": "Fetch a tool from the ToolShed (shed-path or bare/stock ID) and cache it",
+  "synopsis": "galaxy-tool-cache add [options] <tool_id>",
+  "args": [
+    {
+      "raw": "tool_id",
+      "name": "tool_id",
+      "required": true,
+      "variadic": false,
+      "description": "Tool ID: shed path (owner/repo/tool), TRS ID, or bare/stock ID (e.g. Filter1)"
+    }
+  ],
+  "options": [
+    {
+      "flags": "--tool-version <ver>",
+      "name": "toolVersion",
+      "description": "Tool version",
+      "takesArgument": true,
+      "argumentPlaceholder": "<ver>",
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--cache-dir <dir>",
+      "name": "cacheDir",
+      "description": "Cache directory",
+      "takesArgument": true,
+      "argumentPlaceholder": "<dir>",
+      "optionalArgument": false,
+      "negatable": false
+    },
+    {
+      "flags": "--galaxy-url <url>",
+      "name": "galaxyUrl",
+      "description": "Alternate Galaxy source, tried after the ToolShed",
+      "takesArgument": true,
+      "argumentPlaceholder": "<url>",
+      "optionalArgument": false,
+      "negatable": false
+    }
+  ],
+  "body": "# `galaxy-tool-cache add`\n\nFetch a single tool by id from the Tool Shed and cache its parsed wrapper into the local cache directory. This is the cache-population precondition for summarize-galaxy-tool: `summarize` reads an already-cached pin and fails if the entry is missing, so `add` runs first.\n\n`<tool_id>` is a full Tool Shed path (e.g. `toolshed.g2.bx.psu.edu/repos/iuc/staramr/staramr_search`), a TRS id, **or a bare/stock id** for a built-in Galaxy tool (`Filter1`, `sort1`, `Cut1`, `Show beginning1`, collection ops). The Tool Shed serves stock tools too, so bare ids resolve against the same shed source — there is no separate Galaxy lookup in the default path. Pin the exact wrapper with `--tool-version` so the cache key matches the discovery pin from discover-shed-tool.\n\nTo cache every tool a draft references in one pass instead of pin-by-pin, use `populate-workflow` (scans a `.ga`/`.gxwf.yml`); the loop driver advance-galaxy-draft-step uses that form.\n\n## Output\n\nNo manifest on stdout — the effect is a populated `--cache-dir`. `add` writes the fetched ParsedTool into the cache keyed by tool id + version; `summarize` and `schema` read it from there. Stdout reports the cached tool (`Cached: <name> (<id> v<version>)`); a hard error on an unresolvable id exits non-zero.\n\n## Examples\n\n```bash\n# Tool Shed wrapper, pinned by discovery\ngalaxy-tool-cache add toolshed.g2.bx.psu.edu/repos/iuc/staramr/staramr_search \\\n  --tool-version 0.11.0+galaxy3 --cache-dir ~/.cache/gxwf\n\n# Stock/built-in tool by bare id (resolves against the shed)\ngalaxy-tool-cache add \"Show beginning1\" --tool-version 1.0.2 --cache-dir ~/.cache/gxwf\n```\n\n## Gotchas\n\n- `add` is per-pin. Caching the search hit without `--tool-version` may resolve to a different revision than the discovery pin — pass the version explicitly.\n- **Stock ids need an explicit `--tool-version`.** Auto-version discovery routes through the shed's TRS version-list endpoint (`…/api/ga4gh/trs/v2/tools/<id>/versions`), which currently 500s, so a bare `add Filter1` fails with \"Failed to fetch tool\". Pass the concrete version (`add Filter1 --tool-version 1.1.1`); never hand-guess a stock version — confirm it (e.g. from a populated cache via `list`, or a known pin). Requires `@galaxy-tool-util/cli >= 1.8.1`.\n- Network-bound: requires Tool Shed (or `--galaxy-url`) reachability. Offline runs must reuse a pre-populated `--cache-dir`.\n- Pass the same `--cache-dir` to `add`, `summarize`, and `schema` — they share one cache; `summarize`/`schema` read what `add` wrote."
+}

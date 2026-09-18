@@ -1,0 +1,130 @@
+{
+  "provenance_schema_version": 4,
+  "cast_target": "claude",
+  "mold": {
+    "name": "discover-shed-tool",
+    "path": "content/molds/discover-shed-tool/index.md",
+    "revision": 5,
+    "content_hash": "05c99cbac2ec6a4d130b06204c15d0e76cf4fd0e00cdc8164dd606dac72809e2",
+    "commit": "63a3f9cf9c97a637fe1628d298e524f35709e289"
+  },
+  "cast_at": "2026-09-13T20:58:27.321Z",
+  "cast_date": "2026-05-07",
+  "cast_revision": 5,
+  "cast_history": [
+    {
+      "rev": 1,
+      "date": "2026-05-05",
+      "note": "initial deterministic cast for Tool Shed discovery"
+    },
+    {
+      "rev": 2,
+      "date": "2026-05-05",
+      "note": "refresh after schema wiki-link merge"
+    },
+    {
+      "rev": 3,
+      "date": "2026-05-07",
+      "note": "deterministic skill render"
+    },
+    {
+      "rev": 4,
+      "date": "2026-05-07",
+      "note": "runtime-facing deterministic skill render"
+    },
+    {
+      "rev": 5,
+      "date": "2026-05-07",
+      "note": "mark discovery schema cast-validated"
+    }
+  ],
+  "refs": [
+    {
+      "kind": "cli-command",
+      "mode": "sidecar",
+      "ref": "[[tool-revisions]]",
+      "src": "content/cli/gxwf/tool-revisions.md",
+      "dst": "references/cli/tool-revisions.json",
+      "used_at": "runtime",
+      "load": "on-demand",
+      "evidence": "corpus-observed",
+      "purpose": "Resolve a Tool Shed tool version to an installable changeset revision.",
+      "trigger": "After selecting a candidate version that needs a reproducible changeset pin.",
+      "src_hash": "82061af5970f0fd0335ac3901f6fc33426e192880c6859ab993e55de52bcfd5d",
+      "dst_hash": "db0b13f2b92593c9cd3bf5a80276a31e537c07caff76786167ebe9f7feac5938",
+      "source": "deterministic"
+    },
+    {
+      "kind": "cli-command",
+      "mode": "sidecar",
+      "ref": "[[tool-search]]",
+      "src": "content/cli/gxwf/tool-search.md",
+      "dst": "references/cli/tool-search.json",
+      "used_at": "runtime",
+      "load": "on-demand",
+      "evidence": "corpus-observed",
+      "purpose": "Search the Tool Shed for candidate wrappers matching a step's tool need.",
+      "trigger": "When resolving a workflow step to an installable Galaxy tool wrapper.",
+      "src_hash": "cdf8be42eee7134c7cbd7a0a7891f36b0752f8d8d32251fc79664576257fd3dc",
+      "dst_hash": "72f5f7cc0cd5ed40038af89e6041c7916d65c51ba1c7bc7b2c46ba64c51d9359",
+      "source": "deterministic"
+    },
+    {
+      "kind": "cli-command",
+      "mode": "sidecar",
+      "ref": "[[tool-versions]]",
+      "src": "content/cli/gxwf/tool-versions.md",
+      "dst": "references/cli/tool-versions.json",
+      "used_at": "runtime",
+      "load": "on-demand",
+      "evidence": "corpus-observed",
+      "purpose": "List available Tool Shed versions for a selected candidate.",
+      "trigger": "After a Tool Shed search candidate is selected and before pinning a version.",
+      "src_hash": "d11b5ee6d85c3f880cbbdc41bea41f293bbea8dc0671bb409fd81a35a666ee3a",
+      "dst_hash": "90f35a407af778a1a1c714f79ceb8dc3559523964175e734b565eed8b9aeb6a5",
+      "source": "deterministic"
+    },
+    {
+      "kind": "research",
+      "mode": "verbatim",
+      "ref": "[[component-tool-shed-search]]",
+      "src": "content/research/component-tool-shed-search/index.md",
+      "dst": "references/notes/component-tool-shed-search.md",
+      "used_at": "runtime",
+      "load": "on-demand",
+      "evidence": "corpus-observed",
+      "purpose": "Explain Tool Shed search/indexing limitations that affect hit scoring and fallthrough decisions.",
+      "trigger": "When results are missing, weak, duplicated across owners, stale, or ambiguous.",
+      "src_hash": "37d96e364e4618d51a5e59efcc44298d488fa502ec8e93cfde7cc4b01fe68f88",
+      "dst_hash": "37d96e364e4618d51a5e59efcc44298d488fa502ec8e93cfde7cc4b01fe68f88",
+      "source": "deterministic"
+    },
+    {
+      "kind": "schema",
+      "mode": "verbatim",
+      "ref": "[[galaxy-tool-discovery]]",
+      "src": "package://@galaxy-foundry/gxwf-foundry#galaxyToolDiscoverySchema",
+      "dst": "references/schemas/galaxy-tool-discovery.schema.json",
+      "used_at": "runtime",
+      "load": "upfront",
+      "evidence": "cast-validated",
+      "purpose": "Validate the hit, weak, or miss recommendation emitted by Tool Shed discovery.",
+      "verification": "Run discover-shed-tool against known FastQC, ambiguous BWA-style, and no-hit queries and validate each emitted recommendation.",
+      "src_hash": "c0940fc0265e8fd25955f4380f03e088b62d25155fe98e7f051a5a3957d2840c",
+      "dst_hash": "c0940fc0265e8fd25955f4380f03e088b62d25155fe98e7f051a5a3957d2840c",
+      "source": "deterministic"
+    }
+  ],
+  "artifacts": {
+    "produces": [
+      {
+        "id": "galaxy-tool-pin",
+        "kind": "json",
+        "default_filename": "galaxy-tool-pin.json",
+        "schema": "[[galaxy-tool-discovery]]",
+        "description": "(owner, repo, tool_id, version, changeset_revision) pin for a Tool Shed wrapper plus discovery classification."
+      }
+    ],
+    "consumes": []
+  }
+}

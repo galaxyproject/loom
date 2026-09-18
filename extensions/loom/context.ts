@@ -14,11 +14,11 @@ import { isTeamDispatchEnabled } from "./teams/is-enabled";
 import { isSessionIndexEnabled } from "./session-index/is-enabled";
 import { loadConfig } from "./config";
 import { listEnabledSkillRepos, type ConfiguredSkillRepo } from "./skills";
+import { isBundledRepo } from "./vendor-skills";
 import {
-  readCatalog,
+  resolveCatalogEntries,
   selectSkills,
   backgroundRefreshSkills,
-  BUILTIN_CATALOG,
   type SkillEntry,
 } from "./skills-discovery";
 import { findGalaxyPageBlocks } from "./galaxy-page-binding";
@@ -1047,23 +1047,31 @@ answers, and turn-by-turn dialogue that doesn't need persistence.
 export function renderSkillsSection(
   repos: ConfiguredSkillRepo[],
   entriesByRepo: Map<string, SkillEntry[]>,
+  bundled: ReadonlySet<string> = new Set(),
 ): string {
   if (repos.length === 0) return "";
   const sections: string[] = [];
   sections.push(`## Skills repositories (operational know-how)`);
   sections.push("");
+  // Only promise a refresh when something here is actually fetched. A bundled
+  // repo is read from the package, so "refreshes each session" would be a
+  // description of machinery that no longer runs for it.
+  const allBundled = repos.every((r) => bundled.has(r.name));
+  const freshness = allBundled
+    ? `The catalog below ships with Loom and reads from disk, so it works offline.`
+    : `The catalog below refreshes each session; deep reference docs cache for 24h.`;
   sections.push(
     `Use the \`skills_fetch({ repo, path })\` tool to load a skill on demand. ` +
       `**Don't guess operational patterns from training data — fetch the relevant ` +
-      `skill first.** The catalog below refreshes each session; deep reference docs ` +
-      `cache for 24h. When \`repo\` is omitted, the first enabled repo is used.`,
+      `skill first.** ${freshness} When \`repo\` is omitted, the first enabled repo is used.`,
   );
   sections.push("");
 
   sections.push(`### Configured repos`);
   sections.push("");
   for (const r of repos) {
-    sections.push(`- **${r.name}** — ${r.url} (branch: ${r.branch || "main"})`);
+    const where = bundled.has(r.name) ? "bundled" : `branch: ${r.branch || "main"}`;
+    sections.push(`- **${r.name}** — ${r.url} (${where})`);
   }
   sections.push("");
 
@@ -1088,19 +1096,22 @@ export function renderSkillsSection(
   return sections.join("\n");
 }
 
-function buildSkillsContext(): string {
+/** Exported so a test can measure the section the system prompt actually gets. */
+export function buildSkillsContext(): string {
   const repos = listEnabledSkillRepos();
   const entriesByRepo = new Map<string, SkillEntry[]>();
+  const bundled = new Set<string>();
   for (const r of repos) {
-    const entries = readCatalog(r)?.skills ?? BUILTIN_CATALOG[r.name] ?? [];
-    entriesByRepo.set(r.name, selectSkills(entries));
+    if (isBundledRepo(r)) bundled.add(r.name);
+    entriesByRepo.set(r.name, selectSkills(resolveCatalogEntries(r)));
   }
-  // Don't emit a contentless skills section. If nothing resolved (e.g. a
-  // user-added repo whose catalog hasn't been fetched yet, no builtin), stay
-  // silent until the background refresh populates it next session.
+  // Don't emit a contentless skills section. If nothing resolved -- a user-added
+  // repo whose catalog has not been fetched yet, and nothing of it in the
+  // package -- stay silent until the background refresh populates it next
+  // session.
   const hasAny = [...entriesByRepo.values()].some((e) => e.length > 0);
   if (!hasAny) return "";
-  return renderSkillsSection(repos, entriesByRepo);
+  return renderSkillsSection(repos, entriesByRepo, bundled);
 }
 
 /**

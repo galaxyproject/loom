@@ -1,0 +1,17 @@
+{
+  "verify_schema_version": 1,
+  "entries": [
+    {
+      "artifact_id": "summary-galaxy-workflow",
+      "direction": "output",
+      "kind": "json",
+      "default_filename": "summary-galaxy-workflow.json",
+      "schema": "[[summary-galaxy-workflow]]",
+      "validator_bin": "foundry",
+      "args": [
+        "validate-summary-galaxy-workflow",
+        "{artifact_path}"
+      ]
+    }
+  ]
+}

@@ -25,8 +25,11 @@ const INVOCATION_CHECK_TOOLS = new Set([
   "galaxy_invocation_check_one",
 ]);
 
-export const INVOCATION_FAILURE_REFERENCE = "galaxy-workflow-invocation-failure-reference.md";
-export const JOB_FAILURE_REFERENCE = "galaxy-tool-job-failure-reference.md";
+// Bundled paths mirror the cast's own layout upstream, so the string handed to
+// the model here is the same string a live fetch of that cast would use.
+const CAST_NOTES = "debug-galaxy-workflow-output/references/notes";
+export const INVOCATION_FAILURE_REFERENCE = `${CAST_NOTES}/galaxy-workflow-invocation-failure-reference.md`;
+export const JOB_FAILURE_REFERENCE = `${CAST_NOTES}/galaxy-tool-job-failure-reference.md`;
 
 // Distinctive opening, reused as the idempotency guard -- guaranteed present
 // once appended and unique enough that no Galaxy tool result contains it.
