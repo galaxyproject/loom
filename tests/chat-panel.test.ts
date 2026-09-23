@@ -4,7 +4,7 @@ import {
   historyToMarkdown,
   fragmentToMarkdown,
   type MessageRecord,
-} from "../app/src/renderer/chat/chat-panel.js";
+} from "@galaxyproject/orbit-chat-ui/chat-panel";
 
 // ── historyToMarkdown ────────────────────────────────────────────────────────
 

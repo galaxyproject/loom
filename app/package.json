@@ -15,6 +15,7 @@
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
     "@earendil-works/pi-ai": "^0.85.1",
+    "@galaxyproject/orbit-chat-ui": "*",
     "@types/dompurify": "^3.2.0",
     "@xyflow/react": "^12.11.5",
     "dompurify": "^3.4.14",

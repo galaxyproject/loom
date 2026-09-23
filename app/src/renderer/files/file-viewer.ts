@@ -7,7 +7,7 @@
  */
 
 import type { Marked } from "marked";
-import { renderMarkdown } from "../chat/markdown.js";
+import { renderMarkdown } from "@galaxyproject/orbit-chat-ui/markdown";
 import { buildHtmlPreviewDocument } from "./html-preview.js";
 import { extOf, imagePreviewBlob } from "./image-preview.js";
 import { buildPreviewMarked, previewImageBaseDir } from "./markdown-preview.js";
