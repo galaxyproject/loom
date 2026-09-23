@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { joinTextBlocks } from "../app/src/renderer/chat/block-spacing.js";
+import { joinTextBlocks } from "@galaxyproject/orbit-chat-ui/block-spacing";
 
 /**
  * Issue #200: a multi-step assistant turn (text → tool call → text → …) streams

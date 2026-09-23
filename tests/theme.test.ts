@@ -5,7 +5,7 @@ import {
   applyOrbitTheme,
   normalizeOrbitThemePreference,
   resolveAppliedOrbitTheme,
-} from "../app/src/renderer/theme.js";
+} from "@galaxyproject/orbit-chat-ui/theme";
 
 describe("Orbit theme resolution", () => {
   it("defaults missing and invalid values to dark", () => {

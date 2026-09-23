@@ -10,7 +10,7 @@
  */
 
 import { Marked } from "marked";
-import { renderMarkdown } from "../chat/markdown.js";
+import { renderMarkdown } from "@galaxyproject/orbit-chat-ui/markdown";
 
 // Dedicated Marked instance for the notebook pane. Relative image srcs (e.g.
 // `10_figures/foo.png`) are rewritten to the `orbit-artifact://` scheme served

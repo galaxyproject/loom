@@ -1,0 +1,19 @@
+{
+  "name": "@galaxyproject/orbit-chat-ui",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "./chat-panel": "./src/chat/chat-panel.ts",
+    "./markdown": "./src/chat/markdown.ts",
+    "./block-spacing": "./src/chat/block-spacing.ts",
+    "./copy-button": "./src/chat/copy-button.ts",
+    "./theme": "./src/theme.ts",
+    "./update-banner": "./src/update-banner.ts",
+    "./styles.css": "./src/styles.css",
+    "./assets/fonts/*": "./src/assets/fonts/*"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.1",
+    "marked": "^18.0.0"
+  }
+}

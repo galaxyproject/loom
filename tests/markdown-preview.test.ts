@@ -5,7 +5,7 @@ import {
   rewritePreviewImageHref,
   buildPreviewMarked,
 } from "../app/src/renderer/files/markdown-preview.js";
-import { renderMarkdown } from "../app/src/renderer/chat/markdown.js";
+import { renderMarkdown } from "@galaxyproject/orbit-chat-ui/markdown";
 
 /**
  * Issue #283: the File pane's markdown Preview renders relative image

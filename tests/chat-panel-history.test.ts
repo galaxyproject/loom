@@ -4,7 +4,7 @@
 // real ChatPanel against a happy-dom container (the pure historyToMarkdown /
 // fragmentToMarkdown helpers are covered separately in chat-panel.test.ts).
 import { beforeEach, describe, expect, it } from "vitest";
-import { ChatPanel } from "../app/src/renderer/chat/chat-panel.js";
+import { ChatPanel } from "@galaxyproject/orbit-chat-ui/chat-panel";
 import { TEAM_DISPATCH_KIND } from "../shared/team-dispatch-contract.js";
 
 beforeEach(() => {

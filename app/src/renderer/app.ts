@@ -1,5 +1,6 @@
-import { ChatPanel } from "./chat/chat-panel.js";
-import { renderMarkdown } from "./chat/markdown.js";
+import "@galaxyproject/orbit-chat-ui/styles.css";
+import { ChatPanel } from "@galaxyproject/orbit-chat-ui/chat-panel";
+import { renderMarkdown } from "@galaxyproject/orbit-chat-ui/markdown";
 import { runCostCommand, type Usage } from "./cost-table.js";
 import { detectCompactIntent } from "./chat/compact-intent.js";
 import { humanizeAgentError } from "./chat/error-humanizer.js";
@@ -23,7 +24,7 @@ import {
   type ProviderFields,
   type ProviderState,
 } from "./provider-state.js";
-import { applyOrbitTheme } from "./theme.js";
+import { applyOrbitTheme } from "@galaxyproject/orbit-chat-ui/theme";
 import { caretVisualLineFlags, shouldRecallOnArrow } from "./input-history-nav.js";
 import { shouldAcceptSlashCommandOnEnter } from "./slash-popup-nav.js";
 import { buildDiscoveredModelOptions, type ModelOption } from "./model-options.js";
@@ -43,7 +44,7 @@ import { parseChangelog, decideWhatsNew, releaseUrlFor } from "../../../shared/w
 import { isOAuthOnly, SEED_PROVIDER_AUTH_CAPS } from "../../../shared/provider-auth-caps.js";
 import type { ProviderAuthCaps } from "../../../shared/provider-auth-caps.js";
 import { splitApprovalPrompt } from "../../../shared/approval-prompt.js";
-import { openReleaseWithFallback, clearReleaseFallback } from "./update-banner.js";
+import { openReleaseWithFallback, clearReleaseFallback } from "@galaxyproject/orbit-chat-ui/update-banner";
 
 declare global {
   interface Window {

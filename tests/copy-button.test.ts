@@ -5,7 +5,7 @@ import {
   selectionSignaturesEqual,
   type CopyButtonInput,
   type SelectionSignature,
-} from "../app/src/renderer/chat/copy-button.js";
+} from "@galaxyproject/orbit-chat-ui/copy-button";
 
 const VIEWPORT = { width: 1000, height: 800 };
 

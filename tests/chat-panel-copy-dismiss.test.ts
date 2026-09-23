@@ -6,7 +6,7 @@
 // document selection and client rects are stubbed (happy-dom has no layout),
 // which is exactly the seam the production code reads through.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ChatPanel } from "../app/src/renderer/chat/chat-panel.js";
+import { ChatPanel } from "@galaxyproject/orbit-chat-ui/chat-panel";
 
 interface FakeSelection {
   isCollapsed: boolean;

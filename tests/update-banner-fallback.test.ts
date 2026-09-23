@@ -7,7 +7,7 @@ import {
   copyToClipboard,
   NEUTRAL_FALLBACK_NOTE,
   OPEN_FAILED_FALLBACK_NOTE,
-} from "../app/src/renderer/update-banner.js";
+} from "@galaxyproject/orbit-chat-ui/update-banner";
 
 describe("showReleaseFallback", () => {
   let banner: HTMLElement;

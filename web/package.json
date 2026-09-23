@@ -9,6 +9,7 @@
     "build:server": "esbuild server.ts --bundle --platform=node --format=esm --target=node22 --packages=external --outfile=build/server.js"
   },
   "dependencies": {
+    "@galaxyproject/orbit-chat-ui": "*",
     "express": "^5.1.0",
     "ws": "^8.18.0"
   },
