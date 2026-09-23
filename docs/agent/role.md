@@ -25,3 +25,7 @@ through the complete research lifecycle.
 - Summarize findings at natural breakpoints — write them into the
   notebook, not just chat.
 - Connect results to the original research question.
+- Link every Galaxy artifact mentioned in chat or notebook prose with a
+  descriptive Markdown link using its actual server and ID. Keep raw IDs in
+  tracking YAML unchanged, and put readable links alongside it. Do not infer
+  an older artifact's server from the currently selected Galaxy profile.

@@ -25,6 +25,8 @@ import { findGalaxyPageBlocks } from "./galaxy-page-binding";
 import { isLocalShellDisabled } from "./local-exec.js";
 import { SRA_IMPORT_GUIDANCE } from "./sra-import-gate";
 import { GALAXY_PAGE_MARKDOWN_GUIDANCE } from "./galaxy-page-markdown-guidance";
+import { GALAXY_ARTIFACT_LINK_GUIDANCE } from "./galaxy-artifact-link-guidance";
+import { galaxyArtifactUrl, type GalaxyArtifactKind } from "../../shared/galaxy-artifact-links.js";
 import {
   buildUserInstructionsBlock,
   buildWorkspaceInstructionsContext,
@@ -111,15 +113,19 @@ export function buildGalaxyPageBindingBlock(): string {
   }
   const binding = findGalaxyPageBlocks(content)[0];
   if (!binding) return "";
+  const link = (kind: GalaxyArtifactKind, value: string | null) => {
+    const url = galaxyArtifactUrl(binding.galaxyServerUrl, kind, value, { pageId: binding.pageId });
+    return url ? `[${value ?? binding.galaxyServerUrl}](${url})` : `\`${value ?? "<none>"}\``;
+  };
   return `
 ## Galaxy page binding
 
-This notebook is linked to a Galaxy page on \`${binding.galaxyServerUrl}\`:
+This notebook is linked to a Galaxy page on ${link("server", binding.galaxyServerUrl)}:
 
-- page_id: \`${binding.pageId}\`
+- page_id: ${link("page", binding.pageId)}
 - page_slug: \`${binding.pageSlug ?? "<none>"}\`
-- history_id: \`${binding.historyId}\`
-- last_synced_revision: \`${binding.lastSyncedRevision ?? "<none>"}\`
+- history_id: ${link("history", binding.historyId)}
+- last_synced_revision: ${link("revision", binding.lastSyncedRevision)}
 
 Use \`notebook_push_to_galaxy\` to share progress with the user (creates a new
 revision of the Galaxy page). Use \`notebook_pull_from_galaxy\` to fetch
@@ -977,6 +983,8 @@ literal \`**asterisks**\` instead of bold. Two rules:
 When you do post a multi-line update, prefer a markdown list or a
 fenced code block over inline-bold-heavy run-on prose. Lists naturally
 get blank lines from the renderer; run-on prose does not.
+
+${GALAXY_ARTIFACT_LINK_GUIDANCE}
 `;
 }
 

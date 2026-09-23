@@ -10,6 +10,8 @@
  * so users see the final completed/failed state).
  */
 
+import { galaxyArtifactUrl } from "../../../shared/galaxy-artifact-links.js";
+
 export interface Invocation {
   invocationId: string;
   galaxyServerUrl: string;
@@ -135,11 +137,15 @@ function renderRow(inv: Invocation): string {
   // A block Galaxy never confirmed is still a block: say so rather than drawing
   // it identically to a run we know exists.
   const unconfirmed = inv.serverVerified === false ? " · unconfirmed" : "";
+  const url = galaxyArtifactUrl(inv.galaxyServerUrl, "invocation", inv.invocationId);
+  const label = url
+    ? `<a class="galaxy-invocation-label" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="Open Galaxy invocation">${escapeHtml(inv.label)}</a>`
+    : `<span class="galaxy-invocation-label" title="${escapeHtml(inv.label)}">${escapeHtml(inv.label)}</span>`;
 
   return `
     <div class="galaxy-invocation-row ${inv.status}">
       <div class="galaxy-invocation-head">
-        <span class="galaxy-invocation-label" title="${escapeHtml(inv.label)}">${escapeHtml(inv.label)}</span>
+        ${label}
         <span class="galaxy-invocation-counts">${counts || inv.status}</span>
       </div>
       <div class="galaxy-invocation-bar">

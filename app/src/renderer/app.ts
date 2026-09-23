@@ -713,6 +713,7 @@ async function refreshGalaxyStatus(): Promise<void> {
   const { connected, url } = await window.orbit.getGalaxyStatus();
   // A newer refresh started while we awaited -- let it win.
   if (seq !== galaxyStatusSeq) return;
+  chat.setGalaxyServerUrl(connected ? url : null);
 
   if (connected && url) {
     galaxyStatus.classList.add("status-dot-connected");
@@ -1696,7 +1697,9 @@ window.orbit.onSessionHistory((history) => {
       chat.addReplayUserMessage(seg.text, ++replayNum);
       continue;
     }
-    chat.startAssistantMessage();
+    // Historical bare IDs must not be linked to today's possibly different server.
+    // Explicit links and server metadata in the replay still render normally.
+    chat.startAssistantMessage(null);
     if (seg.text) chat.appendDelta(seg.text);
     if (seg.tools) {
       // Mirror the live-streaming policy: skip per-tool chat cards on
