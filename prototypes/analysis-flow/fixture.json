@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "source": "Illustrative fixture; no real account, Galaxy artifact, session, or execution evidence.",
+  "history": {
+    "name": "Example cohort input preparation",
+    "url": "./artifact.html#history"
+  },
+  "artifacts": {
+    "originals": {
+      "label": "Original input archive",
+      "url": "./artifact.html#originals"
+    },
+    "validation": {
+      "label": "Validation report",
+      "url": "./artifact.html#validation"
+    },
+    "consumer": {
+      "label": "Consumer check",
+      "url": "./artifact.html#consumer"
+    },
+    "manifest": {
+      "label": "Cohort manifest",
+      "url": "./artifact.html#manifest"
+    },
+    "archive": {
+      "label": "Reproducibility archive",
+      "url": "./artifact.html#archive"
+    }
+  },
+  "stages": [
+    {
+      "id": "sources",
+      "title": "Identify reference cohorts",
+      "state": "recorded",
+      "label": "Inventory written",
+      "summary": "The reference repository and 42-cohort inventory were recorded. This establishes the intended input set, not successful validation of all 42 cohorts.",
+      "evidence": "Example evidence: The notebook records the pinned reference snapshot and uploaded source and cohort manifests.",
+      "next": "Compare the accepted and rejected cohort IDs with the frozen reference inventory before declaring completeness.",
+      "artifacts": ["manifest"]
+    },
+    {
+      "id": "originals",
+      "title": "Preserve original inputs",
+      "state": "recorded",
+      "label": "Archive imported",
+      "summary": "A 22.4 MB archive containing the reference inputs reached Galaxy. An earlier upload was rejected because the requested datatype was unsupported.",
+      "evidence": "Example evidence: At 19:35:49 UTC, Galaxy returned the archive in state ok with 22,379,374 bytes. Byte preservation still requires the checksum comparison.",
+      "next": "Verify the original archive checksum against the source manifest; successful upload alone is insufficient.",
+      "artifacts": ["originals"]
+    },
+    {
+      "id": "prepare",
+      "title": "Prepare & validate inputs",
+      "state": "recorded",
+      "label": "Job finished",
+      "summary": "The batch preparation job finished on Galaxy and returned four output datasets. Tool completion does not establish that every cohort passed validation.",
+      "evidence": "Example evidence: The notebook's job record reports Galaxy state ok at 19:48:38 UTC. Subsequent dataset detail calls returned the validation and consumer reports.",
+      "next": "Read the generated reports and inspect per-cohort outcomes, extraction checks, and any rejected inputs.",
+      "artifacts": ["validation", "consumer", "manifest", "archive"]
+    },
+    {
+      "id": "verify",
+      "title": "Verify Galaxy outputs",
+      "state": "review",
+      "label": "Needs verification",
+      "summary": "Galaxy output metadata is available. The captured evidence does not establish that the input package meets all requested validation and collection requirements.",
+      "evidence": "Example evidence: Validation report: 30,453 bytes. Consumer report: 310 bytes. Cohort manifest: 43 lines. These metadata checks establish availability, not scientific correctness.",
+      "next": "Inspect report contents, reconcile all 42 study IDs, verify taxon/date parity and hashes, and confirm the required Galaxy collections exist.",
+      "artifacts": ["validation", "consumer", "manifest"]
+    },
+    {
+      "id": "handoff",
+      "title": "Deliver reusable inputs",
+      "state": "pending",
+      "label": "Not yet verified",
+      "summary": "A reproducibility archive was produced, but the full handoff has not been established by this snapshot. No full example molecular-clock benchmark was verified here.",
+      "evidence": "Example evidence: An archive dataset is recorded. Collection correspondence, executable workflow exports, and the completed handoff contract still need evidence.",
+      "next": "After verification, link the accepted collections, workflow, archive and notebook; report any missing or blocked cohorts explicitly.",
+      "artifacts": ["archive"]
+    }
+  ],
+  "issues": [
+    {
+      "id": "shape",
+      "stage": "sources",
+      "state": "unknown",
+      "time": "Example 19:31:19 UTC",
+      "title": "Reference inventory was read as the wrong JSON shape",
+      "impact": "The inspection script expected an object, but the manifest is a list.",
+      "action": "A later inventory was written. This snapshot does not independently verify that the parsing repair preserved every cohort.",
+      "tool": "bash",
+      "excerpt": "AttributeError: 'list' object has no attribute 'keys'"
+    },
+    {
+      "id": "quoting",
+      "stage": "sources",
+      "state": "unknown",
+      "time": "Example 19:32:40 UTC",
+      "title": "Shell quoting broke the source-extraction script",
+      "impact": "The command failed before its regular expression could be evaluated correctly.",
+      "action": "Inspect the later source manifest against the pinned source records; a subsequent command succeeding does not establish extraction parity.",
+      "tool": "bash",
+      "excerpt": "/bin/bash: command substitution: syntax error near unexpected token\n/bin/bash: command substitution: line 0: `?([^'"
+    },
+    {
+      "id": "datatype",
+      "stage": "originals",
+      "state": "recovered",
+      "time": "Example 19:34:44 UTC",
+      "title": "Galaxy rejected the upload datatype \u201cbinary\u201d",
+      "impact": "That upload request failed with HTTP 400. The target server does not accept binary as a file_type option.",
+      "action": "Workaround observed: the original inputs were subsequently imported as a tar.gz archive; Galaxy reported it ok at 19:35:49. Integrity verification remains separate.",
+      "tool": "galaxy_upload_file_from_url",
+      "excerpt": "Unexpected HTTP status code: 400\nParameter 'file_type': an invalid option ('binary') was selected.",
+      "artifact": "originals"
+    },
+    {
+      "id": "module",
+      "stage": "prepare",
+      "state": "unknown",
+      "time": "Example 19:38:20 UTC",
+      "title": "An extraction test could not import its helper",
+      "impact": "The local test stopped because alignment_test_helper was unavailable.",
+      "action": "Confirm that the Galaxy output reports provide the intended extraction checks; this failed test is not verification evidence.",
+      "tool": "bash",
+      "excerpt": "ModuleNotFoundError: No module named 'alignment_test_helper'"
+    },
+    {
+      "id": "numpy",
+      "stage": "prepare",
+      "state": "unknown",
+      "time": "Example 19:38:36 UTC",
+      "title": "Engine-parity check stopped: NumPy was missing",
+      "impact": "The local parity test could not load the engine parser.",
+      "action": "Engine ingestion remains unverified by this attempt. It needs a successful check in the intended Galaxy runtime.",
+      "tool": "bash",
+      "excerpt": "ModuleNotFoundError: No module named 'numpy'"
+    },
+    {
+      "id": "number",
+      "stage": "prepare",
+      "state": "unknown",
+      "time": "Example 19:39:06 UTC",
+      "title": "A published date contained a thousands separator",
+      "impact": "The preparator could not convert the value 1,710.0 to a number.",
+      "action": "Inspect the generated comparator values and their units to confirm the repair did not change their meaning.",
+      "tool": "bash",
+      "excerpt": "ValueError: could not convert string to float: '1,710.0'"
+    },
+    {
+      "id": "variable",
+      "stage": "prepare",
+      "state": "unknown",
+      "time": "Example 19:39:10 UTC",
+      "title": "The cohort manifest builder used an undefined variable",
+      "impact": "The local script stopped while assembling the manifest rows.",
+      "action": "A manifest was later produced. Verify its exact cohort IDs and statuses rather than treating file creation as proof of correctness.",
+      "tool": "bash",
+      "excerpt": "NameError: name 'cohort_manifest_rows' is not defined"
+    }
+  ],
+  "exampleOnly": true
+}
