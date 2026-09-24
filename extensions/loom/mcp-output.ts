@@ -98,6 +98,88 @@ function* matches(
   }
 }
 
+/** Catalog discovery needs identity fields, not every tool's embedded script. */
+function userToolCatalog(root: unknown, args: OutputQuery): Recordish | undefined {
+  const response = record(root);
+  const tools = response?.data;
+  if (
+    !response ||
+    response.success === false ||
+    (args.pointer && args.pointer !== "/data") ||
+    !Array.isArray(tools) ||
+    tools.length === 0 ||
+    !tools.every((tool) => {
+      const row = record(tool);
+      return (
+        row?.tool_format === "GalaxyUserTool" &&
+        typeof row.id === "string" &&
+        typeof row.uuid === "string" &&
+        typeof row.tool_id === "string" &&
+        record(row.representation)
+      );
+    })
+  )
+    return;
+
+  const query = args.query?.toLowerCase();
+  const offset = Math.max(0, Math.floor(args.offset ?? 0));
+  const limit = Math.max(1, Math.min(20, Math.floor(args.limit ?? 10)));
+  const items: Recordish[] = [];
+  let totalItems = 0;
+  let bytes = 0;
+  let more = false;
+  for (const [index, tool] of tools.entries()) {
+    const definition = tool.representation as Recordish;
+    const fields = {
+      id: tool.id,
+      uuid: tool.uuid,
+      tool_id: tool.tool_id,
+      name: definition.name,
+      version: definition.version,
+      description: definition.description,
+      container: definition.container,
+      active: tool.active,
+      hidden: tool.hidden,
+    };
+    if (
+      query &&
+      !Object.values(fields).some(
+        (value) => typeof value === "string" && value.toLowerCase().includes(query),
+      )
+    )
+      continue;
+    if (totalItems++ < offset) continue;
+    const item = {
+      pointer: `/data/${index}`,
+      definitionPointer: `/data/${index}/representation`,
+      ...Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, preview(value)])),
+    };
+    const size = Buffer.byteLength(JSON.stringify(item));
+    if (more || items.length >= limit || bytes + size > PAGE_BYTES) {
+      more = true;
+      continue;
+    }
+    items.push(item);
+    bytes += size;
+  }
+  if (more && items.length === 0)
+    throw new Error("Catalog entry exceeds the preview budget; select its exact JSON Pointer.");
+  return {
+    outputId: args.outputId,
+    pointer: "/data",
+    type: "user_tool_catalog",
+    offset,
+    totalItems,
+    responseItems: tools.length,
+    sourceCount: preview(response.count),
+    sourcePagination: preview(response.pagination),
+    items,
+    nextOffset: more ? offset + items.length : null,
+    definitionsOmitted: true,
+    searchScope: "tool identity, name, version, description, container, not command bodies",
+  };
+}
+
 export function inspectOutput(text: string, args: OutputQuery): Recordish {
   const offset = Math.max(0, Math.floor(args.offset ?? 0));
   const limit = Math.max(1, Math.min(20, Math.floor(args.limit ?? 10)));
@@ -108,6 +190,8 @@ export function inspectOutput(text: string, args: OutputQuery): Recordish {
   } catch {
     root = text;
   }
+  const catalog = userToolCatalog(root, args);
+  if (catalog) return catalog;
   const value = select(root, pointer);
   const base = { outputId: args.outputId, pointer, offset };
   if (typeof value === "string" && !args.query) {
@@ -224,7 +308,7 @@ export function registerMcpOutputRecovery(pi: ExtensionAPI): void {
     name: "mcp_read_output",
     label: "Inspect saved MCP output",
     description:
-      "Read/search an oversized MCP response already returned in this session. Use outputId from the recovery notice, or the saved path from an older truncation notice. Only registered session artifacts are readable, never arbitrary files. JSON Pointer selects a field; query searches literal text in scalar fields; offset/limit page results. Object previews may omit fields: use their pointers to inspect exact values. Text offsets are characters, not lines. Continue the authorized task without asking the user to inspect files.",
+      "Read/search an oversized MCP response already returned in this session. Use outputId from the recovery notice, or the saved path from an older truncation notice. Only registered session artifacts are readable, never arbitrary files. JSON Pointer selects a field; query searches literal text in scalar fields; offset/limit page results. User-defined tool catalogs default to identity/name/version/container summaries; query searches their metadata, and definitionPointer selects a full definition for inspection. Object previews may omit fields: use their pointers to inspect exact values. Text offsets are characters, not lines. Continue the authorized task without asking the user to inspect files.",
     parameters: Type.Object({
       outputId: Type.String(),
       pointer: Type.Optional(Type.String({ maxLength: 2000 })),
@@ -263,11 +347,27 @@ export function registerMcpOutputRecovery(pi: ExtensionAPI): void {
     const path = remember(event.toolCallId, event.details);
     if (!path || event.content.some((c) => c.type === "text" && c.text.includes(MARKER))) return;
     let overview: string;
+    let headline = event.isError
+      ? "MCP request returned an error. Saved response preview follows."
+      : "Large MCP response saved. Showing a bounded preview.";
+    let next =
+      "Select a JSON Pointer from the preview, or use query to find relevant records. A partial preview does not establish that omitted records are absent.";
     try {
-      overview = JSON.stringify(
-        inspectOutput(await readArtifact(path), { outputId: event.toolCallId, limit: 6 }),
-      );
+      const page = inspectOutput(await readArtifact(path), {
+        outputId: event.toolCallId,
+        limit: 20,
+      });
+      overview = JSON.stringify(page);
+      if (page.type === "user_tool_catalog") {
+        if (!event.isError)
+          headline = `User-defined tools: showing ${(page.items as unknown[]).length} of ${page.responseItems} tools returned by Galaxy. Full definitions are available on demand.`;
+        next =
+          'Search tool names/IDs/descriptions with query, or page this catalog with pointer "/data" and nextOffset. Use a tool\'s definitionPointer to inspect its inputs, outputs or command only when needed. These are summaries of this response, not proof that Galaxy has no other pages.';
+      }
     } catch {
+      headline = event.isError
+        ? "MCP request returned an error; its saved response preview could not be read."
+        : "Large MCP response saved; its preview could not be read.";
       overview =
         "Saved output is unavailable or exceeds the inspection limit. Do not infer its contents. Narrow read-only queries; check Galaxy state before repeating a mutation.";
     }
@@ -278,7 +378,7 @@ export function registerMcpOutputRecovery(pi: ExtensionAPI): void {
         ...event.content.filter((c) => c.type !== "text"),
         {
           type: "text" as const,
-          text: `${MARKER}\nThe response exceeded the context limit. Its complete text was saved to ${path}. This preview is partial, not evidence that omitted results are absent.\n${overview}\nContinue now with mcp_read_output({"outputId":${JSON.stringify(event.toolCallId)},"pointer":"/data","limit":10}) if /data exists, or select a pointer above / use query to find relevant records. Inspect required fields before proceeding. Do not ask the user to read the file, repeat the original operation just to recover output, or dump the entire file with cat/read/grep.`,
+          text: `${headline}\n${overview}\n${MARKER}\nComplete response: ${path}\nFor more detail, use mcp_read_output with outputId ${JSON.stringify(event.toolCallId)}. ${next} Inspect required fields before proceeding. Do not ask the user to read the file, repeat the original operation just to recover output, or dump the entire file with cat/read/grep.`,
         },
       ],
     };

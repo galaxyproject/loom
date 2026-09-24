@@ -57,6 +57,14 @@ assistant has been silent. Orbit displays these in the main chat; they do not
 consume model tokens. These updates do not imply that scientific results passed
 verification or that a background LLM worker has been started.
 
+Large user-defined tool lists are shown as compact catalogs with names, versions,
+Galaxy IDs/UUIDs, containers, and active/hidden flags. Full embedded scripts and
+schemas stay in the saved MCP response. `mcp_read_output` searches catalog
+metadata and pages the records; a returned `definitionPointer` selects the
+chosen tool's full definition. The catalog reports both response size and source
+pagination, so a partial page never establishes that no other tools exist.
+Saving a large response is normal output handling, not a model context failure.
+
 ## Slash commands
 
 | Command                   | What it does                                                                                                                                      |

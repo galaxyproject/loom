@@ -63,7 +63,167 @@ function event(path: string, overrides = {}): Partial<ToolResultEvent> {
   };
 }
 
+function userTools(count = 57) {
+  return {
+    data: Array.from({ length: count }, (_, i) => ({
+      id: `encoded-tool-${i}`,
+      uuid: `user-tool-uuid-${i}`,
+      tool_id: "example_tool",
+      tool_format: "GalaxyUserTool",
+      active: i !== 3,
+      hidden: i === 3,
+      representation: {
+        class: "GalaxyUserTool",
+        name: i === count - 1 ? "ChronAeon validator" : `Example tool ${i}`,
+        version: `1.${i}.0`,
+        description: "A useful tool",
+        container: "example.invalid/python:3.11",
+        shell_command: "private command body; ".repeat(250),
+        inputs: [{ name: "alignment", type: "data" }],
+      },
+    })),
+    success: true,
+    message: "Retrieved user-defined tools",
+    count,
+    pagination: null as unknown,
+  };
+}
+
 describe("bounded MCP output recovery", () => {
+  it("turns a spilled 57-tool response into a useful successful catalog", async () => {
+    const raw = JSON.stringify(userTools());
+    expect(Buffer.byteLength(raw)).toBeGreaterThan(250_000);
+    const guarded = await guardMcpOutput([{ type: "text", text: raw }]);
+    const path = guarded.outputGuard!.fullOutputPath!;
+    dirs.push(join(path, ".."));
+    const h = harness();
+    const recovered = await h.result(
+      event(path, {
+        toolName: "galaxy_list_user_tools",
+        content: guarded.content,
+        details: { outputGuard: guarded.outputGuard },
+      }),
+    );
+    const text = recovered.content![0].type === "text" ? recovered.content![0].text : "";
+    expect(recovered.isError).toBe(false);
+    expect(text).toMatch(/^User-defined tools: showing 20 of 57/);
+    expect(text).not.toContain("exceeded the context limit");
+    expect(text).not.toContain("private command body");
+    expect(Buffer.byteLength(text)).toBeLessThan(16_384);
+    expect(JSON.parse(text.split("\n")[1])).toMatchObject({
+      type: "user_tool_catalog",
+      responseItems: 57,
+      totalItems: 57,
+      nextOffset: 20,
+      definitionsOmitted: true,
+      items: expect.arrayContaining([
+        {
+          pointer: "/data/3",
+          definitionPointer: "/data/3/representation",
+          id: "encoded-tool-3",
+          uuid: "user-tool-uuid-3",
+          tool_id: "example_tool",
+          name: "Example tool 3",
+          version: "1.3.0",
+          description: "A useful tool",
+          container: "example.invalid/python:3.11",
+          active: false,
+          hidden: true,
+        },
+      ]),
+    });
+  });
+
+  it("searches catalog metadata across all records and opens a selected definition", async () => {
+    const h = harness();
+    const raw = JSON.stringify(userTools());
+    const saved = event(artifact(raw), {
+      toolName: "mcp",
+      input: { server: "galaxy", tool: "list_user_tools" },
+    });
+    await h.result(saved);
+    // Restore uses the saved artifact, without another Galaxy catalog request.
+    h.restore([{ type: "message", message: { role: "toolResult", ...saved } }]);
+    const found = JSON.parse(
+      (await h.read({ outputId: "catalog", query: "chronaeon" })).content[0].text,
+    );
+    expect(found).toMatchObject({
+      responseItems: 57,
+      totalItems: 1,
+      nextOffset: null,
+      items: [
+        {
+          id: "encoded-tool-56",
+          definitionPointer: "/data/56/representation",
+          name: "ChronAeon validator",
+        },
+      ],
+    });
+    expect(
+      inspectOutput(raw, { outputId: "catalog", pointer: "/data", query: "private command" }),
+    ).toMatchObject({ items: [], nextOffset: null });
+    const exact = await h.read({
+      outputId: "catalog",
+      pointer: `${found.items[0].definitionPointer}/shell_command`,
+    });
+    expect(JSON.parse(exact.content[0].text)).toMatchObject({
+      type: "text",
+      text: userTools().data[56].representation.shell_command.slice(0, 2000),
+      nextOffset: 2000,
+    });
+  });
+
+  it("distinguishes saved response completeness from Galaxy server pagination", () => {
+    const payload = userTools(3);
+    payload.count = 200;
+    payload.pagination = { offset: 20, limit: 3, total: 200, has_more: true };
+    const page = inspectOutput(JSON.stringify(payload), { outputId: "x" });
+    expect(page).toMatchObject({
+      totalItems: 3,
+      responseItems: 3,
+      sourceCount: 200,
+      sourcePagination: { fields: { offset: 20, limit: 3, total: 200, has_more: true } },
+      nextOffset: null,
+    });
+  });
+
+  it("bounds Unicode catalog pages without skipping records at a byte boundary", () => {
+    const payload = userTools(31);
+    for (const item of payload.data) {
+      item.representation.description = "🧬".repeat(3000);
+      item.representation.name = "🧬".repeat(3000);
+    }
+    const raw = JSON.stringify(payload);
+    const pointers: string[] = [];
+    let offset: number | null = 0;
+    do {
+      const page = inspectOutput(raw, { outputId: "x", offset, limit: 20 });
+      expect(Buffer.byteLength(JSON.stringify(page))).toBeLessThan(14_000);
+      pointers.push(...(page.items as { pointer: string }[]).map((item) => item.pointer));
+      offset = page.nextOffset as number | null;
+    } while (offset !== null);
+    expect(pointers).toEqual(payload.data.map((_, i) => `/data/${i}`));
+  });
+
+  it("does not present an error or unsupported response as successful tool discovery", async () => {
+    const h = harness();
+    const failed = userTools(2);
+    failed.success = false;
+    failed.message = "Access denied";
+    const result = await h.result(event(artifact(JSON.stringify(failed)), { isError: true }));
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain("MCP request returned an error");
+    expect(JSON.stringify(result.content)).toContain("Access denied");
+    expect(JSON.stringify(result.content)).not.toContain("User-defined tools: showing");
+    expect(inspectOutput('{"data":[]}', { outputId: "x", pointer: "/data" })).toMatchObject({
+      type: "array",
+      totalItems: 0,
+    });
+    expect(inspectOutput('{"data":[{"name":"ordinary dataset"}]}', { outputId: "x" }).type).toBe(
+      "object",
+    );
+  });
+
   it("recovers a multi-megabyte one-line adapter result and finds a late nested tool", async () => {
     const raw = JSON.stringify({
       success: true,
