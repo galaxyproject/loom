@@ -1,4 +1,5 @@
 import { renderMarkdown } from "./markdown.js";
+import { linkGalaxyArtifacts } from "./galaxy-links.js";
 import { joinTextBlocks } from "./block-spacing.js";
 import {
   computeCopyButtonPlacement,
@@ -28,6 +29,8 @@ export class ChatPanel {
   private container: HTMLElement;
   private currentMessage: HTMLElement | null = null;
   private currentText = "";
+  private galaxyServerUrl: string | null = null;
+  private currentGalaxyServerUrl: string | null = null;
   // When true, the next streamed delta starts a new assistant text block and is
   // separated from the prior block with a blank line (issue #200) so successive
   // segments around tool calls don't render butted together ("Galaxy.Creating").
@@ -114,6 +117,11 @@ export class ChatPanel {
   setCwd(cwd: string): void {
     this.cwd = cwd;
     this.promptCounter = 0;
+  }
+
+  /** Only future live messages inherit this server; old messages keep their links. */
+  setGalaxyServerUrl(url: string | null): void {
+    this.galaxyServerUrl = url;
   }
 
   /** Reset the in-memory counter — only for /new sessions. */
@@ -269,7 +277,8 @@ export class ChatPanel {
     return parts.join("\n\n---\n\n");
   }
 
-  startAssistantMessage(): void {
+  startAssistantMessage(galaxyServerUrl: string | null = this.galaxyServerUrl): void {
+    this.currentGalaxyServerUrl = galaxyServerUrl;
     this.currentText = "";
     this.pendingSegment = "";
     this.pendingBlockBreak = false;
@@ -333,6 +342,8 @@ export class ChatPanel {
     this.history.push({ role: "tool", id, name, status: "running" });
     const card = document.createElement("div");
     card.className = "tool-card";
+    card.dataset.galaxyServerUrl =
+      (this.currentMessage ? this.currentGalaxyServerUrl : this.galaxyServerUrl) ?? "";
     card.innerHTML = `
       <div class="tool-card-header">
         <span class="tool-status running"></span>
@@ -396,6 +407,7 @@ export class ChatPanel {
     if (result) {
       const body = card.querySelector(".tool-card-body")!;
       body.textContent = result.slice(0, 2000);
+      linkGalaxyArtifacts(body as HTMLElement, card.dataset.galaxyServerUrl);
     }
   }
 
@@ -408,9 +420,14 @@ export class ChatPanel {
   addErrorMessage(text: string): void {
     // Flush any prose streamed before this error so the export keeps order.
     this.flushAssistantSegment();
-    if (this.lastErrorEl && this.lastErrorText === text) {
+    if (
+      this.lastErrorEl &&
+      this.lastErrorText === text &&
+      this.lastErrorEl.dataset.galaxyServerUrl === (this.galaxyServerUrl ?? "")
+    ) {
       this.lastErrorCount += 1;
       this.lastErrorEl.textContent = `${text}  (x${this.lastErrorCount})`;
+      linkGalaxyArtifacts(this.lastErrorEl, this.galaxyServerUrl);
       this.scrollToBottom();
       return;
     }
@@ -421,7 +438,9 @@ export class ChatPanel {
     const el = document.createElement("div");
     el.className = "message assistant";
     el.style.color = "var(--error)";
+    el.dataset.galaxyServerUrl = this.galaxyServerUrl ?? "";
     el.textContent = text;
+    linkGalaxyArtifacts(el, this.galaxyServerUrl);
     this.container.appendChild(el);
     this.lastErrorEl = el;
     this.lastErrorText = text;
@@ -448,6 +467,7 @@ export class ChatPanel {
     const el = document.createElement("div");
     el.className = "message assistant system-info";
     el.innerHTML = html;
+    linkGalaxyArtifacts(el, this.galaxyServerUrl);
     this.container.appendChild(el);
     this.scrollToBottom();
     return el;
@@ -629,8 +649,8 @@ export class ChatPanel {
     const cards = Array.from(this.currentMessage.querySelectorAll(".tool-card"));
 
     const { text, planBlocks } = extractPlanFences(this.currentText);
-    let html = renderMarkdown(text);
-    html = injectPlanFenceCards(html, planBlocks);
+    let html = renderMarkdown(text, undefined, this.currentGalaxyServerUrl);
+    html = injectPlanFenceCards(html, planBlocks, this.currentGalaxyServerUrl);
     this.currentMessage.innerHTML = html + '<span class="cursor-blink"></span>';
 
     // Re-insert tool cards before the cursor
@@ -775,13 +795,17 @@ function extractPlanFences(src: string): { text: string; planBlocks: string[] } 
   return { text, planBlocks };
 }
 
-function injectPlanFenceCards(html: string, planBlocks: string[]): string {
+function injectPlanFenceCards(
+  html: string,
+  planBlocks: string[],
+  galaxyServerUrl?: string | null,
+): string {
   if (planBlocks.length === 0) return html;
   const re = new RegExp(`<p>\\s*${PLAN_FENCE_PLACEHOLDER_PREFIX}(\\d+)\\s*</p>`, "g");
   return html.replace(re, (_m, idxStr: string) => {
     const idx = Number(idxStr);
     const body = planBlocks[idx] ?? "";
-    const bodyHtml = renderMarkdown(body);
+    const bodyHtml = renderMarkdown(body, undefined, galaxyServerUrl);
     const bodyAttr = escapeAttr(body);
     return (
       `<div class="plan-draft-card" data-plan-draft-body="${bodyAttr}">` +

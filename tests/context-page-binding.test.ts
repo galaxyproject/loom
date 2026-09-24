@@ -14,6 +14,23 @@ beforeEach(() => {
 });
 
 describe("buildGalaxyPageBindingBlock", () => {
+  it("provides actual page, history, and revision links to the brain", () => {
+    vi.mocked(state.getNotebookPath).mockReturnValue("/work/notebook.md");
+    vi.mocked(fs.readFileSync).mockReturnValue(
+      '```loom-galaxy-page\npage_id: 0123456789abcdef\npage_slug:\ngalaxy_server_url: "https://example.org/galaxy"\nhistory_id: 0123456789abcdeffedcba9876543210\nlast_synced_revision: abcdef0123456789\nbound_at: 2026-09-23T18:18:00.000Z\n```',
+    );
+    const out = buildGalaxyPageBindingBlock();
+    expect(out).toContain(
+      "[0123456789abcdef](https://example.org/galaxy/published/page?id=0123456789abcdef)",
+    );
+    expect(out).toContain(
+      "[0123456789abcdeffedcba9876543210](https://example.org/galaxy/histories/view?id=0123456789abcdeffedcba9876543210)",
+    );
+    expect(out).toContain(
+      "[abcdef0123456789](https://example.org/galaxy/api/pages/0123456789abcdef/revisions/abcdef0123456789)",
+    );
+  });
+
   it("returns empty string when no notebook path", () => {
     vi.mocked(state.getNotebookPath).mockReturnValue(null);
     expect(buildGalaxyPageBindingBlock()).toBe("");

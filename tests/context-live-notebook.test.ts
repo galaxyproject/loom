@@ -46,6 +46,14 @@ afterEach(() => {
 });
 
 describe("live notebook context injection", () => {
+  it("teaches every shell to emit clickable Galaxy artifacts without rewriting tracking IDs", async () => {
+    const { systemPrompt } = await wire().get("before_agent_start")!({}, {});
+    expect(systemPrompt).toContain("Every Galaxy artifact you mention in chat");
+    expect(systemPrompt).toContain("/published/page?id={page_id}");
+    expect(systemPrompt).toContain("YAML blocks unchanged");
+    expect(systemPrompt).toContain("artifact recorded on a different server");
+  });
+
   it("keeps the notebook contents OUT of the cached system prompt", async () => {
     fs.writeFileSync(nb, `# My project\n\n${MARKER}.\n`);
     setNotebookPath(nb);
