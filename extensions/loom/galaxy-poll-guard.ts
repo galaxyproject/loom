@@ -15,10 +15,11 @@ meaningful milestone, and about once a minute while actively working. Explain
 what you verified, what is running, and what comes next. Do not claim scientific
 success from a successful tool response alone.
 
-When a dataset or job is queued/running, record its actual job or invocation ID
-with galaxy_job_record or galaxy_invocation_record and a real notebook anchor.
-The background monitor checks every 15 seconds without model calls and queues
-completion verification. If no other authorized work is ready, report the wait
+Loom records every Galaxy submission itself, so a queued/running run is already
+being watched: the background monitor checks every 15 seconds without model
+calls and queues completion verification. Bind the run to its plan step with
+galaxy_job_record or galaxy_invocation_record and a real notebook anchor; don't
+record a job that belongs to a workflow invocation that is already recorded. If no other authorized work is ready, report the wait
 and end the turn so the researcher can talk to you. Do not repeatedly call
 galaxy_get_dataset_details, launch a shell polling loop, or use sleep to wait.
 A successful metadata request does not mean the dataset has finished.
@@ -132,7 +133,7 @@ export function registerGalaxyPollGuard(pi: ExtensionAPI): void {
           ...event.content,
           {
             type: "text" as const,
-            text: `${MARKER}\nThe metadata request succeeded, but this resource is still ${state}. ${jobId ? `Its creating job ID is ${JSON.stringify(jobId)}. ` : "Use the job/invocation ID from the submission response. "}Record that run with galaxy_job_record or galaxy_invocation_record using an existing notebook anchor. The background monitor checks every 15 seconds without model calls. Give the user a short progress update, continue other ready work, or end this turn if waiting is all that remains. Do not repeat metadata calls or sleep in a loop. Verify the outputs when completion wakes you. If automatic follow-up is disabled, disclose that instead of promising a wake-up.`,
+            text: `${MARKER}\nThe metadata request succeeded, but this resource is still ${state}. ${jobId ? `Its creating job ID is ${JSON.stringify(jobId)}. ` : "Use the job/invocation ID from the submission response. "}Loom already recorded that run when it was submitted and the background monitor checks it every 15 seconds without model calls; if it isn't bound to a plan step yet, bind it with galaxy_job_record or galaxy_invocation_record using an existing notebook anchor (skip a job that belongs to an invocation already recorded). Give the user a short progress update, continue other ready work, or end this turn if waiting is all that remains. Do not repeat metadata calls or sleep in a loop. Verify the outputs when completion wakes you. If automatic follow-up is disabled, disclose that instead of promising a wake-up.`,
           },
         ],
       };

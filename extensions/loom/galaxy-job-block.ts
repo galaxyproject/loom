@@ -28,7 +28,18 @@
  * ```
  */
 
-export interface JobYaml {
+import { appendBlock, isUnambiguousRange } from "./notebook-writer";
+import {
+  blockLine,
+  scanFencedBlocks,
+  mergeHarnessFields,
+  parseHarnessFields,
+  renderHarnessFieldLines,
+  stripHarnessFields,
+  type HarnessBlockFields,
+} from "./harness-block-fields";
+
+export interface JobYaml extends HarnessBlockFields {
   jobId: string;
   galaxyServerUrl: string;
   notebookAnchor: string;
@@ -138,18 +149,19 @@ function unescapeYaml(value: string): string {
 export function renderJobYaml(job: JobYaml): string {
   const lines: string[] = [
     JOB_FENCE_OPEN,
-    `job_id: ${job.jobId}`,
-    `galaxy_server_url: ${job.galaxyServerUrl}`,
-    `notebook_anchor: ${job.notebookAnchor}`,
+    blockLine("job_id", job.jobId, "jobId"),
+    blockLine("galaxy_server_url", job.galaxyServerUrl),
+    blockLine("notebook_anchor", job.notebookAnchor, "notebookAnchor"),
     `label: ${escapeYaml(job.label)}`,
   ];
-  if (job.toolId) lines.push(`tool_id: ${job.toolId}`);
-  lines.push(`submitted_at: ${job.submittedAt}`);
+  if (job.toolId) lines.push(blockLine("tool_id", job.toolId, "toolId"));
+  lines.push(blockLine("submitted_at", job.submittedAt));
   lines.push(`status: ${job.status}`);
   lines.push(`summary: ${escapeYaml(job.summary ?? "")}`);
   if (job.serverVerified !== undefined) lines.push(`server_verified: ${job.serverVerified}`);
-  if (job.galaxyState) lines.push(`galaxy_state: ${job.galaxyState}`);
-  if (job.lastPolledAt) lines.push(`last_polled_at: ${job.lastPolledAt}`);
+  if (job.galaxyState) lines.push(blockLine("galaxy_state", job.galaxyState));
+  if (job.lastPolledAt) lines.push(blockLine("last_polled_at", job.lastPolledAt));
+  lines.push(...renderHarnessFieldLines(job));
   lines.push(JOB_FENCE_CLOSE);
   return lines.join("\n") + "\n";
 }
@@ -160,13 +172,23 @@ function parseBooleanField(raw: string | undefined): boolean | undefined {
   return undefined;
 }
 
-function parseJobBlock(blockLines: string[]): JobYaml | null {
+/**
+ * The block's `key: value` lines, untouched. The upsert reads carry-forward
+ * provenance through here as well as the parser, because provenance has to
+ * survive a block the parser rejects -- see `upsertJobBlock`.
+ */
+function rawJobFields(blockLines: string[]): Map<string, string> {
   const map = new Map<string, string>();
   for (const line of blockLines) {
     const idx = line.indexOf(":");
     if (idx === -1) continue;
     map.set(line.slice(0, idx).trim(), line.slice(idx + 1).trim());
   }
+  return map;
+}
+
+function parseJobBlock(blockLines: string[]): JobYaml | null {
+  const map = rawJobFields(blockLines);
   const jobId = map.get("job_id");
   if (!jobId) return null; // a block without an id is not pollable
   const status = map.get("status");
@@ -184,6 +206,9 @@ function parseJobBlock(blockLines: string[]): JobYaml | null {
     serverVerified: parseBooleanField(map.get("server_verified")),
     galaxyState: map.get("galaxy_state") || undefined,
     lastPolledAt: map.get("last_polled_at") || undefined,
+    // `map` holds raw values (nothing here runs unescapeYaml), which is what
+    // the harness fields want: bare tokens and single-line JSON.
+    ...parseHarnessFields((key) => map.get(key)),
   };
 }
 
@@ -194,63 +219,77 @@ interface BlockRange {
 }
 
 function findJobBlockRanges(content: string): BlockRange[] {
-  const ranges: BlockRange[] = [];
   const lines = content.split("\n");
-  let i = 0;
-  while (i < lines.length) {
-    if (lines[i].trim() === JOB_FENCE_OPEN) {
-      const start = i;
-      let end = i + 1;
-      while (end < lines.length && lines[end].trim() !== JOB_FENCE_CLOSE) end++;
-      const parsed = parseJobBlock(lines.slice(i + 1, end));
-      if (parsed) ranges.push({ jobId: parsed.jobId, start, end });
-      i = end + 1;
-    } else {
-      i++;
-    }
+  const ranges: BlockRange[] = [];
+  for (const range of scanFencedBlocks(lines, JOB_FENCE_OPEN)) {
+    const parsed = parseJobBlock(lines.slice(range.start + 1, range.end));
+    if (parsed) ranges.push({ jobId: parsed.jobId, start: range.start, end: range.end });
   }
   return ranges;
 }
 
 /** Every parseable `loom-job` block in the notebook. Invalid blocks are skipped. */
 export function findJobBlocks(content: string): JobYaml[] {
-  const result: JobYaml[] = [];
   const lines = content.split("\n");
-  let i = 0;
-  while (i < lines.length) {
-    if (lines[i].trim() === JOB_FENCE_OPEN) {
-      const start = i + 1;
-      let end = start;
-      while (end < lines.length && lines[end].trim() !== JOB_FENCE_CLOSE) end++;
-      const parsed = parseJobBlock(lines.slice(start, end));
-      if (parsed) result.push(parsed);
-      i = end + 1;
-    } else {
-      i++;
-    }
+  const result: JobYaml[] = [];
+  for (const range of scanFencedBlocks(lines, JOB_FENCE_OPEN)) {
+    const parsed = parseJobBlock(lines.slice(range.start + 1, range.end));
+    if (parsed) result.push(parsed);
   }
   return result;
 }
 
 /**
+ * Find the first `loom-job` block physically carrying this id, and what it
+ * parses to. The invocation side's twin -- see `locateInvocationBlock` for why
+ * one physical block has to answer both questions.
+ */
+export function locateJobBlock(
+  content: string,
+  jobId: string,
+): { present: boolean; record: JobYaml | null } {
+  const lines = content.split("\n");
+  const range = findJobBlockRanges(content).find((b) => b.jobId === jobId);
+  if (!range) return { present: false, record: null };
+  return { present: true, record: parseJobBlock(lines.slice(range.start + 1, range.end)) };
+}
+
+/**
  * Upsert a `loom-job` block keyed by `job_id`: replace in place when the id is
  * already present, otherwise append at the end.
+ *
+ * Harness-only fields on `job` are discarded; see `upsertInvocationBlock` in
+ * notebook-writer.ts for why. They are carried over from the block on disk,
+ * or supplied explicitly through `harness` by the auto-registration path.
  */
-export function upsertJobBlock(content: string, job: JobYaml): string {
+export function upsertJobBlock(
+  content: string,
+  job: JobYaml,
+  harness?: HarnessBlockFields,
+): string {
   const ranges = findJobBlockRanges(content);
   const lines = content.split("\n");
-  const newBlock = renderJobYaml(job).trimEnd().split("\n");
 
-  const existing = ranges.find((b) => b.jobId === job.jobId);
+  // Only a range no unclosed fence precedes can be replaced -- see
+  // isUnambiguousRange.
+  const existing = ranges.find((b) => b.jobId === job.jobId && isUnambiguousRange(lines, b.start));
+  // Read off the block this write replaces, not a second scan of the file --
+  // see the same comment in `upsertInvocationBlock`.
+  const onDiskRaw = existing ? rawJobFields(lines.slice(existing.start + 1, existing.end)) : null;
+  const onDisk = parseHarnessFields((key) => onDiskRaw?.get(key));
+  const merged: JobYaml = {
+    ...stripHarnessFields(job),
+    ...mergeHarnessFields(onDisk, harness ?? {}),
+  };
+  const newBlock = renderJobYaml(merged).trimEnd().split("\n");
+
   if (existing) {
     const before = lines.slice(0, existing.start);
     const after = lines.slice(existing.end + 1);
     return [...before, ...newBlock, ...after].join("\n");
   }
 
-  const trimmed = content.replace(/\s+$/, "");
-  const sep = trimmed.length > 0 ? "\n\n" : "";
-  return trimmed + sep + newBlock.join("\n") + "\n";
+  return appendBlock(content, newBlock);
 }
 
 /**

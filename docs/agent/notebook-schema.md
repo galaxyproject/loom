@@ -78,6 +78,56 @@ explorations, summaries, ad-hoc edits — answer those directly. A plan
 is for multi-step pipeline orchestration the user explicitly wants
 driven (e.g. "draft a plan for variant calling on this data").
 
+## `loom-invocation` and `loom-job` blocks
+
+Every Galaxy submission gets a block. A workflow invocation gets
+`loom-invocation`, keyed on `invocation_id`; a tool run gets `loom-job`,
+keyed on `job_id`, one block per job (a mapped-over run produces several).
+The background poller advances `status` from Galaxy job state.
+
+```loom-invocation
+invocation_id: ff1e2d3c4b5a6978
+galaxy_server_url: https://usegalaxy.org
+notebook_anchor: plan-a-step-3
+label: BWA alignment
+submitted_at: 2026-09-16T15:30:00Z
+status: in_progress
+summary:
+server_verified: true
+attempt_id: 01K5CJ6XWQ8QK4S2M7E9V0TZ3B
+history_id: 0a248a1f62a0cc04
+submitted_by: harness
+enrichment: pending
+```
+
+The first block of fields is the record: `label` and `notebook_anchor` say
+what the run is and which plan step it belongs to, and those are yours to
+set. `server_verified` says whether Galaxy has confirmed the id -- `true`
+when it was read out of Galaxy's own response to the submission or a poll
+has since answered for it, `false` when a record call asked and Galaxy did
+not answer. Everything from `attempt_id` down is **harness-only**:
+
+- `attempt_id` -- ULID minted when the submission was dispatched. Joins the
+  block to its full provenance record under `.loom/provenance/`.
+- `history_id` -- the Galaxy history the work landed in.
+- `submitted_by` -- `harness` when Loom watched the submission happen,
+  `agent` when only a record call reported it, `unknown` when reconciliation
+  found it on Galaxy with nothing here to match.
+- `enrichment` / `enrichment_attempts` -- whether per-job tool versions,
+  parameters, inputs and outputs have been backfilled from Galaxy yet
+  (`pending`, `complete`, `unavailable`).
+- `jobs` -- compact per-job summary, single-line JSON:
+  `[{"job_id":"...","tool_id":"...","tool_version":"...","state":"ok"}]`.
+- `drift` -- tool versions that moved between attempts bound to the same
+  step: `[{"tool_id":"...","from":"0.7.17","to":"0.7.18"}]`.
+
+Do not write these yourself. They are stripped from anything the record
+tools are handed, so setting them has no effect -- the harness writes them
+from what Galaxy returned, and that is exactly what makes them worth
+anything. Blocks are also written automatically the moment a submission
+succeeds, so you do not need a record call to make a run pollable; what a
+record call is still for is naming the step the run belongs to.
+
 ## `loom-galaxy-page` binding block
 
 Records the binding between this notebook and a Galaxy page (see

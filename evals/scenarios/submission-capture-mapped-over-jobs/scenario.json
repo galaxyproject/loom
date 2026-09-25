@@ -1,0 +1,40 @@
+{
+  "name": "a mapped-over tool run records one job block per job",
+  "description": "galaxy-mcp's run_tool answers a map-over with one data.jobs entry per job and an empty data.outputs (the outputs surface as implicit_collections instead), so anything reading outputs would record nothing and anything reading jobs[0] would record a third of the run. Three jobs have to become three pollable blocks sharing one attempt id.",
+  "tier": 1,
+  "inputs": ["/status"],
+  "env": {
+    "ANTHROPIC_API_KEY": "fake-eval-key",
+    "LOOM_SUBMISSION_REPLAY": "submissions.jsonl",
+    "GALAXY_URL": "https://usegalaxy.org",
+    "GALAXY_API_KEY": "fake-eval-galaxy-key"
+  },
+  "timeoutMs": 15000,
+  "assertions": {
+    "events": {
+      "mustNotInclude": ["agent_start", "tool_execution_start", "turn_start"]
+    },
+    "activity": {
+      "mustNotIncludeKinds": ["submission.unparsed"],
+      "mustInclude": [
+        {
+          "kind": "submission.registered",
+          "source": "submission-capture",
+          "payloadContains": {
+            "tool": "galaxy_run_tool",
+            "kind": "jobs",
+            "step_anchor": "plan-a-step-1"
+          }
+        }
+      ]
+    },
+    "notebook": {
+      "contains": [
+        "job_id: job000000000001",
+        "job_id: job000000000002",
+        "job_id: job000000000003",
+        "tool_id: fastp"
+      ]
+    }
+  }
+}

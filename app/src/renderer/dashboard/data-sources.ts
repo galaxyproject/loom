@@ -291,9 +291,10 @@ export function parseJobBlocks(content: string): DashboardJob[] {
       const m = line.match(/^([a-z_]+):\s*(.*)$/);
       if (m) fields[m[1]] = unquote(m[2]);
     }
+    // `galaxy_server_url` is not required: capture writes it empty when no
+    // GALAXY_URL is configured, and the invocations panel already accepts that.
     if (
       fields.job_id &&
-      fields.galaxy_server_url &&
       fields.notebook_anchor &&
       fields.label &&
       fields.submitted_at &&
@@ -301,7 +302,7 @@ export function parseJobBlocks(content: string): DashboardJob[] {
     ) {
       out.push({
         jobId: fields.job_id,
-        galaxyServerUrl: fields.galaxy_server_url,
+        galaxyServerUrl: fields.galaxy_server_url ?? "",
         notebookAnchor: fields.notebook_anchor,
         label: fields.label,
         toolId: fields.tool_id || null,

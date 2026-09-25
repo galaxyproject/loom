@@ -161,6 +161,21 @@ describe("parseJobBlocks", () => {
     expect(parseJobBlocks(partial)).toEqual([]);
   });
 
+  it("keeps a captured job whose server url is empty because GALAXY_URL was unset", () => {
+    const block = [
+      "```loom-job",
+      "job_id: job-captured",
+      'galaxy_server_url: ""',
+      "notebook_anchor: unattributed",
+      "label: Upload a.fastq",
+      "submitted_at: 2026-09-25T00:00:00Z",
+      "status: in_progress",
+      "```",
+    ].join("\n");
+    const [job] = parseJobBlocks(block);
+    expect(job).toMatchObject({ jobId: "job-captured", galaxyServerUrl: "" });
+  });
+
   it("accepts every status the brain can write, including the non-failure endings", () => {
     for (const status of ["in_progress", "completed", "failed", "cancelled", "skipped"]) {
       const block = [

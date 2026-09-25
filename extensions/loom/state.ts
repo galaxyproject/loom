@@ -23,6 +23,7 @@ let state: AnalystState = {
   currentHistoryId: null,
   notebookPath: null,
   notebookLoaded: false,
+  currentStepAnchor: null,
 };
 
 export function getState(): AnalystState {
@@ -55,6 +56,7 @@ export function resetState(): void {
     currentHistoryId: null,
     notebookPath: null,
     notebookLoaded: false,
+    currentStepAnchor: null,
   };
 }
 
@@ -288,6 +290,29 @@ export function setGalaxyConnection(
 
 export function getCurrentHistoryId(): string | null {
   return state.currentHistoryId;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Current plan step
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Point subsequent Galaxy submissions at a plan step, or clear the pointer.
+ *
+ * Set by /execute from the plan it parsed; cleared when the agent run that
+ * /execute started settles. It is deliberately in-memory and deliberately
+ * coarse: it says which step the agent was *asked* to work on, not which step
+ * a given submission belongs to. The submission hook reads it once, at
+ * dispatch, and carries the value forward with the attempt -- reading it again
+ * when the result lands would attribute a slow submission to whatever step was
+ * current by then.
+ */
+export function setCurrentStepAnchor(anchor: string | null): void {
+  state.currentStepAnchor = anchor && anchor.trim().length > 0 ? anchor.trim() : null;
+}
+
+export function getCurrentStepAnchor(): string | null {
+  return state.currentStepAnchor;
 }
 
 export function isGalaxyConnected(): boolean {

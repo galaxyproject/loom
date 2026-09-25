@@ -26,6 +26,53 @@ export interface Invocation {
   completedJobs?: number;
   failedJobs?: number;
   lastPolledAt?: string;
+  // Harness-written provenance. The brain owns these (see
+  // extensions/loom/harness-block-fields.ts); this side only reads them, and
+  // mirrors the same drop-what-you-don't-recognise rule so a hand-edited
+  // block renders as unknown provenance rather than as a claim.
+  attemptId?: string;
+  historyId?: string;
+  submittedBy?: "harness" | "agent" | "unknown";
+  enrichment?: "pending" | "complete" | "unavailable";
+  enrichmentAttempts?: number;
+  jobs?: BlockJobSummary[];
+  drift?: BlockDriftNote[];
+}
+
+interface BlockJobSummary {
+  job_id: string;
+  tool_id?: string;
+  tool_version?: string;
+  state?: string;
+  outputs?: { id: string; ext?: string; dbkey?: string }[];
+}
+
+interface BlockDriftNote {
+  tool_id: string;
+  from: string;
+  to: string;
+}
+
+const SUBMITTED_BY = new Set(["harness", "agent", "unknown"]);
+const ENRICHMENT_STATES = new Set(["pending", "complete", "unavailable"]);
+
+/**
+ * Parse a single-line JSON array field (`jobs`, `drift`). Malformed values
+ * read back as absent -- the row still draws, it just shows no versions.
+ */
+function jsonArrayField<T>(raw: string | undefined): T[] | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as T[]) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Mirror of `isBlockBodyLine` in the brain's harness-block-fields. */
+function isBlockBodyLine(line: string): boolean {
+  return line.trim() === "" || /^[a-z0-9_]+:/.test(line);
 }
 
 const FENCE_OPEN = "```loom-invocation";
@@ -38,9 +85,22 @@ const LINGER_MS = 5000;
 
 let lingerTimer: ReturnType<typeof setTimeout> | null = null;
 
+/**
+ * Mirror of `unescapeYaml` in the brain's notebook-writer. The writer quotes
+ * free text with `JSON.stringify`, so a label carrying a backslash or a
+ * newline only reads back correctly through `JSON.parse`; stripping the outer
+ * quotes and unescaping `\"` by hand showed `C:\\reads` for `C:\reads` and a
+ * literal `\n` for a line break, so Activity named a run differently from the
+ * notebook it came out of. The fallback is for blocks written under the older
+ * rule, which escaped quotes and nothing else.
+ */
 function unescape(value: string): string {
   if (value.startsWith('"') && value.endsWith('"')) {
-    return value.slice(1, -1).replace(/\\"/g, '"');
+    try {
+      return JSON.parse(value) as string;
+    } catch {
+      return value.slice(1, -1).replace(/\\"/g, '"');
+    }
   }
   return value;
 }
@@ -53,17 +113,34 @@ export function parseInvocationBlocks(content: string): Invocation[] {
     if (lines[i].trim() === FENCE_OPEN) {
       const start = i + 1;
       let end = start;
-      while (end < lines.length && lines[end].trim() !== FENCE_CLOSE) end++;
+      // Same fence grammar as the brain's scanner (scanFencedBlocks): the body
+      // is `key: value` lines and nothing else, and the close is an exact ```.
+      // Anything else -- a run of four backticks, another opener, a line of
+      // prose, end of file -- means this is not a block.
+      while (end < lines.length && isBlockBodyLine(lines[end])) end++;
+      if (end >= lines.length || lines[end].trim() !== FENCE_CLOSE) {
+        i = start;
+        continue;
+      }
       const body = lines.slice(start, end);
       const fields: Record<string, string> = {};
+      // Raw (un-unescaped) copy for the harness fields, which are bare tokens
+      // or single-line JSON. Mirrors parseInvocationBlock in the brain.
+      const rawFields: Record<string, string> = {};
       for (const line of body) {
         const m = line.match(/^([a-z_]+):\s*(.*)$/);
-        if (m) fields[m[1]] = unescape(m[2].trim());
+        if (m) {
+          rawFields[m[1]] = m[2].trim();
+          fields[m[1]] = unescape(m[2].trim());
+        }
       }
       const status = fields.status as Invocation["status"];
+      // `galaxy_server_url` is not required, matching the brain's parser: the
+      // harness records a submission whether or not GALAXY_URL happened to be
+      // set, and a block the brain polls but this side drops is a run the user
+      // cannot see in Activity.
       if (
         fields.invocation_id &&
-        fields.galaxy_server_url &&
         fields.notebook_anchor &&
         fields.label &&
         fields.submitted_at &&
@@ -77,7 +154,7 @@ export function parseInvocationBlocks(content: string): Invocation[] {
         };
         out.push({
           invocationId: fields.invocation_id,
-          galaxyServerUrl: fields.galaxy_server_url,
+          galaxyServerUrl: fields.galaxy_server_url ?? "",
           notebookAnchor: fields.notebook_anchor,
           label: fields.label,
           submittedAt: fields.submitted_at,
@@ -95,6 +172,17 @@ export function parseInvocationBlocks(content: string): Invocation[] {
           completedJobs: num("completed_jobs"),
           failedJobs: num("failed_jobs"),
           lastPolledAt: fields.last_polled_at || undefined,
+          attemptId: rawFields.attempt_id || undefined,
+          historyId: rawFields.history_id || undefined,
+          submittedBy: SUBMITTED_BY.has(rawFields.submitted_by)
+            ? (rawFields.submitted_by as Invocation["submittedBy"])
+            : undefined,
+          enrichment: ENRICHMENT_STATES.has(rawFields.enrichment)
+            ? (rawFields.enrichment as Invocation["enrichment"])
+            : undefined,
+          enrichmentAttempts: num("enrichment_attempts"),
+          jobs: jsonArrayField<BlockJobSummary>(rawFields.jobs),
+          drift: jsonArrayField<BlockDriftNote>(rawFields.drift),
         });
       }
       i = end + 1;
@@ -132,9 +220,24 @@ function renderRow(inv: Invocation): string {
     host = inv.galaxyServerUrl;
   }
   const submitted = inv.submittedAt.replace("T", " ").replace(/\.\d+Z$/, "Z");
+  // A block written before a Galaxy server was configured names none; drop the
+  // segment rather than drawing an empty one between two separators.
+  const hostText = host ? ` · ${escapeHtml(host)}` : "";
   // A block Galaxy never confirmed is still a block: say so rather than drawing
   // it identically to a run we know exists.
   const unconfirmed = inv.serverVerified === false ? " · unconfirmed" : "";
+
+  // Provenance, shown only when the block actually carries it. An unrecorded
+  // or agent-recorded run says so rather than borrowing the harness's word:
+  // "recorded by agent" and a missing marker are different claims.
+  const provenance: string[] = [];
+  if (inv.submittedBy === "harness" && inv.serverVerified) provenance.push("recorded by harness");
+  else if (inv.submittedBy === "agent") provenance.push("recorded by agent");
+  else if (inv.submittedBy === "unknown") provenance.push("found on Galaxy");
+  if (inv.enrichment === "pending") provenance.push("details pending");
+  else if (inv.enrichment === "unavailable") provenance.push("details unavailable");
+  if (inv.drift && inv.drift.length > 0) provenance.push(`${inv.drift.length} version drift`);
+  const provenanceText = provenance.length > 0 ? ` · ${escapeHtml(provenance.join(" · "))}` : "";
 
   return `
     <div class="galaxy-invocation-row ${inv.status}">
@@ -146,7 +249,7 @@ function renderRow(inv: Invocation): string {
         <div class="galaxy-invocation-bar-fill" style="width: ${pct}%"></div>
       </div>
       <div class="galaxy-invocation-meta">
-        ${escapeHtml(inv.status)} · ${escapeHtml(host)} · submitted ${escapeHtml(submitted)}${escapeHtml(unconfirmed)}
+        ${escapeHtml(inv.status)}${hostText} · submitted ${escapeHtml(submitted)}${escapeHtml(unconfirmed)}${provenanceText}
       </div>
     </div>
   `;

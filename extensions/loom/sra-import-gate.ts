@@ -34,7 +34,8 @@ Preserve requested extraction settings and compression; splitting into
 separate jobs is justified only by different settings or a demonstrated
 server/resource limit, not by the number of samples alone.
 
-Record the returned job and collection IDs in the notebook. Before using the
+Loom records the import job itself; bind it to its plan step with
+galaxy_job_record and note the returned collection ID in the notebook. Before using the
 collection, verify population state, expected accession count and identifiers,
 forward/reverse members, dataset states and appropriate content checks. A job
 reported ok can still have failed or missing outputs. For ENA URL imports,

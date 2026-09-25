@@ -62,7 +62,7 @@ export function galaxyRecoveryHint(name: string, kind: Exclude<GalaxyFailureKind
       ? "galaxy_connect only binds this session and changes nothing in Galaxy; it is safe to call again after reconnecting."
       : READ_ONLY.test(name)
         ? "This was a read-only lookup. Continue the authorized task using a smaller query or saved response."
-        : "This operation may already have been accepted by Galaxy. Its result is UNKNOWN. Inspect the destination history, jobs/invocations or affected resource before considering any retry. Reuse accepted work. Do not blindly repeat a submission, upload, create, update or delete; do not invent IDs or claim success.";
+        : "This operation may already have been accepted by Galaxy. Its result is UNKNOWN. Inspect the destination history, jobs/invocations or affected resource before considering any retry. Reuse accepted work, and if you find the accepted job or invocation, record it with galaxy_job_record or galaxy_invocation_record -- Loom cannot capture a submission whose call failed. Do not blindly repeat a submission, upload, create, update or delete; do not invent IDs or claim success.";
   const action =
     kind === "dropped"
       ? 'Call mcp({"connect":"galaxy"}) yourself once, then galaxy_connect(). Check their results before continuing; do not ask the user to reconnect or restart Orbit.'

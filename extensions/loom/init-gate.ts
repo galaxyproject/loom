@@ -22,10 +22,24 @@ import { isLocalShellDisabled } from "./local-exec.js";
 
 export type Routing = "local" | "galaxy" | "hybrid" | "remote" | "unknown";
 
+// Same spelling the evidence gate matches steps on, so an anchor captured
+// here and an anchor written into a block are the same string.
+const STEP_ANCHOR = /\{#([^}]+)\}/;
+
 export interface ParsedPlanRef {
   title: string;
   routing: Routing;
-  nextStep: { line: number; raw: string; descriptionLength: number } | null;
+  nextStep: {
+    line: number;
+    raw: string;
+    descriptionLength: number;
+    /**
+     * The step's `{#plan-a-step-3}` anchor without the braces or the hash,
+     * matching how `notebook_anchor` is spelled in the invocation and job
+     * blocks. Absent when the step carries no anchor.
+     */
+    anchor?: string;
+  } | null;
 }
 
 export interface GateFailure {
@@ -76,10 +90,12 @@ export function parseMostRecentPlan(content: string): ParsedPlanRef | null {
     if (/^##\s+/.test(lines[i])) break; // next section
     const stepMatch = lines[i].match(/^\s*-\s+\[\s\]\s+(.*)$/);
     if (stepMatch) {
+      const anchor = stepMatch[1].match(STEP_ANCHOR)?.[1]?.trim();
       nextStep = {
         line: i,
         raw: stepMatch[1],
         descriptionLength: measureStepDescription(stepMatch[1]),
+        ...(anchor ? { anchor } : {}),
       };
       break;
     }

@@ -86,6 +86,35 @@ findings log for the live caveat). To add a paid reference baseline
 (Anthropic/OpenAI/Google), append an entry with that provider and the right
 `envRequires` -- the matrix design makes it a one-line config change.
 
+## Replaying submissions (Tier 1, no model)
+
+The submission-capture hook fires on `tool_execution_end`, which needs a real
+tool call, which needs a model turn -- and the Tier 1 scenarios are
+deliberately model-free. `LOOM_SUBMISSION_REPLAY` bridges that: it names a
+JSONL file, relative to the scenario's cwd, whose lines are recorded galaxy-mcp
+results, and each is fed through the same dispatch path a live submission
+takes. One line per submission:
+
+```json
+{
+  "tool": "galaxy_run_tool",
+  "args": { "tool_id": "fastp" },
+  "stepAnchor": "plan-a-step-1",
+  "result": { "content": [{ "type": "text", "text": "<the GalaxyResult envelope as JSON>" }] }
+}
+```
+
+The fixtures under `scenarios/submission-capture-*/cwd/submissions.jsonl` are
+the shapes galaxy-mcp 1.9.0 really returns, read out of its source. `result` is
+a pi tool result, so the envelope sits in a text content block the way
+pi-mcp-adapter's direct-tools path delivers it.
+
+The seam is off unless the variable is set, the file must resolve inside the
+session directory, and every replay writes a `submission.replay` activity row
+first -- a notebook produced this way carries provenance claiming
+`submitted_by: harness`, and that row is what keeps it distinguishable from one
+produced by real submissions.
+
 ## Out of scope (for now)
 
 LLM-judge plan-_quality_ scoring (the same scenarios with a rubric pass),

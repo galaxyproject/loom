@@ -1,0 +1,85 @@
+{
+  "name": "the harness records every Galaxy submission tool without being asked",
+  "description": "One recorded galaxy-mcp 1.9.0 result per submission tool, replayed through the tool_execution_end capture hook with no model in the loop. Each has to produce a block and a submission.registered row carrying the id read out of Galaxy's own response -- invoke_workflow an invocation id (the POST answers with the collection view, so there are no job ids to find), run_tool and run_user_tool a job id with its tool_version, and both uploads their upload job. The two uploads run with no step anchor set, so they also pin that unattributed work is recorded rather than dropped.",
+  "tier": 1,
+  "inputs": ["/status"],
+  "env": {
+    "ANTHROPIC_API_KEY": "fake-eval-key",
+    "LOOM_SUBMISSION_REPLAY": "submissions.jsonl",
+    "GALAXY_URL": "https://usegalaxy.org",
+    "GALAXY_API_KEY": "fake-eval-galaxy-key"
+  },
+  "timeoutMs": 15000,
+  "assertions": {
+    "events": {
+      "mustNotInclude": ["agent_start", "tool_execution_start", "turn_start"]
+    },
+    "activity": {
+      "mustNotIncludeKinds": ["submission.unparsed"],
+      "mustInclude": [
+        {
+          "kind": "submission.registered",
+          "source": "submission-capture",
+          "payloadContains": {
+            "tool": "galaxy_invoke_workflow",
+            "kind": "invocation",
+            "invocation_id": "ff1e2d3c4b5a6978",
+            "history_id": "0a248a1f62a0cc04",
+            "submitted_by": "replay",
+            "step_anchor": "plan-a-step-1"
+          }
+        },
+        {
+          "kind": "submission.registered",
+          "source": "submission-capture",
+          "payloadContains": {
+            "tool": "galaxy_run_tool",
+            "kind": "jobs",
+            "step_anchor": "plan-a-step-1"
+          }
+        },
+        {
+          "kind": "submission.registered",
+          "source": "submission-capture",
+          "payloadContains": {
+            "tool": "galaxy_run_user_tool",
+            "kind": "jobs"
+          }
+        },
+        {
+          "kind": "submission.registered",
+          "source": "submission-capture",
+          "payloadContains": {
+            "tool": "galaxy_upload_file_from_url",
+            "kind": "jobs",
+            "step_anchor": "unattributed"
+          }
+        },
+        {
+          "kind": "submission.registered",
+          "source": "submission-capture",
+          "payloadContains": {
+            "tool": "galaxy_upload_file",
+            "kind": "jobs",
+            "step_anchor": "unattributed"
+          }
+        }
+      ]
+    },
+    "notebook": {
+      "contains": [
+        "invocation_id: ff1e2d3c4b5a6978",
+        "job_id: 1a2b3c4d5e6f7a8b",
+        "job_id: udtjob0000000001",
+        "job_id: upjob00000000001",
+        "job_id: upjob00000000002",
+        "attempt_id: ",
+        "enrichment: pending",
+        "notebook_anchor: plan-a-step-1",
+        "notebook_anchor: unattributed",
+        "2.2.1+galaxy1"
+      ],
+      "mustNotContain": ["submitted_by:", "server_verified:"]
+    }
+  }
+}

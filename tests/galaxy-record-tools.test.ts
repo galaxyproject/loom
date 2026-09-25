@@ -11,9 +11,13 @@ import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from
 import { tmpdir } from "os";
 import { join } from "path";
 import { resetState, setNotebookPath } from "../extensions/loom/state";
-import { findInvocationBlocks, renderInvocationYaml } from "../extensions/loom/notebook-writer";
+import {
+  findInvocationBlocks,
+  renderInvocationYaml,
+  upsertInvocationBlock,
+} from "../extensions/loom/notebook-writer";
 import * as anchors from "../extensions/loom/notebook-anchors";
-import { findJobBlocks } from "../extensions/loom/galaxy-job-block";
+import { findJobBlocks, upsertJobBlock } from "../extensions/loom/galaxy-job-block";
 import { registerPlanTools } from "../extensions/loom/tools";
 
 interface ToolDef {
@@ -539,5 +543,240 @@ describe("record tools: compare-and-swap write", () => {
     const notebook = readFileSync(nbPath, "utf-8");
     expect(notebook).not.toContain(`invocation_id: ${INV_ID}`);
     expect(notebook).toContain("still moving");
+  });
+});
+
+describe("record tools: annotate what the harness already recorded", () => {
+  let dir: string;
+  let nbPath: string;
+  const origUrl = process.env.GALAXY_URL;
+  const origKey = process.env.GALAXY_API_KEY;
+
+  const HARNESS = {
+    attemptId: "01K5CJ6XWQ8QK4S2M7E9V0TZ3B",
+    historyId: "0a248a1f62a0cc04",
+    submittedBy: "harness" as const,
+    enrichment: "pending" as const,
+  };
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "loom-record-annotate-"));
+    nbPath = join(dir, "notebook.md");
+    writeFileSync(nbPath, NOTEBOOK, "utf-8");
+    setNotebookPath(nbPath);
+    process.env.GALAXY_URL = "https://usegalaxy.org";
+    process.env.GALAXY_API_KEY = "test-key";
+    stubGalaxy(200);
+  });
+
+  afterEach(() => {
+    resetState();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    if (origUrl !== undefined) process.env.GALAXY_URL = origUrl;
+    else delete process.env.GALAXY_URL;
+    if (origKey !== undefined) process.env.GALAXY_API_KEY = origKey;
+    else delete process.env.GALAXY_API_KEY;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** A block as the capture hook writes it: harness provenance, mid-flight. */
+  function harnessRecorded(): void {
+    const block = upsertInvocationBlock(
+      "",
+      {
+        invocationId: INV_ID,
+        galaxyServerUrl: "https://usegalaxy.org",
+        notebookAnchor: "unattributed",
+        label: "galaxy_invoke_workflow",
+        submittedAt: "2026-09-16T15:30:00Z",
+        status: "in_progress",
+        serverVerified: true,
+        totalSteps: 4,
+        completedSteps: 2,
+        totalJobs: 9,
+        completedJobs: 5,
+        failedJobs: 0,
+        lastPolledAt: "2026-09-16T15:34:00Z",
+      },
+      HARNESS,
+    );
+    appendFileSync(nbPath, "\n" + block, "utf-8");
+  }
+
+  it("sets only label and anchor on an invocation block that already exists", async () => {
+    harnessRecorded();
+    const { invocation } = recordTools();
+    const res = await run(invocation, {
+      invocationId: INV_ID,
+      notebookAnchor: "plan-a-step-2",
+      label: "BWA alignment",
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.annotated).toBe(true);
+    expect(String(res.message)).toContain("already recorded");
+
+    const blocks = findInvocationBlocks(readFileSync(nbPath, "utf-8"));
+    expect(blocks).toHaveLength(1);
+    const [block] = blocks;
+    expect(block.notebookAnchor).toBe("plan-a-step-2");
+    expect(block.label).toBe("BWA alignment");
+    // Everything the harness and the poller own is untouched. A fresh record
+    // object here would have reset a running invocation to zero progress.
+    expect(block.submittedAt).toBe("2026-09-16T15:30:00Z");
+    expect(block.completedSteps).toBe(2);
+    expect(block.completedJobs).toBe(5);
+    expect(block.lastPolledAt).toBe("2026-09-16T15:34:00Z");
+    expect(block.serverVerified).toBe(true);
+    expect(block.attemptId).toBe(HARNESS.attemptId);
+    expect(block.submittedBy).toBe("harness");
+  });
+
+  it("annotates a job block without overwriting its recorded tool id", async () => {
+    const block = upsertJobBlock(
+      "",
+      {
+        jobId: JOB_ID,
+        galaxyServerUrl: "https://usegalaxy.org",
+        notebookAnchor: "unattributed",
+        label: "galaxy_run_tool",
+        toolId: "bwa_mem",
+        submittedAt: "2026-09-16T15:30:00Z",
+        status: "in_progress",
+        serverVerified: true,
+      },
+      HARNESS,
+    );
+    appendFileSync(nbPath, "\n" + block, "utf-8");
+
+    const { job } = recordTools();
+    const res = await run(job, {
+      jobId: JOB_ID,
+      notebookAnchor: "plan-a-step-1",
+      label: "FastQC",
+      toolId: "not_the_recorded_tool",
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.annotated).toBe(true);
+    const [parsed] = findJobBlocks(readFileSync(nbPath, "utf-8"));
+    expect(parsed.notebookAnchor).toBe("plan-a-step-1");
+    expect(parsed.label).toBe("FastQC");
+    expect(parsed.toolId).toBe("bwa_mem");
+    expect(parsed.serverVerified).toBe(true);
+    expect(parsed.attemptId).toBe(HARNESS.attemptId);
+  });
+
+  it("creates the block when nothing carries the id, attributed to the agent", async () => {
+    const { invocation } = recordTools();
+    const res = await run(invocation, {
+      invocationId: INV_ID,
+      notebookAnchor: "plan-a-step-2",
+      label: "BWA alignment",
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.annotated).toBe(false);
+    const notebook = readFileSync(nbPath, "utf-8");
+    expect(notebook).toContain("submitted_by: agent");
+    const [block] = findInvocationBlocks(notebook);
+    expect(block.submittedBy).toBe("agent");
+    expect(block.serverVerified).toBe(true);
+    expect(block.attemptId).toBeUndefined();
+  });
+
+  it("creates a job block attributed to the agent too", async () => {
+    const { job } = recordTools();
+    const res = await run(job, {
+      jobId: JOB_ID,
+      notebookAnchor: "plan-a-step-1",
+      label: "FastQC",
+      toolId: "fastqc",
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.annotated).toBe(false);
+    const [parsed] = findJobBlocks(readFileSync(nbPath, "utf-8"));
+    expect(parsed.submittedBy).toBe("agent");
+    expect(parsed.toolId).toBe("fastqc");
+  });
+
+  it("does not turn an agent-created block into a harness one on re-annotate", async () => {
+    const { invocation } = recordTools();
+    await run(invocation, {
+      invocationId: INV_ID,
+      notebookAnchor: "plan-a-step-1",
+      label: "first pass",
+    });
+    const res = await run(invocation, {
+      invocationId: INV_ID,
+      notebookAnchor: "plan-a-step-2",
+      label: "second pass",
+    });
+
+    expect(res.annotated).toBe(true);
+    const [block] = findInvocationBlocks(readFileSync(nbPath, "utf-8"));
+    expect(block.notebookAnchor).toBe("plan-a-step-2");
+    expect(block.submittedBy).toBe("agent");
+  });
+
+  it("still refuses an anchor nothing resolves to, leaving the block bound as it was", async () => {
+    harnessRecorded();
+    const { invocation } = recordTools();
+    const res = await run(invocation, {
+      invocationId: INV_ID,
+      notebookAnchor: "plan-1-step-3",
+      label: "BWA alignment",
+    });
+
+    expect(res.success).toBe(false);
+    const [block] = findInvocationBlocks(readFileSync(nbPath, "utf-8"));
+    expect(block.notebookAnchor).toBe("unattributed");
+    expect(block.label).toBe("galaxy_invoke_workflow");
+  });
+
+  it("still refuses an id Galaxy denies, even with a block already carrying it", async () => {
+    harnessRecorded();
+    stubGalaxy(404);
+    const { invocation } = recordTools();
+    const res = await run(invocation, {
+      invocationId: INV_ID,
+      notebookAnchor: "plan-a-step-2",
+      label: "BWA alignment",
+    });
+
+    expect(res.success).toBe(false);
+    const [block] = findInvocationBlocks(readFileSync(nbPath, "utf-8"));
+    expect(block.notebookAnchor).toBe("unattributed");
+  });
+
+  it("leaves an unconfirmed block unconfirmed rather than certifying it itself", async () => {
+    // The poller owns the upgrade, because only it checks that the server that
+    // answered is the server the block names. A record call asks whatever
+    // server is configured now, which is not the same question.
+    const block = upsertInvocationBlock("", {
+      invocationId: INV_ID,
+      galaxyServerUrl: "https://other.galaxy.test",
+      notebookAnchor: "unattributed",
+      label: "galaxy_invoke_workflow",
+      submittedAt: "2026-09-16T15:30:00Z",
+      status: "in_progress",
+      serverVerified: false,
+    });
+    appendFileSync(nbPath, "\n" + block, "utf-8");
+
+    const { invocation } = recordTools();
+    const res = await run(invocation, {
+      invocationId: INV_ID,
+      notebookAnchor: "plan-a-step-2",
+      label: "BWA alignment",
+    });
+
+    expect(res.success).toBe(true);
+    const [parsed] = findInvocationBlocks(readFileSync(nbPath, "utf-8"));
+    expect(parsed.notebookAnchor).toBe("plan-a-step-2");
+    expect(parsed.serverVerified).toBe(false);
+    expect(parsed.galaxyServerUrl).toBe("https://other.galaxy.test");
   });
 });

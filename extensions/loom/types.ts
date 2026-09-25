@@ -15,6 +15,15 @@ export interface AnalystState {
   currentHistoryId: string | null;
   notebookPath: string | null;
   notebookLoaded: boolean;
+  /**
+   * The plan step the agent was told to work on, as a bare anchor
+   * (`plan-a-step-3`). Set by /execute from the plan it already parses and
+   * cleared when the run settles; read once at submission dispatch so a
+   * Galaxy run can be attributed to the step that asked for it. Null means
+   * the work is unattributed, which is a legitimate state -- ad-hoc runs
+   * outside a plan are most of what a session does.
+   */
+  currentStepAnchor: string | null;
 }
 
 /** Reference to a Galaxy dataset (used by invocation outputs and similar). */

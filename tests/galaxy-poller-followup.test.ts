@@ -17,6 +17,10 @@ import { findInvocationBlocks, renderInvocationYaml } from "../extensions/loom/n
 import { findJobBlocks, renderJobYaml } from "../extensions/loom/galaxy-job-block";
 import { galaxyGet, galaxyGetJobDetails } from "../extensions/loom/galaxy-api.js";
 import {
+  registerSubmissionCapture,
+  resetSubmissionCapture,
+} from "../extensions/loom/galaxy-submission-capture";
+import {
   pollGalaxyNow,
   startGalaxyPoller,
   stopGalaxyPoller,
@@ -102,6 +106,44 @@ describe("automatic Galaxy follow-up", () => {
     expect(notify.mock.calls.map(([text]) => text).join("\n")).not.toContain("ask me");
     await pollGalaxyNow();
     expect(resume).toHaveBeenCalledOnce();
+  });
+
+  it("does not wake the agent for uploads that had already finished when captured", async () => {
+    writeFileSync(notebook, "# Analysis\n");
+    resetSubmissionCapture();
+    const handlers: Record<string, ((event: any, ctx: any) => Promise<unknown>)[]> = {};
+    registerSubmissionCapture({
+      on: (event: string, h: (event: any, ctx: any) => Promise<unknown>) =>
+        (handlers[event] ??= []).push(h),
+    } as any);
+    for (const [i, file] of ["a.fastq", "b.fastq", "c.fastq", "d.fastq"].entries()) {
+      const toolCallId = `upload-${i}`;
+      const toolName = "galaxy_upload_local_file";
+      const args = { path: `/data/${file}` };
+      for (const h of handlers.tool_execution_start) await h({ toolCallId, toolName, args }, {});
+      for (const h of handlers.tool_execution_end) {
+        await h(
+          {
+            toolCallId,
+            toolName,
+            args,
+            isError: false,
+            result: {
+              content: [{ type: "text", text: "{}" }],
+              details: { historyId: "hist-1", state: "ok", jobs: [`upload-job-${i}`] },
+            },
+          },
+          {},
+        );
+      }
+    }
+    expect(findJobBlocks(readFileSync(notebook, "utf8"))).toHaveLength(4);
+
+    startGalaxyPoller(notify, resume);
+    await pollGalaxyNow();
+    expect(resume).not.toHaveBeenCalled();
+    expect(mockJob).not.toHaveBeenCalled();
+    resetSubmissionCapture();
   });
 
   it("investigates the first mid-flight failure once, then follows up on the terminal failure", async () => {

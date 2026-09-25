@@ -180,6 +180,14 @@ export function registerGalaxyUploadTool(pi: ExtensionAPI): void {
         return err(`Galaxy rejected the upload: ${e instanceof Error ? e.message : String(e)}`);
       }
 
+      // /tools/fetch answers with the upload job(s) as well as the dataset.
+      // Carry the ids into `details` so the submission-capture hook can record
+      // the upload the same way it records any other Galaxy job -- they were
+      // parsed here and then dropped on the floor before.
+      const uploadJobIds = (fetchResp.jobs ?? [])
+        .map((j) => j?.id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
+
       const output = fetchResp.outputs?.[0];
       let dataset: DatasetState | null = output
         ? { id: output.id, state: output.state ?? "queued", hid: output.hid, name: output.name }
@@ -233,7 +241,13 @@ export function registerGalaxyUploadTool(pi: ExtensionAPI): void {
                 ),
               },
             ],
-            details: { error: true, historyId, datasetId: dataset.id, state: dataset.state },
+            details: {
+              error: true,
+              historyId,
+              datasetId: dataset.id,
+              state: dataset.state,
+              jobs: uploadJobIds,
+            },
           };
         }
         return {
@@ -256,7 +270,7 @@ export function registerGalaxyUploadTool(pi: ExtensionAPI): void {
               ),
             },
           ],
-          details: { historyId, datasetId: dataset.id, state: dataset.state },
+          details: { historyId, datasetId: dataset.id, state: dataset.state, jobs: uploadJobIds },
         };
       }
 
@@ -269,7 +283,7 @@ export function registerGalaxyUploadTool(pi: ExtensionAPI): void {
               `The dataset is being ingested; call get_history_contents("${historyId}") for its id and state.`,
           },
         ],
-        details: { historyId, uploaded: true },
+        details: { historyId, uploaded: true, jobs: uploadJobIds },
       };
     },
     renderResult: (result) => {

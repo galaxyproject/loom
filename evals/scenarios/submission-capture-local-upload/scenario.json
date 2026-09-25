@@ -1,0 +1,37 @@
+{
+  "name": "Loom's own uploader registers its Galaxy job",
+  "description": "galaxy_upload_local_file is Loom-native, not an MCP passthrough: it parsed jobs[] off the /tools/fetch response and then dropped it, so a local upload was the one Galaxy job nothing tracked. Its ids ride in the tool's details rather than in a GalaxyResult envelope, so this pins the details-reading path as well as the registration.",
+  "tier": 1,
+  "inputs": ["/status"],
+  "env": {
+    "ANTHROPIC_API_KEY": "fake-eval-key",
+    "LOOM_SUBMISSION_REPLAY": "submissions.jsonl",
+    "GALAXY_URL": "https://usegalaxy.org",
+    "GALAXY_API_KEY": "fake-eval-galaxy-key"
+  },
+  "timeoutMs": 15000,
+  "assertions": {
+    "events": {
+      "mustNotInclude": ["agent_start", "tool_execution_start", "turn_start"]
+    },
+    "activity": {
+      "mustNotIncludeKinds": ["submission.unparsed"],
+      "mustInclude": [
+        {
+          "kind": "submission.registered",
+          "source": "submission-capture",
+          "payloadContains": {
+            "tool": "galaxy_upload_local_file",
+            "kind": "jobs",
+            "history_id": "0a248a1f62a0cc04",
+            "step_anchor": "plan-a-step-1"
+          }
+        }
+      ]
+    },
+    "notebook": {
+      "contains": ["job_id: upjob00000000002", "label: Upload sample.fastq.gz", "attempt_id: "],
+      "mustNotContain": ["submitted_by:", "server_verified:"]
+    }
+  }
+}

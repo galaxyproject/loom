@@ -56,6 +56,15 @@ describe("Galaxy MCP recovery", () => {
     }
   });
 
+  it("tells the model to record an accepted submission that capture never saw", () => {
+    // A timed-out submission is an error result, so the harness wrote no block
+    // and nothing is polling it; recording it is the only way it gets watched.
+    const text = JSON.stringify(harness().result("galaxy_run_tool", { tool_id: "fastp" }).content);
+    expect(text).toContain("may already have been accepted");
+    expect(text).toContain("galaxy_job_record");
+    expect(text).toContain("cannot capture");
+  });
+
   it("prevents identical timed-out reads and allows a narrower request", () => {
     const h = harness();
     h.result("galaxy_get_histories", { limit: 100, offset: 0 });
