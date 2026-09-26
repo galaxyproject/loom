@@ -341,13 +341,14 @@ const MCP_REFERENCE_WHEN_TO_USE =
 /**
  * Offline / first-run fallback. Used only when a repo has no resolved-catalog
  * cache yet and the tree-walk can't run. Mirrors whatever is tagged on
- * galaxy-skills `main` at ship time (collection-manipulation, galaxy-integration,
- * udt-authoring, workflow-reports). Keep these in sync with the upstream frontmatter.
+ * galaxy-skills `main` at ship time (collection-manipulation, galaxy-mcp-reference,
+ * udt-authoring, workflow-reports). Keep these in sync with the upstream frontmatter --
+ * both the prose and the paths, which are under `skills/` since the plugin restructure.
  */
 export const BUILTIN_CATALOG: Record<string, SkillEntry[]> = {
   "galaxy-skills": [
     {
-      path: "collection-manipulation/SKILL.md",
+      path: "skills/collection-manipulation/SKILL.md",
       name: "galaxy-transform-collection",
       description:
         "Galaxy Collection Transformation Command - transform Galaxy dataset collections " +
@@ -356,15 +357,19 @@ export const BUILTIN_CATALOG: Record<string, SkillEntry[]> = {
       surfaces: ["loom"],
     },
     {
-      path: "galaxy-integration/mcp-reference/SKILL.md",
+      path: "skills/galaxy-mcp-reference/SKILL.md",
       name: "galaxy-mcp-reference",
       description:
-        "Galaxy MCP server tools reference for histories, datasets, tools, and workflows",
+        "Use when driving a Galaxy server through its MCP tools -- connecting to an " +
+        "instance, listing or creating histories, uploading data, finding and running " +
+        "tools, invoking workflows, inspecting datasets and jobs. Read before the first " +
+        "Galaxy MCP call in a session; covers which tool to reach for and the common " +
+        "traps (id vs name, history vs dataset ids, collection shapes).",
       when_to_use: MCP_REFERENCE_WHEN_TO_USE,
       surfaces: ["loom"],
     },
     {
-      path: "udt-authoring/SKILL.md",
+      path: "skills/udt-authoring/SKILL.md",
       name: "udt-authoring",
       description:
         "Use when authoring a Galaxy User-Defined Tool (UDT) -- a `class: GalaxyUserTool` " +
@@ -374,7 +379,7 @@ export const BUILTIN_CATALOG: Record<string, SkillEntry[]> = {
       surfaces: ["loom"],
     },
     {
-      path: "workflow-reports/SKILL.md",
+      path: "skills/workflow-reports/SKILL.md",
       name: "workflow-reports",
       description:
         "Use this skill when asked to create, draft, or write a Galaxy workflow report " +

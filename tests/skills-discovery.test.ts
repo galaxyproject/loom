@@ -369,11 +369,14 @@ describe("BUILTIN_CATALOG", () => {
   it("ships the curated galaxy-skills set, all loom-tagged", () => {
     const entries = BUILTIN_CATALOG["galaxy-skills"];
     expect(entries.map((e) => e.path)).toEqual([
-      "collection-manipulation/SKILL.md",
-      "galaxy-integration/mcp-reference/SKILL.md",
-      "udt-authoring/SKILL.md",
-      "workflow-reports/SKILL.md",
+      "skills/collection-manipulation/SKILL.md",
+      "skills/galaxy-mcp-reference/SKILL.md",
+      "skills/udt-authoring/SKILL.md",
+      "skills/workflow-reports/SKILL.md",
     ]);
+    // Every shipped skill lives under skills/ -- dev-skills/ is not plugin content
+    // and must never appear in the catalog.
+    for (const e of entries) expect(e.path.startsWith("skills/")).toBe(true);
     for (const e of entries) expect(e.surfaces).toContain("loom");
   });
 });

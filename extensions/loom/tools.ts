@@ -375,8 +375,8 @@ exact file when it becomes relevant.`,
       ),
       path: Type.String({
         description:
-          "Relative path inside the repo, e.g. 'collection-manipulation/SKILL.md', " +
-          "'galaxy-integration/mcp-reference/gotchas.md'.",
+          "Relative path inside the repo, e.g. 'skills/collection-manipulation/SKILL.md', " +
+          "'skills/galaxy-mcp-reference/gotchas.md'.",
       }),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
