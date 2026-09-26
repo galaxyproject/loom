@@ -35,6 +35,10 @@ records, including exact IDs, without a shell.
 A partial preview is not proof that omitted records are absent. Never repeat
 a submission merely because its response was truncated. Continue the user's
 authorized work without asking them to inspect temporary files.
+An oversized user-defined tool list is summarized automatically with names,
+versions, IDs and containers. Search this saved catalog with mcp_read_output
+query or page it with nextOffset; inspect only a selected definitionPointer.
+The compact catalog is a successful read, not a timeout or model context failure.
 
 For installed-tool discovery, prefer galaxy_search_tools_by_name: it matches
 names, IDs and descriptions. Avoid search_tools_by_keywords: its implementation
