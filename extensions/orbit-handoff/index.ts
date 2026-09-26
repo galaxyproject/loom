@@ -11,6 +11,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { findOrbit, launchOrbit } from "./orbit-launcher";
+import { isDesktopShell } from "../../shared/orbit-env.js";
 
 const RELEASE_URL = "https://github.com/galaxyproject/loom/releases";
 
@@ -20,7 +21,7 @@ export async function handleOrbitHandoff(
 ): Promise<void> {
   // Already inside Orbit: there's nothing to hand off to, and shutting down
   // here would just tear the embedded session down. No-op with a note.
-  if (process.env.LOOM_SHELL_KIND === "orbit") {
+  if (isDesktopShell()) {
     ctx.ui.notify("You're already in Orbit -- nothing to hand off to.", "info");
     return;
   }

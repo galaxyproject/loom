@@ -6,8 +6,9 @@ import * as path from "path";
 import {
   capContent,
   discoverInstructionFiles,
-  INSTRUCTIONS_FILENAME,
+  INIT_INSTRUCTIONS_FILENAME,
   MAX_BYTES,
+  takeShadowNotices,
   MAX_FILES,
   MAX_LINES,
   type FsLike,
@@ -27,7 +28,7 @@ afterEach(() => {
 function seed(rel: string, content?: string): string {
   const dir = path.join(root, rel);
   fs.mkdirSync(dir, { recursive: true });
-  if (content !== undefined) fs.writeFileSync(path.join(dir, INSTRUCTIONS_FILENAME), content);
+  if (content !== undefined) fs.writeFileSync(path.join(dir, INIT_INSTRUCTIONS_FILENAME), content);
   return dir;
 }
 
@@ -177,7 +178,7 @@ describe("discoverInstructionFiles", () => {
 
   it("skips a directory that happens to be named LOOM.md", () => {
     const cwd = seed("work");
-    fs.mkdirSync(path.join(cwd, INSTRUCTIONS_FILENAME));
+    fs.mkdirSync(path.join(cwd, INIT_INSTRUCTIONS_FILENAME));
 
     expect(discoverInstructionFiles({ cwd, agentDir: seed("agent") })).toEqual([]);
   });
@@ -268,5 +269,104 @@ describe("discoverInstructionFiles", () => {
     expect(
       discoverInstructionFiles({ cwd: seed("work"), agentDir: seed("agent"), fsLike }),
     ).toEqual([]);
+  });
+});
+
+describe("ORBIT.md alongside the legacy LOOM.md", () => {
+  function write(dir: string, name: string, content: string): string {
+    const p = path.join(dir, name);
+    fs.writeFileSync(p, content);
+    return p;
+  }
+
+  it("reads a workspace ORBIT.md on its own", () => {
+    const cwd = seed("work");
+    const orbit = write(cwd, "ORBIT.md", "Use HISAT2.");
+
+    const found = discoverInstructionFiles({ cwd, agentDir: seed("agent") });
+
+    expect(found).toHaveLength(1);
+    expect(found[0].path).toBe(orbit);
+    expect(found[0].shadowed).toBeUndefined();
+  });
+
+  it("still reads a LOOM.md on its own", () => {
+    const cwd = seed("work", "Use HISAT2.");
+
+    const found = discoverInstructionFiles({ cwd, agentDir: seed("agent") });
+
+    expect(found).toHaveLength(1);
+    expect(path.basename(found[0].path)).toBe("LOOM.md");
+  });
+
+  it("prefers ORBIT.md when both exist and records the ignored LOOM.md", () => {
+    const cwd = seed("work", "Use bowtie.");
+    const orbit = write(cwd, "ORBIT.md", "Use HISAT2.");
+
+    const found = discoverInstructionFiles({ cwd, agentDir: seed("agent") });
+
+    expect(found).toHaveLength(1);
+    expect(found[0].path).toBe(orbit);
+    expect(found[0].content).toBe("Use HISAT2.");
+    expect(found[0].shadowed).toBe(path.join(cwd, "LOOM.md"));
+  });
+
+  it("applies the same preference to the global file", () => {
+    const agentDir = seed("agent", "old global");
+    write(agentDir, "ORBIT.md", "new global");
+
+    const found = discoverInstructionFiles({ cwd: seed("work"), agentDir });
+
+    expect(found).toHaveLength(1);
+    expect(found[0].scope).toBe("global");
+    expect(found[0].content).toBe("new global");
+  });
+
+  it("falls back to LOOM.md when ORBIT.md is empty", () => {
+    const cwd = seed("work", "Use HISAT2.");
+    write(cwd, "ORBIT.md", "   \n");
+
+    const found = discoverInstructionFiles({ cwd, agentDir: seed("agent") });
+
+    expect(found).toHaveLength(1);
+    expect(path.basename(found[0].path)).toBe("LOOM.md");
+  });
+
+  it("does not call a symlink between the two names a conflict", () => {
+    const cwd = seed("work", "Use HISAT2.");
+    fs.symlinkSync(path.join(cwd, "LOOM.md"), path.join(cwd, "ORBIT.md"));
+
+    const found = discoverInstructionFiles({ cwd, agentDir: seed("agent") });
+
+    expect(found).toHaveLength(1);
+    expect(found[0].shadowed).toBeUndefined();
+  });
+
+  it("never renames or removes the user's LOOM.md", () => {
+    const cwd = seed("work", "Use bowtie.");
+    write(cwd, "ORBIT.md", "Use HISAT2.");
+
+    discoverInstructionFiles({ cwd, agentDir: seed("agent") });
+
+    expect(fs.readFileSync(path.join(cwd, "LOOM.md"), "utf-8")).toBe("Use bowtie.");
+  });
+
+  it("announces each ignored file only once", () => {
+    const cwd = seed("work", "Use bowtie.");
+    write(cwd, "ORBIT.md", "Use HISAT2.");
+    const announced = new Set<string>();
+
+    const first = takeShadowNotices(
+      discoverInstructionFiles({ cwd, agentDir: seed("agent") }),
+      announced,
+    );
+    const second = takeShadowNotices(
+      discoverInstructionFiles({ cwd, agentDir: seed("agent") }),
+      announced,
+    );
+
+    expect(first).toHaveLength(1);
+    expect(first[0]).toContain(path.join(cwd, "LOOM.md"));
+    expect(second).toEqual([]);
   });
 });

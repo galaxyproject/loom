@@ -36,7 +36,7 @@ import {
   modelsProbeRequest,
 } from "./endpoint-probe.js";
 import { discoverProviderModels } from "./model-discovery.js";
-import { checkLatestVersion } from "./version-check.js";
+import { checkLatestVersion, checkRepoMoved } from "./version-check.js";
 import { resolveReleasePageUrl } from "./release-page.js";
 import { postFeedback } from "./feedback.js";
 import type { FeedbackPayload } from "../../../shared/feedback-contract.js";
@@ -51,6 +51,11 @@ import {
   signOutOAuth,
 } from "./oauth-handler.js";
 import { isLocalShellAvailable } from "./local-shell.js";
+import { readEnv } from "../../../shared/orbit-env.js";
+import { resolveStateDir } from "../../../shared/state-dir.js";
+
+/** Where "report an issue" files go. One place to flip when the repo is renamed. */
+const ISSUE_REPO = "galaxyproject/loom";
 
 /**
  * Sentinel the renderer sends back in a secret field when the user did NOT
@@ -506,7 +511,7 @@ export function registerIpcHandlers(agent: AgentManager): void {
         url?: string;
         branch?: string;
       }>;
-      const base = path.join(os.homedir(), ".loom", "cache", "skills");
+      const base = path.join(resolveStateDir(), "cache", "skills");
       for (const r of repos) {
         // Skills code only ever uses filesystem-safe names; validate here too
         // since this builds a path and deletes files (defense in depth).
@@ -741,6 +746,12 @@ export function registerIpcHandlers(agent: AgentManager): void {
     return await checkLatestVersion();
   });
 
+  // "Loom is now Orbit" safety net for installs whose auto-update may not
+  // follow the GitHub repo rename. Same on-disk cache/throttle as version:check.
+  ipc.handle("version:repo-moved", async () => {
+    return await checkRepoMoved();
+  });
+
   // Running app version + packaged flag for the what's-new banner. Unlike
   // version:check this never hits the network and ignores updateCheck -- the
   // what's-new surface is local and must work even with update checks off.
@@ -796,7 +807,7 @@ export function registerIpcHandlers(agent: AgentManager): void {
     const title = typeof payload?.title === "string" ? payload.title : "";
     const body = typeof payload?.body === "string" ? payload.body : "";
     const params = new URLSearchParams({ title, body });
-    const url = `https://github.com/galaxyproject/loom/issues/new?${params.toString()}`;
+    const url = `https://github.com/${ISSUE_REPO}/issues/new?${params.toString()}`;
     await shell.openExternal(url);
     return { opened: true };
   });
@@ -808,7 +819,7 @@ export function registerIpcHandlers(agent: AgentManager): void {
   ipc.handle("feedback:submit", async (_e, payload: FeedbackPayload) => {
     // Stamp the opaque tester code from config in main (authoritative; the
     // renderer never sets it). Non-secret; lets the team attribute the report.
-    const testerId = loadConfig().testerId || process.env.LOOM_TESTER_ID;
+    const testerId = loadConfig().testerId || readEnv("TESTER_ID");
     return await postFeedback(testerId ? { ...payload, testerId } : payload);
   });
 

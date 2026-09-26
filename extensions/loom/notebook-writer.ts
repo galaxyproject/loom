@@ -10,6 +10,11 @@
 import { randomBytes } from "crypto";
 import * as fs from "fs/promises";
 import * as path from "path";
+import {
+  isNotebookFenceOpen,
+  notebookFenceOpen,
+  replaceNotebookBlocks,
+} from "../../shared/notebook-fences.js";
 
 /**
  * Generate slug from title for default filename.
@@ -126,7 +131,27 @@ export async function writeNotebook(
       throw new NotebookChangedError(filePath);
     }
   }
-  await fs.rename(tmp, filePath);
+  await renameReplacing(tmp, filePath);
+}
+
+// Windows refuses to replace a file another rename (or a scanner) is touching
+// at that instant, with EPERM/EACCES/EBUSY, where POSIX would just swap it in.
+// Retrying briefly gives the same last-writer-wins outcome POSIX gets.
+async function renameReplacing(from: string, to: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await fs.rename(from, to);
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      const transient = code === "EPERM" || code === "EACCES" || code === "EBUSY";
+      if (process.platform !== "win32" || !transient || attempt >= 10) {
+        await fs.rm(from, { force: true });
+        throw err;
+      }
+      await new Promise((r) => setTimeout(r, 10 * (attempt + 1)));
+    }
+  }
 }
 
 /**
@@ -281,7 +306,7 @@ export interface InvocationYaml {
   lastPolledAt?: string;
 }
 
-const INVOCATION_FENCE_OPEN = "```loom-invocation";
+const INVOCATION_FENCE_OPEN = notebookFenceOpen("invocation");
 const INVOCATION_FENCE_CLOSE = "```";
 
 /**
@@ -319,7 +344,7 @@ export function findInvocationBlocks(content: string): InvocationYaml[] {
   const lines = content.split("\n");
   let i = 0;
   while (i < lines.length) {
-    if (lines[i].trim() === INVOCATION_FENCE_OPEN) {
+    if (isNotebookFenceOpen(lines[i], "invocation")) {
       const start = i + 1;
       let end = start;
       while (end < lines.length && lines[end].trim() !== INVOCATION_FENCE_CLOSE) {
@@ -343,16 +368,11 @@ export function findInvocationBlocks(content: string): InvocationYaml[] {
  * end of the file with a leading blank line for readability.
  */
 export function upsertInvocationBlock(content: string, inv: InvocationYaml): string {
-  const blocks = findInvocationBlockRanges(content);
-  const lines = content.split("\n");
+  const matching = findInvocationBlockRanges(content).filter(
+    (b) => b.invocationId === inv.invocationId,
+  );
   const newBlock = renderInvocationYaml(inv).trimEnd().split("\n");
-
-  const existing = blocks.find((b) => b.invocationId === inv.invocationId);
-  if (existing) {
-    const before = lines.slice(0, existing.start);
-    const after = lines.slice(existing.end + 1);
-    return [...before, ...newBlock, ...after].join("\n");
-  }
+  if (matching.length > 0) return replaceNotebookBlocks(content, matching, newBlock);
 
   // Append at end with separator
   const trimmed = content.replace(/\s+$/, "");
@@ -492,7 +512,7 @@ function findInvocationBlockRanges(content: string): InvocationBlockRange[] {
   const lines = content.split("\n");
   let i = 0;
   while (i < lines.length) {
-    if (lines[i].trim() === INVOCATION_FENCE_OPEN) {
+    if (isNotebookFenceOpen(lines[i], "invocation")) {
       const start = i;
       let end = start + 1;
       let invocationId: string | null = null;
@@ -584,7 +604,7 @@ export interface SessionSummaryYaml {
   orphanedActiveSteps: number;
 }
 
-const SESSION_FENCE_OPEN = "```loom-session";
+const SESSION_FENCE_OPEN = notebookFenceOpen("session");
 const SESSION_FENCE_CLOSE = "```";
 
 export function renderSessionSummaryYaml(s: SessionSummaryYaml): string {
@@ -637,19 +657,7 @@ export function upsertSessionSummaryBlock(content: string, s: SessionSummaryYaml
   }
   const merged = matching.reduce((acc, r) => mergeSessionSummary(acc, r.summary), s);
   const newBlock = renderSessionSummaryYaml(merged).trimEnd().split("\n");
-  const drop = new Set<number>();
-  for (const r of matching) {
-    for (let li = r.start; li <= r.end; li++) drop.add(li);
-  }
-  const insertAt = matching[0].start;
-  const lines = content.split("\n");
-  const rebuilt: string[] = [];
-  for (let li = 0; li < lines.length; li++) {
-    if (li === insertAt) rebuilt.push(...newBlock);
-    if (drop.has(li)) continue;
-    rebuilt.push(lines[li]);
-  }
-  return rebuilt.join("\n");
+  return replaceNotebookBlocks(content, matching, newBlock);
 }
 
 /**
@@ -695,7 +703,7 @@ function findSessionSummaryBlockRanges(content: string): SessionSummaryBlockRang
   const lines = content.split("\n");
   let i = 0;
   while (i < lines.length) {
-    if (lines[i].trim() === SESSION_FENCE_OPEN) {
+    if (isNotebookFenceOpen(lines[i], "session")) {
       const start = i;
       let end = start + 1;
       while (end < lines.length && lines[end].trim() !== SESSION_FENCE_CLOSE) {
@@ -721,7 +729,7 @@ export function findSessionSummaryBlocks(content: string): SessionSummaryYaml[] 
   const lines = content.split("\n");
   let i = 0;
   while (i < lines.length) {
-    if (lines[i].trim() === SESSION_FENCE_OPEN) {
+    if (isNotebookFenceOpen(lines[i], "session")) {
       const start = i + 1;
       let end = start;
       while (end < lines.length && lines[end].trim() !== SESSION_FENCE_CLOSE) {

@@ -1,4 +1,5 @@
 import { loadConfig } from "../config";
+import { readEnv } from "../../../shared/orbit-env.js";
 
 /**
  * Whether the experimental team_dispatch tool is opted in.
@@ -14,7 +15,7 @@ import { loadConfig } from "../config";
  * each call hits loadConfig() / disk.
  */
 export function isTeamDispatchEnabled(): boolean {
-  const env = process.env.LOOM_TEAM_DISPATCH;
+  const env = readEnv("TEAM_DISPATCH");
   if (env === "1") return true;
   if (env === "0") return false;
   return loadConfig().experiments?.teamDispatch === true;

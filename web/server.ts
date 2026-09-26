@@ -22,12 +22,20 @@ import { summarizeStartupFailure, appendStderr } from "../shared/brain-exit.js";
 import { encodeEventPayload } from "./event-payload.js";
 import { evaluateBind, authorizeWsUpgrade } from "./auth.js";
 import { isForwardableUiResponse } from "./rpc-guard.js";
-import { isCustomProvider } from "../shared/custom-provider.js";
-import { hasProviderKey, llmKeyEnvVar } from "./llm-credentials.js";
+import { ACTIVE_LLM_API_KEY_ENV, isCustomProvider } from "../shared/custom-provider.js";
+import { hasProviderKey, llmKeyEnvVar } from "./llm-key-routing.js";
 import { resolveShutdownGraceMs } from "./shutdown-grace.js";
 import { DASHBOARD_FILENAME, DASHBOARD_MAX_BYTES } from "../shared/dashboard-contract.js";
 import { casWriteLayoutFile, readLayoutFile } from "../shared/dashboard-layout-store.js";
 import { listFilesForWeb, readFileForWeb, readNotebookForWeb } from "./files-surface.js";
+import {
+  DESKTOP_SHELL_KIND,
+  envNames,
+  mirrorToLegacyEnv,
+  readEnv,
+  writeEnv,
+} from "../shared/orbit-env.js";
+import { resolveConfigPath, resolveDefaultAnalysesDir } from "../shared/state-dir.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // In dev this file runs from web/; the container bundles it to web/build/ and
@@ -37,18 +45,23 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // the brain, the lockdown gate, and the static bundle all silently go missing.
 const WEB_ROOT = basename(__dirname) === "build" ? resolve(__dirname, "..") : __dirname;
 const LOOM_BIN = resolve(WEB_ROOT, "../bin/loom.js");
-const LOOM_CONFIG_DIR = join(homedir(), ".loom");
-const LOOM_CONFIG_PATH = join(LOOM_CONFIG_DIR, "config.json");
-const DEFAULT_CWD = join(LOOM_CONFIG_DIR, "analyses");
+
+// A container may be handed only ORBIT_ACTIVE_LLM_API_KEY; the BYO-key check
+// and pi both look up the LOOM_ name, so give it one before anything reads it.
+mirrorToLegacyEnv(process.env, "ACTIVE_LLM_API_KEY");
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 // Bind loopback by default; the WS is an authenticated-agent surface, so an
 // exposed bind requires a token (clients pass ?token=) or an explicit opt-out.
-const HOST = process.env.LOOM_WEB_HOST ?? "127.0.0.1";
-const WEB_TOKEN = process.env.LOOM_WEB_TOKEN;
-const ALLOW_INSECURE = process.env.LOOM_WEB_ALLOW_INSECURE === "1";
+const HOST = readEnv("WEB_HOST") ?? "127.0.0.1";
+const WEB_TOKEN = readEnv("WEB_TOKEN");
+const ALLOW_INSECURE = readEnv("WEB_ALLOW_INSECURE") === "1";
 
-const IS_REMOTE_MODE = process.env.LOOM_MODE === "remote";
+// Fail closed on a conflict: the image pins remote, and an inherited twin
+// saying anything else must not reopen the local surfaces.
+const IS_REMOTE_MODE = envNames("MODE").some(
+  (n) => process.env[n]?.trim().toLowerCase() === "remote",
+);
 const REMOTE_SESSION_CWD = "/tmp/loom-session";
 
 function log(...args: unknown[]): void {
@@ -58,9 +71,10 @@ function log(...args: unknown[]): void {
 // ── Config helpers ───────────────────────────────────────────────────────────
 
 function loadConfig(): Record<string, unknown> {
-  if (existsSync(LOOM_CONFIG_PATH)) {
+  const configPath = resolveConfigPath();
+  if (existsSync(configPath)) {
     try {
-      const cfg = JSON.parse(readFileSync(LOOM_CONFIG_PATH, "utf-8"));
+      const cfg = JSON.parse(readFileSync(configPath, "utf-8"));
       return { ...cfg, _mode: "desktop" };
     } catch {
       /* */
@@ -70,8 +84,9 @@ function loadConfig(): Record<string, unknown> {
 }
 
 function saveConfig(config: Record<string, unknown>): void {
-  mkdirSync(LOOM_CONFIG_DIR, { recursive: true });
-  writeFileSync(LOOM_CONFIG_PATH, JSON.stringify(config, null, 2) + "\n");
+  const configPath = resolveConfigPath();
+  mkdirSync(dirname(configPath), { recursive: true });
+  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
 }
 
 function synthesizedRemoteConfig(): Record<string, unknown> {
@@ -97,7 +112,7 @@ function synthesizedRemoteConfig(): Record<string, unknown> {
       active: provider,
       providers: {
         [provider]: {
-          model: process.env.LOOM_LLM_MODEL ?? null,
+          model: readEnv("LLM_MODEL") ?? null,
           hasApiKey: llmKeyPresent(),
         },
       },
@@ -111,7 +126,7 @@ function getCwd(): string {
     return REMOTE_SESSION_CWD;
   }
   const cfg = loadConfig();
-  let cwd = (cfg.defaultCwd as string) || DEFAULT_CWD;
+  let cwd = (cfg.defaultCwd as string) || resolveDefaultAnalysesDir();
   if (cwd.startsWith("~")) cwd = join(homedir(), cwd.slice(1));
   mkdirSync(cwd, { recursive: true });
   return cwd;
@@ -130,7 +145,8 @@ let providedProvider: string | null = null;
 
 function activeProvider(): string {
   if (providedProvider) return providedProvider;
-  if (process.env.LOOM_LLM_PROVIDER) return process.env.LOOM_LLM_PROVIDER;
+  const envProvider = readEnv("LLM_PROVIDER");
+  if (envProvider) return envProvider;
   // Fall back to the container's own config.json, which is what the brain reads.
   // A custom-endpoint image (gxit/README.md) names its provider only there, so
   // defaulting straight to "anthropic" made the server disagree with the brain
@@ -164,7 +180,7 @@ function llmKeyPresent(): boolean {
   });
 }
 
-function startLoom(): void {
+function startLoom(opts: { fresh?: boolean } = {}): void {
   if (loomProcess) stopLoom();
 
   const args: string[] = [LOOM_BIN, "--mode", "rpc"];
@@ -180,17 +196,19 @@ function startLoom(): void {
   // an Orbit shell: skips the CLI-style whats-new/cli-update notices and the
   // detached update-check ping at startup (a network call a restricted-network
   // container shouldn't make).
-  env.LOOM_SHELL_KIND = "orbit";
+  writeEnv(env, "SHELL_KIND", DESKTOP_SHELL_KIND);
+  if (opts.fresh) writeEnv(env, "FRESH_SESSION", "1");
 
   if (IS_REMOTE_MODE) {
     const gatePath = resolve(WEB_ROOT, "extensions/web-mode-gate.ts");
     args.push("--extension", gatePath);
     const prov = activeProvider();
-    if (providedProvider || process.env.LOOM_LLM_PROVIDER) {
+    if (providedProvider || readEnv("LLM_PROVIDER")) {
       args.push("--provider", prov);
     }
-    if (process.env.LOOM_LLM_MODEL) {
-      args.push("--model", process.env.LOOM_LLM_MODEL);
+    const envModel = readEnv("LLM_MODEL");
+    if (envModel) {
+      args.push("--model", envModel);
     }
     // BYO-key: inject the user-supplied key into the brain's env (env var name
     // per the active provider; custom endpoints go to LOOM_ACTIVE_LLM_API_KEY).
@@ -199,24 +217,26 @@ function startLoom(): void {
     // drops the credential if that ever stops being true.
     if (providedLlmKey) {
       const keyVar = llmKeyEnvVar(prov, { isCustom: isCustomProviderName(prov) });
-      if (keyVar) env[keyVar] = providedLlmKey;
+      // Both spellings, so a stale ambient ORBIT_ twin can't outrank the user's key.
+      if (keyVar === ACTIVE_LLM_API_KEY_ENV) writeEnv(env, "ACTIVE_LLM_API_KEY", providedLlmKey);
+      else if (keyVar) env[keyVar] = providedLlmKey;
       else log("refusing to inject a key for unroutable provider:", prov);
     }
-    env.LOOM_NOTEBOOK_ALLOWLIST = join(cwd, "notebook.md");
+    writeEnv(env, "NOTEBOOK_ALLOWLIST", join(cwd, "notebook.md"));
     // No local execution surface in the container: the web-mode-gate is the
     // sole tool_call authority, so tell the brain to skip its local-exec guard
     // (whose headless approval prompts would otherwise hang). See
     // extensions/loom/index.ts.
-    env.LOOM_LOCAL_EXEC = "off";
+    writeEnv(env, "LOCAL_EXEC", "off");
     // Deterministic notebook -> Galaxy Page persistence: resume on launch,
     // debounce-push on change, flush on shutdown. Brain-side, env-gated.
-    env.LOOM_GALAXY_PAGE_SYNC = "auto";
+    writeEnv(env, "GALAXY_PAGE_SYNC", "auto");
   } else {
     // The local dev server DOES have a local execution surface, so pin the
     // guard on authoritatively (same as agent.ts and bin/loom.js) -- the
     // helper forwards LOOM_* wholesale, so an ambient LOOM_LOCAL_EXEC=off
     // left in the dev's shell would otherwise silently disable exec-guard.
-    env.LOOM_LOCAL_EXEC = "on";
+    writeEnv(env, "LOCAL_EXEC", "on");
   }
 
   log("starting loom subprocess", { bin: LOOM_BIN, cwd, remote: IS_REMOTE_MODE });
@@ -625,15 +645,8 @@ wss.on("connection", (socket) => {
     }
     if (channel === "agent:reset-session") {
       void serializeSwap(async () => {
-        await respawnBrain(() => {
-          // Fresh start — tell loom not to auto-load notebook. Set around the
-          // synchronous spawn only: startLoom reads process.env at spawn time.
-          const origEnv = process.env.LOOM_FRESH_SESSION;
-          process.env.LOOM_FRESH_SESSION = "1";
-          startLoom();
-          if (origEnv === undefined) delete process.env.LOOM_FRESH_SESSION;
-          else process.env.LOOM_FRESH_SESSION = origEnv;
-        });
+        // Fresh start -- tell loom not to auto-load notebook.
+        await respawnBrain(() => startLoom({ fresh: true }));
         respond(id, null);
       });
       return;

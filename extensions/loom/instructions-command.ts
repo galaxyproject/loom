@@ -1,8 +1,8 @@
 /**
- * /instructions -- show which LOOM.md files this session actually loaded.
+ * /instructions -- show which ORBIT.md / LOOM.md files this session actually loaded.
  *
  * Without this, "why isn't it listening to me" is undebuggable: the ancestor
- * walk means a LOOM.md three directories up can be steering the session with
+ * walk means an instructions file three directories up can be steering the session with
  * nothing on screen to say so.
  */
 
@@ -12,7 +12,8 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { piAgentDir } from "./agent-dir.js";
 import {
   discoverInstructionFiles,
-  INSTRUCTIONS_FILENAME,
+  INIT_INSTRUCTIONS_FILENAME,
+  INSTRUCTIONS_FILENAMES,
   type InstructionFile,
 } from "./user-instructions.js";
 
@@ -44,8 +45,8 @@ export function formatInstructionsListing(files: InstructionFile[]): string {
     return [
       "No standing instructions loaded.",
       "",
-      `Create one with  /instructions init          -> ${path.join(piAgentDir(), INSTRUCTIONS_FILENAME)}`,
-      `or               /instructions init project  -> ${INSTRUCTIONS_FILENAME} in this directory`,
+      `Create one with  /instructions init          -> ${path.join(piAgentDir(), INIT_INSTRUCTIONS_FILENAME)}`,
+      `or               /instructions init project  -> ${INIT_INSTRUCTIONS_FILENAME} in this directory`,
     ].join("\n");
   }
 
@@ -63,6 +64,7 @@ export function formatInstructionsListing(files: InstructionFile[]): string {
       `${label(file.scope)}  ${file.path}  (${count} line${count === 1 ? "" : "s"}${suffix})`,
     );
     for (const line of file.content.split("\n")) lines.push(`  ${line}`);
+    if (file.shadowed) lines.push(`  (ignoring ${file.shadowed} -- remove one of the two)`);
     lines.push("");
   }
 
@@ -74,6 +76,16 @@ export function formatInstructionsListing(files: InstructionFile[]): string {
   }
 
   return lines.join("\n").trimEnd();
+}
+
+/** Where `init` should point in `dir`: any instructions file already there,
+ *  so init never plants a second file beside one the user already has. */
+export function initTargetIn(dir: string): string {
+  for (const name of INSTRUCTIONS_FILENAMES) {
+    const candidate = path.join(dir, name);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return path.join(dir, INIT_INSTRUCTIONS_FILENAME);
 }
 
 /** Create an EMPTY file if it isn't there. Returns what happened so the caller
@@ -91,7 +103,7 @@ export function ensureInstructionsFile(filePath: string): { created: boolean; er
 
 export function registerInstructionsCommand(pi: ExtensionAPI): void {
   pi.registerCommand("instructions", {
-    description: "Show the LOOM.md standing instructions loaded this session (init to create one).",
+    description: `Show the ${INIT_INSTRUCTIONS_FILENAME} standing instructions loaded this session (init to create one).`,
     handler: async (args: string | undefined, ctx: ExtensionContext) => {
       const argv = (args ?? "").trim().split(/\s+/).filter(Boolean);
 
@@ -103,17 +115,14 @@ export function registerInstructionsCommand(pi: ExtensionAPI): void {
       if (argv[0] !== "init") {
         ctx.ui.notify(
           "Usage: /instructions                   show what's loaded\n" +
-            "       /instructions init            create your global LOOM.md\n" +
-            "       /instructions init project    create LOOM.md in this directory",
+            `       /instructions init            create your global ${INIT_INSTRUCTIONS_FILENAME}\n` +
+            `       /instructions init project    create ${INIT_INSTRUCTIONS_FILENAME} in this directory`,
           "warning",
         );
         return;
       }
 
-      const target =
-        argv[1] === "project"
-          ? path.join(process.cwd(), INSTRUCTIONS_FILENAME)
-          : path.join(piAgentDir(), INSTRUCTIONS_FILENAME);
+      const target = initTargetIn(argv[1] === "project" ? process.cwd() : piAgentDir());
 
       const result = ensureInstructionsFile(target);
       if (result.error) {

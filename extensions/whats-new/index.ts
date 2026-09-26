@@ -10,7 +10,6 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import os from "node:os";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 // bin/ and shared/ are siblings of extensions/.
@@ -22,11 +21,13 @@ import {
   formatHighlightsText,
   releaseUrlFor,
 } from "../../shared/whats-new.js";
+import { isDesktopShell } from "../../shared/orbit-env.js";
+import { resolveStateDir } from "../../shared/state-dir.js";
 
 // This file lives at <pkg>/extensions/whats-new/index.ts, so the package root is two up.
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const CHANGELOG_PATH = path.join(PKG_ROOT, "CHANGELOG.md");
-const SEEN_FILE = path.join(os.homedir(), ".loom", "whats-new-seen.json");
+const seenFile = () => path.join(resolveStateDir(), "whats-new-seen.json");
 
 function loadEntries() {
   try {
@@ -38,7 +39,7 @@ function loadEntries() {
 
 function readSeen(): string | undefined {
   try {
-    const parsed = JSON.parse(fs.readFileSync(SEEN_FILE, "utf-8"));
+    const parsed = JSON.parse(fs.readFileSync(seenFile(), "utf-8"));
     return typeof parsed?.version === "string" ? parsed.version : undefined;
   } catch {
     return undefined;
@@ -47,8 +48,9 @@ function readSeen(): string | undefined {
 
 function writeSeen(version: string): void {
   try {
-    fs.mkdirSync(path.dirname(SEEN_FILE), { recursive: true });
-    fs.writeFileSync(SEEN_FILE, JSON.stringify({ version }));
+    const file = seenFile();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ version }));
   } catch {}
 }
 
@@ -58,7 +60,7 @@ export default function whatsNewExtension(pi: ExtensionAPI): void {
     if (shown) return;
     shown = true;
     // Orbit owns its own what's-new banner for the embedded brain.
-    if (process.env.LOOM_SHELL_KIND === "orbit") return;
+    if (isDesktopShell()) return;
     try {
       const running = getLoomVersion();
       const decision = decideWhatsNew(loadEntries(), readSeen(), running, "latest");

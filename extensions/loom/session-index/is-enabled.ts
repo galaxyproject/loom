@@ -1,4 +1,5 @@
 import { loadConfig } from "../config";
+import { readEnv } from "../../../shared/orbit-env.js";
 
 /**
  * Whether the experimental session-index tools are opted in.
@@ -9,7 +10,7 @@ import { loadConfig } from "../config";
  *   3. Default: off.
  */
 export function isSessionIndexEnabled(): boolean {
-  const env = process.env.LOOM_SESSION_INDEX;
+  const env = readEnv("SESSION_INDEX");
   if (env === "1") return true;
   if (env === "0") return false;
   return loadConfig().experiments?.sessionIndex === true;

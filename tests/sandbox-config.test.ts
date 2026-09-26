@@ -31,19 +31,26 @@ describe("hostFromUrl", () => {
 describe("buildSandboxConfig", () => {
   const base = { cwd: "/home/alice/project", tmpDir: "/tmp" };
 
-  it("allows writing the workspace, tmp, and .loom", () => {
+  it("allows writing the workspace, tmp, and both state-dir spellings", () => {
     const fs = buildSandboxConfig(base).filesystem!;
     expect(fs.allowWrite).toContain("/home/alice/project");
     expect(fs.allowWrite).toContain("/tmp");
     // buildSandboxConfig derives this entry with path.join, so match the same way
     // (avoids a POSIX-vs-Windows separator mismatch in CI).
     expect(fs.allowWrite).toContain(path.join("/home/alice/project", ".loom"));
+    expect(fs.allowWrite).toContain(path.join("/home/alice/project", ".orbit"));
   });
 
   it("denies reading the credential set", () => {
     const fs = buildSandboxConfig(base).filesystem!;
     expect(fs.denyRead).toEqual(
-      expect.arrayContaining(["~/.ssh", "~/.aws", "~/.loom/config.json", "~/Library/Keychains"]),
+      expect.arrayContaining([
+        "~/.ssh",
+        "~/.aws",
+        "~/.loom/config.json",
+        "~/.orbit/config.json",
+        "~/Library/Keychains",
+      ]),
     );
   });
 

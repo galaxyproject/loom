@@ -24,7 +24,7 @@ COPY web ./web
 # web/build/, keeping `../shared/brain-env.js` in the output -- which resolves to
 # web/shared/ at runtime, not the /app/shared this image ships, so the server
 # died on module load. Bundling inlines every relative import (shared/, auth,
-# rpc-guard, llm-credentials) and leaves bare package imports external for the
+# rpc-guard, llm-key-routing) and leaves bare package imports external for the
 # runner's npm ci to supply. Typechecking stays in CI, which has the app deps
 # this stage doesn't install.
 RUN cd web && npm run build && npm run build:server
@@ -34,6 +34,7 @@ FROM node:22-slim AS runner
 
 ENV NODE_ENV=production
 ENV LOOM_MODE=remote
+ENV ORBIT_MODE=remote
 ENV PORT=3000
 # Reachable via the published port. The server refuses to start on this bind
 # without LOOM_WEB_TOKEN (or LOOM_WEB_ALLOW_INSECURE=1 behind a trusted proxy),

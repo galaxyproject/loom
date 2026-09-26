@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   validateFeedbackPayload,
+  CLI_FEEDBACK_SOURCE,
   SCHEMA_VERSION,
   FEEDBACK_ROUTE,
   FEEDBACK_KEY_HEADER,
@@ -29,6 +30,15 @@ describe("feedback contract", () => {
 
   it("rejects missing title", () => {
     expect(validateFeedbackPayload({ ...valid, title: "" })).toBe(false);
+  });
+
+  it("still has the CLI send loom-cli until the worker accepts orbit-cli", () => {
+    expect(CLI_FEEDBACK_SOURCE).toBe("loom-cli");
+  });
+
+  it("accepts both CLI source spellings", () => {
+    expect(validateFeedbackPayload({ ...valid, source: "loom-cli" })).toBe(true);
+    expect(validateFeedbackPayload({ ...valid, source: "orbit-cli" })).toBe(true);
   });
 
   it("rejects an unknown source", () => {

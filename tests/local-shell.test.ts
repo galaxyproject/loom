@@ -19,7 +19,7 @@ describe("noLocalShellSpawnExtras", () => {
   it("removes bash + flags the brain on win32", () => {
     expect(noLocalShellSpawnExtras("win32")).toEqual({
       args: ["--exclude-tools", "bash"],
-      env: { LOOM_LOCAL_SHELL: "off" },
+      env: { LOOM_LOCAL_SHELL: "off", ORBIT_LOCAL_SHELL: "off" },
     });
   });
 

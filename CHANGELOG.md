@@ -4,6 +4,12 @@ Notable, user-facing changes to Loom and Orbit. Each release lists a short set o
 highlights; the full commit-level notes live on the GitHub release pages. Add a
 new `## [<version>] - <date>` block with a `### Highlights` list at release time.
 
+## [Unreleased]
+
+### Highlights
+
+- Loom is being renamed Orbit in the next release: the CLI, the desktop app, and the GitHub repo will all be called Orbit. Once that happens, this version will tell you where to get the new one
+
 ## [0.7.0] - 2026-09-17
 
 ### Highlights

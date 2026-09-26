@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import os from "node:os";
+import { resolveConfigPath, resolveStateDir } from "./state-dir.js";
 
 export const DEFAULT_SKILLS = [
   {
@@ -42,11 +42,11 @@ export function isAllowedSkillUrl(url) {
 }
 
 export function getConfigDir() {
-  return path.join(os.homedir(), ".loom");
+  return resolveStateDir();
 }
 
 export function getConfigPath() {
-  return path.join(getConfigDir(), "config.json");
+  return resolveConfigPath();
 }
 
 export function loadConfig() {
@@ -129,9 +129,8 @@ export function loadConfig() {
 }
 
 export function saveConfig(config) {
-  const dir = getConfigDir();
-  fs.mkdirSync(dir, { recursive: true });
   const dest = getConfigPath();
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
   // Atomic write: never leave a half-written ~/.loom/config.json behind.
   // A power-loss / process-kill mid-write would otherwise truncate the
   // config and lose the user's API keys + skills + profiles. The .tmp

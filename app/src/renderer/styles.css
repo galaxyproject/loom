@@ -228,7 +228,8 @@ a:visited {
   width: 100%;
 }
 
-#update-banner {
+#update-banner,
+#moved-banner {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -243,30 +244,35 @@ a:visited {
 }
 /* Copy-the-link fallback, revealed only when the browser couldn't be opened
    (WSLg / no default browser). Wraps onto its own row under the banner text. */
-#update-banner .update-banner-fallback {
+#update-banner .update-banner-fallback,
+#moved-banner .update-banner-fallback {
   flex: 1 1 100%;
   display: flex;
   align-items: center;
   gap: 8px;
   color: var(--text-dim);
 }
-#update-banner .update-banner-fallback-url {
+#update-banner .update-banner-fallback-url,
+#moved-banner .update-banner-fallback-url {
   font-family: var(--font-mono, monospace);
   color: var(--accent);
   user-select: all;
   word-break: break-all;
 }
-#update-banner.hidden {
+#update-banner.hidden,
+#moved-banner.hidden {
   display: none;
 }
-#update-banner .update-banner-text {
+#update-banner .update-banner-text,
+#moved-banner .update-banner-text {
   flex: 1;
 }
 #update-banner-version {
   font-weight: 600;
   color: var(--accent);
 }
-#update-banner .update-banner-link {
+#update-banner .update-banner-link,
+#moved-banner .update-banner-link {
   background: none;
   border: 1px solid var(--accent);
   color: var(--accent);
@@ -275,11 +281,13 @@ a:visited {
   cursor: pointer;
   font: inherit;
 }
-#update-banner .update-banner-link:hover {
+#update-banner .update-banner-link:hover,
+#moved-banner .update-banner-link:hover {
   background: var(--accent);
   color: var(--bg-deep);
 }
-#update-banner .update-banner-dismiss {
+#update-banner .update-banner-dismiss,
+#moved-banner .update-banner-dismiss {
   background: none;
   border: none;
   color: var(--text-dim);
@@ -288,7 +296,8 @@ a:visited {
   line-height: 1;
   padding: 0 4px;
 }
-#update-banner .update-banner-dismiss:hover {
+#update-banner .update-banner-dismiss:hover,
+#moved-banner .update-banner-dismiss:hover {
   color: var(--text-bright);
 }
 
@@ -338,17 +347,21 @@ a:visited {
    reaches under the lights. The buttons/links stay no-drag (mirrors the
    .pane-title rule). */
 body.platform-darwin #update-banner,
+body.platform-darwin #moved-banner,
 body.platform-darwin #bypass-banner,
 body.platform-darwin #sandbox-banner,
 body.platform-darwin #whatsnew-banner {
   -webkit-app-region: drag;
 }
 body.platform-darwin #update-banner,
+body.platform-darwin #moved-banner,
 body.platform-darwin #whatsnew-banner {
   padding-left: 78px;
 }
 body.platform-darwin #update-banner button,
 body.platform-darwin #update-banner a,
+body.platform-darwin #moved-banner button,
+body.platform-darwin #moved-banner a,
 body.platform-darwin #bypass-banner button,
 body.platform-darwin #bypass-banner a,
 body.platform-darwin #sandbox-banner button,
@@ -3401,6 +3414,7 @@ body.remote-mode #prefs-section-analysis {
    adds. The shim no-ops these anyway, but they have no business being shown. */
 body.remote-mode #welcome-overlay,
 body.remote-mode #update-banner,
+body.remote-mode #moved-banner,
 body.remote-mode #report-issue-btn,
 body.remote-mode #exec-mode-toggle,
 body.remote-mode #cwd-bar,

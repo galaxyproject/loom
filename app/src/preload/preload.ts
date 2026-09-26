@@ -198,6 +198,11 @@ export interface OrbitAPI {
     hasUpdate: boolean;
     releaseUrl: string;
   } | null>;
+  checkRepoMoved(): Promise<{
+    fullName: string;
+    latest: string | null;
+    releaseUrl: string;
+  } | null>;
   getVersion(): Promise<{ version: string; isPackaged: boolean }>;
   openReleasePage(url?: string): Promise<{ opened: boolean; url: string }>;
   openGalaxyHistory(url: string): Promise<{ opened: boolean }>;
@@ -313,6 +318,7 @@ const api: OrbitAPI = {
 
   listAllModels: () => ipcRenderer.invoke("models:list-all"),
   checkVersion: () => ipcRenderer.invoke("version:check"),
+  checkRepoMoved: () => ipcRenderer.invoke("version:repo-moved"),
   getVersion: () => ipcRenderer.invoke("version:current"),
   openReleasePage: (url) => ipcRenderer.invoke("version:open-release", url),
   openGalaxyHistory: (url) => ipcRenderer.invoke("galaxy:open-history", url),

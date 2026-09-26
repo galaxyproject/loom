@@ -1,4 +1,6 @@
+import * as path from "path";
 import { classifyBash } from "./bash-risk";
+import { expandHome } from "./path-jail";
 import {
   isSensitivePath,
   isCredentialStore,
@@ -231,9 +233,16 @@ export function decide(req: PolicyRequest, deps: PolicyDeps): PolicyResult {
     // operation, and .loom/ is Loom's own state -- these always prompt, regardless
     // of being in the workspace. The lone carve-out is the $HOME/.loom/analyses
     // tree (Orbit's default cwd), where the analysis's own files are work product;
-    // a .git/.loom nested inside an analysis still gates. See isProtectedWritePath.
+    // a .git/.loom/.orbit nested inside an analysis still gates. See
+    // isProtectedWritePath.
+    //
+    // The path as written is checked as well as the realpath: a state dir that
+    // is itself a symlink (onto a bigger disk, say) realpaths to somewhere with
+    // no state segment, and since it is also a jail root the write would
+    // otherwise pass silently.
     for (const t of targets) {
-      if (isProtectedWritePath(t.resolved, deps.home)) {
+      const lexical = path.resolve(req.cwd, expandHome(t.raw, deps.home));
+      if (isProtectedWritePath(t.resolved, deps.home) || isProtectedWritePath(lexical, deps.home)) {
         return finalizeAsk(req, "write:protected", `write to protected path ${t.raw}`);
       }
     }

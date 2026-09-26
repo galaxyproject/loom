@@ -38,6 +38,12 @@
  * case rather than the norm. v2 will revisit once we have real usage data.
  */
 
+import {
+  isNotebookFenceOpen,
+  notebookFenceOpen,
+  replaceNotebookBlocks,
+} from "../../shared/notebook-fences.js";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Type
 // ─────────────────────────────────────────────────────────────────────────────
@@ -51,7 +57,7 @@ export interface GalaxyPageBindingYaml {
   boundAt: string;
 }
 
-const BINDING_FENCE_OPEN = "```loom-galaxy-page";
+const BINDING_FENCE_OPEN = notebookFenceOpen("galaxy-page");
 const BINDING_FENCE_CLOSE = "```";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -90,7 +96,7 @@ export function findGalaxyPageBlocks(content: string): GalaxyPageBindingYaml[] {
   const lines = content.split("\n");
   let i = 0;
   while (i < lines.length) {
-    if (lines[i].trim() === BINDING_FENCE_OPEN) {
+    if (isNotebookFenceOpen(lines[i], "galaxy-page")) {
       const start = i + 1;
       let end = start;
       while (end < lines.length && lines[end].trim() !== BINDING_FENCE_CLOSE) {
@@ -116,16 +122,9 @@ export function findGalaxyPageBlocks(content: string): GalaxyPageBindingYaml[] {
  * of the file with a leading blank line.
  */
 export function upsertGalaxyPageBlock(content: string, binding: GalaxyPageBindingYaml): string {
-  const ranges = findGalaxyPageBlockRanges(content);
-  const lines = content.split("\n");
+  const matching = findGalaxyPageBlockRanges(content).filter((r) => r.pageId === binding.pageId);
   const newBlock = renderGalaxyPageBlock(binding).trimEnd().split("\n");
-
-  const existing = ranges.find((r) => r.pageId === binding.pageId);
-  if (existing) {
-    const before = lines.slice(0, existing.start);
-    const after = lines.slice(existing.end + 1);
-    return [...before, ...newBlock, ...after].join("\n");
-  }
+  if (matching.length > 0) return replaceNotebookBlocks(content, matching, newBlock);
 
   const trimmed = content.replace(/\s+$/, "");
   const sep = trimmed.length > 0 ? "\n\n" : "";
@@ -169,7 +168,7 @@ function findGalaxyPageBlockRanges(content: string): GalaxyPageBlockRange[] {
   const lines = content.split("\n");
   let i = 0;
   while (i < lines.length) {
-    if (lines[i].trim() === BINDING_FENCE_OPEN) {
+    if (isNotebookFenceOpen(lines[i], "galaxy-page")) {
       const start = i;
       let end = start + 1;
       let pageId: string | null = null;

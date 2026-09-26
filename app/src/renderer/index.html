@@ -58,6 +58,26 @@
           ×
         </button>
       </div>
+      <!-- "Orbit has moved" banner. Shown only once GitHub reports that the
+           galaxyproject/loom repo has been renamed, as a safety net for
+           installs whose auto-update doesn't follow the rename. Desktop only. -->
+      <div id="moved-banner" class="hidden" role="status" aria-live="polite">
+        <span class="update-banner-text"
+          >Orbit has moved -- download the latest version to keep getting updates.</span
+        >
+        <button id="moved-banner-link" class="update-banner-link" type="button">
+          Download Orbit
+        </button>
+        <button
+          id="moved-banner-dismiss"
+          class="update-banner-dismiss"
+          type="button"
+          title="Dismiss"
+          aria-label="Dismiss Orbit has moved notice"
+        >
+          ×
+        </button>
+      </div>
       <!-- What's-new banner. Shown on the first launch of a version newer than
            the one last seen; clicking opens the highlights modal. Packaged
            builds only; reads the bundled CHANGELOG (offline). -->

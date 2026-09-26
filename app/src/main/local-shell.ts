@@ -7,6 +7,8 @@
 // real bash backend. No electron imports here, so it unit-tests from the root
 // Vitest suite (same pattern as auto-update-policy.ts).
 
+import { writeEnv } from "../../../shared/orbit-env.js";
+
 export function isLocalShellAvailable(
   platform: NodeJS.Platform | string = process.platform,
 ): boolean {
@@ -27,5 +29,7 @@ export function noLocalShellSpawnExtras(platform: NodeJS.Platform | string = pro
   env: Record<string, string>;
 } {
   if (isLocalShellAvailable(platform)) return { args: [], env: {} };
-  return { args: ["--exclude-tools", "bash"], env: { LOOM_LOCAL_SHELL: "off" } };
+  const env: Record<string, string> = {};
+  writeEnv(env, "LOCAL_SHELL", "off");
+  return { args: ["--exclude-tools", "bash"], env };
 }

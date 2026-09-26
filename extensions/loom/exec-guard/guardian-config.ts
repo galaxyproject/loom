@@ -1,5 +1,6 @@
 import { loadConfig, saveConfig } from "../../../shared/loom-config.js";
 import type { GuardianConfig } from "./types";
+import { readEnv } from "../../../shared/orbit-env.js";
 
 export function loadGuardianConfig(): GuardianConfig {
   const g = loadConfig().guardian ?? {};
@@ -19,8 +20,8 @@ export function loadGuardianConfig(): GuardianConfig {
  * writing ~/.loom/config.json gated and editing guardian.* catastrophic).
  */
 export function resolveBypass(cfg: GuardianConfig): boolean {
-  if (process.env.LOOM_SAFE === "1") return false;
-  if (process.env.LOOM_DANGEROUSLY_BYPASS_PERMISSIONS === "1") return true;
+  if (readEnv("SAFE") === "1") return false;
+  if (readEnv("DANGEROUSLY_BYPASS_PERMISSIONS") === "1") return true;
   return cfg.dangerouslyBypassPermissions === true;
 }
 
@@ -30,7 +31,7 @@ export function resolveBypass(cfg: GuardianConfig): boolean {
  * default. On via LOOM_SANDBOX=1 or guardian.sandbox. Default off.
  */
 export function resolveSandbox(cfg: GuardianConfig): boolean {
-  if (process.env.LOOM_SANDBOX === "1") return true;
+  if (readEnv("SANDBOX") === "1") return true;
   return cfg.sandbox === true;
 }
 

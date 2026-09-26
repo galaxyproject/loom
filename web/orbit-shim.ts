@@ -253,6 +253,7 @@ async function fetchMode(): Promise<"remote" | "desktop"> {
   saveDashboard: (raw: string, baseRevision?: string | null) =>
     invoke("dashboard:save", raw, baseRevision),
   checkVersion: () => Promise.resolve(null),
+  checkRepoMoved: () => Promise.resolve(null),
   openReleasePage: () => Promise.resolve({ opened: false }),
   restartToUpdate: () => Promise.resolve({ restarting: false }),
   platform: "web",

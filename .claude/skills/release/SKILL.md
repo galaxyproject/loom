@@ -88,7 +88,9 @@ node scripts/check-version-lockstep.mjs     # abort if mismatch
 ```
 
 Prepend a new block to `CHANGELOG.md`, immediately above the most recent `## [` entry
-(today = `date +%F`):
+(today = `date +%F`). If an `## [Unreleased]` block is there, turn it into this block and keep
+its bullets alongside the approved ones -- the what's-new parser ignores `Unreleased`, so leaving
+it in place silently drops those bullets from the release:
 
 ```markdown
 ## [0.4.0] - 2026-06-06

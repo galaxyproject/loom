@@ -13,6 +13,7 @@
 import { parseInvocationBlocks } from "../galaxy-invocations.js";
 import type { FileNode } from "../../preload/preload.js";
 import type { GalaxyLivePayload } from "../../../../shared/galaxy-live-contract.js";
+import { isNotebookFenceOpen } from "../../../../shared/notebook-fences.js";
 import type {
   ActivityEvent,
   DashboardJob,
@@ -250,7 +251,6 @@ export function parsePlanSections(markdown: string): PlanSection[] {
 
 // ── loom-job parsing ─────────────────────────────────────────────────────────
 
-const JOB_FENCE_OPEN = "```loom-job";
 const FENCE_CLOSE = "```";
 const JOB_STATUSES = new Set(["in_progress", "completed", "failed", "cancelled", "skipped"]);
 
@@ -271,14 +271,15 @@ function unquote(value: string): string {
  * updates them (extensions/loom/galaxy-job-block.ts); this reads them, the same
  * way galaxy-invocations.ts reads `loom-invocation` blocks rather than importing
  * the brain's writer. Two readers of one on-disk format is a real cost -- if a
- * third appears, move the grammar into shared/.
+ * third appears, move the rest of the grammar into shared/ next to the fence
+ * names.
  */
 export function parseJobBlocks(content: string): DashboardJob[] {
   const out: DashboardJob[] = [];
   const lines = content.split(/\r?\n/);
   let i = 0;
   while (i < lines.length) {
-    if (lines[i].trim() !== JOB_FENCE_OPEN) {
+    if (!isNotebookFenceOpen(lines[i], "job")) {
       i++;
       continue;
     }

@@ -1,5 +1,5 @@
 /**
- * User standing instructions -- the LOOM.md a researcher writes once so they
+ * User standing instructions -- the ORBIT.md (or legacy LOOM.md) a researcher writes once so they
  * stop re-explaining their preferences every session.
  *
  * pi ships its own AGENTS.md/CLAUDE.md discovery, but Loom's
@@ -18,7 +18,13 @@ import * as fs from "fs";
 import * as path from "path";
 import { piAgentDir } from "./agent-dir.js";
 
-export const INSTRUCTIONS_FILENAME = "LOOM.md";
+/** Looked up in this order in each directory; the first one with content wins.
+ *  LOOM.md stays readable indefinitely so existing users never have to rename. */
+export const INSTRUCTIONS_FILENAMES = ["ORBIT.md", "LOOM.md"] as const;
+
+/** What `/instructions init` creates. Still the legacy name until the release
+ *  that renames the product, so an older build reading this dir finds it. */
+export const INIT_INSTRUCTIONS_FILENAME = "LOOM.md";
 
 /** The whole cached system prefix is ~8K tokens; an unbounded user file could
  *  quietly double it on every turn, so both caps are deliberately tight. */
@@ -42,6 +48,9 @@ export interface InstructionFile {
   truncated: boolean;
   /** Set when the file exists but could not be read. */
   error?: string;
+  /** A lower-priority file in the same directory that was ignored because this
+   *  one won, e.g. a LOOM.md sitting next to an ORBIT.md. */
+  shadowed?: string;
 }
 
 /** The slice of node:fs this module needs, so tests can inject failures that
@@ -169,9 +178,50 @@ function readCandidate(
   return { scope, path: filePath, content: text, truncated };
 }
 
+function isFileAt(filePath: string, fsLike: FsLike): boolean {
+  try {
+    return fsLike.statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function sameFile(a: string, b: string, fsLike: FsLike): boolean {
+  try {
+    return fsLike.realpathSync(a) === fsLike.realpathSync(b);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Pick one instructions file per directory. An empty ORBIT.md falls through to
+ * LOOM.md rather than silently discarding the user's real preferences.
+ */
+function readDirCandidate(
+  dir: string,
+  scope: InstructionScope,
+  fsLike: FsLike,
+): InstructionFile | null {
+  for (let i = 0; i < INSTRUCTIONS_FILENAMES.length; i++) {
+    const file = readCandidate(path.join(dir, INSTRUCTIONS_FILENAMES[i]), scope, fsLike);
+    if (!file) continue;
+    for (const name of INSTRUCTIONS_FILENAMES.slice(i + 1)) {
+      const other = path.join(dir, name);
+      // A symlink between the two names is one file, not a conflict.
+      if (isFileAt(other, fsLike) && !sameFile(file.path, other, fsLike)) {
+        file.shadowed = other;
+        break;
+      }
+    }
+    return file;
+  }
+  return null;
+}
+
 /**
  * Global file first, then the cwd's ancestor chain outermost-first so the
- * nearest LOOM.md lands last. Deduped by realpath so a session whose cwd IS the
+ * nearest instructions file lands last. Deduped by realpath so a session whose cwd IS the
  * agent dir doesn't list the same file under both scopes.
  */
 export function discoverInstructionFiles(opts: DiscoveryOptions = {}): InstructionFile[] {
@@ -181,8 +231,8 @@ export function discoverInstructionFiles(opts: DiscoveryOptions = {}): Instructi
 
   const seen = new Set<string>();
 
-  const consider = (into: InstructionFile[], filePath: string, scope: InstructionScope): void => {
-    const file = readCandidate(filePath, scope, fsLike);
+  const consider = (into: InstructionFile[], dir: string, scope: InstructionScope): void => {
+    const file = readDirCandidate(dir, scope, fsLike);
     if (!file) return;
     let key = file.path;
     try {
@@ -196,7 +246,7 @@ export function discoverInstructionFiles(opts: DiscoveryOptions = {}): Instructi
   };
 
   const global: InstructionFile[] = [];
-  consider(global, path.join(agentDir, INSTRUCTIONS_FILENAME), "global");
+  consider(global, agentDir, "global");
 
   // Walk NEAREST first so the cap sheds distant ancestors rather than the
   // project's own file, then reverse so the rendered order stays
@@ -206,7 +256,7 @@ export function discoverInstructionFiles(opts: DiscoveryOptions = {}): Instructi
   let dir = cwd;
   for (;;) {
     if (workspace.length >= budget) break;
-    consider(workspace, path.join(dir, INSTRUCTIONS_FILENAME), "workspace");
+    consider(workspace, dir, "workspace");
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
@@ -214,6 +264,27 @@ export function discoverInstructionFiles(opts: DiscoveryOptions = {}): Instructi
   workspace.reverse();
 
   return [...global, ...workspace];
+}
+
+const announcedShadows = new Set<string>();
+
+/**
+ * One line per ignored legacy file, each reported only once per process --
+ * the discovery reruns every turn and repeating the notice would be noise.
+ */
+export function takeShadowNotices(
+  files: InstructionFile[],
+  announced: Set<string> = announcedShadows,
+): string[] {
+  const notices: string[] = [];
+  for (const file of files) {
+    if (!file.shadowed || announced.has(file.shadowed)) continue;
+    announced.add(file.shadowed);
+    notices.push(
+      `Using ${file.path}; ${file.shadowed} in the same directory is ignored while both exist.`,
+    );
+  }
+  return notices;
 }
 
 /**
@@ -272,7 +343,7 @@ ${rendered.join("\n")}`;
  * WORKSPACE files only, rendered for a transient context message rather than
  * the system prompt.
  *
- * A workspace LOOM.md travels with the directory -- cloned repo, shared drive,
+ * A workspace instructions file travels with the directory -- cloned repo, shared drive,
  * downloaded folder -- so it may not have been written by the user at all.
  * Putting it in the system prompt, last, would hand possibly-hostile prose the
  * highest-attention slot and full system authority, which no amount of wrapper

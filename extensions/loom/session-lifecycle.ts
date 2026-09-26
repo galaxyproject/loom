@@ -25,6 +25,7 @@ import { isUvxAvailable, uvxMissingNotice } from "../../shared/uvx-runner.js";
 import { maybeNudgeGalaxyReconnect } from "./galaxy-cred-drift.js";
 import * as fs from "fs";
 import * as path from "path";
+import { isDesktopShell, readEnv } from "../../shared/orbit-env.js";
 
 // Tracked across the session so the shutdown handler can write a complete
 // `loom-session` block. ctx is per-event; we can't read it on shutdown
@@ -109,7 +110,7 @@ export function registerSessionLifecycle(pi: ExtensionAPI): void {
       startedAt: new Date().toISOString(),
     };
 
-    const freshSession = process.env.LOOM_FRESH_SESSION === "1";
+    const freshSession = readEnv("FRESH_SESSION") === "1";
     const isResume = process.argv.includes("--continue");
 
     // Galaxy credential drift: on a resume the startup greeting -- the only
@@ -314,7 +315,7 @@ export function sendStartupGreeting(
     }
   }
 
-  const isOrbit = process.env.LOOM_SHELL_KIND === "orbit";
+  const isOrbit = isDesktopShell();
   const action = planStartupGreeting(activeGalaxyStatus(), isOrbit);
   if (action.kind === "model") {
     pi.sendUserMessage(action.message);

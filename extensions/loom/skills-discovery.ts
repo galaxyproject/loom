@@ -1,9 +1,9 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { listEnabledSkillRepos, type ConfiguredSkillRepo } from "./skills";
+import { resolveStateDir } from "../../shared/state-dir.js";
 export type { ConfiguredSkillRepo };
 
 /** The product-surface id Loom claims. A skill opts in with `surfaces: [loom]`. */
@@ -106,10 +106,10 @@ export function githubRawBase(repoUrl: string, branch: string): string | null {
   return `https://raw.githubusercontent.com/${slug.owner}/${slug.repo}/${cleanBranch}`;
 }
 
-/** The on-disk cache dir for a repo: ~/.loom/cache/skills/<name>@<hash>/ */
+/** The on-disk cache dir for a repo: <state dir>/cache/skills/<name>@<hash>/ */
 export function skillsCacheDir(repo: ConfiguredSkillRepo): string {
   const tag = createSkillsCacheTag(repo.url, repo.branch);
-  return path.join(os.homedir(), ".loom", "cache", "skills", `${repo.name}@${tag}`);
+  return path.join(resolveStateDir(), "cache", "skills", `${repo.name}@${tag}`);
 }
 
 export type FetchSkillResult =

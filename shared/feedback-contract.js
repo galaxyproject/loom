@@ -12,7 +12,13 @@ export const FEEDBACK_KEY_HEADER = "X-Orbit-Feedback-Key";
 // var for local dev.
 export const FEEDBACK_ENDPOINT_URL = "https://orbit-feedback.dannon-baker.workers.dev";
 
-const SOURCES = new Set(["orbit", "loom-cli"]);
+// What the terminal client stamps on its rows. Stays "loom-cli" until the
+// deployed worker (which validates against its own copy of SOURCES) accepts
+// "orbit-cli" -- otherwise every CLI report would be rejected.
+export const CLI_FEEDBACK_SOURCE = "loom-cli";
+
+// "orbit-cli" is accepted ahead of time so a mixed-version fleet validates.
+const SOURCES = new Set(["orbit", "loom-cli", "orbit-cli"]);
 
 export function validateFeedbackPayload(obj) {
   if (typeof obj !== "object" || obj === null) return false;

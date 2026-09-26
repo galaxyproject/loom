@@ -4,6 +4,8 @@ import path from "node:path";
 import os from "node:os";
 import { isNewer } from "../../../shared/version-compare.js";
 import { loadConfig } from "../../../shared/loom-config.js";
+import { readEnv } from "../../../shared/orbit-env.js";
+import { detectRepoMoved, forcedRepoMoved, type RepoMovedInfo } from "./repo-moved.js";
 
 const RELEASES_API = "https://api.github.com/repos/galaxyproject/loom/releases/latest";
 const RELEASES_PAGE = "https://github.com/galaxyproject/loom/releases/latest";
@@ -46,11 +48,27 @@ function readCache(): CacheShape | null {
   }
 }
 
-function writeCacheEntry(entry: CacheShape): void {
+function readRawCache(): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(fs.readFileSync(CACHE_FILE, "utf-8"));
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeRawCache(raw: Record<string, unknown>): void {
   try {
     fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
-    fs.writeFileSync(CACHE_FILE, JSON.stringify(entry));
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(raw));
   } catch {}
+}
+
+// The repo-moved check shares this file under its own key, so each writer
+// preserves the other's entry.
+function writeCacheEntry(entry: CacheShape): void {
+  const { repoMoved } = readRawCache();
+  writeRawCache(repoMoved === undefined ? { ...entry } : { ...entry, repoMoved });
 }
 
 async function fetchLatestFromGitHub(): Promise<{ latest: string; releaseUrl: string } | null> {
@@ -103,4 +121,60 @@ export async function checkLatestVersion(): Promise<VersionCheckResult | null> {
     hasUpdate: isNewer(current, latest),
     releaseUrl,
   };
+}
+
+// ── "Loom is now Orbit" check ────────────────────────────────────────────────
+
+type MovedCacheShape =
+  | { fetchedAt: number; failed: true }
+  | { fetchedAt: number; failed?: false; moved: RepoMovedInfo | null };
+
+function readMovedCache(): MovedCacheShape | null {
+  const entry = readRawCache().repoMoved;
+  if (!entry || typeof entry !== "object") return null;
+  const { fetchedAt, failed, moved } = entry as Record<string, unknown>;
+  if (typeof fetchedAt !== "number") return null;
+  const isFailed = failed === true;
+  if (Date.now() - fetchedAt > (isFailed ? FAILURE_TTL_MS : CACHE_TTL_MS)) return null;
+  if (isFailed) return { fetchedAt, failed: true };
+  if (moved === null) return { fetchedAt, moved: null };
+  if (!moved || typeof moved !== "object") return null;
+  const m = moved as Record<string, unknown>;
+  if (typeof m.fullName !== "string" || typeof m.releaseUrl !== "string") return null;
+  const latest = typeof m.latest === "string" ? m.latest : null;
+  return { fetchedAt, moved: { fullName: m.fullName, latest, releaseUrl: m.releaseUrl } };
+}
+
+function writeMovedCache(entry: MovedCacheShape): void {
+  writeRawCache({ ...readRawCache(), repoMoved: entry });
+}
+
+/**
+ * Has galaxyproject/loom been renamed? Returns the new repo's release info when
+ * GitHub says so, otherwise null -- including on any network trouble, which
+ * must never surface the notice. ORBIT_FORCE_REPO_MOVED (via readEnv) fakes a move for a
+ * look at the banner.
+ */
+export async function checkRepoMoved(): Promise<RepoMovedInfo | null> {
+  const forced = forcedRepoMoved(readEnv("FORCE_REPO_MOVED"));
+  if (forced) return forced;
+  if (loadConfig().updateCheck === false) return null;
+  const cached = readMovedCache();
+  if (cached) return cached.failed ? null : cached.moved;
+  const outcome = await detectRepoMoved((url) =>
+    net.fetch(url, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": `Orbit/${app.getVersion()}`,
+      },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    }),
+  );
+  if (outcome.kind === "unknown") {
+    writeMovedCache({ fetchedAt: Date.now(), failed: true });
+    return null;
+  }
+  const moved = outcome.kind === "moved" ? outcome.info : null;
+  writeMovedCache({ fetchedAt: Date.now(), moved });
+  return moved;
 }

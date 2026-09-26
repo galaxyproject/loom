@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as os from "os";
+import nodeOs from "node:os";
 import * as path from "path";
 import * as fsMod from "fs";
 import * as osMod from "os";
@@ -13,9 +14,20 @@ import {
 } from "../extensions/loom/galaxy-upload";
 
 describe("resolveStoragePath", () => {
-  it("is under ~/.loom and stable", () => {
+  let home: string;
+  beforeEach(() => {
+    home = fsMod.mkdtempSync(path.join(os.tmpdir(), "loom-upload-home-"));
+    vi.spyOn(nodeOs, "homedir").mockReturnValue(home);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    fsMod.rmSync(home, { recursive: true, force: true });
+  });
+
+  it("lives in the brain state dir and is stable", () => {
     const p = resolveStoragePath();
-    expect(p).toBe(path.join(os.homedir(), ".loom", "upload-resume.json"));
+    expect(p).toBe(path.join(home, ".loom", "upload-resume.json"));
+    expect(resolveStoragePath()).toBe(p);
   });
 });
 

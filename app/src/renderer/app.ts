@@ -4615,6 +4615,56 @@ window.orbit.onProcUpdate((procs) => {
   renderProcs(procs as ProcInfo[]);
 });
 
+// ── "Loom is now Orbit" banner ───────────────────────────────────────────────
+//
+// Safety net for the GitHub repo rename: main reports a move only once GitHub
+// itself says galaxyproject/loom now lives elsewhere. Dismissal sticks per new
+// release, so a later Orbit release brings it back once.
+const repoMovedCheck: Promise<Awaited<ReturnType<typeof window.orbit.checkRepoMoved>>> =
+  (async () => {
+    try {
+      return (await window.orbit.checkRepoMoved?.()) ?? null;
+    } catch {
+      return null;
+    }
+  })();
+{
+  const movedBanner = document.getElementById("moved-banner");
+  const movedLinkBtn = document.getElementById("moved-banner-link");
+  const movedDismissBtn = document.getElementById("moved-banner-dismiss");
+  const MOVED_DISMISSED_KEY = "orbit:moved-dismissed";
+
+  if (movedBanner && movedLinkBtn && movedDismissBtn) {
+    let movedReleaseUrl: string | null = null;
+    let movedKey: string | null = null;
+    movedLinkBtn.addEventListener("click", () => {
+      if (!movedReleaseUrl) return;
+      void openReleaseWithFallback(movedBanner, movedReleaseUrl, (u) =>
+        window.orbit.openReleasePage(u),
+      );
+    });
+    movedDismissBtn.addEventListener("click", () => {
+      movedBanner.classList.add("hidden");
+      clearReleaseFallback(movedBanner);
+      if (movedKey) {
+        try {
+          localStorage.setItem(MOVED_DISMISSED_KEY, movedKey);
+        } catch {}
+      }
+    });
+    void repoMovedCheck.then((moved) => {
+      if (!moved) return;
+      const key = `${moved.fullName}@${moved.latest ?? ""}`;
+      try {
+        if (localStorage.getItem(MOVED_DISMISSED_KEY) === key) return;
+      } catch {}
+      movedKey = key;
+      movedReleaseUrl = moved.releaseUrl;
+      movedBanner.classList.remove("hidden");
+    });
+  }
+}
+
 // ── Update-available banner ──────────────────────────────────────────────────
 //
 // One non-blocking check per session against the GitHub Releases API; main
@@ -4661,6 +4711,8 @@ window.orbit.onProcUpdate((procs) => {
 
     const showNotifyLinkBanner = async () => {
       try {
+        // Once the repo has moved, the moved banner is the better message.
+        if (await repoMovedCheck) return;
         const info = await window.orbit.checkVersion();
         if (!info || !info.hasUpdate) return;
         let dismissed: string | null = null;

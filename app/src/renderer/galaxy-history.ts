@@ -27,7 +27,8 @@
  * stays shell-neutral.
  */
 
-const BINDING_FENCE_OPEN = "```loom-galaxy-page";
+import { isNotebookFenceOpen } from "../../../shared/notebook-fences.js";
+
 const BINDING_FENCE_CLOSE = "```";
 
 interface GalaxyHistoryBinding {
@@ -51,7 +52,7 @@ export function parseGalaxyHistoryBindings(content: string): GalaxyHistoryBindin
   const lines = content.split("\n");
   let i = 0;
   while (i < lines.length) {
-    if (lines[i].trim() === BINDING_FENCE_OPEN) {
+    if (isNotebookFenceOpen(lines[i], "galaxy-page")) {
       const start = i + 1;
       let end = start;
       while (end < lines.length && lines[end].trim() !== BINDING_FENCE_CLOSE) end++;

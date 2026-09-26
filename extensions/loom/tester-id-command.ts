@@ -18,6 +18,7 @@
 import fs from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getConfigPath, loadConfig, saveConfig } from "./config.js";
+import { readEnv } from "../../shared/orbit-env.js";
 
 // Tester codes are opaque, non-secret strings (e.g. "orbit-007"). Constrain the
 // shape so neither a fat-fingered user nor a pasted blob can smuggle a newline,
@@ -51,7 +52,7 @@ export function validateTesterId(raw: string): ValidateResult {
 export function getCurrentTesterId(): { id: string; source: "config" | "env" } | null {
   const fromConfig = loadConfig().testerId;
   if (fromConfig) return { id: fromConfig, source: "config" };
-  const fromEnv = process.env.LOOM_TESTER_ID;
+  const fromEnv = readEnv("TESTER_ID");
   if (fromEnv) return { id: fromEnv, source: "env" };
   return null;
 }

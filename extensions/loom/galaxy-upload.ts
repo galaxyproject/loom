@@ -7,6 +7,7 @@ import { Type } from "@sinclair/typebox";
 import { getGalaxyConfig, galaxyGet, galaxyPost } from "./galaxy-api";
 import { getCurrentHistoryId } from "./state";
 import { isSensitivePath } from "./exec-guard/sensitive-read";
+import { resolveStateDir } from "../../shared/state-dir.js";
 import {
   tusUpload,
   buildFetchPayload,
@@ -21,7 +22,7 @@ interface FetchResponse {
 
 /** Shared resume-state file; tus-js-client keys entries by file fingerprint. */
 export function resolveStoragePath(): string {
-  return path.join(os.homedir(), ".loom", "upload-resume.json");
+  return path.join(resolveStateDir(), "upload-resume.json");
 }
 
 export interface HistoryContentItem {

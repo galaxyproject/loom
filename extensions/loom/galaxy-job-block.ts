@@ -28,6 +28,12 @@
  * ```
  */
 
+import {
+  isNotebookFenceOpen,
+  notebookFenceOpen,
+  replaceNotebookBlocks,
+} from "../../shared/notebook-fences.js";
+
 export interface JobYaml {
   jobId: string;
   galaxyServerUrl: string;
@@ -49,7 +55,7 @@ export interface JobYaml {
   lastPolledAt?: string;
 }
 
-const JOB_FENCE_OPEN = "```loom-job";
+const JOB_FENCE_OPEN = notebookFenceOpen("job");
 const JOB_FENCE_CLOSE = "```";
 
 /**
@@ -198,7 +204,7 @@ function findJobBlockRanges(content: string): BlockRange[] {
   const lines = content.split("\n");
   let i = 0;
   while (i < lines.length) {
-    if (lines[i].trim() === JOB_FENCE_OPEN) {
+    if (isNotebookFenceOpen(lines[i], "job")) {
       const start = i;
       let end = i + 1;
       while (end < lines.length && lines[end].trim() !== JOB_FENCE_CLOSE) end++;
@@ -218,7 +224,7 @@ export function findJobBlocks(content: string): JobYaml[] {
   const lines = content.split("\n");
   let i = 0;
   while (i < lines.length) {
-    if (lines[i].trim() === JOB_FENCE_OPEN) {
+    if (isNotebookFenceOpen(lines[i], "job")) {
       const start = i + 1;
       let end = start;
       while (end < lines.length && lines[end].trim() !== JOB_FENCE_CLOSE) end++;
@@ -237,16 +243,9 @@ export function findJobBlocks(content: string): JobYaml[] {
  * already present, otherwise append at the end.
  */
 export function upsertJobBlock(content: string, job: JobYaml): string {
-  const ranges = findJobBlockRanges(content);
-  const lines = content.split("\n");
+  const matching = findJobBlockRanges(content).filter((b) => b.jobId === job.jobId);
   const newBlock = renderJobYaml(job).trimEnd().split("\n");
-
-  const existing = ranges.find((b) => b.jobId === job.jobId);
-  if (existing) {
-    const before = lines.slice(0, existing.start);
-    const after = lines.slice(existing.end + 1);
-    return [...before, ...newBlock, ...after].join("\n");
-  }
+  if (matching.length > 0) return replaceNotebookBlocks(content, matching, newBlock);
 
   const trimmed = content.replace(/\s+$/, "");
   const sep = trimmed.length > 0 ? "\n\n" : "";

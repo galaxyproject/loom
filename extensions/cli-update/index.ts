@@ -10,6 +10,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 // bin/ is a sibling of extensions/; this resolves to <pkg>/bin/update-check.js.
 import { readNotice } from "../../bin/update-check.js";
+import { isDesktopShell, readEnv } from "../../shared/orbit-env.js";
 
 export default function cliUpdateExtension(pi: ExtensionAPI): void {
   let shown = false;
@@ -19,8 +20,8 @@ export default function cliUpdateExtension(pi: ExtensionAPI): void {
     // Orbit owns updates for its embedded brain; the bundled CLI copy can't be
     // npm-updated. LOOM_NO_UPDATE_CHECK is set by bin/loom.js from the config
     // flag / --no-update-check.
-    if (process.env.LOOM_SHELL_KIND === "orbit") return;
-    if (process.env.LOOM_NO_UPDATE_CHECK === "1") return;
+    if (isDesktopShell()) return;
+    if (readEnv("NO_UPDATE_CHECK") === "1") return;
     try {
       const notice = readNotice();
       if (notice) ctx.ui.notify(notice, "info");

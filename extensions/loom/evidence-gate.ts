@@ -92,6 +92,7 @@ import { loadConfig } from "./config";
 import { getNotebookPath } from "./state";
 import { appendActivityEvent } from "./activity";
 import { findInvocationBlocks, type InvocationYaml } from "./notebook-writer";
+import { readEnv } from "../../shared/orbit-env.js";
 
 /** pi emits its built-in file tools lowercase; mirrors exec-guard's FILE_WRITE_TOOLS. */
 const WRITE_TOOLS = new Set(["write", "edit"]);
@@ -99,7 +100,7 @@ const WRITE_TOOLS = new Set(["write", "edit"]);
 export type EvidenceGateMode = "off" | "warn" | "deny";
 
 export function resolveMode(): EvidenceGateMode {
-  const env = process.env.LOOM_EVIDENCE_GATE?.trim().toLowerCase();
+  const env = readEnv("EVIDENCE_GATE")?.trim().toLowerCase();
   if (env === "off" || env === "warn" || env === "deny") return env;
   const cfg = loadConfig() as { evidenceGate?: { mode?: string } };
   const mode = cfg.evidenceGate?.mode?.trim().toLowerCase();

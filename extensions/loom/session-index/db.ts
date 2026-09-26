@@ -1,8 +1,8 @@
 import Database, { type Database as Db } from "better-sqlite3";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { SCHEMA_SQL, SCHEMA_VERSION } from "./schema";
+import { resolveStateDir } from "../../../shared/state-dir.js";
 
 export { SCHEMA_VERSION };
 
@@ -50,7 +50,7 @@ function isSchemaCurrent(db: Db): boolean {
   }
 }
 
-/** Default location: ~/.loom/sessions-index.db. */
+/** Default location: <state dir>/sessions-index.db. */
 export function defaultDbPath(): string {
-  return path.join(os.homedir(), ".loom", "sessions-index.db");
+  return path.join(resolveStateDir(), "sessions-index.db");
 }

@@ -7,13 +7,14 @@ import {
   AUTHORING_GUIDANCE,
   ensureInstructionsFile,
   formatInstructionsListing,
+  initTargetIn,
   registerInstructionsCommand,
 } from "../extensions/loom/instructions-command";
 import {
   buildUserInstructionsBlock,
   buildWorkspaceInstructionsContext,
   discoverInstructionFiles,
-  INSTRUCTIONS_FILENAME,
+  INIT_INSTRUCTIONS_FILENAME,
   type InstructionFile,
 } from "../extensions/loom/user-instructions";
 
@@ -107,7 +108,7 @@ describe("formatInstructionsListing", () => {
 
 describe("ensureInstructionsFile", () => {
   it("creates the file when it is missing", () => {
-    const target = path.join(root, "nested", INSTRUCTIONS_FILENAME);
+    const target = path.join(root, "nested", INIT_INSTRUCTIONS_FILENAME);
 
     const result = ensureInstructionsFile(target);
 
@@ -117,7 +118,7 @@ describe("ensureInstructionsFile", () => {
   });
 
   it("never clobbers a file the user already wrote", () => {
-    const target = path.join(root, INSTRUCTIONS_FILENAME);
+    const target = path.join(root, INIT_INSTRUCTIONS_FILENAME);
     fs.writeFileSync(target, "Prefer IWC workflows.");
 
     const result = ensureInstructionsFile(target);
@@ -131,10 +132,39 @@ describe("ensureInstructionsFile", () => {
     const blocker = path.join(root, "blocker");
     fs.writeFileSync(blocker, "not a directory");
 
-    const result = ensureInstructionsFile(path.join(blocker, INSTRUCTIONS_FILENAME));
+    const result = ensureInstructionsFile(path.join(blocker, INIT_INSTRUCTIONS_FILENAME));
 
     expect(result.created).toBe(false);
     expect(result.error).toBeTruthy();
+  });
+});
+
+describe("shadowed legacy file in the listing", () => {
+  it("says which file is being ignored", () => {
+    const out = formatInstructionsListing([
+      {
+        scope: "workspace",
+        path: "/w/ORBIT.md",
+        content: "hg38",
+        truncated: false,
+        shadowed: "/w/LOOM.md",
+      },
+    ]);
+
+    expect(out).toContain("/w/ORBIT.md");
+    expect(out).toContain("ignoring /w/LOOM.md");
+  });
+});
+
+describe("initTargetIn", () => {
+  it("creates the legacy name when nothing is there yet", () => {
+    expect(initTargetIn(root)).toBe(path.join(root, INIT_INSTRUCTIONS_FILENAME));
+  });
+
+  it("points at an existing ORBIT.md instead of planting a second file", () => {
+    fs.writeFileSync(path.join(root, "ORBIT.md"), "x");
+
+    expect(initTargetIn(root)).toBe(path.join(root, "ORBIT.md"));
   });
 });
 
@@ -166,7 +196,7 @@ describe("the registered command", () => {
   it("reports the files it finds for the real cwd", async () => {
     const cwd = path.join(root, "work");
     fs.mkdirSync(cwd, { recursive: true });
-    fs.writeFileSync(path.join(cwd, INSTRUCTIONS_FILENAME), "Genome build is hg38.");
+    fs.writeFileSync(path.join(cwd, INIT_INSTRUCTIONS_FILENAME), "Genome build is hg38.");
     vi.spyOn(process, "cwd").mockReturnValue(cwd);
     vi.stubEnv("PI_CODING_AGENT_DIR", path.join(root, "agent"));
 
@@ -194,7 +224,7 @@ describe("the registered command", () => {
     const { run, sent } = install();
     await run("init project");
 
-    const target = path.join(cwd, INSTRUCTIONS_FILENAME);
+    const target = path.join(cwd, INIT_INSTRUCTIONS_FILENAME);
     expect(fs.existsSync(target)).toBe(true);
     expect(fs.readFileSync(target, "utf-8")).toBe("");
     expect(sent[0].text).toContain(target);
@@ -210,8 +240,8 @@ describe("a freshly initialized file changes nothing", () => {
     const agentDir = path.join(root, "agent");
     const cwd = path.join(root, "work");
     fs.mkdirSync(cwd, { recursive: true });
-    ensureInstructionsFile(path.join(agentDir, INSTRUCTIONS_FILENAME));
-    ensureInstructionsFile(path.join(cwd, INSTRUCTIONS_FILENAME));
+    ensureInstructionsFile(path.join(agentDir, INIT_INSTRUCTIONS_FILENAME));
+    ensureInstructionsFile(path.join(cwd, INIT_INSTRUCTIONS_FILENAME));
 
     expect(discoverInstructionFiles({ cwd, agentDir })).toEqual([]);
     expect(buildUserInstructionsBlock({ cwd, agentDir })).toBe("");
@@ -219,7 +249,7 @@ describe("a freshly initialized file changes nothing", () => {
   });
 
   it("keeps the example preferences in the terminal guidance, not on disk", () => {
-    const target = path.join(root, INSTRUCTIONS_FILENAME);
+    const target = path.join(root, INIT_INSTRUCTIONS_FILENAME);
     ensureInstructionsFile(target);
 
     expect(fs.readFileSync(target, "utf-8")).toBe("");

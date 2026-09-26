@@ -25,8 +25,10 @@ const MIN_SECRET_LEN = 8;
 // runtime (the CLI exports the active provider's key from config; Orbit injects
 // the decrypted key when it spawns the brain), so an `env`/`printenv` dump would
 // otherwise leak them even when the config file itself is locked down. Only
-// secret-VALUED vars belong here -- not names like AWS_PROFILE.
-const SECRET_ENV_VARS = [
+// secret-VALUED vars belong here -- not names like AWS_PROFILE. Every LOOM_ name
+// is paired with its ORBIT_ twin (tests/orbit-env-security.test.ts enforces it):
+// either spelling can carry the value, and brain-env forwards both prefixes.
+export const SECRET_ENV_VARS = [
   "ANTHROPIC_API_KEY",
   "ANTHROPIC_OAUTH_TOKEN",
   "OPENAI_API_KEY",
@@ -46,6 +48,13 @@ const SECRET_ENV_VARS = [
   // the dev/CI env fallback this can be the only place the key lives, so its
   // value would otherwise dodge redaction.
   "LOOM_ACTIVE_LLM_API_KEY",
+  "ORBIT_ACTIVE_LLM_API_KEY",
+  // Shell-side secrets that still ride into the brain through the LOOM_/ORBIT_
+  // prefix forwarding, so an `env` dump would otherwise show them.
+  "LOOM_WEB_TOKEN",
+  "ORBIT_WEB_TOKEN",
+  "LOOM_FEEDBACK_KEY",
+  "ORBIT_FEEDBACK_KEY",
 ];
 
 /** Minimal structural shape for a pi tool-result content item. */

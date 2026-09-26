@@ -1,4 +1,5 @@
 import * as path from "path";
+import { WORKSPACE_STATE_DIR_NAMES } from "../workspace-state-dir";
 import { isLoomStatePath } from "./sensitive-read";
 
 export interface BashClass {
@@ -13,11 +14,11 @@ export interface BashClass {
    *  for compound commands; the policy layer applies only the sensitive floor to
    *  it (never the workspace-jail floor, so compound jail semantics are unchanged). */
   sensitiveReadPaths: string[];
-  /** `.loom/` write targets this classifier judged to be ordinary work product in
-   *  an Orbit analysis workspace. It only sees the command string, so the policy
+  /** `.loom/`/`.orbit/` write targets this classifier judged to be ordinary work
+   *  product in an Orbit analysis workspace. It only sees the command string, so the policy
    *  layer realpaths each one and re-applies isLoomStatePath -- a symlink under
    *  the analyses tree pointing at Loom's own state is still Loom's own state.
-   *  Empty unless a write verb aimed at `.loom/` was carved out. */
+   *  Empty unless a write verb aimed at a state dir was carved out. */
   loomWriteTargets: string[];
 }
 
@@ -44,10 +45,17 @@ const CATASTROPHIC: Array<[RegExp, string]> = [
   [/dangerouslyBypassPermissions['"\]\s]*[:=]/, "attempt to enable the permissions bypass"],
 ];
 
-// A write verb aimed at something under a `.loom/` directory. Only the trigger:
-// whether it is really Loom state is decided per target below, because Orbit's
-// own workspaces live under $HOME/.loom/analyses/<name>/.
-const LOOM_WRITE = /(?:>>?|\btee\b|\bsed\b[^\n]*-i|\bcp\b|\bmv\b|\bdd\b)[^\n]*\.loom\//i;
+// Every state-dir spelling, whichever one the workspace uses, as a regex
+// alternation (`loom|orbit`).
+const STATE_DIR_ALT = WORKSPACE_STATE_DIR_NAMES.map((n) => n.slice(1)).join("|");
+
+// A write verb aimed at something under a `.loom/` or `.orbit/` directory. Only
+// the trigger: whether it is really Loom state is decided per target below,
+// because Orbit's own workspaces live under $HOME/.loom/analyses/<name>/.
+const LOOM_WRITE = new RegExp(
+  String.raw`(?:>>?|\btee\b|\bsed\b[^\n]*-i|\bcp\b|\bmv\b|\bdd\b)[^\n]*\.(?:${STATE_DIR_ALT})\/`,
+  "i",
+);
 
 // Command wrappers that delegate to a real command. We strip them so a
 // catastrophic command can't hide behind `env`, `conda run`, `nice`, etc.
@@ -216,11 +224,11 @@ function wordText(fragments: WordFragment[]): string {
   return fragments.map((f) => f.text).join("");
 }
 
-// `.loom` is matched case-insensitively because the carve-out below folds case
+// `.loom`/`.orbit` is matched case-insensitively because the carve-out below folds case
 // too (macOS resolves ~/.LOOM and ~/.loom to the same directory), and against a
 // backslash-stripped copy so a quoted `.\loom/` -- where the backslash survives
 // as a literal -- is still examined rather than skipped.
-const LOOM_SEGMENT = /\.loom\//i;
+const LOOM_SEGMENT = new RegExp(String.raw`\.(?:${STATE_DIR_ALT})\/`, "i");
 function mentionsLoom(word: WordFragment[]): boolean {
   return LOOM_SEGMENT.test(wordText(word).replace(/\\/g, ""));
 }
@@ -275,7 +283,11 @@ function scanLoomWrite(
   command: string,
   home: string,
 ): { catastrophic: boolean; targets: string[] } {
-  if (!LOOM_WRITE.test(command)) return { catastrophic: false, targets: [] };
+  // Backslashes are stripped for the trigger too: bash drops them, so
+  // `.lo\om/` names the same directory and must not skip the per-word check.
+  if (!LOOM_WRITE.test(command) && !LOOM_WRITE.test(command.replace(/\\/g, ""))) {
+    return { catastrophic: false, targets: [] };
+  }
   const words = shellWords(command).filter(mentionsLoom);
   if (words.length === 0) return { catastrophic: true, targets: [] };
   const targets: string[] = [];

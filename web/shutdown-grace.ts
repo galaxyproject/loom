@@ -1,3 +1,5 @@
+import { readEnv } from "../shared/orbit-env.js";
+
 /**
  * How long to let the brain drain before the SIGKILL backstop.
  *
@@ -16,7 +18,7 @@ export const DEFAULT_SHUTDOWN_GRACE_MS = 8000;
  * non-finite or negative falls back to the default.
  */
 export function resolveShutdownGraceMs(env: NodeJS.ProcessEnv): number {
-  const raw = env.LOOM_SHUTDOWN_GRACE_MS;
+  const raw = readEnv("SHUTDOWN_GRACE_MS", env);
   if (raw === undefined) return DEFAULT_SHUTDOWN_GRACE_MS;
   const parsed = parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_SHUTDOWN_GRACE_MS;

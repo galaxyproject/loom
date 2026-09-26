@@ -10,6 +10,8 @@
  * so users see the final completed/failed state).
  */
 
+import { isNotebookFenceOpen } from "../../../shared/notebook-fences.js";
+
 export interface Invocation {
   invocationId: string;
   galaxyServerUrl: string;
@@ -28,7 +30,6 @@ export interface Invocation {
   lastPolledAt?: string;
 }
 
-const FENCE_OPEN = "```loom-invocation";
 const FENCE_CLOSE = "```";
 const STATUSES = new Set(["in_progress", "completed", "failed"] as const);
 // After the last in-progress invocation flips to completed/failed, keep
@@ -50,7 +51,7 @@ export function parseInvocationBlocks(content: string): Invocation[] {
   const lines = content.split(/\r?\n/);
   let i = 0;
   while (i < lines.length) {
-    if (lines[i].trim() === FENCE_OPEN) {
+    if (isNotebookFenceOpen(lines[i], "invocation")) {
       const start = i + 1;
       let end = start;
       while (end < lines.length && lines[end].trim() !== FENCE_CLOSE) end++;

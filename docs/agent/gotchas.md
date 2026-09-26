@@ -10,7 +10,9 @@
 ## Local-tool environment
 
 When running tools locally, use a per-analysis conda environment rooted
-at `.loom/env/` inside the project directory. Conventions:
+at `.loom/env/` inside the project directory (`.orbit/env/` in a workspace
+that already has an `.orbit/` dir -- the prompt names whichever one applies).
+Conventions:
 
 - Env path: `.loom/env/` (`-p .loom/env`, not `-n name`).
 - Channel priority: `-c bioconda -c conda-forge`.

@@ -10,7 +10,7 @@ export interface StartupCwdSources {
   envCwd?: string;
   /** Persisted `config.defaultCwd` -- the last analysis directory used (#312). */
   configDefaultCwd?: string;
-  /** Hardcoded default (`~/.loom/analyses`) used when nothing else applies. */
+  /** Default analyses dir (see resolveDefaultAnalysesDir) used when nothing else applies. */
   fallback: string;
 }
 

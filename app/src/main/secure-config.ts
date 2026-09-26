@@ -1,6 +1,7 @@
 import { app, safeStorage } from "electron";
 import type { LlmProviderConfig, LoomConfig } from "../../../shared/loom-config.js";
 import { loadConfig, saveConfig } from "../../../shared/loom-config.js";
+import { readEnv } from "../../../shared/orbit-env.js";
 
 function log(...args: unknown[]): void {
   console.log("[secure-config]", ...args);
@@ -12,7 +13,7 @@ export function isAvailable(): boolean {
   // runs indefinitely. Setting LOOM_DISABLE_SAFE_STORAGE=1 in the launched
   // env makes us skip the probe entirely; encrypted secrets just stay
   // unread for the duration of the test.
-  if (process.env.LOOM_DISABLE_SAFE_STORAGE === "1") return false;
+  if (readEnv("DISABLE_SAFE_STORAGE") === "1") return false;
   // Dev (`npm start`, unpackaged) shares ~/.loom/config.json with the installed
   // app but runs as a different, cdhash-pinned Electron binary. If dev touched
   // safeStorage it would create and own the "<App> Safe Storage" keychain item,

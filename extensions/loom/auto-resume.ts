@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "./config";
+import { readEnv } from "../../shared/orbit-env.js";
 
 /**
  * Galaxy follow-up is part of normal execution: verify finished work and
@@ -7,7 +8,7 @@ import { loadConfig } from "./config";
  * Explicit opt-outs remain supported. Env wins over the legacy config flag.
  */
 export function isAutoResumeEnabled(): boolean {
-  const env = process.env.LOOM_AUTO_RESUME;
+  const env = readEnv("AUTO_RESUME");
   if (env === "1") return true;
   if (env === "0") return false;
   return loadConfig().experiments?.autoResume !== false;

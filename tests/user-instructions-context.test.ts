@@ -9,7 +9,7 @@ vi.mock("../extensions/loom/config", () => ({ loadConfig: loadConfigMock }));
 import {
   buildUserInstructionsBlock,
   buildWorkspaceInstructionsContext,
-  INSTRUCTIONS_FILENAME,
+  INIT_INSTRUCTIONS_FILENAME,
   type FsLike,
 } from "../extensions/loom/user-instructions";
 import { setupContextInjection } from "../extensions/loom/context";
@@ -30,7 +30,7 @@ afterEach(() => {
 function seed(rel: string, content?: string): string {
   const dir = path.join(root, rel);
   fs.mkdirSync(dir, { recursive: true });
-  if (content !== undefined) fs.writeFileSync(path.join(dir, INSTRUCTIONS_FILENAME), content);
+  if (content !== undefined) fs.writeFileSync(path.join(dir, INIT_INSTRUCTIONS_FILENAME), content);
   return dir;
 }
 
@@ -72,7 +72,7 @@ describe("buildUserInstructionsBlock -- the global file, in the system prompt", 
     // disk: " < > are legal in POSIX filenames but reserved on Windows, so
     // mkdir would throw on windows-latest before the assertion ever ran.
     const agentDir = 'C:\\ag"e<n>t';
-    const target = path.join(agentDir, INSTRUCTIONS_FILENAME);
+    const target = path.join(agentDir, INIT_INSTRUCTIONS_FILENAME);
     const fsLike: FsLike = {
       statSync: (p: string) => {
         if (p !== target) {

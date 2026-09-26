@@ -12,10 +12,11 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { release } from "os";
 import { isWsl } from "../../shared/wsl.js";
+import { readEnv } from "../../shared/orbit-env.js";
 
 // Endpoint base is the shared constant; LOOM_FEEDBACK_URL overrides it for local
 // dev (point at http://localhost:8787 while running `wrangler dev`).
-const ENDPOINT = (process.env.LOOM_FEEDBACK_URL || FEEDBACK_ENDPOINT_URL) + FEEDBACK_ROUTE;
+const ENDPOINT = (readEnv("FEEDBACK_URL") || FEEDBACK_ENDPOINT_URL) + FEEDBACK_ROUTE;
 const TIMEOUT_MS = 10_000;
 
 export interface FeedbackResult {
@@ -63,7 +64,8 @@ export function buildBrainSysinfo(): FeedbackSysinfo {
 export async function submitFeedback(payload: FeedbackPayload): Promise<FeedbackResult> {
   try {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (process.env.LOOM_FEEDBACK_KEY) headers[FEEDBACK_KEY_HEADER] = process.env.LOOM_FEEDBACK_KEY;
+    const feedbackKey = readEnv("FEEDBACK_KEY");
+    if (feedbackKey) headers[FEEDBACK_KEY_HEADER] = feedbackKey;
     const res = await fetch(ENDPOINT, {
       method: "POST",
       headers,

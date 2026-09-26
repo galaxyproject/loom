@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { readEnv } from "./orbit-env.js";
 
 /**
  * A provider entry is "custom" (a user-supplied endpoint) when it carries a
@@ -139,9 +140,9 @@ export function syncCustomProviderModelsFile(modelsJsonPath, providerName, entry
 
 /**
  * Resolve the API key for a custom provider at runtime. Orbit injects the
- * decrypted key via LOOM_ACTIVE_LLM_API_KEY; the standalone CLI uses the
+ * decrypted key via LOOM_ACTIVE_LLM_API_KEY (or ORBIT_ACTIVE_LLM_API_KEY); the standalone CLI uses the
  * plaintext apiKey on the entry. Returns undefined when neither is present.
  */
 export function resolveActiveLlmApiKey(entry, env) {
-  return (env && env[ACTIVE_LLM_API_KEY_ENV]) || (entry && entry.apiKey);
+  return (env && readEnv("ACTIVE_LLM_API_KEY", env)) || (entry && entry.apiKey);
 }

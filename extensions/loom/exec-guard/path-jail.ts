@@ -6,7 +6,7 @@ import type { PathResolver } from "./types";
 // in bash, and pi resolves `~` in its file tools, but `path.resolve` does not --
 // so without this a `~/.aws/config` read resolves to `<cwd>/~/.aws/config` and
 // dodges both the sensitive-read floor and the workspace jail.
-function expandHome(p: string, home: string): string {
+export function expandHome(p: string, home: string): string {
   if (!home) return p;
   if (p === "~" || p === "~/") return home;
   if (p.startsWith("~/")) return path.join(home, p.slice(2));

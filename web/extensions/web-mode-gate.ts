@@ -30,6 +30,7 @@ import { resolve, dirname, basename, join } from "node:path";
 import { realpathSync, lstatSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { classifyGalaxyDestructive } from "../../shared/galaxy-destructive.js";
+import { readEnv } from "../../shared/orbit-env.js";
 
 // pi built-in file tools, confined to the notebook path allowlist.
 const PATH_GATED_TOOLS = new Set(["edit", "write", "read"]);
@@ -162,7 +163,7 @@ export function shouldBlockTool(
 }
 
 function parseAllowlist(): string[] {
-  const raw = process.env.LOOM_NOTEBOOK_ALLOWLIST;
+  const raw = readEnv("NOTEBOOK_ALLOWLIST");
   if (!raw) return [];
   return raw
     .split(",")

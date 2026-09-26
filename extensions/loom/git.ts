@@ -68,6 +68,7 @@ __pycache__/
 # Loom per-analysis conda env (large, reproducible from the notebook's
 # Environment table rather than committed bytes)
 .loom/env/
+.orbit/env/
 
 # Loom session sidecars
 activity.jsonl

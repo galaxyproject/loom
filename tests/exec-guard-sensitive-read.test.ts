@@ -3,7 +3,9 @@ import {
   isSensitivePath,
   isCredentialStore,
   isProtectedWritePath,
+  isLoomStatePath,
 } from "../extensions/loom/exec-guard/sensitive-read";
+import { WORKSPACE_STATE_DIR_NAMES } from "../extensions/loom/workspace-state-dir";
 
 const HOME = "/home/alice";
 describe("isSensitivePath", () => {
@@ -15,6 +17,7 @@ describe("isSensitivePath", () => {
       "/home/alice/.netrc",
       "/home/alice/project/.env",
       "/home/alice/.loom/config.json",
+      "/home/alice/.orbit/config.json",
     ])
       expect(isSensitivePath(p, HOME), p).toBe(true);
   });
@@ -80,6 +83,7 @@ describe("isCredentialStore", () => {
       "/home/alice/.pgpass",
       "/home/alice/.npmrc",
       "/home/alice/.loom/config.json",
+      "/home/alice/.orbit/config.json",
     ])
       expect(isCredentialStore(p, HOME), p).toBe(true);
   });
@@ -147,5 +151,68 @@ describe("isProtectedWritePath", () => {
   it("with no home, falls back to the absolute-path check", () => {
     expect(isProtectedWritePath("/home/alice/.loom/analyses/proj/notebook.md")).toBe(true);
     expect(isProtectedWritePath("/home/alice/project/.git/config")).toBe(true);
+  });
+});
+
+// Every state-dir case above, for each spelling. A workspace uses one of them,
+// but the other is state too -- in any workspace.
+describe.each(WORKSPACE_STATE_DIR_NAMES)("isProtectedWritePath / isLoomStatePath -- %s", (D) => {
+  const OTHER = WORKSPACE_STATE_DIR_NAMES.find((n) => n !== D)!;
+  it("flags writes under the state dir", () => {
+    expect(isProtectedWritePath(`/home/alice/project/${D}/config.json`)).toBe(true);
+    expect(isLoomStatePath(`/home/alice/project/${D}/config.json`)).toBe(true);
+  });
+  it("allows analysis work product under ~/<state>/analyses", () => {
+    expect(isProtectedWritePath(`/home/alice/${D}/analyses/proj/notebook.md`, HOME)).toBe(false);
+    expect(isProtectedWritePath(`/home/alice/${D}/analyses/proj/src/run.py`, HOME)).toBe(false);
+  });
+  it("still flags .git and either state dir nested inside an analysis", () => {
+    for (const nested of [D, OTHER]) {
+      expect(
+        isProtectedWritePath(`/home/alice/${D}/analyses/proj/${nested}/activity.jsonl`, HOME),
+        nested,
+      ).toBe(true);
+    }
+    expect(isProtectedWritePath(`/home/alice/${D}/analyses/proj/.git/hooks/pre-commit`, HOME)).toBe(
+      true,
+    );
+  });
+  it("flags home state outside the analyses tree", () => {
+    expect(isProtectedWritePath(`/home/alice/${D}/sessions/s1/activity.jsonl`, HOME)).toBe(true);
+    expect(isProtectedWritePath(`/home/alice/${D}/cache/skills/x.md`, HOME)).toBe(true);
+    expect(isProtectedWritePath(`/home/alice/${D}/config.json`, HOME)).toBe(true);
+  });
+  it("flags a per-workspace state dir outside the analyses tree", () => {
+    expect(isProtectedWritePath(`/home/alice/myproj/${D}/activity.jsonl`, HOME)).toBe(true);
+    expect(isProtectedWritePath(`/home/alice/myproj/${D}/env/bin/python`, HOME)).toBe(true);
+  });
+  it("folds case on the segment (macOS HFS+)", () => {
+    expect(isProtectedWritePath(`/home/alice/myproj/${D.toUpperCase()}/x`, HOME)).toBe(true);
+    expect(
+      isProtectedWritePath(`/home/alice/${D}/analyses/proj/${OTHER.toUpperCase()}/x`, HOME),
+    ).toBe(true);
+  });
+  // path.win32.relative folds case, and on NTFS .LOOM really is the same dir as .loom.
+  it.skipIf(process.platform === "win32")(
+    "does not fold case on the carve-out (folding would widen an exemption)",
+    () => {
+      expect(
+        isProtectedWritePath(`/home/alice/${D.toUpperCase()}/analyses/proj/notebook.md`, HOME),
+      ).toBe(true);
+    },
+  );
+  it("with no home, falls back to the absolute-path check", () => {
+    expect(isProtectedWritePath(`/home/alice/${D}/analyses/proj/notebook.md`)).toBe(true);
+  });
+  it("a directory that merely ends in the name is not state", () => {
+    expect(isProtectedWritePath(`/data/My${D}/foo`, HOME)).toBe(false);
+  });
+});
+
+describe("isLoomStatePath -- a home that is itself under a state dir", () => {
+  it.each(WORKSPACE_STATE_DIR_NAMES)("gets no %s/analyses carve-out", (D) => {
+    for (const odd of ["/srv/.loom/alice", "/srv/.orbit/alice"]) {
+      expect(isLoomStatePath(`${odd}/${D}/analyses/p/out.txt`, odd), odd).toBe(true);
+    }
   });
 });

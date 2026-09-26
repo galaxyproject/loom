@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { registerExecGuard } from "../extensions/loom/exec-guard/gate";
+import { registerExecGuard, workspaceRoots } from "../extensions/loom/exec-guard/gate";
 import { APPROVAL_DETAIL_LIMIT, splitApprovalPrompt } from "../shared/approval-prompt.js";
 
 let sandbox: string, prevHome: string | undefined;
@@ -292,5 +292,40 @@ describe("registerExecGuard -- destructive Galaxy ops (#338)", () => {
     // exactly one confirm -- the destructive one, not a separate consent disclosure first
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(confirm.mock.calls[0][1] as string).toMatch(/entire history/i);
+  });
+});
+
+describe("workspaceRoots", () => {
+  it("does not make either state dir a root of its own", () => {
+    // A symlinked .loom/.orbit would otherwise silently trust its target.
+    expect(workspaceRoots("/w", ["/extra"])).toEqual(["/w", os.tmpdir(), "/extra"]);
+  });
+});
+
+// A workspace whose state dir is a symlink (e.g. onto a bigger disk): a write
+// through it realpaths to a path with no state segment, but it still prompts.
+describe.each([".loom", ".orbit"])("registerExecGuard -- symlinked %s state dir", (D) => {
+  let elsewhere: string;
+  beforeEach(() => {
+    elsewhere = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "loom-gate-state-")));
+    fs.symlinkSync(elsewhere, path.join(sandbox, "project", D));
+  });
+  afterEach(() => {
+    fs.rmSync(elsewhere, { recursive: true, force: true });
+  });
+
+  it("still prompts for a write into it", async () => {
+    const c = ctx();
+    const r = await handler(
+      {
+        type: "tool_call",
+        toolName: "write",
+        toolCallId: "s2",
+        input: { path: path.join(sandbox, "project", D, "y.txt"), content: "y" },
+      },
+      c,
+    );
+    expect(c.ui.select).toHaveBeenCalled();
+    expect(r?.block).toBe(true);
   });
 });

@@ -19,8 +19,12 @@
  */
 
 import { galaxyGet } from "./galaxy-api";
+import {
+  NOTEBOOK_FENCE_READ_PREFIXES,
+  NOTEBOOK_FENCE_WRITE_PREFIX,
+  isNotebookFenceOpen,
+} from "../../shared/notebook-fences.js";
 
-const INV_FENCE_OPEN = "```loom-invocation";
 const FENCE_CLOSE = "```";
 const GALAXY_FENCE_OPEN = "```galaxy";
 
@@ -29,11 +33,17 @@ const GALAXY_FENCE_OPEN = "```galaxy";
 // notebook documenting Loom's own format). The `g` flag replaces every carrier.
 // Tolerate trailing horizontal whitespace -- a storage round trip can append a
 // space, and an unmatched carrier silently loses the invocation on pull.
-const CARRIER_RE = /^\[loom-invocation:v1\]: #loom "([A-Za-z0-9+/=]+)"[ \t]*$/gm;
+// The carrier's label and anchor carry the product prefix too, so a page pushed
+// by a newer (or older) client still decodes; the payload is the block verbatim,
+// fence line included, so pull restores whatever prefix was pushed.
+const CARRIER_PREFIX_ALT = NOTEBOOK_FENCE_READ_PREFIXES.join("|");
+const CARRIER_BODY = `\\[(?:${CARRIER_PREFIX_ALT})-invocation:v1\\]: #(?:${CARRIER_PREFIX_ALT}) "([A-Za-z0-9+/=]+)"[ \\t]*`;
+const CARRIER_RE = new RegExp(`^${CARRIER_BODY}$`, "gm");
 
-/** base64 a loom-invocation block into a (render-invisible) link-reference carrier. */
+/** base64 an invocation block into a (render-invisible) link-reference carrier. */
 function encodeCarrier(block: string): string {
-  return `[loom-invocation:v1]: #loom "${Buffer.from(block, "utf8").toString("base64")}"`;
+  const p = NOTEBOOK_FENCE_WRITE_PREFIX;
+  return `[${p}-invocation:v1]: #${p} "${Buffer.from(block, "utf8").toString("base64")}"`;
 }
 
 /**
@@ -47,7 +57,7 @@ export function loomToGalaxyMarkdown(body: string): string {
   const out: string[] = [];
   let i = 0;
   while (i < lines.length) {
-    if (lines[i].trim() === INV_FENCE_OPEN) {
+    if (isNotebookFenceOpen(lines[i], "invocation")) {
       let end = i + 1;
       while (end < lines.length && lines[end].trim() !== FENCE_CLOSE) end++;
       const block = lines.slice(i, end + 1).join("\n");
@@ -75,7 +85,7 @@ export function galaxyMarkdownToLoom(body: string): string {
 // lastIndex), so it's unsafe for a one-off .test(); this is the per-line form.
 // Same trailing-whitespace tolerance as CARRIER_RE so the strip heuristic and
 // the decoder agree on what counts as a carrier line.
-const CARRIER_LINE_RE = /^\[loom-invocation:v1\]: #loom "[A-Za-z0-9+/=]+"[ \t]*$/;
+const CARRIER_LINE_RE = new RegExp(`^${CARRIER_BODY}$`);
 
 /**
  * Remove only the ```galaxy directive blocks Loom itself emitted.
@@ -157,7 +167,7 @@ export async function loomToGalaxyMarkdownRich(
   const out: string[] = [];
   let i = 0;
   while (i < lines.length) {
-    if (lines[i].trim() === INV_FENCE_OPEN) {
+    if (isNotebookFenceOpen(lines[i], "invocation")) {
       let end = i + 1;
       let invId: string | null = null;
       while (end < lines.length && lines[end].trim() !== FENCE_CLOSE) {

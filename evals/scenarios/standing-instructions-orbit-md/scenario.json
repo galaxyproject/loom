@@ -1,0 +1,24 @@
+{
+  "name": "standing instructions: a project ORBIT.md steers the plan",
+  "description": "Same fixture and assertions as standing-instructions-tool-preference, but the preferences live in ORBIT.md instead of the legacy LOOM.md. Both filenames are read, so a pass here and there shows neither one was dropped.",
+  "tier": 2,
+  "requiresModel": true,
+  "loomArgs": ["--tools", "read,write,edit"],
+  "inputs": [
+    "I have paired-end RNA-seq FASTQ files from a mouse experiment and I want a gene-level count table at the end. Draft a plan. Don't run anything yet.",
+    "Yes, mm39 is the right reference. Go ahead and draft the formal plan now."
+  ],
+  "timeoutMs": 150000,
+  "assertions": {
+    "events": {
+      "mustInclude": ["agent_start", "turn_end"]
+    },
+    "plan": {
+      "exists": true,
+      "source": "any",
+      "minPendingSteps": 3,
+      "eachStepHasDescription": true,
+      "mentionsAllOf": ["HISAT2", "MultiQC"]
+    }
+  }
+}

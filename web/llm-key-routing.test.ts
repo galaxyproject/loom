@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { providerKeyVar, hasProviderKey, llmKeyEnvVar } from "./llm-credentials.js";
+import { providerKeyVar, hasProviderKey, llmKeyEnvVar } from "./llm-key-routing.js";
 
 describe("providerKeyVar", () => {
   it("maps a known provider to its API-key env var", () => {

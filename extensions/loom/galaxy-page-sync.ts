@@ -1,8 +1,9 @@
 import { stripUntrustedMarkers } from "./galaxy-pages-sync.js";
 import { stripGalaxyPageBlocks } from "./galaxy-page-binding.js";
+import { readEnv } from "../../shared/orbit-env.js";
 
 export function parsePageSyncMode(env: NodeJS.ProcessEnv): "auto" | "off" {
-  return env.LOOM_GALAXY_PAGE_SYNC === "auto" ? "auto" : "off";
+  return readEnv("GALAXY_PAGE_SYNC", env) === "auto" ? "auto" : "off";
 }
 
 /** Deterministic per-history page identity so a fresh container finds the prior page. */
@@ -269,7 +270,7 @@ export function createPageSyncEngine(deps: PageSyncDeps) {
 
 let engine: ReturnType<typeof createPageSyncEngine> | null = null;
 
-const DEBOUNCE_MS = parseInt(process.env.LOOM_GALAXY_PAGE_SYNC_DEBOUNCE_MS ?? "1500", 10);
+const DEBOUNCE_MS = parseInt(readEnv("GALAXY_PAGE_SYNC_DEBOUNCE_MS") ?? "1500", 10);
 
 function realDeps(): PageSyncDeps {
   return {

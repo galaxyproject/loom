@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   findOrbit,
+  isNodeCliShim,
   launchOrbit,
   type FindOrbitDeps,
 } from "../extensions/orbit-handoff/orbit-launcher";
@@ -38,6 +39,48 @@ describe("findOrbit -- env override", () => {
   });
 });
 
+describe("findOrbit -- ORBIT_DESKTOP_BIN", () => {
+  it("is honored", () => {
+    const d = deps({
+      env: { ORBIT_DESKTOP_BIN: "/opt/dev/orbit-desktop" },
+      existsSync: (p) => p === "/opt/dev/orbit-desktop",
+    });
+    expect(findOrbit(d)).toBe("/opt/dev/orbit-desktop");
+  });
+
+  it("wins over the older ORBIT_BIN alias", () => {
+    const d = deps({
+      env: { ORBIT_DESKTOP_BIN: "/new", ORBIT_BIN: "/old" },
+      existsSync: () => true,
+    });
+    expect(findOrbit(d)).toBe("/new");
+  });
+
+  it("refuses an override that resolves to the CLI's script", () => {
+    const d = deps({
+      env: { ORBIT_DESKTOP_BIN: "/usr/local/bin/orbit" },
+      existsSync: () => true,
+      realpathSync: () => "/usr/local/lib/node_modules/@galaxyproject/orbit/bin/orbit.js",
+    });
+    expect(findOrbit(d)).toBeNull();
+  });
+});
+
+describe("isNodeCliShim", () => {
+  it("flags npm global installs and bare scripts", () => {
+    expect(isNodeCliShim("/usr/lib/node_modules/@galaxyproject/orbit/bin/orbit.js")).toBe(true);
+    expect(isNodeCliShim("/home/me/proj/node_modules/.bin/orbit")).toBe(true);
+    expect(isNodeCliShim("/home/me/.nvm/versions/node/v22/lib/node_modules/x/cli.mjs")).toBe(true);
+  });
+
+  it("leaves Electron binaries alone, including a dev build under node_modules/electron", () => {
+    expect(isNodeCliShim("/usr/lib/orbit/orbit")).toBe(false);
+    expect(isNodeCliShim("/usr/lib/orbit/orbit-desktop")).toBe(false);
+    expect(isNodeCliShim("/home/me/loom/app/node_modules/electron/dist/electron")).toBe(false);
+    expect(isNodeCliShim("C:\\Users\\u\\AppData\\Local\\orbit\\Orbit.exe")).toBe(false);
+  });
+});
+
 describe("findOrbit -- darwin", () => {
   it("returns /Applications/Orbit.app's binary when installed", () => {
     const macPath = "/Applications/Orbit.app/Contents/MacOS/orbit";
@@ -67,6 +110,36 @@ describe("findOrbit -- linux", () => {
   it("finds a deb/rpm install at /usr/bin/orbit", () => {
     const d = deps({ platform: "linux", existsSync: (q) => q === "/usr/bin/orbit" });
     expect(findOrbit(d)).toBe("/usr/bin/orbit");
+  });
+
+  it("prefers /usr/bin/orbit-desktop over the old /usr/bin/orbit", () => {
+    const present = new Set(["/usr/bin/orbit-desktop", "/usr/bin/orbit"]);
+    const d = deps({ platform: "linux", existsSync: (q) => present.has(q) });
+    expect(findOrbit(d)).toBe("/usr/bin/orbit-desktop");
+  });
+
+  it("skips /usr/bin/orbit when it is the CLI's npm shim", () => {
+    const d = deps({
+      platform: "linux",
+      existsSync: (q) => q === "/usr/bin/orbit",
+      realpathSync: () => "/usr/lib/node_modules/@galaxyproject/orbit/bin/orbit.js",
+    });
+    expect(findOrbit(d)).toBeNull();
+  });
+
+  it("still accepts /usr/bin/orbit when it resolves to the Electron app", () => {
+    const d = deps({
+      platform: "linux",
+      existsSync: (q) => q === "/usr/bin/orbit",
+      realpathSync: () => "/usr/lib/orbit/orbit",
+    });
+    expect(findOrbit(d)).toBe("/usr/bin/orbit");
+  });
+
+  it("finds the app under /usr/lib when the package name kept the old bin symlink", () => {
+    const p = "/usr/lib/orbit/orbit-desktop";
+    const d = deps({ platform: "linux", existsSync: (q) => q === p });
+    expect(findOrbit(d)).toBe(p);
   });
 
   it("returns null when no candidate exists", () => {

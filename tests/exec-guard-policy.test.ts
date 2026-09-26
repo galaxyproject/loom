@@ -6,6 +6,7 @@ import type {
   PathResolver,
   PolicyRequest,
 } from "../extensions/loom/exec-guard/types";
+import { WORKSPACE_STATE_DIR_NAMES } from "../extensions/loom/workspace-state-dir";
 
 const HOME = "/home/alice";
 const CWD = "/home/alice/project";
@@ -706,5 +707,111 @@ describe("decide -- the file_path alias (P0.3)", () => {
     const r = decide(req({ toolName: "write", toolInput: { content: "x" } }), deps);
     expect(r.decision).toBe("ask");
     expect(r.category).toBe("write:no-path");
+  });
+});
+
+// The state-dir cases above, for each spelling, in a workspace of either
+// spelling. Which one the workspace uses must not change what either protects.
+describe.each(WORKSPACE_STATE_DIR_NAMES)("decide -- %s state dir", (D) => {
+  const OTHER = WORKSPACE_STATE_DIR_NAMES.find((n) => n !== D)!;
+  const wcwd = `/home/alice/${D}/analyses/proj`;
+  const wdeps = {
+    resolver: { contains: (p: string) => ({ resolved: p, inside: p.startsWith(wcwd) }) },
+    home: HOME,
+  };
+
+  it("a file-tool write into the state dir prompts even inside the workspace", () => {
+    for (const toolName of ["write", "edit"])
+      for (const key of ["path", "file_path"]) {
+        const r = decide(
+          req({ toolName, toolInput: { [key]: `${CWD}/${D}/activity.jsonl` } }),
+          deps,
+        );
+        expect(r.decision, `${toolName}/${key}`).toBe("ask");
+        expect(r.category, `${toolName}/${key}`).toBe("write:protected");
+        expect(
+          decide(req({ toolName, modelTier: "weak", toolInput: { [key]: `${CWD}/${D}/x` } }), deps)
+            .decision,
+          `${toolName}/${key}/weak`,
+        ).toBe("deny");
+      }
+    for (const toolName of ["write", "edit"]) {
+      const r = decide(req({ toolName, toolInput: { path: `${CWD}/${D}/config.json` } }), deps);
+      expect(r.decision, toolName).toBe("ask");
+      expect(r.category, toolName).toBe("write:protected");
+      expect(
+        decide(
+          req({ toolName, modelTier: "weak", toolInput: { path: `${CWD}/${D}/activity.jsonl` } }),
+          deps,
+        ).decision,
+      ).toBe("deny");
+    }
+  });
+
+  it("the analysis under ~/<state>/analyses is work product; either nested state dir is not", () => {
+    expect(
+      decide(
+        req({ cwd: wcwd, toolName: "edit", toolInput: { path: `${wcwd}/notebook.md` } }),
+        wdeps,
+      ).decision,
+    ).toBe("allow");
+    for (const nested of [D, OTHER]) {
+      expect(
+        decide(
+          req({
+            cwd: wcwd,
+            toolName: "write",
+            toolInput: { path: `${wcwd}/${nested}/env/bin/python` },
+          }),
+          wdeps,
+        ).decision,
+        nested,
+      ).toBe("ask");
+    }
+  });
+
+  it("a bash write into the analysis prompts; a bash write into state is denied", () => {
+    const r = decide(req({ cwd: wcwd, toolInput: { command: `echo x > ${wcwd}/out.txt` } }), wdeps);
+    expect(r.decision).toBe("ask");
+    expect(r.category).toBe("bash:unknown");
+    for (const command of [
+      `echo x > ${HOME}/${D}/config.json`,
+      `cp evil ${wcwd}/${D}/activity.jsonl`,
+      `cp evil ${wcwd}/${OTHER}/activity.jsonl`,
+      `cp evil ${D}/env/bin/python`,
+    ]) {
+      const d = decide(req({ cwd: wcwd, toolInput: { command } }), wdeps);
+      expect(d.decision, command).toBe("deny");
+      expect(d.category, command).toBe("bash:catastrophic");
+    }
+  });
+
+  it("a bash write through a symlink into either spelling's state is denied", () => {
+    const link = `${wcwd}/link`;
+    for (const target of [`/home/alice/${D}/config.json`, `/home/alice/${OTHER}/config.json`]) {
+      const sdeps = {
+        resolver: {
+          contains: (p: string) => ({
+            resolved: path.normalize(p) === path.normalize(link) ? path.normalize(target) : p,
+            inside: path.normalize(p).startsWith(path.normalize(wcwd)),
+          }),
+        },
+        home: HOME,
+      };
+      const r = decide(req({ cwd: wcwd, toolInput: { command: `cp evil ${link}` } }), sdeps);
+      expect(r.decision, target).toBe("deny");
+      expect(r.category, target).toBe("bash:catastrophic");
+    }
+  });
+
+  it("gates state when cwd is a state dir outside the analyses tree", () => {
+    const lcwd = `/home/alice/${D}/sessions/s1`;
+    const lres: PathResolver = { contains: (p) => ({ resolved: p, inside: p.startsWith(lcwd) }) };
+    expect(
+      decide(req({ cwd: lcwd, toolName: "write", toolInput: { path: `${lcwd}/activity.jsonl` } }), {
+        resolver: lres,
+        home: HOME,
+      }).decision,
+    ).toBe("ask");
   });
 });

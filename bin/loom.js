@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "url";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from "fs";
 import { homedir } from "os";
 import { loadConfig as loadLoomConfig } from "../shared/loom-config.js";
+import { migrateStateDir } from "../shared/state-dir.js";
 import { spawn } from "child_process";
 import { getLoomVersion, detectInstall } from "./update-check.js";
 import { isUvxAvailable, uvxMissingNotice } from "./uvx-check.js";
@@ -23,6 +24,7 @@ import {
   DEFAULT_ENDPOINT_API,
 } from "../shared/custom-provider.js";
 import { GALAXY_MCP_SPEC } from "../shared/galaxy-mcp-spec.js";
+import { isDesktopShell, mirrorToLegacyEnv, readEnv, writeEnv } from "../shared/orbit-env.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -54,17 +56,21 @@ const piConfigModulePath = join(piPackageDir, "dist/config.js");
 const piModelRuntimeModulePath = join(piPackageDir, "dist/core/model-runtime.js");
 const userArgs = process.argv.slice(2);
 
+// pi resolves a custom provider's key from LOOM_ACTIVE_LLM_API_KEY by name, so
+// a key supplied only as ORBIT_ACTIVE_LLM_API_KEY needs the legacy twin.
+mirrorToLegacyEnv(process.env, "ACTIVE_LLM_API_KEY");
+
 // Local-execution safety flags. Translate to env so the exec-guard (brain side)
 // reads them; strip so they aren't forwarded to pi as unknown flags.
 if (userArgs.includes("--dangerously-bypass-permissions")) {
-  process.env.LOOM_DANGEROUSLY_BYPASS_PERMISSIONS = "1";
+  writeEnv(process.env, "DANGEROUSLY_BYPASS_PERMISSIONS", "1");
 }
 if (userArgs.includes("--safe")) {
-  process.env.LOOM_SAFE = "1";
+  writeEnv(process.env, "SAFE", "1");
 }
 // Opt-in bash sandbox: run allowed bash inside an OS sandbox (the gate still gates).
 if (userArgs.includes("--sandbox")) {
-  process.env.LOOM_SANDBOX = "1";
+  writeEnv(process.env, "SANDBOX", "1");
 }
 // A bare interactive CLI always has a local execution surface, so the exec-guard
 // (brain side) must stay on regardless of any ambient LOOM_LOCAL_EXEC in the
@@ -73,10 +79,10 @@ if (userArgs.includes("--sandbox")) {
 // on for desktop), so only pin it here for the non-rpc CLI path.
 const isRpcMode = userArgs.includes("--mode") && userArgs[userArgs.indexOf("--mode") + 1] === "rpc";
 if (!isRpcMode) {
-  process.env.LOOM_LOCAL_EXEC = "on";
+  writeEnv(process.env, "LOCAL_EXEC", "on");
 }
 if (userArgs.includes("--no-update-check")) {
-  process.env.LOOM_NO_UPDATE_CHECK = "1";
+  writeEnv(process.env, "NO_UPDATE_CHECK", "1");
 }
 for (let i = userArgs.length - 1; i >= 0; i--) {
   if (
@@ -95,15 +101,18 @@ function hasArg(flag) {
 
 const isInformationalCommand = ["--help", "-h", "--version", "--list-models"].some(hasArg);
 
+// Before the first config read, so a fresh copy in ~/.orbit is what gets read.
+migrateStateDir();
+
 // Config opt-out feeds the same single signal the extension + refresh read.
 try {
-  if (loadLoomConfig().updateCheck === false) process.env.LOOM_NO_UPDATE_CHECK = "1";
+  if (loadLoomConfig().updateCheck === false) writeEnv(process.env, "NO_UPDATE_CHECK", "1");
 } catch {}
 
 if (
   !isInformationalCommand &&
-  process.env.LOOM_DANGEROUSLY_BYPASS_PERMISSIONS === "1" &&
-  process.env.LOOM_SAFE !== "1"
+  readEnv("DANGEROUSLY_BYPASS_PERMISSIONS") === "1" &&
+  readEnv("SAFE") !== "1"
 ) {
   console.error(
     "\n  \x1b[1;31m⚠  PERMISSIONS BYPASSED\x1b[0m -- Loom will run any command without asking.\n",
@@ -149,7 +158,7 @@ async function handleInformationalCommand() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Loom brain-level config (~/.loom/config.json)
+// Loom brain-level config (<state dir>/config.json, see shared/state-dir.js)
 //
 // Shared by every consumer (loom CLI, Orbit, future shells). The CLI only
 // reads/writes it; it doesn't own the schema. Shell-specific state lives in
@@ -651,7 +660,7 @@ if (await handleInformationalCommand()) {
 }
 
 if (userArgs[0] === "update") {
-  if (process.env.LOOM_SHELL_KIND === "orbit") {
+  if (isDesktopShell()) {
     console.error("Orbit manages its own updates -- update from the Orbit app, not the CLI.");
     process.exit(0);
   }
@@ -757,7 +766,7 @@ if (userArgs[0] === "update") {
   // Refresh the update-check cache in a fully detached child so the network call
   // never delays startup, holds the TUI, or is killed mid-write. The notice the
   // user sees this run comes from the cache; this updates it for next run.
-  if (process.env.LOOM_SHELL_KIND !== "orbit" && process.env.LOOM_NO_UPDATE_CHECK !== "1") {
+  if (!isDesktopShell() && readEnv("NO_UPDATE_CHECK") !== "1") {
     try {
       const refresh = spawn(process.execPath, [updateCheckScript, "--refresh"], {
         detached: true,
