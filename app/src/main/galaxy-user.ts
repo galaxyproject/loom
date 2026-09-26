@@ -12,6 +12,7 @@
  *   - { ok: false, authFailed: false } offline / timeout / 5xx / no creds
  */
 import { validateGalaxyUrl } from "./galaxy-url.js";
+import { fetchSameOriginOnly, RedirectRefusedError } from "../../../shared/redirect-guard.js";
 
 export type GalaxyUserStatus =
   { ok: true; username?: string; email?: string } | { ok: false; authFailed: boolean };
@@ -37,10 +38,14 @@ export async function fetchGalaxyCurrentUser(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetchImpl(`${base}/api/users/current`, {
-      headers: { "x-api-key": key },
-      signal: controller.signal,
-    });
+    // Same-origin-only redirects: validateGalaxyUrl above guards the URL we
+    // were handed, but nothing stops that host answering 3xx with a Location
+    // elsewhere, and fetch would forward `x-api-key` across it.
+    const res = await fetchSameOriginOnly(
+      `${base}/api/users/current`,
+      { headers: { "x-api-key": key }, signal: controller.signal },
+      { fetchImpl, serverLabel: "Galaxy", urlSettingLabel: "the Galaxy URL" },
+    );
     // 401/403 is the one failure worth surfacing -- a wrong or expired key.
     // Everything else (offline, timeout, 5xx) stays silent so a transient blip
     // doesn't cry "sign-in failed" on a perfectly good key.
@@ -50,7 +55,12 @@ export async function fetchGalaxyCurrentUser(
     // the timeout bounds wall time, so a pathological huge body is low risk.
     const body = (await res.json()) as { username?: unknown; email?: unknown };
     return { ok: true, username: nonEmptyString(body.username), email: nonEmptyString(body.email) };
-  } catch {
+  } catch (err) {
+    // A refused redirect is a misconfiguration, not the transient blip the
+    // silent branch exists for, and the status tooltip has no third state to
+    // show it in. Log it so the reason is somewhere findable rather than
+    // nowhere; the returned shape is deliberately unchanged.
+    if (err instanceof RedirectRefusedError) console.warn(`[galaxy] ${err.message}`);
     return { ok: false, authFailed: false };
   } finally {
     clearTimeout(timer);

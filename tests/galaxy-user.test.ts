@@ -76,6 +76,30 @@ describe("fetchGalaxyCurrentUser", () => {
     expect(result).toEqual({ ok: true });
   });
 
+  it("does not send the key to a host the configured Galaxy redirects to", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(null, {
+          status: 302,
+          headers: { location: "https://idp.example/saml/login?RelayState=abc" },
+        }),
+    );
+    const result = await fetchGalaxyCurrentUser(U, KEY, fetchImpl as unknown as typeof fetch);
+    // One request, to the configured host, and no second one anywhere.
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls[0][0]).toBe(`${U}/api/users/current`);
+    // The tooltip has no state for this, so it reads as "not connected" -- but
+    // the reason is logged rather than lost.
+    expect(result).toEqual({ ok: false, authFailed: false });
+    expect(warn).toHaveBeenCalledTimes(1);
+    const logged = String(warn.mock.calls[0][0]);
+    expect(logged).toContain("https://idp.example");
+    expect(logged).not.toContain(KEY);
+    expect(logged).not.toContain("RelayState");
+    warn.mockRestore();
+  });
+
   it("reports an auth failure on 401", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse(401, {}));
     expect(await fetchGalaxyCurrentUser(U, KEY, fetchImpl as unknown as typeof fetch)).toEqual({

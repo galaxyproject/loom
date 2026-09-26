@@ -7,6 +7,7 @@
  */
 
 import { createReadStream } from "fs";
+import { parse as parseLegacyUrl } from "url";
 // FileUrlStorage is exported by the Node build but missing from the type defs --
 // import via namespace and cast to avoid the spurious TS2724 error.
 import * as tusClient from "tus-js-client";
@@ -75,8 +76,96 @@ export interface TusUploadResult {
 // memory bounded while still being large enough to avoid excessive round-trips.
 const DEFAULT_CHUNK = 10 * 1024 * 1024;
 
+/**
+ * Scheme + host + port, or null when the URL will not parse. Duplicated rather
+ * than imported from `shared/` on purpose: this module's header keeps it free
+ * of loom imports so it can move into @galaxyproject/galaxy-ops unchanged.
+ */
+function originOf(url: string | null | undefined): string | null {
+  try {
+    return new URL(String(url)).origin;
+  } catch {
+    return null;
+  }
+}
+
+const DEFAULT_PORTS: Record<string, string> = { "http:": "80", "https:": "443" };
+
+/**
+ * The origin tus-js-client will actually connect to. Its Node transport builds
+ * request options with the legacy `url.parse`, which disagrees with WHATWG
+ * `URL` on some hosts: `https://usegalaxy.org%2eau/x` is `usegalaxy.org.au`
+ * to `URL` but `usegalaxy.org` to `url.parse`. Checking only the WHATWG origin
+ * would pass that URL and then send the key to the other host.
+ */
+function transportOriginOf(url: string | null | undefined): string | null {
+  try {
+    const { protocol, hostname, port } = parseLegacyUrl(String(url));
+    if (!protocol || !hostname) return null;
+    const effectivePort = port && port !== DEFAULT_PORTS[protocol] ? `:${port}` : "";
+    // url.parse drops the brackets from an IPv6 literal; the WHATWG origin keeps them.
+    const host = hostname.includes(":") ? `[${hostname}]` : hostname.toLowerCase();
+    return `${protocol}//${host}${effectivePort}`;
+  } catch {
+    return null;
+  }
+}
+
+/** A stored resume entry. `uploadUrl` is real at runtime; the type defs omit it. */
+type StoredUpload = tusClient.PreviousUpload & {
+  uploadUrl?: string | null;
+  urlStorageKey?: string;
+};
+
+/**
+ * The resume store with anything off-origin filtered out, in both directions.
+ *
+ * tus writes the upload URL to the store right after it hands it to us, and
+ * abort() does not cancel that write; FileUrlStorage.addUpload keys every entry
+ * on a fresh random id, so it appends rather than overwrites and nothing ever
+ * removes it. A refused foreign URL would therefore be persisted to
+ * ~/.loom/upload-resume.json once per attempt, unbounded, and the first entry
+ * back out would be the poisoned one -- killing resume for that file for good.
+ *
+ * Filtering on the way in keeps it out of the file; filtering on the way out
+ * (and deleting what it finds) heals a file an earlier build already wrote.
+ */
+function originScopedUrlStorage(
+  inner: tusClient.UrlStorage,
+  belongsHere: (url: string | null | undefined) => boolean,
+): tusClient.UrlStorage {
+  const keep = async (found: tusClient.PreviousUpload[]): Promise<tusClient.PreviousUpload[]> => {
+    const kept: tusClient.PreviousUpload[] = [];
+    for (const entry of found as StoredUpload[]) {
+      if (belongsHere(entry.uploadUrl)) {
+        kept.push(entry);
+      } else if (entry.urlStorageKey) {
+        // Best effort: a store we cannot prune still yields the right result,
+        // it just stays dirty.
+        await inner.removeUpload(entry.urlStorageKey).catch(() => {});
+      }
+    }
+    return kept;
+  };
+  return {
+    findAllUploads: async () => keep(await inner.findAllUploads()),
+    findUploadsByFingerprint: async (fingerprint: string) =>
+      keep(await inner.findUploadsByFingerprint(fingerprint)),
+    removeUpload: (urlStorageKey: string) => inner.removeUpload(urlStorageKey),
+    // Returning "" instead of a key is what tells tus there is nothing to
+    // remove later (_removeFromUrlStorage bails on a falsy key).
+    addUpload: async (fingerprint: string, upload: tusClient.PreviousUpload) =>
+      belongsHere((upload as StoredUpload).uploadUrl) ? inner.addUpload(fingerprint, upload) : "",
+  };
+}
+
 export function tusUpload(opts: TusUploadOpts): Promise<TusUploadResult> {
   return new Promise<TusUploadResult>((resolve, reject) => {
+    // TUS hands back the upload URL in a Location header, and every later PATCH
+    // carries `x-api-key`. A Location pointing at another host would therefore
+    // send the key there, which is the same exposure an HTTP redirect would
+    // give us -- so the upload URL has to stay on the configured origin.
+    const expectedOrigin = originOf(opts.baseUrl);
     // Stream and finish() are created unconditionally so cleanup is always
     // the same code path regardless of when abort is detected.
     const stream = createReadStream(opts.filePath);
@@ -102,10 +191,20 @@ export function tusUpload(opts: TusUploadOpts): Promise<TusUploadResult> {
       headers: { "x-api-key": opts.apiKey },
       chunkSize: opts.chunkSize ?? DEFAULT_CHUNK,
       retryDelays: [0, 1000, 3000, 5000],
-      urlStorage: new FileUrlStorage(opts.storagePath),
+      urlStorage: originScopedUrlStorage(new FileUrlStorage(opts.storagePath), (url) =>
+        sameOriginAsGalaxy(url),
+      ),
       storeFingerprintForResuming: true,
       removeFingerprintOnSuccess: true,
       onProgress: opts.onProgress,
+      onUploadUrlAvailable: () => {
+        if (sameOriginAsGalaxy(upload.url)) return;
+        // abort() without terminate: a DELETE would send the key to the very
+        // origin we are refusing to talk to. tus checks the aborted flag before
+        // the next PATCH, so nothing further goes out.
+        void upload.abort();
+        finish(() => reject(new Error(foreignUploadUrlMessage(upload.url))));
+      },
       onError: (err: Error | tusClient.DetailedError) => finish(() => reject(err)),
       onSuccess: () => {
         // Use the URL constructor to parse the upload URL so trailing slashes
@@ -124,6 +223,24 @@ export function tusUpload(opts: TusUploadOpts): Promise<TusUploadResult> {
         );
       },
     });
+
+    function sameOriginAsGalaxy(url: string | null | undefined): boolean {
+      const actual = originOf(url);
+      return (
+        actual !== null && actual === expectedOrigin && transportOriginOf(url) === expectedOrigin
+      );
+    }
+
+    function foreignUploadUrlMessage(url: string | null | undefined): string {
+      // The origin only: an upload URL's path is a session token.
+      const target = originOf(url) ?? "an address that could not be read";
+      return (
+        `Galaxy directed the upload to ${target}, which is a different origin than the ` +
+        `configured ${expectedOrigin ?? opts.baseUrl}. The upload was refused and the API key ` +
+        `was not sent to it. Check that GALAXY_URL points at the Galaxy server itself rather ` +
+        `than a proxy or a sign-in page.`
+      );
+    }
 
     function onAbort() {
       // No shouldTerminate: true -- leaving the partial TUS session on the server
@@ -146,6 +263,8 @@ export function tusUpload(opts: TusUploadOpts): Promise<TusUploadResult> {
       .findPreviousUploads()
       .then((previous) => {
         if (settled) return; // aborted while the resume lookup was in flight
+        // Everything here is already on the configured origin: the store
+        // wrapper drops (and deletes) anything else before we see it.
         if (previous.length > 0) upload.resumeFromPreviousUpload(previous[0]);
         upload.start();
       })
