@@ -5,7 +5,7 @@
  * galaxy-submission-capture.ts does that part. Everything here is driven by
  * what galaxy-mcp 1.9.0 actually returns, read out of its source rather than
  * its docstrings (spike: `2026-09-16-galaxy-mcp-result-shapes.md`), and by
- * what pi-mcp-adapter does to that result on the way to the extension hook.
+ * what pi's MCP support does to that result on the way to the extension hook.
  *
  * The rule the whole module is built around: **never guess an id.** A parse
  * that cannot find the field it is looking for, in the shape it expects,
@@ -21,20 +21,18 @@
  * object as JSON. So the payload is always JSON, never prose -- parse it,
  * don't regex it.
  *
- * Two things the spike assumed that the installed code does not do, both
- * checked against `pi-mcp-adapter@2.21.2`:
+ * pi's built-in MCP hands that over two ways:
  *
- * 1. `structuredContent` does **not** survive as a separate field for the
- *    galaxy tools. `resolveMcpResultContent` (tool-registrar.ts:52) only
- *    falls back to it when `content` is empty, and FastMCP always sends a
- *    text block, so on the direct-tools path -- the one Loom uses, since its
- *    tools are named `galaxy_<tool>` -- the text block is all there is.
- * 2. The adapter's output guard truncates text over 50 KiB or 2000 lines
- *    (mcp-output-guard.ts:7-8, :125) and appends a notice, which makes the
- *    JSON unparseable. It spills the full text to a temp file and records the
- *    path at `details.outputGuard.fullOutputPath`. A mapped-over run with
- *    enough outputs hits this, so `resolveResultPayload` reports the path and
- *    the caller re-reads from it rather than losing the biggest submissions.
+ * 1. The result's own `structuredContent` is the whole `CallToolResult`
+ *    (minus `_meta`), untruncated, so `structuredContent.structuredContent`
+ *    is the GalaxyResult itself. But pi drops it whenever a `tool_result`
+ *    handler replaces the content -- secret redaction, the oversized-output
+ *    preview -- and those are exactly the big results that matter most.
+ * 2. The model-facing text is cut in the middle past 20 KB, which makes the
+ *    JSON unparseable. pi saves the full text and records the path at
+ *    `details.fullOutputPath` (details survive those handlers), so
+ *    `resolveResultPayload` reports it and the caller re-reads from it rather
+ *    than losing the biggest submissions.
  */
 
 import * as path from "path";
@@ -45,22 +43,22 @@ export type SubmissionKind = "invocation" | "jobs" | "udt";
 /**
  * Tools whose success means work was submitted to Galaxy.
  *
- * `galaxy_upload_file` (galaxy-mcp's local-path upload) is here alongside the
+ * `mcp__galaxy__upload_file` (galaxy-mcp's local-path upload) is here alongside the
  * URL one: the spike shows both go through `POST /api/tools` and return the
  * same envelope, so recording one and not the other would leave a silent hole
  * for anyone whose Galaxy MCP server is reachable but whose Loom-native
  * uploader is not.
  */
 export const SUBMISSION_TOOLS: Readonly<Record<string, SubmissionKind>> = {
-  galaxy_invoke_workflow: "invocation",
-  galaxy_run_tool: "jobs",
-  galaxy_run_user_tool: "jobs",
-  galaxy_upload_file_from_url: "jobs",
-  galaxy_upload_file: "jobs",
+  mcp__galaxy__invoke_workflow: "invocation",
+  mcp__galaxy__run_tool: "jobs",
+  mcp__galaxy__run_user_tool: "jobs",
+  mcp__galaxy__upload_file_from_url: "jobs",
+  mcp__galaxy__upload_file: "jobs",
   // Loom-native (galaxy-upload.ts), not an MCP passthrough: its result shape
   // is ours, so it is parsed from `details` rather than from the JSON text.
   galaxy_upload_local_file: "jobs",
-  galaxy_create_user_tool: "udt",
+  mcp__galaxy__create_user_tool: "udt",
 };
 
 export function isSubmissionTool(toolName: string | undefined): boolean {
@@ -117,11 +115,11 @@ function fail(reason: string): ParseOutcome {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface ResolvedResult {
-  /** A structured payload, when the adapter handed one over directly. */
+  /** A structured payload, when pi handed one over directly. */
   value?: unknown;
   /** The result text to JSON.parse. */
   text?: string;
-  /** The adapter's spill file for a truncated result; the caller may re-read it. */
+  /** pi's full-output file for a truncated result; the caller may re-read it. */
   truncatedPath?: string;
   /** Loom-native tool details, when the tool is one of ours. */
   details?: Record<string, unknown>;
@@ -145,11 +143,10 @@ function firstTextBlock(content: unknown): string | undefined {
 /**
  * Pull the parseable payload out of a `tool_execution_end` result.
  *
- * The result is pi's `AgentToolResult` (`{content, details, usage}`), built
- * by whichever adapter path ran the tool. Preference order is
- * least-mangled-first: the proxy path's raw `details.mcpResult` (which keeps
- * `structuredContent`), then its text, then the content block the direct path
- * leaves, and finally the truncation spill file.
+ * The result is pi's `AgentToolResult` (`{content, details, structuredContent?}`).
+ * Preference order is least-mangled-first: the untruncated `CallToolResult`
+ * pi keeps in `structuredContent`, then the text block, with the full-output
+ * file reported for the caller to fall back on.
  */
 export function resolveResultPayload(result: unknown): ResolvedResult {
   if (typeof result === "string") return { text: result };
@@ -160,23 +157,18 @@ export function resolveResultPayload(result: unknown): ResolvedResult {
   const details = asRecord(r.details) ?? undefined;
   const out: ResolvedResult = { details };
 
-  const guard = asRecord(details?.outputGuard);
-  if (guard?.truncated === true && typeof guard.fullOutputPath === "string") {
-    out.truncatedPath = guard.fullOutputPath;
+  if (typeof details?.fullOutputPath === "string") {
+    out.truncatedPath = details.fullOutputPath;
   }
 
-  // Proxy "call" mode attaches the raw CallToolResult. When it was too big for
-  // `detailsMaxBytes` the adapter replaces it with an `{omitted: true}`
-  // summary, which carries no ids -- skip that rather than parse a summary as
-  // a submission.
-  const mcpResult = asRecord(details?.mcpResult);
-  if (mcpResult && mcpResult.omitted !== true) {
-    const structured = asRecord(mcpResult.structuredContent);
+  const call = asRecord(r.structuredContent);
+  if (call) {
+    const structured = asRecord(call.structuredContent);
     if (structured) {
       out.value = structured;
       return out;
     }
-    const text = firstTextBlock(mcpResult.content);
+    const text = firstTextBlock(call.content);
     if (text !== undefined) {
       out.text = text;
       return out;
@@ -453,35 +445,35 @@ export function parseSubmission(
   if (!envelope) {
     return fail(
       resolved.truncatedPath
-        ? "result was not parseable JSON even after re-reading the adapter's spill file"
+        ? "result was not parseable JSON even after re-reading the full-output file"
         : "result was not a parseable GalaxyResult envelope",
     );
   }
   const data = envelope.data;
 
   switch (toolName) {
-    case "galaxy_invoke_workflow":
+    case "mcp__galaxy__invoke_workflow":
       return parseInvokeWorkflow(data, args);
-    case "galaxy_run_tool":
+    case "mcp__galaxy__run_tool":
       return parseToolRun(
         data,
         args,
         (jobs) => str(args.tool_id) ?? jobs[0].toolId ?? "Galaxy tool run",
       );
-    case "galaxy_run_user_tool":
+    case "mcp__galaxy__run_user_tool":
       // The uuid is the hook's own input and never appears in `data`; the
       // resolved tool id does, on each job.
       return parseToolRun(data, args, (jobs) =>
         `User tool ${jobs[0].toolId ?? str(args.tool_uuid) ?? ""}`.trim(),
       );
-    case "galaxy_upload_file_from_url":
+    case "mcp__galaxy__upload_file_from_url":
       return parseToolRun(data, args, () => `Upload ${str(args.url) ?? "from URL"}`);
-    case "galaxy_upload_file":
+    case "mcp__galaxy__upload_file":
       return parseToolRun(data, args, () => {
         const p = str(args.path);
         return p ? `Upload ${path.basename(p)}` : "Upload to Galaxy";
       });
-    case "galaxy_create_user_tool":
+    case "mcp__galaxy__create_user_tool":
       return parseCreateUserTool(data, args);
     default:
       return fail(`${toolName} has no parser`);

@@ -125,10 +125,9 @@ export function syncCustomProviderModelsFile(modelsJsonPath, providerName, entry
   }
   const merged = mergeCustomProviderIntoModelsConfig(current, providerName, entry);
   fs.mkdirSync(path.dirname(modelsJsonPath), { recursive: true });
-  // Plain write + chmod (not tmp+rename) mirrors how bin/loom.js writes
-  // mcp.json: this file is regenerated on every launch, so a torn write is
-  // self-healing. chmod runs after the write because writeFileSync's mode
-  // option only applies when the file is first created.
+  // Plain write + chmod (not tmp+rename): this file is regenerated on every
+  // launch, so a torn write is self-healing. chmod runs after the write because
+  // writeFileSync's mode option only applies when the file is first created.
   fs.writeFileSync(modelsJsonPath, JSON.stringify(merged, null, 2), { mode: 0o600 });
   try {
     fs.chmodSync(modelsJsonPath, 0o600);

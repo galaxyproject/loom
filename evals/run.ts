@@ -11,6 +11,9 @@
  *   npm run evals -- <scenario>         -- filter to a single scenario directory
  *   npm run evals -- --model <id>       -- filter to a single model id
  *   npm run evals -- <scenario> --model <id>
+ *   npm run evals -- galaxy-mcp --galaxy-cleanup   -- purge this run's loom-eval-* histories
+ *
+ * A scenario filter that isn't an exact directory name matches as a prefix.
  */
 
 import * as fs from "fs";
@@ -23,6 +26,8 @@ import { aggregateCells } from "./lib/aggregate.js";
 import { renderLeaderboard, report } from "./lib/report.js";
 import { writeResultsJsonl } from "./lib/persist.js";
 import { runScenario } from "./lib/runner.js";
+import { filterScenarioDirs } from "./lib/select.js";
+import { EVAL_HISTORY_PREFIX, purgeEvalHistories } from "./lib/galaxy-teardown.js";
 import type { ModelEntry, Scenario, ScenarioRun } from "./lib/types.js";
 
 loadDotEnv();
@@ -34,6 +39,7 @@ const scenariosDir = path.join(evalsDir, "scenarios");
 interface CliArgs {
   scenarioFilter?: string;
   modelFilter?: string[];
+  galaxyCleanup?: boolean;
 }
 
 async function main() {
@@ -66,6 +72,10 @@ async function main() {
   let modelCellsRun = 0;
   for (const dir of scenarioDirs) {
     const scenario = readScenario(dir);
+    if (scenario.requiresGalaxy && !(process.env.GALAXY_URL && process.env.GALAXY_API_KEY)) {
+      console.warn(`[skip] ${scenario.name} -- requiresGalaxy but GALAXY_URL/GALAXY_API_KEY unset`);
+      continue;
+    }
     const cells: (ModelEntry | null)[] = scenario.requiresModel ? [...matrix.available] : [null];
     if (scenario.requiresModel) {
       hasRequiresModel = true;
@@ -91,6 +101,10 @@ async function main() {
     process.exit(1);
   }
 
+  if (args.galaxyCleanup) {
+    await cleanupGalaxy(runs.filter((r) => r.scenario.requiresGalaxy).map((r) => r.runId ?? ""));
+  }
+
   report(runs);
 
   const cells = aggregateCells(runs);
@@ -105,6 +119,23 @@ async function main() {
 
   const anyDimFailed = cells.some((c) => Object.values(c.dimensions).some((d) => d && !d.verdict));
   process.exit(anyDimFailed ? 1 : 0);
+}
+
+async function cleanupGalaxy(runIds: string[]): Promise<void> {
+  const galaxyUrl = process.env.GALAXY_URL;
+  const apiKey = process.env.GALAXY_API_KEY;
+  if (!galaxyUrl || !apiKey || runIds.length === 0) return;
+  try {
+    const { purged, failed } = await purgeEvalHistories({ galaxyUrl, apiKey, runIds });
+    console.log(
+      `[galaxy-cleanup] purged ${purged.length} '${EVAL_HISTORY_PREFIX}*' histories from this run's ${runIds.length} Galaxy run(s)`,
+    );
+    for (const h of purged) console.log(`  purged ${h.id} ${h.name}`);
+    for (const h of failed) console.warn(`  FAILED ${h.id} ${h.name}: ${h.error}`);
+  } catch (err) {
+    // Cleanup trouble shouldn't hide the eval results; say so and move on.
+    console.warn(`[galaxy-cleanup] failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 function readScenario(dir: string): Scenario {
@@ -125,6 +156,8 @@ function parseArgs(argv: string[]): CliArgs {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
+    } else if (a === "--galaxy-cleanup") {
+      out.galaxyCleanup = true;
     } else if (!a.startsWith("--") && !out.scenarioFilter) {
       out.scenarioFilter = a;
     } else {
@@ -141,8 +174,7 @@ function discoverScenarios(filter: string | undefined): string[] {
     .filter((e) => e.isDirectory())
     .map((e) => path.join(scenariosDir, e.name))
     .filter((dir) => fs.existsSync(path.join(dir, "scenario.json")));
-  if (!filter) return all;
-  return all.filter((dir) => path.basename(dir) === filter);
+  return filterScenarioDirs(all, filter);
 }
 
 main().catch((err) => {

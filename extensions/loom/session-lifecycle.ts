@@ -128,7 +128,7 @@ export function registerSessionLifecycle(pi: ExtensionAPI): void {
     const isResume = process.argv.includes("--continue");
 
     // Galaxy credential drift: on a resume the startup greeting -- the only
-    // thing that prompts galaxy_connect() -- is suppressed, so a key/server
+    // thing that prompts mcp__galaxy__connect() -- is suppressed, so a key/server
     // change made while this session was idle would leave the model believing
     // it's still connected as the old account. Refresh the per-cwd credential
     // baseline and, on a resume where it changed, nudge a reconnect.
@@ -255,7 +255,7 @@ type GreetingAction = { kind: "model"; message: string } | NotifyAction;
  * Decide the startup greeting from the active Galaxy credential status. Pure so
  * it can be unit-tested without a live session.
  *
- * `usable` keeps a real model turn -- it has to nudge galaxy_connect(). The
+ * `usable` keeps a real model turn -- it has to nudge mcp__galaxy__connect(). The
  * other two states are pure pleasantries, so they render as a static notify:
  * no model round-trip, no leaked instruction, and the same call surfaces in
  * both the terminal TUI and Orbit (which renders the notify RPC event).
@@ -269,7 +269,7 @@ export function planStartupGreeting(status: ActiveGalaxyStatus, isOrbit: boolean
           `No greeting, no emojis, no product branding.`
         : `Give a brief welcome, then ask what to work on next, referencing the notebook contents if there is prior work. ` +
           `Keep it to 2-3 sentences.`) +
-      ` Galaxy credentials are configured -- call galaxy_connect() to establish the connection.` +
+      ` Galaxy credentials are configured -- call mcp__galaxy__connect() to establish the connection.` +
       ` Do NOT call other Galaxy tools until connected.`;
     return { kind: "model", message };
   }
@@ -319,7 +319,7 @@ export function sendStartupGreeting(
   uvxAvailable: boolean = isUvxAvailable(),
 ): void {
   // Surface the missing-runner warning before the greeting: the greeting tells
-  // the model to call galaxy_connect(), which is exactly what will fail.
+  // the model to call mcp__galaxy__connect(), which is exactly what will fail.
   const uvxWarning = planUvxWarning(activeGalaxyStatus(), uvxAvailable);
   if (uvxWarning) {
     try {

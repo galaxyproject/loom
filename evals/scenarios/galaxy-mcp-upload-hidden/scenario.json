@@ -1,0 +1,35 @@
+{
+  "name": "galaxy-mcp: a local upload goes through Loom's uploader, never MCP upload_file",
+  "description": "Loom registers galaxy-mcp with toolExposure { upload_file: hidden }: local-path upload over MCP times out on large files, and galaxy_upload_local_file (resumable TUS) replaces it. With pi's built-in MCP that hiding is a config field rather than adapter code, so a regression would quietly hand the model mcp__galaxy__upload_file again. The prompt names a file in the workspace, which is exactly the request that tool would have answered. The upload also has to land: Loom's uploader must return a success and the submission hook must register its job, which pins the details-reading path of the capture for a live upload rather than a replayed one. The history is named with the loom-eval- prefix so --galaxy-cleanup can purge it. The timeout sits above the uploader's own 600s ingest bound, so a slow queue on the shared server ends in the tool's verdict rather than the runner's SIGTERM.",
+  "tier": 2,
+  "requiresModel": true,
+  "requiresGalaxy": true,
+  "inputs": [
+    "Create a new Galaxy history named exactly `loom-eval-upload-{{RUN_ID}}`, then upload the local file `counts.tsv` from this folder into that history as a tabular dataset. Tell me the new dataset's id when it's done. This is a quick data-staging request, so skip the plan and don't edit the notebook."
+  ],
+  "timeoutMs": 720000,
+  "assertions": {
+    "toolCalls": {
+      "mustInclude": [
+        {
+          "name": "mcp__galaxy__create_history",
+          "argsContains": { "history_name": "loom-eval-upload-" }
+        },
+        { "name": "galaxy_upload_local_file" }
+      ],
+      "mustNotInclude": ["mcp__galaxy__upload_file"]
+    },
+    "toolResults": {
+      "mustSucceed": [{ "name": "galaxy_upload_local_file" }]
+    },
+    "activity": {
+      "mustInclude": [
+        {
+          "kind": "submission.registered",
+          "source": "submission-capture",
+          "payloadContains": { "tool": "galaxy_upload_local_file" }
+        }
+      ]
+    }
+  }
+}

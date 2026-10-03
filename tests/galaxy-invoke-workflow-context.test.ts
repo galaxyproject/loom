@@ -24,7 +24,9 @@ describe("buildGalaxyContextBlock workflow-invocation guidance", () => {
     const block = buildGalaxyContextBlock();
     // Order matters -- guidance that named these the other way round would
     // steer the model into invoking first, which is the bug being fixed.
-    expect(block).toMatch(/galaxy_get_workflow_input_template`? before `?galaxy_invoke_workflow/);
+    expect(block).toMatch(
+      /mcp__galaxy__get_workflow_input_template`? before `?mcp__galaxy__invoke_workflow/,
+    );
   });
 
   it("names inputs_template so the whole wrapper isn't passed as inputs", () => {
@@ -93,6 +95,6 @@ describe("buildGalaxyContextBlock workflow-invocation guidance", () => {
     delete process.env.GALAXY_URL;
     delete process.env.GALAXY_API_KEY;
     const block = buildGalaxyContextBlock();
-    expect(block).not.toContain("galaxy_get_workflow_input_template");
+    expect(block).not.toContain("mcp__galaxy__get_workflow_input_template");
   });
 });

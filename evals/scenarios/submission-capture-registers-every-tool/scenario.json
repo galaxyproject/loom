@@ -21,7 +21,7 @@
           "kind": "submission.registered",
           "source": "submission-capture",
           "payloadContains": {
-            "tool": "galaxy_invoke_workflow",
+            "tool": "mcp__galaxy__invoke_workflow",
             "kind": "invocation",
             "invocation_id": "ff1e2d3c4b5a6978",
             "history_id": "0a248a1f62a0cc04",
@@ -33,7 +33,7 @@
           "kind": "submission.registered",
           "source": "submission-capture",
           "payloadContains": {
-            "tool": "galaxy_run_tool",
+            "tool": "mcp__galaxy__run_tool",
             "kind": "jobs",
             "step_anchor": "plan-a-step-1"
           }
@@ -42,7 +42,7 @@
           "kind": "submission.registered",
           "source": "submission-capture",
           "payloadContains": {
-            "tool": "galaxy_run_user_tool",
+            "tool": "mcp__galaxy__run_user_tool",
             "kind": "jobs"
           }
         },
@@ -50,7 +50,7 @@
           "kind": "submission.registered",
           "source": "submission-capture",
           "payloadContains": {
-            "tool": "galaxy_upload_file_from_url",
+            "tool": "mcp__galaxy__upload_file_from_url",
             "kind": "jobs",
             "step_anchor": "unattributed"
           }
@@ -59,7 +59,7 @@
           "kind": "submission.registered",
           "source": "submission-capture",
           "payloadContains": {
-            "tool": "galaxy_upload_file",
+            "tool": "mcp__galaxy__upload_file",
             "kind": "jobs",
             "step_anchor": "unattributed"
           }

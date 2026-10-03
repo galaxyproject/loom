@@ -7,15 +7,15 @@ import {
 
 describe("foldConfusables", () => {
   it("leaves pure ASCII unchanged (returns the same reference)", () => {
-    const s = "brc_analytics_get_organism";
+    const s = "mcp__brc_analytics__get_organism";
     expect(foldConfusables(s)).toBe(s);
   });
 
   it("folds the Cyrillic с (U+0441) to Latin c", () => {
     // The captured failure from issue #100: gpt-oss-120b sampled с in place of c.
-    const bad = "brс_analytics_get_organism";
-    expect(bad).not.toBe("brc_analytics_get_organism"); // sanity: not equal as raw strings
-    expect(foldConfusables(bad)).toBe("brc_analytics_get_organism");
+    const bad = "mcp__brс_analytics__get_organism";
+    expect(bad).not.toBe("mcp__brc_analytics__get_organism"); // sanity: not equal as raw strings
+    expect(foldConfusables(bad)).toBe("mcp__brc_analytics__get_organism");
   });
 
   it("folds multiple Cyrillic letters in one name", () => {
@@ -36,12 +36,12 @@ describe("foldConfusables", () => {
 
 describe("hasConfusables", () => {
   it("returns false for pure ASCII", () => {
-    expect(hasConfusables("brc_analytics_get_organism")).toBe(false);
+    expect(hasConfusables("mcp__brc_analytics__get_organism")).toBe(false);
     expect(hasConfusables("")).toBe(false);
   });
 
   it("returns true when any confusable codepoint is present", () => {
-    expect(hasConfusables("brс_analytics_get_organism")).toBe(true);
+    expect(hasConfusables("mcp__brс_analytics__get_organism")).toBe(true);
   });
 
   it("returns false for non-Latin chars that aren't in the confusables map", () => {
@@ -52,15 +52,15 @@ describe("hasConfusables", () => {
 
 describe("findConfusablesMatch", () => {
   const candidates = [
-    "brc_analytics_get_organism",
-    "brc_analytics_search_organisms",
-    "galaxy_run_tool",
+    "mcp__brc_analytics__get_organism",
+    "mcp__brc_analytics__search_organisms",
+    "mcp__galaxy__run_tool",
     "web_search",
   ];
 
   it("returns the canonical name when the bad name folds to one of the candidates", () => {
-    const bad = "brс_analytics_get_organism";
-    expect(findConfusablesMatch(bad, candidates)).toBe("brc_analytics_get_organism");
+    const bad = "mcp__brс_analytics__get_organism";
+    expect(findConfusablesMatch(bad, candidates)).toBe("mcp__brc_analytics__get_organism");
   });
 
   it("returns undefined when the bad name has confusables but doesn't fold to any candidate", () => {
@@ -75,11 +75,11 @@ describe("findConfusablesMatch", () => {
 
   it("returns undefined when the bad name is plain ASCII and DOES match (no confusables = no suggestion needed)", () => {
     // The real tool was called correctly; nothing to suggest.
-    expect(findConfusablesMatch("brc_analytics_get_organism", candidates)).toBeUndefined();
+    expect(findConfusablesMatch("mcp__brc_analytics__get_organism", candidates)).toBeUndefined();
   });
 
   it("handles the second case from the captured trace (search_organisms)", () => {
-    const bad = "brс_analytics_search_organisms";
-    expect(findConfusablesMatch(bad, candidates)).toBe("brc_analytics_search_organisms");
+    const bad = "mcp__brс_analytics__search_organisms";
+    expect(findConfusablesMatch(bad, candidates)).toBe("mcp__brc_analytics__search_organisms");
   });
 });

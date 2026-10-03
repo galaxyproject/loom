@@ -588,7 +588,7 @@ describe("record tools: annotate what the harness already recorded", () => {
         invocationId: INV_ID,
         galaxyServerUrl: "https://usegalaxy.org",
         notebookAnchor: "unattributed",
-        label: "galaxy_invoke_workflow",
+        label: "mcp__galaxy__invoke_workflow",
         submittedAt: "2026-09-16T15:30:00Z",
         status: "in_progress",
         serverVerified: true,
@@ -640,7 +640,7 @@ describe("record tools: annotate what the harness already recorded", () => {
         jobId: JOB_ID,
         galaxyServerUrl: "https://usegalaxy.org",
         notebookAnchor: "unattributed",
-        label: "galaxy_run_tool",
+        label: "mcp__galaxy__run_tool",
         toolId: "bwa_mem",
         submittedAt: "2026-09-16T15:30:00Z",
         status: "in_progress",
@@ -733,7 +733,7 @@ describe("record tools: annotate what the harness already recorded", () => {
     expect(res.success).toBe(false);
     const [block] = findInvocationBlocks(readFileSync(nbPath, "utf-8"));
     expect(block.notebookAnchor).toBe("unattributed");
-    expect(block.label).toBe("galaxy_invoke_workflow");
+    expect(block.label).toBe("mcp__galaxy__invoke_workflow");
   });
 
   it("still refuses an id Galaxy denies, even with a block already carrying it", async () => {
@@ -759,7 +759,7 @@ describe("record tools: annotate what the harness already recorded", () => {
       invocationId: INV_ID,
       galaxyServerUrl: "https://other.galaxy.test",
       notebookAnchor: "unattributed",
-      label: "galaxy_invoke_workflow",
+      label: "mcp__galaxy__invoke_workflow",
       submittedAt: "2026-09-16T15:30:00Z",
       status: "in_progress",
       serverVerified: false,

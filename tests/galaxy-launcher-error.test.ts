@@ -8,14 +8,14 @@ import { planUvxWarning } from "../extensions/loom/session-lifecycle.js";
 
 describe("isGalaxyLauncherError", () => {
   it("matches the raw spawn failure a missing uvx produces", () => {
-    expect(isGalaxyLauncherError("galaxy_connect", "Failed to call tool: spawn uvx ENOENT")).toBe(
-      true,
-    );
+    expect(
+      isGalaxyLauncherError("mcp__galaxy__connect", "Failed to call tool: spawn uvx ENOENT"),
+    ).toBe(true);
   });
 
   it("matches when another layer reorders the runner and the errno", () => {
     expect(
-      isGalaxyLauncherError("galaxy_get_histories", "MCP launch failed: ENOENT running uvx"),
+      isGalaxyLauncherError("mcp__galaxy__get_histories", "MCP launch failed: ENOENT running uvx"),
     ).toBe(true);
   });
 
@@ -27,15 +27,17 @@ describe("isGalaxyLauncherError", () => {
     // The whole point of the split: this one must fall through to the
     // reconnect nudge instead of telling the user to install software.
     expect(
-      isGalaxyLauncherError("galaxy_get_histories", "Failed to call tool: Not connected"),
+      isGalaxyLauncherError("mcp__galaxy__get_histories", "Failed to call tool: Not connected"),
     ).toBe(false);
-    expect(isGalaxyLauncherError("galaxy_get_histories", "Connection closed (-32000)")).toBe(false);
+    expect(isGalaxyLauncherError("mcp__galaxy__get_histories", "Connection closed (-32000)")).toBe(
+      false,
+    );
   });
 
   it("does not match galaxy-mcp's own auth error", () => {
     expect(
       isGalaxyLauncherError(
-        "galaxy_get_histories",
+        "mcp__galaxy__get_histories",
         "Not connected to Galaxy. Authenticate via OAuth or run connect()...",
       ),
     ).toBe(false);
@@ -43,8 +45,8 @@ describe("isGalaxyLauncherError", () => {
 
   it("ignores a missing tool name or empty text", () => {
     expect(isGalaxyLauncherError(undefined, "spawn uvx ENOENT")).toBe(false);
-    expect(isGalaxyLauncherError("galaxy_connect", undefined)).toBe(false);
-    expect(isGalaxyLauncherError("galaxy_connect", "")).toBe(false);
+    expect(isGalaxyLauncherError("mcp__galaxy__connect", undefined)).toBe(false);
+    expect(isGalaxyLauncherError("mcp__galaxy__connect", "")).toBe(false);
   });
 
   it("steers away from reconnecting, which cannot fix a missing runner", () => {

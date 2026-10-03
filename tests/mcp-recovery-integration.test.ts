@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import {
   Type,
   createAssistantMessageEventStream,
@@ -14,11 +14,11 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { guardMcpOutput } from "../node_modules/pi-mcp-adapter/mcp-output-guard";
+import { convertMcpResult } from "../node_modules/@earendil-works/pi-coding-agent/dist/extensions/mcp/tools.js";
 import { registerMcpOutputRecovery } from "../extensions/loom/mcp-output";
 import { registerMcpRecovery } from "../extensions/loom/mcp-recovery";
 
-// Real adapter truncation + real Pi event dispatch and tool continuation.
+// pi's real MCP truncation + real Pi event dispatch and tool continuation.
 // Only the model and Galaxy responses are fixtures; no network or paid calls.
 describe("MCP recovery through the Pi runtime", () => {
   it("continues from a blocked expensive search, a huge result and a timeout in one user turn", async () => {
@@ -51,11 +51,11 @@ describe("MCP recovery through the Pi runtime", () => {
       const historyLimits: number[] = [];
       const observed: Record<string, unknown>[] = [];
       const script = [
-        { name: "galaxy_search_tools_by_keywords", arguments: { keywords: ["tissue"] } },
-        { name: "galaxy_get_tool_panel", arguments: {} },
+        { name: "mcp__galaxy__search_tools_by_keywords", arguments: { keywords: ["tissue"] } },
+        { name: "mcp__galaxy__get_tool_panel", arguments: {} },
         { name: "mcp_read_output", arguments: { outputId: "call-1", query: "TISSUE" } },
-        { name: "galaxy_get_histories", arguments: { limit: 100 } },
-        { name: "galaxy_get_histories", arguments: { limit: 5 } },
+        { name: "mcp__galaxy__get_histories", arguments: { limit: 100 } },
+        { name: "mcp__galaxy__get_histories", arguments: { limit: 5 } },
         { name: "mcp_read_output", arguments: { outputId: "unknown" } },
         { name: "mcp_read_output", arguments: { outputId: "call-1", pointer: "/data/1/id" } },
       ];
@@ -121,14 +121,14 @@ describe("MCP recovery through the Pi runtime", () => {
         model: runtime.getModel("mcp-recovery-fixture", "fixture"),
         thinkingLevel: "off",
         tools: [
-          "galaxy_search_tools_by_keywords",
-          "galaxy_get_tool_panel",
-          "galaxy_get_histories",
+          "mcp__galaxy__search_tools_by_keywords",
+          "mcp__galaxy__get_tool_panel",
+          "mcp__galaxy__get_histories",
           "mcp_read_output",
         ],
         customTools: [
           {
-            name: "galaxy_search_tools_by_keywords",
+            name: "mcp__galaxy__search_tools_by_keywords",
             label: "Fixture slow discovery",
             description: "Fixture",
             parameters: Type.Object({ keywords: Type.Array(Type.String()) }),
@@ -138,7 +138,7 @@ describe("MCP recovery through the Pi runtime", () => {
             },
           },
           {
-            name: "galaxy_get_tool_panel",
+            name: "mcp__galaxy__get_tool_panel",
             label: "Fixture catalog",
             description: "Fixture",
             parameters: Type.Object({}),
@@ -150,13 +150,15 @@ describe("MCP recovery through the Pi runtime", () => {
                   { id: "fixture-tissue-id", name: "TISSUE" },
                 ],
               });
-              const result = await guardMcpOutput([{ type: "text", text: raw }]);
-              artifacts.push(dirname(result.outputGuard!.fullOutputPath!));
-              return { content: result.content, details: { outputGuard: result.outputGuard } };
+              const result = await convertMcpResult("galaxy", "get_tool_panel", {
+                content: [{ type: "text", text: raw }],
+              });
+              artifacts.push((result.details as { fullOutputPath: string }).fullOutputPath);
+              return { content: result.content, details: result.details };
             },
           },
           {
-            name: "galaxy_get_histories",
+            name: "mcp__galaxy__get_histories",
             label: "Fixture histories",
             description: "Fixture",
             parameters: Type.Object({ limit: Type.Number() }),
@@ -179,7 +181,7 @@ describe("MCP recovery through the Pi runtime", () => {
       expect(historyLimits).toEqual([100, 5]);
       expect(observed[0]).toMatchObject({
         isError: true,
-        text: expect.stringContaining("galaxy_search_tools_by_name"),
+        text: expect.stringContaining("mcp__galaxy__search_tools_by_name"),
       });
       expect(observed[1]).toMatchObject({
         isError: false,
@@ -202,7 +204,8 @@ describe("MCP recovery through the Pi runtime", () => {
       });
     } finally {
       dispose?.();
-      for (const path of artifacts) rmSync(path, { recursive: true, force: true });
+      // Files directly in $TMPDIR: remove each, never their directory.
+      for (const path of artifacts) rmSync(path, { force: true });
       rmSync(dir, { recursive: true, force: true });
     }
   }, 20_000);

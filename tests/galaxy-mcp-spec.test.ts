@@ -10,7 +10,7 @@ const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 /**
  * The container bakes galaxy-mcp into its uv cache so a GxIT job starts without
  * PyPI. That only holds while the pre-warmed spec is the one the brain actually
- * asks for at runtime: the image once pre-warmed >=1.8.0 while mcp.json required
+ * asks for at runtime: the image once pre-warmed >=1.8.0 while the brain required
  * >=1.9.0, so the cached copy didn't satisfy the request and uv silently went
  * back to the network. Nothing in CI builds the image, so guard the pairing here.
  */
@@ -29,9 +29,9 @@ describe("galaxy-mcp spec lockstep", () => {
     expect(installs).toEqual([`uv tool install "${GALAXY_MCP_SPEC}"`]);
   });
 
-  it("bin/loom.js writes the shared constant into mcp.json, not a literal", () => {
-    const loomBin = readFileSync(join(repoRoot, "bin", "loom.js"), "utf-8");
-    expect(loomBin).toContain("args: [GALAXY_MCP_SPEC]");
-    expect(loomBin).not.toMatch(/args: \["galaxy-mcp/);
+  it("the brain registers the shared constant, not a literal", () => {
+    const servers = readFileSync(join(repoRoot, "extensions", "loom", "mcp-servers.ts"), "utf-8");
+    expect(servers).toContain("args: [GALAXY_MCP_SPEC]");
+    expect(servers).not.toMatch(/args: \["galaxy-mcp/);
   });
 });

@@ -8,17 +8,25 @@ import {
 describe("classifyGalaxyDestructive -- discrete update_history", () => {
   it("flags deleted=true as a soft (recoverable) history delete", () => {
     expect(
-      classifyGalaxyDestructive("galaxy_update_history", { deleted: true, history_id: "abc" }),
+      classifyGalaxyDestructive("mcp__galaxy__update_history", {
+        deleted: true,
+        history_id: "abc",
+      }),
     ).toEqual({ kind: "history-delete", historyId: "abc", irreversible: false });
   });
 
   it("does NOT flag a rename-only update_history", () => {
-    expect(classifyGalaxyDestructive("galaxy_update_history", { name: "renamed" })).toBeNull();
+    expect(
+      classifyGalaxyDestructive("mcp__galaxy__update_history", { name: "renamed" }),
+    ).toBeNull();
   });
 
   it("does NOT flag deleted=false", () => {
     expect(
-      classifyGalaxyDestructive("galaxy_update_history", { deleted: false, history_id: "abc" }),
+      classifyGalaxyDestructive("mcp__galaxy__update_history", {
+        deleted: false,
+        history_id: "abc",
+      }),
     ).toBeNull();
   });
 
@@ -35,8 +43,8 @@ describe("classifyGalaxyDestructive -- discrete update_history", () => {
   });
 
   it("ignores unrelated galaxy tools", () => {
-    expect(classifyGalaxyDestructive("galaxy_get_histories", {})).toBeNull();
-    expect(classifyGalaxyDestructive("galaxy_upload_file", { history_id: "abc" })).toBeNull();
+    expect(classifyGalaxyDestructive("mcp__galaxy__get_histories", {})).toBeNull();
+    expect(classifyGalaxyDestructive("mcp__galaxy__upload_file", { history_id: "abc" })).toBeNull();
   });
 });
 
@@ -47,7 +55,7 @@ describe("classifyGalaxyDestructive -- generic mcp proxy envelope (#338 F1)", ()
     expect(
       classifyGalaxyDestructive("mcp", {
         server: "galaxy",
-        tool: "galaxy_update_history",
+        tool: "mcp__galaxy__update_history",
         args: JSON.stringify({ deleted: true, history_id: "h" }),
       }),
     ).toMatchObject({ kind: "history-delete", historyId: "h" });
@@ -56,7 +64,7 @@ describe("classifyGalaxyDestructive -- generic mcp proxy envelope (#338 F1)", ()
   it("does NOT flag a non-destructive proxied call", () => {
     expect(
       classifyGalaxyDestructive("mcp", {
-        tool: "galaxy_get_histories",
+        tool: "mcp__galaxy__get_histories",
         args: "{}",
       }),
     ).toBeNull();
@@ -64,7 +72,7 @@ describe("classifyGalaxyDestructive -- generic mcp proxy envelope (#338 F1)", ()
 
   it("tolerates malformed (non-JSON) proxy args without throwing", () => {
     expect(
-      classifyGalaxyDestructive("mcp", { tool: "galaxy_update_history", args: "not json" }),
+      classifyGalaxyDestructive("mcp", { tool: "mcp__galaxy__update_history", args: "not json" }),
     ).toBeNull();
   });
 });
@@ -89,6 +97,14 @@ describe("classifyGalaxyDestructive -- code mode run_galaxy_tool({code}) (#338 F
     ).toMatchObject({ kind: "history-delete" });
   });
 
+  it("flags a script that calls the tool by pi's prefixed name", () => {
+    expect(
+      classifyGalaxyDestructive("mcp__galaxy__run_galaxy_tool", {
+        code: "call_tool('mcp__galaxy__update_history', {'deleted': True})",
+      }),
+    ).toMatchObject({ kind: "history-delete" });
+  });
+
   it("does NOT flag a non-destructive code script", () => {
     expect(
       classifyGalaxyDestructive("galaxy_run_galaxy_tool", {
@@ -109,7 +125,7 @@ describe("classifyGalaxyDestructive -- code mode run_galaxy_tool({code}) (#338 F
 describe("classifyGalaxyDestructive -- post-review hardening", () => {
   it("flags a direct purged=true (defensive, irreversible)", () => {
     expect(
-      classifyGalaxyDestructive("galaxy_update_history", { purged: true, history_id: "h" }),
+      classifyGalaxyDestructive("mcp__galaxy__update_history", { purged: true, history_id: "h" }),
     ).toMatchObject({ kind: "history-purge", irreversible: true });
   });
 
@@ -148,7 +164,7 @@ describe("classifyGalaxyDestructive -- post-review hardening", () => {
   it("unwraps a whitespace-padded proxied tool name", () => {
     expect(
       classifyGalaxyDestructive("mcp", {
-        tool: " galaxy_update_history ",
+        tool: " mcp__galaxy__update_history ",
         args: JSON.stringify({ deleted: true, history_id: "h" }),
       }),
     ).toMatchObject({ kind: "history-delete" });

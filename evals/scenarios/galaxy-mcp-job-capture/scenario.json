@@ -1,0 +1,50 @@
+{
+  "name": "galaxy-mcp: a real tool run lands as a loom-job block and the poller follows it",
+  "description": "The submission-capture-* scenarios replay recorded galaxy-mcp results through the capture hook; this one sends real submissions. Capture keys on the pi tool name (mcp__galaxy__run_tool) and reads the job ids out of the result as pi's MCP delivers it, so a change in either shows up here as a run that went through with nothing recorded. The agent stages a small BED file by URL, runs Line/Word/Character count (wc_gnu) on it and waits for the result, which keeps the session alive across poller ticks: the scenario asserts the run_tool registration, the loom-job block in notebook.md, and a poll.transition row for the wc_gnu job reaching a terminal state. The history is loom-eval- prefixed for --galaxy-cleanup.",
+  "tier": 2,
+  "requiresModel": true,
+  "requiresGalaxy": true,
+  "inputs": [
+    "Create a new Galaxy history named exactly `loom-eval-job-{{RUN_ID}}`. Upload this BED file into it by URL: https://raw.githubusercontent.com/galaxyproject/galaxy/release_24.0/test-data/1.bed . Then run the Galaxy tool `wc_gnu` (Line/Word/Character count) on that dataset with default settings. Wait until the wc_gnu job has finished -- check on it every so often -- and then tell me how many lines the BED file has according to the tool's output. Skip the formal plan; this is a quick check."
+  ],
+  "timeoutMs": 600000,
+  "assertions": {
+    "toolCalls": {
+      "mustInclude": [
+        {
+          "name": "mcp__galaxy__create_history",
+          "argsContains": { "history_name": "loom-eval-job-" }
+        },
+        { "name": "mcp__galaxy__upload_file_from_url" },
+        { "name": "mcp__galaxy__run_tool", "argsContains": { "tool_id": "wc_gnu" } }
+      ],
+      "mustNotInclude": ["mcp__galaxy__upload_file"]
+    },
+    "toolResults": {
+      "mustSucceed": [
+        {
+          "name": "mcp__galaxy__run_tool",
+          "detailsContains": { "server": "galaxy", "tool": "run_tool" }
+        }
+      ]
+    },
+    "activity": {
+      "mustNotIncludeKinds": ["submission.unparsed"],
+      "mustInclude": [
+        {
+          "kind": "submission.registered",
+          "source": "submission-capture",
+          "payloadContains": { "tool": "mcp__galaxy__run_tool", "kind": "jobs" }
+        },
+        {
+          "kind": "poll.transition",
+          "source": "galaxy-poller",
+          "payloadContains": { "blockKind": "job", "toolId": "wc_gnu", "to": "completed" }
+        }
+      ]
+    },
+    "notebook": {
+      "contains": ["```loom-job", "tool_id: wc_gnu"]
+    }
+  }
+}

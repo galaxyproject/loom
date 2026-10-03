@@ -8,15 +8,15 @@ Loom registers a small set of tools at the extension layer:
 | ---------------------------- | ----------------------------------------------------------------------------------------------- |
 | GTN tutorials                | `gtn_search`, `gtn_fetch`                                                                       |
 | Skills                       | `skills_fetch` (SKILL.md / reference docs; `repo: "foundry"` reads bundled Foundry casts)       |
-| Saved MCP output             | `mcp_read_output` (search/page a response already saved by the MCP adapter)                     |
+| Saved MCP output             | `mcp_read_output` (search/page an oversized MCP response pi already saved)                      |
 | Galaxy invocations           | `galaxy_invocation_record`, `galaxy_invocation_check_all`, `galaxy_invocation_check_one`        |
 | Dashboard                    | `dashboard_read`, `dashboard_update`                                                            |
 | Multi-agent (experimental)   | `team_dispatch` (gated by `LOOM_TEAM_DISPATCH=1`)                                               |
 | Session index (experimental) | `chat_search`, `chat_session_context`, `chat_find_tool_calls` (gated by `LOOM_SESSION_INDEX=1`) |
 
 Galaxy MCP (separately registered when credentials are present)
-provides `galaxy_connect`, `galaxy_search_tools_by_name`,
-`galaxy_run_tool`, `galaxy_invoke_workflow`, `galaxy_search_iwc_workflows`,
+provides `mcp__galaxy__connect`, `mcp__galaxy__search_tools_by_name`,
+`mcp__galaxy__run_tool`, `mcp__galaxy__invoke_workflow`, `mcp__galaxy__search_iwc_workflows`,
 history/dataset operations, etc.
 
 Pi built-ins (`bash`, `read_file`, `write_file`, `edit_file`, `glob`,
@@ -36,7 +36,7 @@ bounded and known secret values are redacted. Temporary files can expire:
 repeat only a narrower read-only lookup, never a submission just to recover
 its output.
 
-For installed tools, use `galaxy_search_tools_by_name` (name, ID, description)
+For installed tools, use `mcp__galaxy__search_tools_by_name` (name, ID, description)
 and inspect candidate schemas. Loom blocks the catalog-wide
 `search_tools_by_keywords` schema fan-out before dispatch. Input-datatype-only
 matches still require schema inspection; a name search does not prove absence.

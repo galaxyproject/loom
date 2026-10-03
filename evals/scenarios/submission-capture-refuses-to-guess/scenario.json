@@ -21,7 +21,7 @@
           "kind": "submission.unparsed",
           "source": "submission-capture",
           "payloadContains": {
-            "tool": "galaxy_run_tool",
+            "tool": "mcp__galaxy__run_tool",
             "step_anchor": "plan-a-step-1"
           }
         },
@@ -29,7 +29,7 @@
           "kind": "submission.unparsed",
           "source": "submission-capture",
           "payloadContains": {
-            "tool": "galaxy_invoke_workflow"
+            "tool": "mcp__galaxy__invoke_workflow"
           }
         }
       ]

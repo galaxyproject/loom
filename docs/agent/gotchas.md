@@ -61,11 +61,11 @@ gtn_fetch(url: "<url from search>")       → read the tutorial content
 
 ## Calling Galaxy tools: build inputs from the schema
 
-Before `galaxy_run_tool`, look up the tool's real parameter schema and
+Before `mcp__galaxy__run_tool`, look up the tool's real parameter schema and
 match it exactly — do not guess input names. The fastest path:
 
-1. **`galaxy_get_tool_details(tool_id, io_details=True)`** returns the
-   full parameter schema. (`galaxy_get_tool_input_template(tool_id)` is
+1. **`mcp__galaxy__get_tool_details(tool_id, io_details=True)`** returns the
+   full parameter schema. (`mcp__galaxy__get_tool_input_template(tool_id)` is
    the shortcut — it hands back a ready-to-fill `inputs` skeleton with
    placeholders.)
 2. Build `inputs` to the exact parameter names. They are often not what

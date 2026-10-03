@@ -44,20 +44,23 @@ export async function runScenario(
   }
 
   const start = Date.now();
+  const runId = makeRunId(new Date(start));
   try {
     // Inside the try so a failed config write still hits the cleanup below
     // rather than orphaning the temp dir.
     if (model) {
       writePiModelsConfig(model, tmpAgentDir);
     }
-    const result = await spawnLoom(scenario, model, tmpCwd, tmpAgentDir, tmpRoot);
+    const result = await spawnLoom(scenario, model, tmpCwd, tmpAgentDir, tmpRoot, runId);
     const events = parseJsonLines(result.stdout);
     const notebookContent = readNotebook(tmpCwd);
     const activityEvents = readActivityLog(tmpCwd);
+    dumpRun(scenarioDir, model, runId, tmpCwd, result);
     return {
       scenarioDir,
       scenario,
       model,
+      runId,
       exitCode: result.exitCode,
       events,
       stdout: result.stdout,
@@ -70,6 +73,71 @@ export async function runScenario(
   } finally {
     fs.rmSync(tmpRoot, { recursive: true, force: true });
   }
+}
+
+/**
+ * A per-run token scenarios splice into their prompts as `{{RUN_ID}}`. Live
+ * Galaxy scenarios name their histories with it, so concurrent or repeated
+ * runs never collide on a name and teardown can tell this run's histories
+ * from anything else on a shared server.
+ */
+export function makeRunId(now: Date, rand: () => number = Math.random): string {
+  const stamp = now.toISOString().replace(/[-:T]/g, "").replace(/\..*$/, "");
+  const suffix = Math.floor(rand() * 36 ** 4)
+    .toString(36)
+    .padStart(4, "0");
+  return `${stamp}-${suffix}`;
+}
+
+export function substituteRunId(input: string, runId: string): string {
+  return input.split("{{RUN_ID}}").join(runId);
+}
+
+/**
+ * Raw transcript of a run, for diagnosing a live failure after the temp dir
+ * is gone. Off unless LOOM_EVAL_DUMP_DIR is set; point it somewhere outside
+ * the repo, since tool results land in it verbatim.
+ */
+function dumpRun(
+  scenarioDir: string,
+  model: ModelEntry | null,
+  runId: string,
+  cwd: string,
+  result: SpawnResult,
+): void {
+  const dir = process.env.LOOM_EVAL_DUMP_DIR;
+  if (!dir) return;
+  const base = path.join(
+    dir,
+    `${path.basename(scenarioDir)}--${(model?.id ?? "none").replace(/[^\w.-]/g, "_")}--${runId}`,
+  );
+  fs.mkdirSync(base, { recursive: true });
+  fs.writeFileSync(path.join(base, "stdout.jsonl"), result.stdout);
+  fs.writeFileSync(path.join(base, "stderr.txt"), result.stderr);
+  for (const name of ["notebook.md", "activity.jsonl"]) {
+    const src = path.join(cwd, name);
+    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(base, name));
+  }
+}
+
+/**
+ * Point uv back at the real cache. The fake HOME would otherwise give every
+ * run an empty one, and `uvx galaxy-mcp` would reinstall from PyPI on each
+ * spawn -- long enough to blow pi's 10s wait for direct MCP servers before the
+ * first prompt, so the model's opening Galaxy calls come back "Tool not found"
+ * and the run grades a cold install instead of Loom.
+ */
+export function uvCacheEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  home = os.homedir(),
+): Record<string, string> {
+  return {
+    UV_CACHE_DIR:
+      env.UV_CACHE_DIR ?? path.join(env.XDG_CACHE_HOME ?? path.join(home, ".cache"), "uv"),
+    UV_PYTHON_INSTALL_DIR:
+      env.UV_PYTHON_INSTALL_DIR ??
+      path.join(env.XDG_DATA_HOME ?? path.join(home, ".local", "share"), "uv", "python"),
+  };
 }
 
 function readNotebook(cwd: string): string | null {
@@ -120,6 +188,7 @@ function spawnLoom(
   cwd: string,
   agentDir: string,
   fakeHome: string,
+  runId: string,
 ): Promise<SpawnResult> {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -129,6 +198,7 @@ function spawnLoom(
     PI_TELEMETRY: "0",
     LOOM_FRESH_SESSION: "1",
     HOME: fakeHome, // isolates ~/.loom/config.json reads
+    ...uvCacheEnv(),
   };
 
   const args = ["--mode", "json"];
@@ -136,7 +206,7 @@ function spawnLoom(
     args.push("--provider", model.provider, "--model", model.model);
   }
   for (const arg of scenario.loomArgs ?? []) args.push(arg);
-  for (const input of scenario.inputs) args.push(input);
+  for (const input of scenario.inputs) args.push(substituteRunId(input, runId));
 
   const timeoutMs = scenario.timeoutMs ?? 15000;
 

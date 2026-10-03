@@ -10,8 +10,7 @@
  * found" to the agent.
  *
  * Why this is a stopgap and not a proper fix: the right place to
- * normalize is at the lookup layer in pi-agent-core (or pi-mcp-adapter
- * for the proxy path). Upstream's stance on input normalization is in
+ * normalize is at the lookup layer in pi-agent-core. Upstream's stance on input normalization is in
  * earendil-works/pi#638 (case-mismatch case): "this is not something pi
  * will 'normalize', and the suggested fix is just plain wrong." So
  * landing this upstream is unlikely. Meanwhile we can't intercept

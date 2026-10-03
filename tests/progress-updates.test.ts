@@ -24,7 +24,7 @@ describe("user-visible progress without model calls", () => {
     h.fire("agent_start");
     h.fire("tool_execution_start", {
       toolCallId: "x",
-      toolName: "galaxy_run_user_tool",
+      toolName: "mcp__galaxy__run_user_tool",
       args: { secret: "do-not-display" },
     });
     expect(h.notify).toHaveBeenCalledWith("Progress: submitting work to Galaxy.", "info");

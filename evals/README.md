@@ -34,6 +34,50 @@ PROXY_API_KEY=<your-key>
 (Variable names match `~/work/tacc-inference/.env` so symlinking that file
 straight in works: `ln -s ~/work/tacc-inference/.env evals/.env`.)
 
+Scenarios marked `requiresGalaxy: true` call Galaxy MCP tools and need a real
+server. Add `GALAXY_URL` and `GALAXY_API_KEY` (a test.galaxyproject.org account
+is the safe choice) to `evals/.env` to run them; without both, the runner skips
+them with a warning rather than grading a Galaxy server that never registered.
+
+## Live Galaxy MCP mechanics (`galaxy-mcp-*`)
+
+The `galaxy-mcp-*` scenarios drive a real model against a real Galaxy
+(test.galaxyproject.org is the intended target) to check the MCP plumbing
+rather than model judgment: that the server registers and its tools resolve
+under `mcp__galaxy__*`, that `upload_file` stays hidden in favor of Loom's
+uploader, that an oversized result is saved and readable with
+`mcp_read_output`, that the destructive-delete and SRA fan-out gates fire on
+calls arriving through pi's MCP, and that a real tool run lands as a
+`loom-job` block the poller follows to completion. They are slow (minutes
+per run), depend on a shared public server and its queue, and need both
+model and Galaxy credentials -- run them by hand when touching the MCP
+layer, not as a per-commit gate:
+
+```bash
+npm run evals -- galaxy-mcp --model tacc:minimax-m2.7 --galaxy-cleanup
+```
+
+A scenario filter that isn't an exact directory name matches as a prefix,
+which is what selects the whole family.
+
+These scenarios create histories. Each one names them
+`loom-eval-<scenario>-{{RUN_ID}}`; the runner replaces `{{RUN_ID}}` in a
+scenario's inputs with a fresh per-run token. `--galaxy-cleanup` (opt-in)
+purges, after the run, every history whose name starts with `loom-eval-` AND
+contains one of the run ids this invocation handed out -- so it never touches
+a history without the prefix, nor one from a concurrent eval run on the same
+account. A run killed before it finishes skips cleanup; look for leftover
+`loom-eval-*` histories by hand.
+
+`toolResults` assertions look at what a tool _returned_ (`tool_execution_end`)
+rather than what was called: `mustSucceed` (optionally matching
+`details`/text), `mustNotSucceed`, and `echoedInChat`, which pulls a value out
+of a result with a regex and requires the chat to repeat it -- grading an
+answer against the live server without committing an account-specific value.
+Set `LOOM_EVAL_DUMP_DIR` to keep each run's raw event stream, stderr,
+notebook and activity log for diagnosis (they include tool results verbatim,
+so point it outside the repo).
+
 ## Dimensions and the leaderboard
 
 Tier 2 scenarios are graded on up to four decision-correctness dimensions.
@@ -97,7 +141,7 @@ takes. One line per submission:
 
 ```json
 {
-  "tool": "galaxy_run_tool",
+  "tool": "mcp__galaxy__run_tool",
   "args": { "tool_id": "fastp" },
   "stepAnchor": "plan-a-step-1",
   "result": { "content": [{ "type": "text", "text": "<the GalaxyResult envelope as JSON>" }] }
@@ -106,8 +150,8 @@ takes. One line per submission:
 
 The fixtures under `scenarios/submission-capture-*/cwd/submissions.jsonl` are
 the shapes galaxy-mcp 1.9.0 really returns, read out of its source. `result` is
-a pi tool result, so the envelope sits in a text content block the way
-pi-mcp-adapter's direct-tools path delivers it.
+a pi tool result, so the envelope sits in a text content block the way pi's
+MCP tools deliver it.
 
 The seam is off unless the variable is set, the file must resolve inside the
 session directory, and every replay writes a `submission.replay` activity row
@@ -118,7 +162,8 @@ produced by real submissions.
 ## Out of scope (for now)
 
 LLM-judge plan-_quality_ scoring (the same scenarios with a rubric pass),
-end-to-end execution against a recorded/live Galaxy MCP, and notebook
+full analyses executed end to end against a live Galaxy (the `galaxy-mcp-*`
+scenarios cover the MCP mechanics, not analysis outcomes), and notebook
 discipline / session-lifecycle scenarios. The assertion library leaves seams
 for each. See the plan for sequencing.
 

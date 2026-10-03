@@ -13,9 +13,9 @@ import { INVOCATION_FAILED_HINT } from "../extensions/loom/invocation-failure-hi
 import { resetState, setNotebookPath } from "../extensions/loom/state";
 import { resetActivity } from "../extensions/loom/activity";
 
-const TOOLS = ["brc_analytics_get_organism", "galaxy_run_tool"];
+const TOOLS = ["mcp__brc_analytics__get_organism", "mcp__galaxy__run_tool"];
 // "brс" -- the "с" is Cyrillic.
-const CONFUSED = "brс_analytics_get_organism";
+const CONFUSED = "mcp__brс_analytics__get_organism";
 const FAILED_CHECK = JSON.stringify({
   success: true,
   results: [{ invocationId: "abc", autoAction: "failed" }],
@@ -30,7 +30,7 @@ describe("applySkillTriggers -- the ported rows", () => {
       () => TOOLS,
     );
     expect(out?.fired.map((f) => f.id)).toEqual(["tool-name-confusables"]);
-    expect(out?.content[0].text).toContain("Did you mean `brc_analytics_get_organism`?");
+    expect(out?.content[0].text).toContain("Did you mean `mcp__brc_analytics__get_organism`?");
   });
 
   it("stays quiet on a not-found error with no lookalike", () => {
@@ -51,7 +51,10 @@ describe("applySkillTriggers -- the ported rows", () => {
   });
 
   it("reminds the model to vet IWC candidates on recommend and search results", () => {
-    for (const toolName of ["galaxy_recommend_iwc_workflows", "galaxy_search_iwc_workflows"]) {
+    for (const toolName of [
+      "mcp__galaxy__recommend_iwc_workflows",
+      "mcp__galaxy__search_iwc_workflows",
+    ]) {
       const out = applySkillTriggers(
         { toolName, isError: false, content: [text('{"data":[],"count":0}')] },
         () => TOOLS,
@@ -64,7 +67,11 @@ describe("applySkillTriggers -- the ported rows", () => {
   it("hints on an IWC result the output guard truncated into non-JSON", () => {
     const truncated = '{"data": [{"name": "RNA-Seq\n\n[Output truncated: 2000 lines shown]';
     const out = applySkillTriggers(
-      { toolName: "galaxy_recommend_iwc_workflows", isError: false, content: [text(truncated)] },
+      {
+        toolName: "mcp__galaxy__recommend_iwc_workflows",
+        isError: false,
+        content: [text(truncated)],
+      },
       () => TOOLS,
     );
     expect(out?.content[0].text).toContain(IWC_CANDIDATES_HINT);
@@ -72,9 +79,9 @@ describe("applySkillTriggers -- the ported rows", () => {
 
   it("leaves other IWC tools and failed IWC calls alone", () => {
     for (const [toolName, isError] of [
-      ["galaxy_get_iwc_workflow_details", false],
-      ["galaxy_import_workflow_from_iwc", false],
-      ["galaxy_recommend_iwc_workflows", true],
+      ["mcp__galaxy__get_iwc_workflow_details", false],
+      ["mcp__galaxy__import_workflow_from_iwc", false],
+      ["mcp__galaxy__recommend_iwc_workflows", true],
     ] as const) {
       expect(
         applySkillTriggers({ toolName, isError, content: [text("{}")] }, () => TOOLS),
@@ -84,7 +91,7 @@ describe("applySkillTriggers -- the ported rows", () => {
 
   it("only watches the tools a row names", () => {
     const out = applySkillTriggers(
-      { toolName: "galaxy_run_tool", isError: false, content: [text(FAILED_CHECK)] },
+      { toolName: "mcp__galaxy__run_tool", isError: false, content: [text(FAILED_CHECK)] },
       () => TOOLS,
     );
     expect(out).toBeNull();
@@ -206,14 +213,16 @@ describe("registerSkillTriggers", () => {
       isError: true,
       content: [text(`Tool ${CONFUSED} not found`)],
     });
-    expect(res.message.content[0].text).toContain("Did you mean `brc_analytics_get_organism`?");
+    expect(res.message.content[0].text).toContain(
+      "Did you mean `mcp__brc_analytics__get_organism`?",
+    );
   });
 
   it("leaves results alone and logs nothing when no row fires", () => {
     const fire = hook();
     const res = fire({
       role: "toolResult",
-      toolName: "galaxy_run_tool",
+      toolName: "mcp__galaxy__run_tool",
       toolCallId: "call-3",
       isError: false,
       content: [text("{}")],

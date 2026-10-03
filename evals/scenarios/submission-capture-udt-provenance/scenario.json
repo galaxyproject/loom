@@ -21,7 +21,7 @@
           "kind": "submission.registered",
           "source": "submission-capture",
           "payloadContains": {
-            "tool": "galaxy_create_user_tool",
+            "tool": "mcp__galaxy__create_user_tool",
             "kind": "udt",
             "tool_id": "clean_table",
             "tool_uuid": "8d5f1c2e-9a0b-4c3d-8e7f-1a2b3c4d5e6f",

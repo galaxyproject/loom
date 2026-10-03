@@ -61,6 +61,12 @@ export interface Assertions {
    * observable surface.
    */
   activity?: ActivityAssertions;
+  /**
+   * Checks on what tools returned (`tool_execution_end`), not just what was
+   * called. A call to a name that never registered still shows up as a
+   * `tool_execution_start`; only its result says whether it resolved and ran.
+   */
+  toolResults?: ToolResultAssertions;
   exitCode?: number;
   behavior?: BehaviorAssertions;
 }
@@ -79,6 +85,27 @@ export interface ActivityAssertions {
   mustInclude?: ActivityExpectation[];
   /** No row may carry any of these `kind`s. */
   mustNotIncludeKinds?: string[];
+}
+
+export interface ToolResultAssertions {
+  /** Each entry needs at least one non-error result from that tool that matches it. */
+  mustSucceed?: ToolResultExpectation[];
+  /** None of these tools may return a non-error result. */
+  mustNotSucceed?: string[];
+  /**
+   * Pull a value out of a tool's result text with `pattern` (capture group 1)
+   * and require the chat to repeat it. Grades "answered from the live server"
+   * without committing an account-specific value to the scenario.
+   */
+  echoedInChat?: { name: string; pattern: string }[];
+}
+
+export interface ToolResultExpectation {
+  name: string;
+  /** Each key must be present in the result's `details` with this value (compared as strings). */
+  detailsContains?: Record<string, string>;
+  /** The result's text content must contain this substring. */
+  textContains?: string;
 }
 
 export interface ActivityExpectation {
@@ -148,6 +175,13 @@ export interface Scenario {
    * path (slash-command preflight, etc.) leave it false and run once.
    */
   requiresModel?: boolean;
+  /**
+   * The scenario needs a live Galaxy MCP server: GALAXY_URL and GALAXY_API_KEY
+   * in the environment (or evals/.env). Without them no galaxy server
+   * registers, and a run would fail as if the model had chosen not to call a
+   * Galaxy tool -- so the runner skips it instead.
+   */
+  requiresGalaxy?: boolean;
   /** How many times to run each (scenario, model) cell. Default 3 when
    *  requiresModel, else 1. Lets flaky models surface as pass-rates. */
   runs?: number;
@@ -233,6 +267,8 @@ export interface ScenarioRun {
   model: ModelEntry | null;
   /** 0-based index of this run within its (scenario, model) cell. */
   runIndex?: number;
+  /** The `{{RUN_ID}}` token this run's prompts were given; teardown matches on it. */
+  runId?: string;
   exitCode: number;
   events: AnyEvent[];
   stdout: string;

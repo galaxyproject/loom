@@ -90,7 +90,7 @@ USER node
 # Pre-warm galaxy-mcp (and the managed Python it needs) into the node-owned uv
 # cache so the runtime `uvx` launch resolves from cache instead of PyPI.
 #
-# This MUST stay the spec bin/loom.js writes into mcp.json (GALAXY_MCP_SPEC in
+# This MUST stay the spec the brain registers (GALAXY_MCP_SPEC in
 # shared/galaxy-mcp-spec.js) -- pre-warming a version the runtime spec doesn't
 # accept sends uv back to the network at job-launch, which is exactly what
 # baking the cache is meant to avoid. tests/galaxy-mcp-spec.test.ts fails if

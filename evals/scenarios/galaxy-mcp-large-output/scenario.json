@@ -1,0 +1,29 @@
+{
+  "name": "galaxy-mcp: an oversized result is saved and read back with mcp_read_output",
+  "description": "The full tool panel on test.galaxyproject.org is megabytes of JSON. pi's built-in MCP truncates a result that large and reports the full copy as details { server, tool, fullOutputPath }; Loom's recovery hook keys on exactly that shape to append its preview and register the output for mcp_read_output. If pi changes that contract, or the hook stops recognizing it, the model gets a truncated blob and no way back in. The question asks for a fact (the section and version of tool Cut1) that is buried in the middle of the panel, so the model has to search the saved output rather than read it off the preview. textContains pins the recovery notice itself, so the scenario fails on the wiring even if a model gets the answer some other way.",
+  "tier": 2,
+  "requiresModel": true,
+  "requiresGalaxy": true,
+  "inputs": [
+    "Fetch my Galaxy server's complete tool panel with the get_tool_panel tool (the whole panel, not a name search). From that panel, tell me which tool panel section the tool with id `Cut1` sits in, and that tool's exact version string as the panel lists it. Don't plan anything or write to the notebook."
+  ],
+  "timeoutMs": 300000,
+  "assertions": {
+    "toolCalls": {
+      "mustInclude": [{ "name": "mcp__galaxy__get_tool_panel" }, { "name": "mcp_read_output" }]
+    },
+    "toolResults": {
+      "mustSucceed": [
+        {
+          "name": "mcp__galaxy__get_tool_panel",
+          "detailsContains": { "server": "galaxy", "tool": "get_tool_panel" },
+          "textContains": "[loom MCP output recovery]"
+        },
+        { "name": "mcp_read_output" }
+      ]
+    },
+    "chatText": {
+      "mustMatch": ["Text Manipulation", "1\\.0\\.2"]
+    }
+  }
+}

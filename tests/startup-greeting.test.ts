@@ -5,10 +5,10 @@ import * as os from "os";
 import { planStartupGreeting, sendStartupGreeting } from "../extensions/loom/session-lifecycle.js";
 
 describe("planStartupGreeting", () => {
-  it("usable -> a model turn that nudges galaxy_connect", () => {
+  it("usable -> a model turn that nudges mcp__galaxy__connect", () => {
     const action = planStartupGreeting("usable", false);
     expect(action.kind).toBe("model");
-    if (action.kind === "model") expect(action.message).toContain("galaxy_connect");
+    if (action.kind === "model") expect(action.message).toContain("mcp__galaxy__connect");
   });
 
   it("configured-unusable -> a warning notify naming Orbit and GALAXY_API_KEY", () => {

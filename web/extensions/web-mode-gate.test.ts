@@ -2,12 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, writeFileSync, symlinkSync, rmSync, realpathSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import gate, {
-  isPathAllowed,
-  shouldBlockTool,
-  dropSymlinkedEntries,
-  gateMcpProxy,
-} from "./web-mode-gate.js";
+import gate, { isPathAllowed, shouldBlockTool, dropSymlinkedEntries } from "./web-mode-gate.js";
 
 describe("isPathAllowed", () => {
   const allowlist = ["/tmp/loom-session/notebook.md"];
@@ -168,9 +163,9 @@ describe("shouldBlockTool", () => {
 
   // Default-DENY allowlist: the curated remote surface passes through.
   it.each([
-    "galaxy_run_tool",
-    "galaxy_connect",
-    "brc_analytics_get_genome",
+    "mcp__galaxy__run_tool",
+    "mcp__galaxy__connect",
+    "mcp__brc_analytics__get_genome",
     "gtn_search",
     "gtn_fetch",
     "notebook_push_to_galaxy",
@@ -225,7 +220,7 @@ describe("shouldBlockTool", () => {
     const result = shouldBlockTool(
       "mcp",
       {
-        tool: "galaxy_update_history",
+        tool: "mcp__galaxy__update_history",
         args: '{"purged":true,"history_id":"abc"}',
         server: "galaxy",
       },
@@ -239,7 +234,7 @@ describe("shouldBlockTool", () => {
     const result = shouldBlockTool(
       "mcp",
       {
-        tool: "galaxy_update_history",
+        tool: "mcp__galaxy__update_history",
         args: '{"deleted":true,"history_id":"abc"}',
         server: "galaxy",
       },
@@ -249,60 +244,28 @@ describe("shouldBlockTool", () => {
     expect(result).toMatchObject({ block: true, reason: expect.stringContaining("destructive") });
   });
 
-  it("still allows a non-destructive mcp proxy call to a curated server", () => {
+  it("still allows a non-destructive Galaxy MCP call", () => {
     expect(
-      shouldBlockTool("mcp", { tool: "run_tool", args: "{}", server: "galaxy" }, allowlist, cwd),
+      shouldBlockTool("mcp__galaxy__run_tool", { tool_id: "cat1" }, allowlist, cwd),
     ).toBeUndefined();
   });
 });
 
-// The `mcp` proxy gateway is the only path to the curated MCP servers on a
-// cold-cache container (every fresh remote launch). It must reach galaxy /
-// brc-analytics but stay default-deny for any other server.
-describe("gateMcpProxy / mcp proxy gating", () => {
-  it("allows a tool call scoped to a curated server", () => {
-    expect(gateMcpProxy({ tool: "run_tool", args: "{}", server: "galaxy" })).toBeUndefined();
-    expect(gateMcpProxy({ tool: "get_assemblies", server: "brc-analytics" })).toBeUndefined();
-  });
+// pi's own MCP tools other than the curated servers' -- codemode, tool_search,
+// the resource readers -- and any `mcp` proxy a pi package might bring are all
+// outside the remote surface.
+describe("MCP plumbing outside the curated servers", () => {
+  it.each(["mcp", "codemode", "tool_search", "read_mcp_resource", "list_mcp_resources"])(
+    "blocks %s",
+    (tool) => {
+      expect(shouldBlockTool(tool, {}, [], "/tmp/loom-session")).toMatchObject({ block: true });
+    },
+  );
 
-  it("blocks a tool call to a non-curated server", () => {
-    const r = gateMcpProxy({ tool: "exfiltrate", server: "evil" });
-    expect(r).toMatchObject({ block: true, reason: expect.stringContaining("evil") });
-  });
-
-  it("blocks a tool call with no server (target unverifiable -> default deny)", () => {
-    const r = gateMcpProxy({ tool: "run_tool", args: "{}" });
-    expect(r).toMatchObject({ block: true, reason: expect.stringContaining("server") });
-  });
-
-  it("allows read-only discovery ops (no tool call)", () => {
-    expect(gateMcpProxy({ search: "fastqc" })).toBeUndefined();
-    expect(gateMcpProxy({ describe: "run_tool" })).toBeUndefined();
-    expect(gateMcpProxy({ server: "galaxy" })).toBeUndefined(); // list a server's tools
-    expect(gateMcpProxy({ action: "ui-messages" })).toBeUndefined();
-    expect(gateMcpProxy({})).toBeUndefined(); // status
-  });
-
-  it("gates connect to curated servers only", () => {
-    expect(gateMcpProxy({ connect: "galaxy" })).toBeUndefined();
-    expect(gateMcpProxy({ connect: "evil" })).toMatchObject({ block: true });
-  });
-
-  it("a tool call wins over connect (server gating applies, not connect)", () => {
-    // proxy dispatch checks `tool` before `connect`; a curated connect must
-    // not smuggle a call to an unverified server.
-    expect(gateMcpProxy({ tool: "run_tool", connect: "galaxy" })).toMatchObject({ block: true });
-  });
-
-  it("is wired through shouldBlockTool", () => {
-    expect(
-      shouldBlockTool("mcp", { tool: "run_tool", server: "galaxy" }, [], "/tmp/loom-session"),
-    ).toBeUndefined();
-    expect(
-      shouldBlockTool("mcp", { tool: "run_tool", server: "evil" }, [], "/tmp/loom-session"),
-    ).toMatchObject({ block: true });
-    // bare proxy (status) is allowed; default-deny no longer swallows `mcp`
-    expect(shouldBlockTool("mcp", {}, [], "/tmp/loom-session")).toBeUndefined();
+  it("blocks another server's MCP tools", () => {
+    expect(shouldBlockTool("mcp__evil__exfiltrate", {}, [], "/tmp/loom-session")).toMatchObject({
+      block: true,
+    });
   });
 });
 
@@ -355,7 +318,7 @@ describe("web-mode-gate registration (default export)", () => {
       await handler({ toolName: "write", input: { path: "/tmp/loom-session/secret.txt" } }),
     ).toMatchObject({ block: true });
     // curated remote surface passes through
-    expect(await handler({ toolName: "galaxy_run_tool", input: {} })).toBeUndefined();
+    expect(await handler({ toolName: "mcp__galaxy__run_tool", input: {} })).toBeUndefined();
   });
 });
 
@@ -365,7 +328,7 @@ describe("shouldBlockTool -- destructive Galaxy ops (#338)", () => {
 
   it("blocks a whole-history delete (remote mode has no confirmation UI)", () => {
     const r = shouldBlockTool(
-      "galaxy_update_history",
+      "mcp__galaxy__update_history",
       { deleted: true, history_id: "h" },
       allowlist,
       cwd,
@@ -375,8 +338,12 @@ describe("shouldBlockTool -- destructive Galaxy ops (#338)", () => {
 
   it("blocks a history purge", () => {
     expect(
-      shouldBlockTool("galaxy_update_history", { purged: true, history_id: "h" }, allowlist, cwd)
-        ?.block,
+      shouldBlockTool(
+        "mcp__galaxy__update_history",
+        { purged: true, history_id: "h" },
+        allowlist,
+        cwd,
+      )?.block,
     ).toBe(true);
   });
 
@@ -392,8 +359,8 @@ describe("shouldBlockTool -- destructive Galaxy ops (#338)", () => {
 
   it("still permits a non-destructive update_history (rename) and reads", () => {
     expect(
-      shouldBlockTool("galaxy_update_history", { name: "renamed" }, allowlist, cwd),
+      shouldBlockTool("mcp__galaxy__update_history", { name: "renamed" }, allowlist, cwd),
     ).toBeUndefined();
-    expect(shouldBlockTool("galaxy_get_histories", {}, allowlist, cwd)).toBeUndefined();
+    expect(shouldBlockTool("mcp__galaxy__get_histories", {}, allowlist, cwd)).toBeUndefined();
   });
 });

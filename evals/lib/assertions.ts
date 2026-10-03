@@ -20,6 +20,7 @@ import type {
   PlanAssertions,
   ScenarioFailure,
   ScenarioRun,
+  ToolResultAssertions,
 } from "./types.js";
 
 export function evaluate(run: ScenarioRun): ScenarioFailure[] {
@@ -59,8 +60,103 @@ export function evaluate(run: ScenarioRun): ScenarioFailure[] {
   evaluateBehavior(run, a.behavior, stripThink, failures);
   evaluateNotebook(run.notebookContent, a.notebook, failures);
   evaluateActivity(run.activityEvents, a.activity, failures);
+  evaluateToolResults(run.events, a.toolResults, stripThink, failures);
 
   return failures;
+}
+
+interface ToolEnd {
+  toolName: string;
+  isError: boolean;
+  details: Record<string, unknown>;
+  text: string;
+}
+
+function toolEnds(events: AnyEvent[]): ToolEnd[] {
+  return events
+    .filter((e) => e.type === "tool_execution_end")
+    .map((e) => {
+      const result = (e.result ?? {}) as { content?: unknown; details?: unknown };
+      const content = Array.isArray(result.content) ? result.content : [];
+      const text = content
+        .map((c) =>
+          c && typeof c === "object" && (c as { type?: unknown }).type === "text"
+            ? String((c as { text?: unknown }).text ?? "")
+            : "",
+        )
+        .join("\n");
+      const details =
+        result.details && typeof result.details === "object"
+          ? (result.details as Record<string, unknown>)
+          : {};
+      return { toolName: String(e.toolName), isError: e.isError === true, details, text };
+    });
+}
+
+function evaluateToolResults(
+  events: AnyEvent[],
+  a: ToolResultAssertions | undefined,
+  stripThinkingTags: boolean,
+  failures: ScenarioFailure[],
+): void {
+  if (!a) return;
+  const ends = toolEnds(events);
+
+  for (const expected of a.mustSucceed ?? []) {
+    const own = ends.filter((r) => r.toolName === expected.name);
+    const hit = own.some(
+      (r) =>
+        !r.isError &&
+        Object.entries(expected.detailsContains ?? {}).every(
+          ([k, v]) => String(r.details[k]) === v,
+        ) &&
+        (expected.textContains === undefined || r.text.includes(expected.textContains)),
+    );
+    if (!hit) {
+      failures.push({
+        assertion: "toolResults.mustSucceed",
+        detail:
+          `no successful '${expected.name}' result matched ${JSON.stringify(expected)}; ` +
+          `saw ${own.length} result(s), ${own.filter((r) => r.isError).length} error(s)`,
+        dimension: "other",
+      });
+    }
+  }
+
+  for (const banned of a.mustNotSucceed ?? []) {
+    if (ends.some((r) => r.toolName === banned && !r.isError)) {
+      failures.push({
+        assertion: "toolResults.mustNotSucceed",
+        detail: `'${banned}' returned a successful result`,
+        dimension: "other",
+      });
+    }
+  }
+
+  if (a.echoedInChat?.length) {
+    const chat = getChatText(events, stripThinkingTags);
+    for (const { name, pattern } of a.echoedInChat) {
+      const re = compilePattern(pattern, "toolResults.echoedInChat", failures);
+      if (!re) continue;
+      const values = ends
+        .filter((r) => r.toolName === name && !r.isError)
+        .map((r) => re.exec(r.text)?.[1])
+        .filter((v): v is string => typeof v === "string" && v.length > 0);
+      if (values.length === 0) {
+        failures.push({
+          assertion: "toolResults.echoedInChat",
+          detail: `no successful '${name}' result matched /${pattern}/`,
+          dimension: "other",
+        });
+      } else if (!values.some((v) => chat.includes(v))) {
+        failures.push({
+          assertion: "toolResults.echoedInChat",
+          detail: `chat never repeated the '${name}' value ${JSON.stringify(values[0])}`,
+          dimension: "other",
+        });
+      }
+    }
+  }
 }
 
 /**

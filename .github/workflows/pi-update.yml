@@ -116,9 +116,9 @@ jobs:
       # Packages are named on the command line deliberately. npm treats an
       # explicit request as an override and downgrades a conflicting peer to a
       # warning, while re-resolving a manifest edited in place turns the same
-      # conflict into a fatal ERESOLVE. pi-mcp-adapter declares an optional peer
-      # on a caret range of pi-ai, so the first pi minor that leaves that range
-      # would otherwise abort the run before there was any branch to look at.
+      # conflict into a fatal ERESOLVE. A pi extension with a caret peer range on
+      # pi-ai would otherwise abort the run on the first pi minor that leaves
+      # that range, before there was any branch to look at.
       # The conflict is worth reporting, not worth dying on: it is recorded as a
       # row in the PR table below.
       - name: Bump pi everywhere
@@ -260,7 +260,7 @@ jobs:
               "",
               ...(/CONFLICT/.test(e.V_PEERS || "")
                 ? [
-                    "The peer conflict means a package outside the pi family -- `pi-mcp-adapter` declares an optional peer on `pi-ai` -- pins a range this version leaves. npm was told to override it and the tree installed, but the mismatch is real and wants a look.",
+                    "The peer conflict means a package outside the pi family declares a peer on a pi package and pins a range this version leaves. npm was told to override it and the tree installed, but the mismatch is real and wants a look.",
                     "",
                   ]
                 : []),

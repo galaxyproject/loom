@@ -563,14 +563,14 @@ relevant, and a wrong path answers with the entry points that do exist.`,
     label: "Record Galaxy Invocation",
     description: `Name the plan step a Galaxy workflow invocation belongs to. The harness
 records the run; you name the step it belongs to. Loom already wrote a \`loom-invocation\`
-block the moment galaxy_invoke_workflow returned, so this normally just sets \`label\` and
+block the moment mcp__galaxy__invoke_workflow returned, so this normally just sets \`label\` and
 \`notebook_anchor\` on the block already carrying that id -- the run is pollable either way.
 If no block carries the id (a submission Loom could not see, such as one made from inside
 code mode), this creates one. Both arguments are checked before anything is written: the
 anchor must resolve in notebook.md, and the invocation id must exist on the Galaxy server.`,
     parameters: Type.Object({
       invocationId: Type.String({
-        description: "Galaxy invocation ID returned from galaxy_invoke_workflow",
+        description: "Galaxy invocation ID returned from mcp__galaxy__invoke_workflow",
       }),
       notebookAnchor: Type.String({
         description:
@@ -598,7 +598,7 @@ anchor must resolve in notebook.md, and the invocation id must exist on the Gala
         if (check.outcome === "absent") {
           return recordFailure(
             `Galaxy has no invocation "${params.invocationId}" (${check.detail}). ` +
-              `Nothing was recorded -- re-read the id from the galaxy_invoke_workflow result.`,
+              `Nothing was recorded -- re-read the id from the mcp__galaxy__invoke_workflow result.`,
           );
         }
         // A failed check plus an aborted call is the user cancelling, not Galaxy
@@ -729,13 +729,13 @@ anchor must resolve in notebook.md, and the invocation id must exist on the Gala
     label: "Record Galaxy Job",
     description: `Name the plan step a Galaxy TOOL run belongs to, the same way
 galaxy_invocation_record does for a workflow. The harness records the run; you name the step
-it belongs to. Loom already wrote a \`loom-job\` block the moment galaxy_run_tool returned, so
+it belongs to. Loom already wrote a \`loom-job\` block the moment mcp__galaxy__run_tool returned, so
 this normally just sets \`label\` and \`notebook_anchor\` on the block already carrying that
 job id -- the poller is watching it either way. If no block carries the id, this creates one.
 Both arguments are checked before anything is written: the anchor must resolve in notebook.md,
 and the job id must exist on the Galaxy server. \`toolId\` is used only when creating.`,
     parameters: Type.Object({
-      jobId: Type.String({ description: "Galaxy job ID returned from galaxy_run_tool" }),
+      jobId: Type.String({ description: "Galaxy job ID returned from mcp__galaxy__run_tool" }),
       notebookAnchor: Type.String({
         description:
           "Anchor of the plan step this run belongs to, e.g. 'plan-a-step-3'. It must " +
@@ -763,7 +763,7 @@ and the job id must exist on the Galaxy server. \`toolId\` is used only when cre
         if (check.outcome === "absent") {
           return recordFailure(
             `Galaxy has no job "${params.jobId}" (${check.detail}). Nothing was recorded -- ` +
-              `re-read the id from the galaxy_run_tool result. A tool run returns a job id, ` +
+              `re-read the id from the mcp__galaxy__run_tool result. A tool run returns a job id, ` +
               `not a dataset id.`,
           );
         }

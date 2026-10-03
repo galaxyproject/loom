@@ -118,25 +118,6 @@ describe("switchProfile env handling", () => {
   });
 });
 
-describe("syncMcpConfig", () => {
-  it("writes ${GALAXY_API_KEY} as a literal env reference, never plaintext", () => {
-    const agentDir = path.join(sandboxHome, ".pi", "agent");
-    fs.mkdirSync(agentDir, { recursive: true });
-    const mcpPath = path.join(agentDir, "mcp.json");
-    fs.writeFileSync(
-      mcpPath,
-      JSON.stringify({ mcpServers: { galaxy: { command: "x", env: {} } } }, null, 2),
-    );
-    process.env.PI_CODING_AGENT_DIR = agentDir;
-    saveProfile("a", "https://a.galaxyproject.org", "should-not-leak");
-    const written = JSON.parse(fs.readFileSync(mcpPath, "utf-8"));
-    expect(written.mcpServers.galaxy.env.GALAXY_URL).toBe("https://a.galaxyproject.org");
-    expect(written.mcpServers.galaxy.env.GALAXY_API_KEY).toBe("${GALAXY_API_KEY}");
-    const raw = fs.readFileSync(mcpPath, "utf-8");
-    expect(raw).not.toContain("should-not-leak");
-  });
-});
-
 describe("getActiveGalaxyStatus", () => {
   const withDefault = (p: Record<string, unknown>) => ({
     active: "default",

@@ -11,30 +11,33 @@ describe("classifyGalaxyFailure", () => {
   it("calls a timed-out request a timeout, not a dropped connection", () => {
     // The exact text a slow usegalaxy.org call produces.
     expect(
-      classifyGalaxyFailure("galaxy_get_dataset_details", "Failed to call tool: Request timed out"),
+      classifyGalaxyFailure(
+        "mcp__galaxy__get_dataset_details",
+        "Failed to call tool: Request timed out",
+      ),
     ).toBe("timeout");
-    expect(classifyGalaxyFailure("galaxy_run_tool", "MCP error -32001")).toBe("timeout");
+    expect(classifyGalaxyFailure("mcp__galaxy__run_tool", "MCP error -32001")).toBe("timeout");
   });
 
   it("still calls a closed connection dropped", () => {
-    expect(classifyGalaxyFailure("galaxy_get_histories", "Connection closed (-32000)")).toBe(
+    expect(classifyGalaxyFailure("mcp__galaxy__get_histories", "Connection closed (-32000)")).toBe(
       "dropped",
     );
     expect(
-      classifyGalaxyFailure("galaxy_get_histories", "Failed to call tool: Not connected"),
+      classifyGalaxyFailure("mcp__galaxy__get_histories", "Failed to call tool: Not connected"),
     ).toBe("dropped");
   });
 
   it("reads a body mentioning both as a timeout -- the actionable one", () => {
     expect(
-      classifyGalaxyFailure("galaxy_run_tool", "Request timed out; client not connected"),
+      classifyGalaxyFailure("mcp__galaxy__run_tool", "Request timed out; client not connected"),
     ).toBe("timeout");
   });
 
   it("leaves galaxy-mcp's own auth error alone", () => {
     expect(
       classifyGalaxyFailure(
-        "galaxy_get_histories",
+        "mcp__galaxy__get_histories",
         "Not connected to Galaxy. Authenticate via OAuth or run connect()...",
       ),
     ).toBeNull();
@@ -42,7 +45,7 @@ describe("classifyGalaxyFailure", () => {
 
   it("ignores non-galaxy tools and empty input", () => {
     expect(classifyGalaxyFailure("bash", "Request timed out")).toBeNull();
-    expect(classifyGalaxyFailure("galaxy_run_tool", undefined)).toBeNull();
+    expect(classifyGalaxyFailure("mcp__galaxy__run_tool", undefined)).toBeNull();
     expect(classifyGalaxyFailure(undefined, "Request timed out")).toBeNull();
   });
 });
@@ -67,14 +70,14 @@ describe("galaxyFailureNudge", () => {
 
 describe("isGalaxyTransportError (unchanged arm/disarm behaviour)", () => {
   it("still matches both classes, so the nudge cadence is unaffected", () => {
-    expect(isGalaxyTransportError("galaxy_run_tool", "Request timed out")).toBe(true);
-    expect(isGalaxyTransportError("galaxy_run_tool", "Connection closed")).toBe(true);
+    expect(isGalaxyTransportError("mcp__galaxy__run_tool", "Request timed out")).toBe(true);
+    expect(isGalaxyTransportError("mcp__galaxy__run_tool", "Connection closed")).toBe(true);
   });
 
   it("still ignores the auth error", () => {
     expect(
       isGalaxyTransportError(
-        "galaxy_get_histories",
+        "mcp__galaxy__get_histories",
         "Not connected to Galaxy. Authenticate via OAuth or run connect()...",
       ),
     ).toBe(false);

@@ -46,7 +46,7 @@ const NOT_FOUND_RE = /^Tool\s+(\S+)\s+not found\b/;
 
 export const IWC_CANDIDATES_HINT =
   "[loom] These are ranked by word overlap, not relevance. Before offering one, call " +
-  "`galaxy_get_iwc_workflow_details` on the plausible candidates and check their inputs " +
+  "`mcp__galaxy__get_iwc_workflow_details` on the plausible candidates and check their inputs " +
   "against the data the user actually has (reads vs count tables, paired vs single-end). " +
   "A workflow that needs another's outputs first is half of a chain, not a match. If none " +
   "fit, say so. If nothing came back, retry once with just the assay; if the query had no " +
@@ -80,7 +80,7 @@ export const SKILL_TRIGGERS: readonly SkillTrigger[] = [
     // adapter's output guard can truncate a big result into non-JSON, so the
     // body can't be relied on.
     id: "iwc-candidates",
-    tools: new Set(["galaxy_recommend_iwc_workflows", "galaxy_search_iwc_workflows"]),
+    tools: new Set(["mcp__galaxy__recommend_iwc_workflows", "mcp__galaxy__search_iwc_workflows"]),
     on: "success",
     hint: () => IWC_CANDIDATES_HINT,
   },

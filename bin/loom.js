@@ -3,7 +3,7 @@
 import { main } from "@earendil-works/pi-coding-agent";
 import { resolve, dirname, join } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync } from "fs";
 import { homedir } from "os";
 import { loadConfig as loadLoomConfig } from "../shared/loom-config.js";
 import { migrateStateDir } from "../shared/state-dir.js";
@@ -15,6 +15,7 @@ import { hasStoredCredential, isProviderUsable, pickSignedInFallback } from "./p
 import { SEED_OAUTH_ONLY_PROVIDERS } from "../shared/provider-auth-caps.js";
 import { EX_CONFIG } from "../shared/brain-exit.js";
 import { resolvePiExtensionDir } from "./pi-extension-path.js";
+import { stripLegacyMcpEntries } from "./legacy-mcp-config.js";
 import { pickChannel } from "../shared/version-compare.js";
 import {
   isCustomProvider,
@@ -23,7 +24,6 @@ import {
   ENDPOINT_APIS,
   DEFAULT_ENDPOINT_API,
 } from "../shared/custom-provider.js";
-import { GALAXY_MCP_SPEC } from "../shared/galaxy-mcp-spec.js";
 import { isDesktopShell, mirrorToLegacyEnv, readEnv, writeEnv } from "../shared/orbit-env.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -41,12 +41,10 @@ const cliUpdatePath = resolve(__dirname, "../extensions/cli-update");
 const whatsNewPath = resolve(__dirname, "../extensions/whats-new");
 const updateCheckScript = resolve(__dirname, "update-check.js");
 
-// pi-mcp-adapter is what teaches Pi how to use MCP servers from mcp.json
 // pi-web-access provides web_search, fetch_content, and code_search tools
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const resolveSpecifier = (specifier) => require.resolve(specifier);
-const mcpAdapterPath = resolvePiExtensionDir("pi-mcp-adapter", resolveSpecifier);
 const webAccessPath = resolvePiExtensionDir("pi-web-access", resolveSpecifier);
 const piEntryPointPath = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
 const piPackageDir = dirname(dirname(piEntryPointPath));
@@ -340,73 +338,42 @@ if (galaxyUrl && galaxyApiKey) {
   delete process.env.GALAXY_API_KEY;
 }
 
+// The brain registers Loom's MCP servers itself (extensions/loom/mcp-servers.ts);
+// clear out what earlier versions left in mcp.json.
 const mcpConfigPath = join(agentDir, "mcp.json");
-
-let mcpConfig = {};
-if (!isInformationalCommand) {
-  if (existsSync(mcpConfigPath)) {
-    mcpConfig = JSON.parse(readFileSync(mcpConfigPath, "utf-8"));
-  }
-
-  mcpConfig.mcpServers = mcpConfig.mcpServers || {};
-
-  const hasGalaxyCredentials = galaxyUrl && galaxyApiKey;
-
-  if (hasGalaxyCredentials) {
-    mcpConfig.mcpServers.galaxy = {
-      command: "uvx",
-      args: [GALAXY_MCP_SPEC],
-      directTools: true,
-      // The MCP SDK defaults to a 60s request timeout, which a public Galaxy
-      // under load routinely outruns -- job submission and dataset detail
-      // lookups both come back as -32001. That reads to the user as a dropped
-      // connection and used to earn a "/mcp reconnect galaxy" nudge that cannot
-      // help: a fresh connection gets the same 60s. Give slow-but-alive calls
-      // room to finish, while still failing rather than hanging forever.
-      requestTimeoutMs: 300_000,
-      // Local-path upload over MCP times out on large files (-32001); the
-      // loom-native galaxy_upload_local_file tool handles those instead. URL
-      // upload (upload_file_from_url) and the rest stay exposed.
-      excludeTools: ["upload_file"],
-      env: {
-        GALAXY_URL: galaxyUrl,
-        GALAXY_API_KEY: galaxyApiKey,
-      },
-    };
-  } else {
-    // No credentials: tear down Galaxy MCP if present from a previous session.
-    delete mcpConfig.mcpServers.galaxy;
-  }
-
-  // BRC Analytics is a public, anonymous HTTP MCP -- no creds required, so we
-  // register it unconditionally. It exposes BRC genome/assembly/lineage
-  // lookups that the agent can call alongside Galaxy MCP.
-  mcpConfig.mcpServers["brc-analytics"] = {
-    url: "https://brc-analytics.org/api/v1/mcp/",
-    directTools: true,
-  };
-
-  // Loom doesn't use pi-mcp-adapter's mcpScript tool -- the mcp gateway and
-  // the direct tools cover it -- so keep it off rather than ship its schema
-  // on every request.
-  const mcpSettings =
-    mcpConfig.settings &&
-    typeof mcpConfig.settings === "object" &&
-    !Array.isArray(mcpConfig.settings)
-      ? mcpConfig.settings
-      : {};
-  mcpConfig.settings = { ...mcpSettings, scriptMode: false };
-
-  mkdirSync(dirname(mcpConfigPath), { recursive: true });
-  // mcp.json carries Galaxy credentials in its env block — keep file mode
-  // 0600 so other users on a shared machine can't read the API key. The
-  // mode option on writeFileSync sets perms only when the file is *created*;
-  // a follow-up chmod ensures we tighten existing files too.
-  writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2), { mode: 0o600 });
+if (!isInformationalCommand && existsSync(mcpConfigPath)) {
+  let mcpConfig;
   try {
-    chmodSync(mcpConfigPath, 0o600);
+    mcpConfig = JSON.parse(readFileSync(mcpConfigPath, "utf-8"));
   } catch {
-    /* best-effort */
+    // An unparseable mcp.json is pi's to report, and pi loads none of it -- so
+    // no stale galaxy entry in it can shadow the brain's registration either.
+  }
+  if (mcpConfig && typeof mcpConfig === "object") {
+    const { changed, empty, removedGalaxy, notices } = stripLegacyMcpEntries(mcpConfig);
+    const tmpPath = `${mcpConfigPath}.${process.pid}.tmp`;
+    try {
+      if (changed && empty) {
+        rmSync(mcpConfigPath);
+      } else if (changed) {
+        writeFileSync(tmpPath, JSON.stringify(mcpConfig, null, 2) + "\n", { mode: 0o600 });
+        renameSync(tmpPath, mcpConfigPath);
+      }
+      for (const notice of notices) console.error(`[loom] ${notice}`);
+    } catch (err) {
+      rmSync(tmpPath, { force: true });
+      // Left as it is, the file is read the old way: an old galaxy entry wins
+      // over the brain's registration (pinning every session to that account and
+      // key), and the user's own servers lose the tool restrictions pi ignores.
+      const why = removedGalaxy
+        ? `Loom would keep using the Galaxy account saved there`
+        : `the servers Loom meant to migrate would keep settings pi ignores, such as tool restrictions`;
+      console.error(
+        `[loom] Could not update ${mcpConfigPath} (${err instanceof Error ? err.message : err}), ` +
+          `and ${why}. Fix the file's permissions, or remove those entries, and start again.`,
+      );
+      process.exit(EX_CONFIG);
+    }
   }
 }
 
@@ -688,8 +655,6 @@ if (!hasArg("--provider")) {
 // Build args: inject extensions, pass through everything else
 const args = [
   "-e",
-  mcpAdapterPath,
-  "-e",
   webAccessPath,
   "-e",
   extensionPath,
@@ -732,8 +697,8 @@ if (userArgs[0] === "update") {
   checkLLMProvider();
 
   // Galaxy is configured but the uvx runner that launches galaxy-mcp is missing.
-  // Warn (don't block): Loom is still useful without Galaxy, and pi-mcp-adapter
-  // would otherwise fail to spawn that server with a buried error. Orbit bundles
+  // Warn (don't block): Loom is still useful without Galaxy, and pi would
+  // otherwise fail to spawn that server with a buried error. Orbit bundles
   // uv onto PATH before spawn, so this only fires for standalone CLI installs.
   if (galaxyUrl && galaxyApiKey && !isUvxAvailable()) {
     console.error(`\n${uvxMissingNotice()}\n`);
@@ -772,6 +737,7 @@ if (userArgs[0] === "update") {
   //    churn the global file for a setting they never read. Override
   //    persistently with `ui.showThinking: true` in ~/.loom/config.json, or
   //    just toggle it live in-session with Ctrl+T.
+  //  - TUI mode (interactive terminal only): see below.
   {
     const piSettingsPath = join(agentDir, "settings.json");
     try {
@@ -799,6 +765,13 @@ if (userArgs[0] === "update") {
         });
         if (piSettings.hideThinkingBlock !== hideThinking) {
           piSettings.hideThinkingBlock = hideThinking;
+          changed = true;
+        }
+        // pi 1.0 went fullscreen by default, which takes away the terminal's own
+        // scrollback. Keep Loom's terminal where it was; only fill the gap, so a
+        // user who picks fullscreen in /settings keeps it.
+        if (piSettings.tuiMode === undefined) {
+          piSettings.tuiMode = "regular";
           changed = true;
         }
       }

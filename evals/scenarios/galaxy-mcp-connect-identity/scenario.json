@@ -1,0 +1,31 @@
+{
+  "name": "galaxy-mcp: connect resolves through pi's MCP and the agent reports the live user",
+  "description": "The smallest end-to-end check of the Galaxy MCP wiring: the server registers under the `galaxy` name, its tools reach the model as mcp__galaxy__*, a call actually round-trips to the server, and the answer comes from the live account rather than the model's imagination. `details.server` is how pi's built-in MCP tags its results; a regression in the registration (a different server name, the adapter coming back, the tool hidden) shows up as a missing or errored result rather than as a model that chose not to call it. The username is pulled from the get_user result at grading time, so the scenario carries no account-specific value.",
+  "tier": 2,
+  "requiresModel": true,
+  "requiresGalaxy": true,
+  "inputs": [
+    "Check that you're connected to my Galaxy server: call the Galaxy connect tool, then look up which Galaxy user account I'm logged in as. Tell me the server URL and my exact Galaxy username. Don't plan anything or write to the notebook."
+  ],
+  "timeoutMs": 240000,
+  "assertions": {
+    "toolCalls": {
+      "mustInclude": [{ "name": "mcp__galaxy__connect" }, { "name": "mcp__galaxy__get_user" }]
+    },
+    "toolResults": {
+      "mustSucceed": [
+        {
+          "name": "mcp__galaxy__connect",
+          "detailsContains": { "server": "galaxy", "tool": "connect" }
+        },
+        {
+          "name": "mcp__galaxy__get_user",
+          "detailsContains": { "server": "galaxy", "tool": "get_user" }
+        }
+      ],
+      "echoedInChat": [
+        { "name": "mcp__galaxy__get_user", "pattern": "\"username\":\\s*\"([^\"]+)\"" }
+      ]
+    }
+  }
+}

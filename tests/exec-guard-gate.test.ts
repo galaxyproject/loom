@@ -223,13 +223,13 @@ describe("registerExecGuard -- approval prompt legibility (#399)", () => {
 describe("registerExecGuard -- destructive Galaxy ops (#338)", () => {
   const delEvent = (id: string) => ({
     type: "tool_call",
-    toolName: "galaxy_update_history",
+    toolName: "mcp__galaxy__update_history",
     toolCallId: id,
     input: { deleted: true, history_id: "h" },
   });
   const purgeEvent = (id: string) => ({
     type: "tool_call",
-    toolName: "galaxy_update_history",
+    toolName: "mcp__galaxy__update_history",
     toolCallId: id,
     input: { purged: true, history_id: "h" },
   });

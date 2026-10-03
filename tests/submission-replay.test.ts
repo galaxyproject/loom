@@ -123,11 +123,18 @@ describe("submission replay: containment", () => {
 describe("submission replay: parsing", () => {
   it("skips blank and malformed lines rather than aborting", () => {
     const entries = parseReplayFile(
-      ['{"tool":"galaxy_run_tool"}', "", "not json", "{}", '{"tool":"galaxy_upload_file"}'].join(
-        "\n",
-      ),
+      [
+        '{"tool":"mcp__galaxy__run_tool"}',
+        "",
+        "not json",
+        "{}",
+        '{"tool":"mcp__galaxy__upload_file"}',
+      ].join("\n"),
     );
-    expect(entries.map((e) => e.tool)).toEqual(["galaxy_run_tool", "galaxy_upload_file"]);
+    expect(entries.map((e) => e.tool)).toEqual([
+      "mcp__galaxy__run_tool",
+      "mcp__galaxy__upload_file",
+    ]);
   });
 });
 
@@ -136,7 +143,7 @@ describe("submission replay: driving the hook", () => {
     fs.writeFileSync(
       path.join(tmpDir, "submissions.jsonl"),
       JSON.stringify({
-        tool: "galaxy_invoke_workflow",
+        tool: "mcp__galaxy__invoke_workflow",
         args: { workflow_id: "c0ffee1234567890" },
         stepAnchor: "plan-a-step-1",
         result: INVOCATION,
@@ -160,7 +167,7 @@ describe("submission replay: driving the hook", () => {
     const outside = path.join(os.tmpdir(), `loom-replay-outside-${Date.now()}.jsonl`);
     fs.writeFileSync(
       outside,
-      JSON.stringify({ tool: "galaxy_invoke_workflow", result: INVOCATION }) + "\n",
+      JSON.stringify({ tool: "mcp__galaxy__invoke_workflow", result: INVOCATION }) + "\n",
       "utf-8",
     );
     process.env.LOOM_SUBMISSION_REPLAY = path.relative(tmpDir, outside);
@@ -191,12 +198,12 @@ describe("submission replay: driving the hook", () => {
       path.join(tmpDir, "submissions.jsonl"),
       [
         JSON.stringify({
-          tool: "galaxy_run_tool",
+          tool: "mcp__galaxy__run_tool",
           stepAnchor: "plan-a-step-1",
           result: jobs("j1"),
         }),
         // No stepAnchor: this one belongs to no step.
-        JSON.stringify({ tool: "galaxy_run_tool", result: jobs("j2") }),
+        JSON.stringify({ tool: "mcp__galaxy__run_tool", result: jobs("j2") }),
       ].join("\n") + "\n",
       "utf-8",
     );
