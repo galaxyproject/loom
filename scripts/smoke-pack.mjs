@@ -82,6 +82,21 @@ try {
   console.log(
     `[smoke] vendored surface present: ${required.length} fixed + ${routerSkills.length} router skills`,
   );
+  // `lessons/snapshot.json` reaches the package through `files: ["lessons/"]`,
+  // exactly the way the vendored tree does, and disappears just as quietly: the
+  // CLI would start with no lessons and nothing would say so.
+  const SNAPSHOT_REL = "lessons/snapshot.json";
+  if (!existsSync(join(pkgDir, SNAPSHOT_REL))) {
+    throw new Error(`tarball is missing ${SNAPSHOT_REL}`);
+  }
+  const lessonSnapshot = JSON.parse(readFileSync(join(pkgDir, SNAPSHOT_REL), "utf8"));
+  if (lessonSnapshot.schema !== 1 || !Array.isArray(lessonSnapshot.lessons)) {
+    throw new Error(`packed ${SNAPSHOT_REL} is not a schema-1 lesson snapshot`);
+  }
+  if (lessonSnapshot.lessons.length === 0) {
+    throw new Error(`packed ${SNAPSHOT_REL} lists no lessons`);
+  }
+  console.log(`[smoke] lesson snapshot present: ${lessonSnapshot.lessons.length} lesson(s)`);
 
   // 4. Install runtime deps -- mirrors what `npm install -g` would do.
   console.log(`[smoke] npm install (runtime deps only) -- this takes ~30s`);

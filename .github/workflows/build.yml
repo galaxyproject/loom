@@ -55,6 +55,11 @@ jobs:
       - name: Check vendored skills
         run: npm run check:skills
 
+      # Validates every lesson against the schema and refuses a corpus change
+      # that did not rebuild lessons/snapshot.json. Offline.
+      - name: Check lessons corpus
+        run: npm run check:lessons
+
       - name: Typecheck (app)
         working-directory: app
         run: npx tsc --noEmit

@@ -29,6 +29,7 @@ const UV_TARGETS: Record<string, string> = {
 const LOOM_BUNDLE_FILES = [
   "bin",
   "extensions",
+  "lessons",
   "shared",
   "CHANGELOG.md",
   "package.json",

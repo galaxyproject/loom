@@ -1,0 +1,1004 @@
+{
+  "schema": 1,
+  "built_at": "2026-10-01T21:52:36.961Z",
+  "source": {
+    "repo": "galaxyproject/loom",
+    "commit": "ac32675b2b49f13f9a30f42cb590c59ee9053432"
+  },
+  "licence": "CC-BY-4.0",
+  "lessons": [
+    {
+      "id": "data/downloaded-file-is-not-what-its-extension-says",
+      "type": "Lesson",
+      "title": "A supplementary-file download can return an HTML page saved under the expected filename",
+      "description": "A landing page, consent interstitial or bot-block answers with 200 and the client saves it as the requested name, so the parse failure surfaces several steps later.",
+      "tags": [
+        "download",
+        "supplementary-data",
+        "file-type",
+        "landing-page",
+        "data-acquisition",
+        "xlsx",
+        "gz",
+        "tsv",
+        "csv"
+      ],
+      "status": "draft",
+      "generated": {
+        "by": "human:loom-maintainers",
+        "at": "2026-09-30"
+      },
+      "stale_after": "2027-03-31",
+      "sources": [
+        {
+          "id": "loom#356"
+        },
+        {
+          "id": "loom#282"
+        }
+      ],
+      "kind": "source-quirk",
+      "stage": [
+        "data-acquisition"
+      ],
+      "trigger": {
+        "signatures": [],
+        "tools": [],
+        "mcp_tools": [],
+        "formats": [
+          "xlsx",
+          "gz",
+          "tsv",
+          "csv"
+        ],
+        "hosts": [
+          "doi.org",
+          "zenodo.org",
+          "figshare.com",
+          "static-content.springer.com",
+          "journals.plos.org",
+          "www.ncbi.nlm.nih.gov"
+        ],
+        "extensions": [
+          ".xlsx",
+          ".tsv.gz",
+          ".tsv",
+          ".csv",
+          ".gz"
+        ],
+        "step_keywords": [
+          "download",
+          "supplementary",
+          "fetch",
+          "wget",
+          "curl",
+          "doi",
+          "landing page"
+        ]
+      },
+      "cues": "Fetching a supplementary or data file from a journal, a repository landing page, or a DOI link.",
+      "applies_to": {
+        "versions": "n/a",
+        "tested": "local download of journal supplementary files"
+      },
+      "evidence": {
+        "symptom": "verified",
+        "cause": "hypothesized",
+        "outcome": "unvalidated",
+        "method": "the file was later found to be HTML or XML"
+      },
+      "graduated_to": [],
+      "upstream": [],
+      "supersedes": [],
+      "sections": {
+        "symptom": "An `.xlsx` or `.tsv.gz` will not parse, or parses into nonsense, several steps after it was\nfetched.",
+        "cause": "Likely: the URL was a landing page, a login or consent interstitial, or a bot-block response, and\nthe client saved the body under the requested name with a 200.",
+        "check_first": "Right after any download: file size, leading bytes (zip or gzip magic versus `<`), and\ncontent-type if available.",
+        "intervention": "Find the direct file URL, or have Galaxy fetch it server-side; if access is gated, tell the user\nrather than working around it.",
+        "validate": "The file opens as its claimed type and has the expected shape: sheets, columns, row count.",
+        "not_when": "The file is genuinely the right type and the parse error is about its contents."
+      }
+    },
+    {
+      "id": "galaxy-api/403-history-is-a-hard-stop",
+      "type": "Lesson",
+      "title": "\"History is not accessible by user\" means there is no data to reason from",
+      "description": "A 403 on the bound history means nothing about the job was ever read, so any explanation of the failure after that point is invented.",
+      "tags": [
+        "permissions",
+        "history",
+        "fabrication",
+        "galaxy-api",
+        "job-execution",
+        "result-interpretation"
+      ],
+      "status": "stable",
+      "generated": {
+        "by": "human:loom-maintainers",
+        "at": "2026-09-30"
+      },
+      "stale_after": "2027-03-31",
+      "sources": [
+        {
+          "id": "loom#367"
+        }
+      ],
+      "kind": "expectation",
+      "stage": [
+        "job-execution",
+        "result-interpretation"
+      ],
+      "trigger": {
+        "signatures": [
+          "History is not accessible by user"
+        ],
+        "tools": [],
+        "mcp_tools": [
+          "galaxy_get_history_contents"
+        ],
+        "formats": [],
+        "hosts": [],
+        "extensions": [],
+        "step_keywords": [
+          "history",
+          "why did it fail",
+          "job failure"
+        ]
+      },
+      "cues": "A resumed notebook is bound to a history that the current credentials do not own.",
+      "applies_to": {
+        "versions": "any",
+        "tested": "resumed notebook bound to a history owned by another account"
+      },
+      "evidence": {
+        "symptom": "verified",
+        "cause": "verified",
+        "outcome": "unvalidated",
+        "method": "transcript: a 403 followed by a fabricated explanation of a job failure"
+      },
+      "graduated_to": [
+        "loom system prompt no-fabrication rule plus evals"
+      ],
+      "upstream": [],
+      "supersedes": [],
+      "sections": {
+        "symptom": "Asked why a job failed, the agent gets a 403 on the history and answers anyway.",
+        "cause": "The notebook's bound history belongs to a different account or server than the current\ncredentials. Nothing about the job was ever read.",
+        "check_first": "Which account are the current credentials for? Is the bound history in that account's list?",
+        "intervention": "Report the access failure. Offer to look in the user's own recent histories instead.",
+        "validate": "Any explanation of a failure cites a job or dataset that was actually retrieved.",
+        "not_when": "Never; a 403 is always a hard stop for reasoning about that history."
+      }
+    },
+    {
+      "id": "galaxy-api/collection-into-single-dataset-input",
+      "type": "Lesson",
+      "title": "A collection handed to a single-dataset input is rejected; the answer is map-over, not \"the API cannot\"",
+      "description": "A 400 at submit when an hdca meets a single-dataset parameter means map-over was not requested, and the wrong conclusion is that collections cannot be used through the API.",
+      "tags": [
+        "collections",
+        "map-over",
+        "batch",
+        "galaxy-api",
+        "tool-parameterization"
+      ],
+      "status": "stable",
+      "generated": {
+        "by": "human:loom-maintainers",
+        "at": "2026-09-30"
+      },
+      "stale_after": "2027-03-31",
+      "sources": [
+        {
+          "id": "loom#208"
+        }
+      ],
+      "kind": "choice",
+      "stage": [
+        "tool-parameterization"
+      ],
+      "trigger": {
+        "signatures": [
+          "supplied to single input dataset parameter"
+        ],
+        "tools": [],
+        "mcp_tools": [
+          "galaxy_run_tool"
+        ],
+        "formats": [],
+        "hosts": [],
+        "extensions": [],
+        "step_keywords": [
+          "collection",
+          "map over",
+          "batch",
+          "per sample"
+        ]
+      },
+      "cues": "A collection is being passed where the tool's input template says one dataset.",
+      "applies_to": {
+        "versions": "any",
+        "tested": "featureCounts, Filter1 via galaxy-mcp run_tool"
+      },
+      "evidence": {
+        "symptom": "verified",
+        "cause": "verified",
+        "outcome": "validated",
+        "method": "the batch wrapper form was accepted by Galaxy and produced a mapped-over output collection"
+      },
+      "graduated_to": [
+        "loom context.ts Galaxy block map-over hint"
+      ],
+      "upstream": [
+        "galaxy-mcp actionable-error issue"
+      ],
+      "supersedes": [],
+      "sections": {
+        "symptom": "400 at submit when an `hdca` is passed where the tool expects one dataset. Observed follow-on: the\nagent concludes collections cannot be built or used through the API, which is false.",
+        "cause": "The input is a single-dataset parameter. Galaxy runs such a tool over a collection only when asked\nto map over it.",
+        "check_first": "Is the input really single-dataset per the tool's input template, and is the thing being passed a\ncollection? If the collection is `list:paired` and the tool wants one sample, map-over is still the\nanswer but the element type must match.",
+        "intervention": "Submit the input in batch form: `{batch: true, values: [{src: \"hdca\", id: <collection id>}]}`.",
+        "validate": "The result is a collection with one element per input element, and element identifiers are\npreserved.",
+        "not_when": "The tool has a genuine multi-dataset or collection input -- pass the collection directly there."
+      }
+    },
+    {
+      "id": "galaxy-api/connectedvalue-in-command-line",
+      "type": "Lesson",
+      "title": "\"ConnectedValue object at 0x\" in a command line means an optional workflow parameter was left unset",
+      "description": "Older Galaxy serialized the placeholder object's repr into the command line when a connected optional parameter_input had no value, so the step can fail or silently succeed wrong.",
+      "tags": [
+        "workflows",
+        "parameter-input",
+        "command-line",
+        "galaxy-api",
+        "tool-parameterization",
+        "job-execution"
+      ],
+      "status": "stable",
+      "generated": {
+        "by": "human:loom-maintainers",
+        "at": "2026-09-30"
+      },
+      "stale_after": "2027-03-31",
+      "sources": [
+        {
+          "id": "loom#186"
+        },
+        {
+          "id": "galaxy#21994"
+        }
+      ],
+      "kind": "pitfall",
+      "stage": [
+        "tool-parameterization",
+        "job-execution"
+      ],
+      "trigger": {
+        "signatures": [
+          "workflow_utils.ConnectedValue object at 0x"
+        ],
+        "tools": [],
+        "mcp_tools": [
+          "galaxy_invoke_workflow"
+        ],
+        "formats": [],
+        "hosts": [],
+        "extensions": [],
+        "step_keywords": [
+          "workflow",
+          "parameter input",
+          "optional parameter",
+          "invoke"
+        ]
+      },
+      "cues": "A workflow with optional parameter inputs is invoked against a server older than the upstream fix.",
+      "applies_to": {
+        "versions": "Galaxy older than 25.1.2; fixed upstream",
+        "tested": "fastp inside an invoked workflow"
+      },
+      "evidence": {
+        "symptom": "verified",
+        "cause": "verified",
+        "outcome": "unvalidated",
+        "method": "the error string was quoted from the failing job and the upstream fix was identified"
+      },
+      "graduated_to": [
+        "galaxy-skills galaxy-mcp-reference gotchas note"
+      ],
+      "upstream": [
+        "galaxy#21994"
+      ],
+      "supersedes": [],
+      "sections": {
+        "symptom": "A workflow step fails, or worse succeeds, with a tool argument containing the text\n`...ConnectedValue object at 0x...`. With fastp it surfaced as an invalid adapter sequence.",
+        "cause": "An optional `parameter_input` workflow step was connected but given no value; older Galaxy\nserialized the placeholder object's repr into the command line.",
+        "check_first": "Does the workflow have optional parameter inputs, per the workflow details? Is the server older\nthan the fix? Inspect the failed job's command line for the signature.",
+        "intervention": "Pass an explicit empty value for every optional parameter input on invocation.",
+        "validate": "Re-inspect the command line of the rerun job: the signature is gone AND the argument is absent or\nempty, not replaced by some other junk.",
+        "not_when": "The server has the upstream fix. Keep the lesson and narrow the version range -- older installs\nstill need it."
+      }
+    },
+    {
+      "id": "galaxy-api/hid-is-not-an-id",
+      "type": "Lesson",
+      "title": "The number shown in the history panel is not a dataset id",
+      "description": "Users say \"dataset 28\", which is the hid; the API wants the encoded id, and run_tool reports the mismatch as a misleading missing-parameter error.",
+      "tags": [
+        "hid",
+        "encoded-id",
+        "history",
+        "galaxy-api",
+        "data-acquisition",
+        "tool-parameterization"
+      ],
+      "status": "stable",
+      "generated": {
+        "by": "human:loom-maintainers",
+        "at": "2026-09-30"
+      },
+      "stale_after": "2027-03-31",
+      "sources": [
+        {
+          "id": "loom#348"
+        },
+        {
+          "id": "loom#375"
+        }
+      ],
+      "kind": "pitfall",
+      "stage": [
+        "data-acquisition",
+        "tool-parameterization"
+      ],
+      "trigger": {
+        "signatures": [
+          "Invalid id length, must be multiple of 16",
+          "Required parameter(s) kwd not provided"
+        ],
+        "tools": [],
+        "mcp_tools": [
+          "galaxy_get_dataset_details",
+          "galaxy_run_tool"
+        ],
+        "formats": [],
+        "hosts": [],
+        "extensions": [],
+        "step_keywords": [
+          "dataset number",
+          "hid",
+          "dataset id"
+        ]
+      },
+      "cues": "A short numeric identifier taken from what the user said is being passed where the API wants an encoded id.",
+      "applies_to": {
+        "versions": "any",
+        "tested": "galaxy-mcp get_dataset_details, run_tool with cat1"
+      },
+      "evidence": {
+        "symptom": "verified",
+        "cause": "verified",
+        "outcome": "validated",
+        "method": "reproduced; resolving the hid to the encoded id fixed it"
+      },
+      "graduated_to": [
+        "galaxy-skills galaxy-mcp-reference gotchas note"
+      ],
+      "upstream": [],
+      "supersedes": [],
+      "sections": {
+        "symptom": "An id-length error, or -- from run_tool -- a misleading required-parameter error that says nothing\nabout ids.",
+        "cause": "Users say \"dataset 28\"; that is the `hid`. The API wants the encoded `id`.",
+        "check_first": "Is the id being passed short and numeric?",
+        "intervention": "List the history contents and resolve the hid to an id. Confirm the name matches what the user\nmeant.",
+        "validate": "The call succeeds and the returned dataset's name and hid are the intended ones.",
+        "not_when": "The id is already a 16-hex-multiple string -- then the missing-parameter error has another cause."
+      }
+    },
+    {
+      "id": "galaxy-api/invoke-workflow-inputs-not-params",
+      "type": "Lesson",
+      "title": "Workflow input values, scalars included, go in `inputs`; `params` only overrides tool steps",
+      "description": "A validation error pointing into parameters means the value is in the wrong slot, not under the wrong key, and retrying key forms is the trap that follows.",
+      "tags": [
+        "workflows",
+        "invoke",
+        "inputs",
+        "galaxy-api",
+        "tool-parameterization"
+      ],
+      "status": "stable",
+      "generated": {
+        "by": "human:loom-maintainers",
+        "at": "2026-09-30"
+      },
+      "stale_after": "2027-03-31",
+      "sources": [
+        {
+          "id": "loom#392"
+        }
+      ],
+      "kind": "pitfall",
+      "stage": [
+        "tool-parameterization"
+      ],
+      "trigger": {
+        "signatures": [
+          "Input should be a valid dictionary"
+        ],
+        "tools": [],
+        "mcp_tools": [
+          "galaxy_invoke_workflow"
+        ],
+        "formats": [],
+        "hosts": [],
+        "extensions": [],
+        "step_keywords": [
+          "invoke",
+          "workflow",
+          "inputs",
+          "params",
+          "input template"
+        ]
+      },
+      "cues": "A workflow invocation is being retried with different key forms for the same value.",
+      "applies_to": {
+        "versions": "unknown",
+        "tested": "galaxy-mcp invoke_workflow against a multi-sample IWC workflow"
+      },
+      "evidence": {
+        "symptom": "verified",
+        "cause": "hypothesized",
+        "outcome": "validated",
+        "method": "the same values succeeded first try when moved to inputs per the input template"
+      },
+      "graduated_to": [
+        "galaxy-mcp get_workflow_input_template plus invoke_workflow preflight"
+      ],
+      "upstream": [
+        "galaxy-mcp#55"
+      ],
+      "supersedes": [],
+      "sections": {
+        "symptom": "Invocation rejected with a validation error pointing into `parameters`. Observed: a model retried\ntwo dozen times varying the key -- label, step index, uuid -- while the real problem was the slot.",
+        "cause": "Inferred, not checked against Galaxy source: every workflow input -- datasets, collections and\nscalar parameter inputs alike -- belongs in `inputs`. `params` overrides tool parameters on\nnon-input steps and its values are dicts.",
+        "check_first": "Was the workflow input template fetched? Does the failing payload put a scalar under `params`?",
+        "intervention": "Fetch the input template and fill it in as returned. Do not retry with a different key form; if the\nsecond attempt fails the same way, stop and re-read the template.",
+        "validate": "The invocation is accepted and its recorded inputs match what was intended.",
+        "not_when": "You really are overriding a tool step's parameter -- then `params` with a dict value is right."
+      }
+    },
+    {
+      "id": "galaxy-api/repeat-param-pipe-keys",
+      "type": "Lesson",
+      "title": "Repeat-group tool params written with underscores are accepted but silently mis-applied",
+      "description": "Galaxy's flat parameter form addresses repeat members with a pipe; an underscore key is ignored rather than rejected, so the repeat falls back to defaults and the job still reports ok.",
+      "tags": [
+        "repeat-params",
+        "tool-parameters",
+        "silent-failure",
+        "galaxy-api",
+        "tool-parameterization",
+        "result-interpretation"
+      ],
+      "status": "stable",
+      "generated": {
+        "by": "human:loom-maintainers",
+        "at": "2026-09-30"
+      },
+      "stale_after": "2027-03-31",
+      "sources": [
+        {
+          "id": "loom#285"
+        },
+        {
+          "id": "loom#295"
+        }
+      ],
+      "kind": "pitfall",
+      "stage": [
+        "tool-parameterization",
+        "result-interpretation"
+      ],
+      "trigger": {
+        "signatures": [],
+        "tools": [
+          "datamash_ops"
+        ],
+        "mcp_tools": [
+          "galaxy_run_tool"
+        ],
+        "formats": [],
+        "hosts": [],
+        "extensions": [],
+        "step_keywords": [
+          "repeat",
+          "operations",
+          "aggregate",
+          "group by"
+        ]
+      },
+      "cues": "Tool inputs contain keys shaped like name underscore number underscore field.",
+      "applies_to": {
+        "versions": "unknown",
+        "tested": "Datamash via galaxy-mcp run_tool"
+      },
+      "evidence": {
+        "symptom": "verified",
+        "cause": "hypothesized",
+        "outcome": "unvalidated",
+        "method": "a wrong aggregate was observed; the pipe-form keys produced the expected one"
+      },
+      "graduated_to": [
+        "loom docs repeat-parameter note",
+        "galaxy-mcp tool input template"
+      ],
+      "upstream": [
+        "galaxy-mcp#52"
+      ],
+      "supersedes": [],
+      "sections": {
+        "symptom": "A tool with a repeat block runs to `ok`, but the result reflects default or wrong repeat values --\na different operation or column than requested. No error anywhere.",
+        "cause": "Hypothesized: Galaxy's flat parameter form addresses repeat members as `block_0|field`. A key like\n`block_0_field` is not rejected; it is ignored, and the repeat falls back to defaults.",
+        "check_first": "Look at the inputs actually submitted. Any repeat member addressed with an underscore instead of a\npipe? Compare the job's recorded parameters with what was intended.",
+        "intervention": "Use the pipe form, for example `operations_0|op_name`, preferably taken verbatim from the tool's\ninput template rather than constructed by hand.",
+        "validate": "Read back the job's parameters and confirm the repeat values are the requested ones. Spot-check one\noutput value by hand.",
+        "not_when": "The tool errored at submit -- that is a different problem. Conditionals use the same pipe\naddressing but fail differently."
+      }
+    },
+    {
+      "id": "galaxy-api/run-tool-returns-on-submit",
+      "type": "Lesson",
+      "title": "A successful run_tool response means queued, not finished",
+      "description": "Single-tool submission returns at queue time and there is no invocation object to poll, so nothing prompts the second look before the result is reported.",
+      "tags": [
+        "job-states",
+        "polling",
+        "async",
+        "galaxy-api",
+        "job-execution"
+      ],
+      "status": "stable",
+      "generated": {
+        "by": "human:loom-maintainers",
+        "at": "2026-09-30"
+      },
+      "stale_after": "2027-03-31",
+      "sources": [
+        {
+          "id": "loom#210"
+        },
+        {
+          "id": "loom#281"
+        },
+        {
+          "id": "loom#293"
+        }
+      ],
+      "kind": "expectation",
+      "stage": [
+        "job-execution"
+      ],
+      "trigger": {
+        "signatures": [],
+        "tools": [],
+        "mcp_tools": [
+          "galaxy_run_tool",
+          "galaxy_run_user_tool"
+        ],
+        "formats": [],
+        "hosts": [],
+        "extensions": [],
+        "step_keywords": [
+          "run tool",
+          "submit",
+          "job",
+          "complete",
+          "done"
+        ]
+      },
+      "cues": "About to report a tool run as done.",
+      "applies_to": {
+        "versions": "any",
+        "tested": "galaxy-mcp"
+      },
+      "evidence": {
+        "symptom": "verified",
+        "cause": "verified",
+        "outcome": "validated",
+        "method": "the job was later found in an error state after the agent had reported success"
+      },
+      "graduated_to": [
+        "loom async job poller",
+        "loom job-status hint"
+      ],
+      "upstream": [],
+      "supersedes": [],
+      "sections": {
+        "symptom": "The agent reports an analysis step complete; the job is still running or has since errored.",
+        "cause": "Single-tool submission returns at queue time. Unlike a workflow invocation there is no invocation\nobject to poll, so nothing prompts a second look.",
+        "check_first": "Has the job reached a terminal state? `ok` is success; `error`, `failed` and `deleted` are not;\n`paused` and `waiting` are not terminal.",
+        "intervention": "Poll the job to a terminal state before building on its outputs or reporting it.",
+        "validate": "Terminal `ok`, and the expected outputs exist and are non-empty.",
+        "not_when": "Never. Caveat: reaching the job via an output dataset does not work for jobs with no outputs,\ncollection-only outputs, or map-over runs where one call makes many jobs."
+      }
+    },
+    {
+      "id": "galaxy-tools/reference-index-not-on-server",
+      "type": "Lesson",
+      "title": "A tool's built-in reference option is useless on a server that has no indexes for it",
+      "description": "The cached-reference branch of a tool offers nothing when the server's data table is empty, and through a workflow the invocation validates and every sample fails minutes later.",
+      "tags": [
+        "reference-genome",
+        "data-tables",
+        "server-dependent",
+        "star",
+        "tool-parameterization"
+      ],
+      "status": "draft",
+      "generated": {
+        "by": "human:loom-maintainers",
+        "at": "2026-09-30"
+      },
+      "stale_after": "2027-03-31",
+      "sources": [
+        {
+          "id": "loom#198"
+        },
+        {
+          "id": "galaxy-mcp#62"
+        }
+      ],
+      "kind": "choice",
+      "stage": [
+        "tool-parameterization"
+      ],
+      "trigger": {
+        "signatures": [
+          "requires a value, but no legal values defined"
+        ],
+        "tools": [
+          "rna_starsolo",
+          "rna_star"
+        ],
+        "mcp_tools": [],
+        "formats": [],
+        "hosts": [],
+        "extensions": [
+          ".fasta",
+          ".fa",
+          ".gtf"
+        ],
+        "step_keywords": [
+          "reference",
+          "genome",
+          "index",
+          "built-in",
+          "cached",
+          "genomedir"
+        ]
+      },
+      "cues": "The tool offers a choice between a cached or built-in reference and one from the history.",
+      "applies_to": {
+        "versions": "any; depends on the server's data tables",
+        "tested": "STARsolo on a server with no STAR indexes"
+      },
+      "evidence": {
+        "symptom": "verified",
+        "cause": "verified",
+        "outcome": "unvalidated",
+        "method": "the 400 at submit was quoted, and the server was confirmed to have zero indexes for the tool"
+      },
+      "graduated_to": [],
+      "upstream": [
+        "galaxy-mcp#62"
+      ],
+      "supersedes": [],
+      "sections": {
+        "symptom": "`Parameter 'genomeDir': requires a value, but no legal values defined` at submit. Through a\nworkflow it is worse: the invocation validates, and the failure shows up minutes later as a bare\ntool error on every sample.",
+        "cause": "The use-a-built-in-index branch of the tool was selected, and this server's data table for that\ntool is empty.",
+        "check_first": "Does the select parameter for the built-in reference have any options on this server?",
+        "intervention": "Switch to the history-reference branch and supply a FASTA, and an annotation where the tool needs\none, or run on a server that has the index.",
+        "validate": "The job reaches `ok`, and the mapping rate is plausible for the organism -- a wrong reference also\n\"works\".",
+        "not_when": "The select has options and the chosen value is not among them -- that is a wrong-value problem."
+      }
+    },
+    {
+      "id": "reproduction/input-population-mismatch",
+      "type": "Lesson",
+      "title": "A faithful rerun can still be wrong when a normalizing step was fed a pre-filtered subset",
+      "description": "A statistic normalized over its input is wrong if the input was hand-picked, and the rerun reproduces the error exactly, so provenance alone will never catch it.",
+      "tags": [
+        "reproduction",
+        "normalization",
+        "denominator",
+        "audit",
+        "data-acquisition",
+        "tool-parameterization",
+        "result-interpretation"
+      ],
+      "status": "draft",
+      "generated": {
+        "by": "human:loom-maintainers",
+        "at": "2026-09-30"
+      },
+      "stale_after": "2027-03-31",
+      "sources": [],
+      "kind": "reproduction",
+      "stage": [
+        "data-acquisition",
+        "tool-parameterization",
+        "result-interpretation"
+      ],
+      "trigger": {
+        "signatures": [],
+        "tools": [],
+        "mcp_tools": [],
+        "formats": [],
+        "hosts": [],
+        "extensions": [],
+        "step_keywords": [
+          "reproduce",
+          "reproducing",
+          "reproduction",
+          "posterior",
+          "fdr",
+          "enrichment",
+          "percentile",
+          "rank",
+          "normalize",
+          "credible set"
+        ]
+      },
+      "cues": "Reproducing a published analysis where a step computes a normalized quantity -- posterior, FDR, enrichment, rank, percentile.",
+      "applies_to": {
+        "versions": "n/a",
+        "tested": "one audited reproduction of a fine-mapping analysis"
+      },
+      "evidence": {
+        "symptom": "verified",
+        "cause": "verified",
+        "outcome": "unvalidated",
+        "method": "traced by reading the job's actual inputs; the denominator differed from the full set"
+      },
+      "graduated_to": [],
+      "upstream": [],
+      "supersedes": [],
+      "sections": {
+        "symptom": "Results are close to the paper's but not equal: a set has a few members more or fewer, and every\ndownstream value drifts by a few percent in the same direction.",
+        "cause": "A statistic normalized over its input, here posterior probabilities, was computed over a\nhand-picked subset. The tool ran correctly. Rerunning reproduces the error, so provenance alone\nwill not catch it.",
+        "check_first": "For every normalizing step: how many records went in, and how many does the method assume? Compare\nagainst the paper's stated N.",
+        "intervention": "Feed the step the full population; filter afterwards.",
+        "validate": "Input count matches the method's stated population, and the set membership matches the paper.",
+        "not_when": "The step's output for one record does not depend on the others."
+      }
+    },
+    {
+      "id": "reproduction/methods-text-vs-executed-parameters",
+      "type": "Lesson",
+      "title": "When a rerun cannot find what the paper reports, compare the Methods parameters to the executed ones",
+      "description": "A missing peak or row, or a uniform few-percent drift with ranks intact, is usually a window, threshold, top-N or version difference rather than a failed reproduction.",
+      "tags": [
+        "reproduction",
+        "parameters",
+        "versions",
+        "methods",
+        "metadata-reconciliation",
+        "result-interpretation"
+      ],
+      "status": "draft",
+      "generated": {
+        "by": "human:loom-maintainers",
+        "at": "2026-09-30"
+      },
+      "stale_after": "2027-03-31",
+      "sources": [],
+      "kind": "reproduction",
+      "stage": [
+        "metadata-reconciliation",
+        "result-interpretation"
+      ],
+      "trigger": {
+        "signatures": [],
+        "tools": [],
+        "mcp_tools": [],
+        "formats": [],
+        "hosts": [],
+        "extensions": [],
+        "step_keywords": [
+          "reproduce",
+          "reproducing",
+          "reproduction",
+          "methods",
+          "paper",
+          "missing",
+          "not found",
+          "threshold",
+          "window",
+          "top-n",
+          "version"
+        ]
+      },
+      "cues": "Reproducing a published analysis where a reported feature, row or peak is absent from the rerun.",
+      "applies_to": {
+        "versions": "n/a",
+        "tested": "one audited reproduction"
+      },
+      "evidence": {
+        "symptom": "verified",
+        "cause": "verified",
+        "outcome": "unvalidated",
+        "method": "each discrepancy traced to a specific parameter or version difference"
+      },
+      "graduated_to": [],
+      "upstream": [],
+      "supersedes": [],
+      "sections": {
+        "symptom": "A table row, peak or feature from the paper is not in the rerun's output at all; or scores are\nsystematically a few percent off with ranks preserved.",
+        "cause": "Four observed varieties: a window or range parameter narrower than the Methods describe, so the\nfeature lies outside what was scanned; a summary step's top-N or threshold dropping it; a tool\nrevision changing output columns; a model or tool version change shifting values uniformly.",
+        "check_first": "Tabulate Methods-stated versus executed values for windows, thresholds, top-N limits and versions.\nIs the missing item outside a range or below a cutoff? Is the drift uniform with ranks intact?",
+        "intervention": "Rerun with the Methods' parameters if they differ. If versions differ and cannot be matched, report\nthe drift as version drift, with its size, rather than as a failed reproduction.",
+        "validate": "The missing item appears under the Methods' parameters, or its absence is explained by a named\nparameter. Say which.",
+        "not_when": "Parameters and versions match and the result still differs -- that is a real discrepancy; report\nit."
+      }
+    },
+    {
+      "id": "stats/de-contrast-direction-and-sample-labels",
+      "type": "Lesson",
+      "title": "Fold-change signs read backwards and sample labels drift, with no error anywhere",
+      "description": "Factor-level order decides numerator and denominator, and upstream steps rewrite sample labels, so a DE result can be fully reversed or mis-assigned and still look clean.",
+      "tags": [
+        "differential-expression",
+        "design-table",
+        "contrast",
+        "deseq2",
+        "metadata-reconciliation",
+        "result-interpretation",
+        "tabular"
+      ],
+      "status": "draft",
+      "generated": {
+        "by": "human:loom-maintainers",
+        "at": "2026-09-30"
+      },
+      "stale_after": "2027-03-31",
+      "sources": [
+        {
+          "id": "loom#288"
+        },
+        {
+          "id": "loom#289"
+        },
+        {
+          "id": "loom#321"
+        }
+      ],
+      "kind": "pitfall",
+      "stage": [
+        "metadata-reconciliation",
+        "result-interpretation"
+      ],
+      "trigger": {
+        "signatures": [],
+        "tools": [
+          "deseq2",
+          "edger",
+          "limma_voom"
+        ],
+        "mcp_tools": [],
+        "formats": [
+          "tabular"
+        ],
+        "hosts": [],
+        "extensions": [],
+        "step_keywords": [
+          "design",
+          "factor",
+          "contrast",
+          "condition",
+          "log fold change",
+          "logfc",
+          "differential expression"
+        ]
+      },
+      "cues": "Building a design or factor table, and reporting log fold changes.",
+      "applies_to": {
+        "versions": "any",
+        "tested": "DESeq2"
+      },
+      "evidence": {
+        "symptom": "reported",
+        "cause": "verified",
+        "outcome": "unvalidated",
+        "method": "user reports across one analysis: duplicate labels, unstated sign convention, design that did not match the data"
+      },
+      "graduated_to": [],
+      "upstream": [],
+      "supersedes": [],
+      "sections": {
+        "symptom": "Fold-change signs read backwards; duplicate or dropped sample labels; a multi-sample design\napplied to data that was actually pooled.",
+        "cause": "Factor-level order decides numerator versus denominator and is easy to get implicitly. Sample\nlabels get rewritten by upstream steps. Nobody compared the design table to the data before\nrunning.",
+        "check_first": "Before running: one row per sample, labels unique, every sample in the design is in the data and\nvice versa, replicates per condition as the design claims.",
+        "intervention": "State the contrast in words -- treated relative to control, positive means up in treated -- in the\nplan and again next to the results.",
+        "validate": "Pick a gene with a known direction and check its sign.",
+        "not_when": "Never; it holds for any two-group comparison."
+      }
+    },
+    {
+      "id": "stats/na-coerced-to-zero-in-filters",
+      "type": "Lesson",
+      "title": "Numeric filters in awk and friends treat \"NA\" as 0, so missing p-values pass a significance cutoff",
+      "description": "DESeq2 writes NA for filtered genes; string-to-number coercion turns NA into 0, which is below any cutoff, so the significant count is inflated with no error.",
+      "tags": [
+        "awk",
+        "filtering",
+        "p-value",
+        "deseq2",
+        "result-interpretation",
+        "tabular"
+      ],
+      "status": "draft",
+      "generated": {
+        "by": "human:loom-maintainers",
+        "at": "2026-09-30"
+      },
+      "stale_after": "2027-03-31",
+      "sources": [
+        {
+          "id": "loom#355"
+        }
+      ],
+      "kind": "pitfall",
+      "stage": [
+        "result-interpretation"
+      ],
+      "trigger": {
+        "signatures": [],
+        "tools": [
+          "deseq2",
+          "Filter1"
+        ],
+        "mcp_tools": [],
+        "formats": [
+          "tabular"
+        ],
+        "hosts": [],
+        "extensions": [
+          ".tabular",
+          ".tsv"
+        ],
+        "step_keywords": [
+          "filter",
+          "significant",
+          "padj",
+          "p-value",
+          "fdr",
+          "threshold",
+          "awk"
+        ]
+      },
+      "cues": "Thresholding a p-value or padj column with awk, cut/sort, or a Galaxy filter expression.",
+      "applies_to": {
+        "versions": "any",
+        "tested": "awk on DESeq2 output"
+      },
+      "evidence": {
+        "symptom": "verified",
+        "cause": "verified",
+        "outcome": "validated",
+        "method": "deterministic: NA plus 0 is 0 in awk; the count dropped to the expected range once NA rows were excluded"
+      },
+      "graduated_to": [],
+      "upstream": [],
+      "supersedes": [],
+      "sections": {
+        "symptom": "Implausibly many significant genes -- several-fold more than expected. Nothing errors.",
+        "cause": "DESeq2 writes `NA` for genes removed by independent filtering or outlier detection.\nString-to-number coercion turns `NA` into 0, which is below any cutoff.",
+        "check_first": "Count rows where the tested column is literally `NA`. If that count is close to the excess, this\nis it.",
+        "intervention": "Exclude NA explicitly before comparing, or do the filter in a language with real missing-value\nsemantics.",
+        "validate": "Significant count equals rows passing the cutoff among non-NA rows. State both numbers.",
+        "not_when": "The table has no missing values in that column."
+      }
+    }
+  ]
+}

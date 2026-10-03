@@ -18,3 +18,12 @@ coverage/
 # Vendored upstream content, hash-gated by check:skills. Reformatting it would
 # break the drift gate and diverge the copy from what was reviewed.
 extensions/loom/vendor/skills/
+
+# The lesson corpus and the snapshot built from it. `npm run check:lessons` is
+# the gate for these, not prettier: its markdown printer rewrites the YAML
+# frontmatter, and reformatting the generated JSON would make the drift gate
+# fail on a commit hook instead of on a real change. lessons/*.mjs and the prose
+# files are deliberately still formatted.
+lessons/snapshot.json
+lessons/*/*.md
+tests/fixtures/lessons/

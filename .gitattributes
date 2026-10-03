@@ -9,3 +9,8 @@ extensions/loom/vendor/** text eol=lf
 # and the import dies with "Invalid or unexpected token", which is how the Windows
 # build found out. The gate hashes it with line endings normalised either way.
 scripts/sync-skills.mjs text eol=lf
+
+# The corpus and its snapshot are compared byte-for-byte by check:lessons, so a
+# CRLF checkout would fail that gate on the Windows leg and nowhere else.
+lessons/** text eol=lf
+tests/fixtures/lessons/** text eol=lf

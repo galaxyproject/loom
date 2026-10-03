@@ -1,0 +1,17 @@
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+The lesson corpus in this directory -- every <namespace>/<slug>.md file and the
+snapshot.json built from them -- is licensed under the Creative Commons
+Attribution 4.0 International License. The rest of the Loom repository is MIT;
+this directory is the exception, so that any project can reuse the lessons with
+attribution and nothing more.
+
+SPDX-License-Identifier: CC-BY-4.0
+Full legal code:  https://creativecommons.org/licenses/by/4.0/legalcode
+Plain-language summary:  https://creativecommons.org/licenses/by/4.0/
+
+Attribute as: "Loom lesson bank, galaxyproject/loom, CC BY 4.0", with a link to
+the lesson's page or to the repository.
+
+validate.mjs and build-snapshot.mjs in this directory are code, not corpus, and
+stay under the repository's MIT licence.
