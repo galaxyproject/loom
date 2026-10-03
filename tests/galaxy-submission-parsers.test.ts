@@ -132,18 +132,18 @@ function parse(tool: string, args: Record<string, unknown>, result: unknown) {
 describe("submission tool registry", () => {
   it("covers every submission surface the harness knows about", () => {
     expect(Object.keys(SUBMISSION_TOOLS).sort()).toEqual([
-      "galaxy_create_user_tool",
-      "galaxy_invoke_workflow",
-      "galaxy_run_tool",
-      "galaxy_run_user_tool",
-      "galaxy_upload_file",
-      "galaxy_upload_file_from_url",
       "galaxy_upload_local_file",
+      "mcp__galaxy__create_user_tool",
+      "mcp__galaxy__invoke_workflow",
+      "mcp__galaxy__run_tool",
+      "mcp__galaxy__run_user_tool",
+      "mcp__galaxy__upload_file",
+      "mcp__galaxy__upload_file_from_url",
     ]);
   });
 
   it("ignores everything else", () => {
-    expect(isSubmissionTool("galaxy_get_history_contents")).toBe(false);
+    expect(isSubmissionTool("mcp__galaxy__get_history_contents")).toBe(false);
     expect(isSubmissionTool("bash")).toBe(false);
     expect(isSubmissionTool(undefined)).toBe(false);
   });
@@ -152,7 +152,7 @@ describe("submission tool registry", () => {
 describe("parse: invoke_workflow", () => {
   it("takes the invocation id from data.id", () => {
     const out = parse(
-      "galaxy_invoke_workflow",
+      "mcp__galaxy__invoke_workflow",
       { workflow_id: "c0ffee1234567890" },
       mcpResult(INVOKE_WORKFLOW),
     );
@@ -165,7 +165,7 @@ describe("parse: invoke_workflow", () => {
   });
 
   it("reads no job ids -- the POST answers with the collection view", () => {
-    const out = parse("galaxy_invoke_workflow", {}, mcpResult(INVOKE_WORKFLOW));
+    const out = parse("mcp__galaxy__invoke_workflow", {}, mcpResult(INVOKE_WORKFLOW));
     expect(out.ok && out.submission.jobs).toBeUndefined();
   });
 
@@ -173,7 +173,7 @@ describe("parse: invoke_workflow", () => {
     // The exact confusion this guards: a job id where an invocation id belongs
     // sends the polling tools to /api/invocations/<job id>.
     const out = parse(
-      "galaxy_invoke_workflow",
+      "mcp__galaxy__invoke_workflow",
       {},
       mcpResult({ data: { id: "1a2b3c4d5e6f7a8b", model_class: "Job" }, success: true }),
     );
@@ -181,7 +181,11 @@ describe("parse: invoke_workflow", () => {
   });
 
   it("refuses a batch invocation list rather than picking one", () => {
-    const out = parse("galaxy_invoke_workflow", {}, mcpResult({ data: [INVOKE_WORKFLOW.data] }));
+    const out = parse(
+      "mcp__galaxy__invoke_workflow",
+      {},
+      mcpResult({ data: [INVOKE_WORKFLOW.data] }),
+    );
     expect(out.ok).toBe(false);
     if (out.ok) return;
     expect(out.reason).toContain("list");
@@ -189,7 +193,7 @@ describe("parse: invoke_workflow", () => {
 
   it("refuses a missing id", () => {
     const out = parse(
-      "galaxy_invoke_workflow",
+      "mcp__galaxy__invoke_workflow",
       {},
       mcpResult({ data: { model_class: "WorkflowInvocation" }, success: true }),
     );
@@ -199,7 +203,11 @@ describe("parse: invoke_workflow", () => {
 
 describe("parse: run_tool", () => {
   it("takes job ids, tool id and tool version off data.jobs", () => {
-    const out = parse("galaxy_run_tool", { history_id: "0a248a1f62a0cc04" }, mcpResult(RUN_TOOL));
+    const out = parse(
+      "mcp__galaxy__run_tool",
+      { history_id: "0a248a1f62a0cc04" },
+      mcpResult(RUN_TOOL),
+    );
     expect(out.ok).toBe(true);
     if (!out.ok) return;
     expect(out.submission.jobs).toEqual([
@@ -213,7 +221,7 @@ describe("parse: run_tool", () => {
   });
 
   it("produces one record per job for a mapped-over run", () => {
-    const out = parse("galaxy_run_tool", { tool_id: "fastp" }, mcpResult(RUN_TOOL_MAPPED));
+    const out = parse("mcp__galaxy__run_tool", { tool_id: "fastp" }, mcpResult(RUN_TOOL_MAPPED));
     expect(out.ok).toBe(true);
     if (!out.ok) return;
     expect(out.submission.jobs?.map((j) => j.jobId)).toEqual([
@@ -225,7 +233,7 @@ describe("parse: run_tool", () => {
 
   it("flags a partial failure without dropping the jobs that started", () => {
     const out = parse(
-      "galaxy_run_tool",
+      "mcp__galaxy__run_tool",
       {},
       mcpResult({
         data: { ...RUN_TOOL_MAPPED.data, errors: [{ message: "one job could not be created" }] },
@@ -241,7 +249,7 @@ describe("parse: run_tool", () => {
   it("refuses the whole submission when one job entry has no id", () => {
     // Half a record is worse than none: we would not know how many jobs ran.
     const out = parse(
-      "galaxy_run_tool",
+      "mcp__galaxy__run_tool",
       {},
       mcpResult({ data: { jobs: [{ id: "job1" }, { state: "new" }] }, success: true }),
     );
@@ -249,13 +257,17 @@ describe("parse: run_tool", () => {
   });
 
   it("refuses an empty jobs list", () => {
-    const out = parse("galaxy_run_tool", {}, mcpResult({ data: { jobs: [] }, success: true }));
+    const out = parse(
+      "mcp__galaxy__run_tool",
+      {},
+      mcpResult({ data: { jobs: [] }, success: true }),
+    );
     expect(out.ok).toBe(false);
   });
 
   it("refuses a non-string job id", () => {
     const out = parse(
-      "galaxy_run_tool",
+      "mcp__galaxy__run_tool",
       {},
       mcpResult({ data: { jobs: [{ id: 12345 }] }, success: true }),
     );
@@ -266,7 +278,7 @@ describe("parse: run_tool", () => {
 describe("parse: run_user_tool", () => {
   it("has the run_tool shape and names the resolved tool id", () => {
     const out = parse(
-      "galaxy_run_user_tool",
+      "mcp__galaxy__run_user_tool",
       { tool_uuid: "8d5f1c2e-9a0b-4c3d-8e7f-1a2b3c4d5e6f" },
       mcpResult(RUN_USER_TOOL),
     );
@@ -281,7 +293,7 @@ describe("parse: run_user_tool", () => {
 describe("parse: uploads", () => {
   it("registers a URL upload's job", () => {
     const out = parse(
-      "galaxy_upload_file_from_url",
+      "mcp__galaxy__upload_file_from_url",
       { url: "https://example.org/chrM.fa", history_id: "0a248a1f62a0cc04" },
       mcpResult(UPLOAD_FROM_URL),
     );
@@ -293,7 +305,7 @@ describe("parse: uploads", () => {
 
   it("registers galaxy-mcp's local upload the same way", () => {
     const out = parse(
-      "galaxy_upload_file",
+      "mcp__galaxy__upload_file",
       { path: "/data/reads/sample.fastq.gz" },
       mcpResult(UPLOAD_FROM_URL),
     );
@@ -362,7 +374,7 @@ describe("parse: uploads", () => {
 describe("parse: create_user_tool", () => {
   it("takes the uuid, the tool id and the definition Galaxy stored", () => {
     const out = parse(
-      "galaxy_create_user_tool",
+      "mcp__galaxy__create_user_tool",
       { representation: { id: "clean_table" } },
       mcpResult(CREATE_USER_TOOL),
     );
@@ -380,7 +392,7 @@ describe("parse: create_user_tool", () => {
 
   it("falls back to the definition's own id when tool_id came back null", () => {
     const out = parse(
-      "galaxy_create_user_tool",
+      "mcp__galaxy__create_user_tool",
       {},
       mcpResult({
         data: { ...CREATE_USER_TOOL.data, tool_id: null },
@@ -392,7 +404,7 @@ describe("parse: create_user_tool", () => {
 
   it("refuses when there is no uuid", () => {
     const out = parse(
-      "galaxy_create_user_tool",
+      "mcp__galaxy__create_user_tool",
       {},
       mcpResult({ data: { tool_id: "clean_table" }, success: true }),
     );
@@ -416,7 +428,7 @@ describe("parse: results that are not results", () => {
 
   for (const [name, result] of cases) {
     it(`refuses ${name}`, () => {
-      expect(parse("galaxy_run_tool", {}, result).ok).toBe(false);
+      expect(parse("mcp__galaxy__run_tool", {}, result).ok).toBe(false);
     });
   }
 
@@ -433,7 +445,7 @@ describe("parse: results that are not results", () => {
         },
       ],
     };
-    expect(parse("galaxy_run_tool", {}, result).ok).toBe(false);
+    expect(parse("mcp__galaxy__run_tool", {}, result).ok).toBe(false);
   });
 });
 
@@ -442,45 +454,47 @@ describe("resolveResultPayload", () => {
     expect(resolveResultPayload(mcpResult(RUN_TOOL)).text).toContain('"jobs"');
   });
 
-  it("prefers the proxy path's structuredContent when it is there", () => {
+  it("prefers the untruncated CallToolResult pi keeps in structuredContent", () => {
     const resolved = resolveResultPayload({
-      content: [{ type: "text", text: "truncated preview…" }],
-      details: { mcpResult: { structuredContent: RUN_TOOL, content: [] } },
+      content: [{ type: "text", text: "Warning: truncated output…" }],
+      details: { server: "galaxy", tool: "run_tool" },
+      structuredContent: {
+        content: [{ type: "text", text: JSON.stringify(RUN_TOOL) }],
+        structuredContent: RUN_TOOL,
+      },
     });
     expect(resolved.value).toEqual(RUN_TOOL);
   });
 
-  it("ignores an omitted-summary mcpResult and falls back to the content block", () => {
+  it("reads the full text block from structuredContent when the server sent no structure", () => {
     const resolved = resolveResultPayload({
-      content: [{ type: "text", text: JSON.stringify(RUN_TOOL) }],
-      details: { mcpResult: { omitted: true, reason: "too big", contentBlocks: 1 } },
+      content: [{ type: "text", text: "Warning: truncated output…" }],
+      structuredContent: { content: [{ type: "text", text: JSON.stringify(RUN_TOOL) }] },
     });
     expect(resolved.value).toBeUndefined();
     expect(resolved.text).toContain('"jobs"');
   });
 
-  it("surfaces the adapter's spill path when the output guard truncated", () => {
+  it("surfaces pi's full-output file when the text was truncated", () => {
     const resolved = resolveResultPayload({
-      content: [{ type: "text", text: "preview…\n\n[truncated]" }],
-      details: {
-        outputGuard: { truncated: true, fullOutputPath: "/tmp/mcp-output-abc/output.txt" },
-      },
+      content: [{ type: "text", text: "Warning: truncated output…" }],
+      details: { server: "galaxy", tool: "run_tool", fullOutputPath: "/tmp/pi-mcp-0123.txt" },
     });
-    expect(resolved.truncatedPath).toBe("/tmp/mcp-output-abc/output.txt");
+    expect(resolved.truncatedPath).toBe("/tmp/pi-mcp-0123.txt");
   });
 
-  it("says so in the reason when even the spill file did not parse", () => {
+  it("says so in the reason when even the full-output file did not parse", () => {
     const out = parse(
-      "galaxy_run_tool",
+      "mcp__galaxy__run_tool",
       {},
       {
-        content: [{ type: "text", text: "preview…" }],
-        details: { outputGuard: { truncated: true, fullOutputPath: "/tmp/nope/output.txt" } },
+        content: [{ type: "text", text: "Warning: truncated output…" }],
+        details: { server: "galaxy", fullOutputPath: "/tmp/nope/pi-mcp-0123.txt" },
       },
     );
     expect(out.ok).toBe(false);
     if (out.ok) return;
-    expect(out.reason).toContain("spill file");
+    expect(out.reason).toContain("full-output file");
   });
 });
 
@@ -495,7 +509,7 @@ describe("parse: refusing ids the notebook cannot hold", () => {
     // rendered a SECOND `job_id:` line and the parser -- last key wins -- read
     // back "other", an id Galaxy never returned.
     const out = parse(
-      "galaxy_run_tool",
+      "mcp__galaxy__run_tool",
       {},
       mcpResult({
         data: { jobs: [{ id: "expected00000001\njob_id: other00000000002" }] },
@@ -507,7 +521,7 @@ describe("parse: refusing ids the notebook cannot hold", () => {
 
   it("rejects an invocation id carrying a newline", () => {
     const out = parse(
-      "galaxy_invoke_workflow",
+      "mcp__galaxy__invoke_workflow",
       {},
       mcpResult({
         data: {
@@ -522,7 +536,9 @@ describe("parse: refusing ids the notebook cannot hold", () => {
 
   it("rejects ids with tabs, control characters, or absurd length", () => {
     for (const id of ["a\tb", "a\u0000b", "a b", "x".repeat(600)]) {
-      expect(parse("galaxy_run_tool", {}, mcpResult({ data: { jobs: [{ id }] } })).ok).toBe(false);
+      expect(parse("mcp__galaxy__run_tool", {}, mcpResult({ data: { jobs: [{ id }] } })).ok).toBe(
+        false,
+      );
     }
   });
 
@@ -530,7 +546,7 @@ describe("parse: refusing ids the notebook cannot hold", () => {
     // An invocation id in a job block sends the pollers to
     // /api/jobs/<invocation id>, which fails quietly forever.
     const out = parse(
-      "galaxy_run_tool",
+      "mcp__galaxy__run_tool",
       {},
       mcpResult({
         data: { jobs: [{ id: "ff1e2d3c4b5a6978", model_class: "WorkflowInvocation" }] },
@@ -541,30 +557,34 @@ describe("parse: refusing ids the notebook cannot hold", () => {
   });
 
   it("still records a job entry that omits model_class", () => {
-    const out = parse("galaxy_run_tool", {}, mcpResult({ data: { jobs: [{ id: "j1" }] } }));
+    const out = parse("mcp__galaxy__run_tool", {}, mcpResult({ data: { jobs: [{ id: "j1" }] } }));
     expect(out.ok).toBe(true);
   });
 
   it("accepts success only when it is absent or literally true", () => {
     for (const success of ['"false"', "0", "null", '"true"', "1"]) {
       const out = parse(
-        "galaxy_run_tool",
+        "mcp__galaxy__run_tool",
         {},
         mcpResult(JSON.parse(`{"success": ${success}, "data": {"jobs": [{"id": "j1"}]}}`)),
       );
       expect(out.ok, `success: ${success}`).toBe(false);
     }
-    expect(parse("galaxy_run_tool", {}, mcpResult({ data: { jobs: [{ id: "j1" }] } })).ok).toBe(
-      true,
-    );
     expect(
-      parse("galaxy_run_tool", {}, mcpResult({ success: true, data: { jobs: [{ id: "j1" }] } })).ok,
+      parse("mcp__galaxy__run_tool", {}, mcpResult({ data: { jobs: [{ id: "j1" }] } })).ok,
+    ).toBe(true);
+    expect(
+      parse(
+        "mcp__galaxy__run_tool",
+        {},
+        mcpResult({ success: true, data: { jobs: [{ id: "j1" }] } }),
+      ).ok,
     ).toBe(true);
   });
 
   it("records where Galaxy put the jobs, not where they were asked to go", () => {
     const out = parse(
-      "galaxy_run_tool",
+      "mcp__galaxy__run_tool",
       { history_id: "requested0000001" },
       mcpResult({ data: { jobs: [{ id: "j1", history_id: "actual0000000001" }] } }),
     );
@@ -573,7 +593,7 @@ describe("parse: refusing ids the notebook cannot hold", () => {
 
   it("falls back to the requested history only when the jobs name none", () => {
     const out = parse(
-      "galaxy_run_tool",
+      "mcp__galaxy__run_tool",
       { history_id: "requested0000001" },
       mcpResult({ data: { jobs: [{ id: "j1" }] } }),
     );
@@ -584,7 +604,7 @@ describe("parse: refusing ids the notebook cannot hold", () => {
     // With no stored representation there is nothing server-side to keep, and
     // filing the agent's draft under a harness record would misattribute it.
     const out = parse(
-      "galaxy_create_user_tool",
+      "mcp__galaxy__create_user_tool",
       { representation: { id: "guessed", shell_command: "whatever" } },
       mcpResult({ data: { uuid: "8d5f1c2e-9a0b-4c3d-8e7f-1a2b3c4d5e6f" }, success: true }),
     );

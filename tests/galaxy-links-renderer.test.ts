@@ -213,7 +213,7 @@ describe("actual notebook and chat panels", () => {
     document.body.append(el);
     const chat = new ChatPanel(el);
     chat.setGalaxyServerUrl(server);
-    chat.addToolCard("call-1", "galaxy_get_dataset_details");
+    chat.addToolCard("call-1", "mcp__galaxy__get_dataset_details");
     chat.updateToolCard("call-1", "done", JSON.stringify({ dataset_id: pageId }));
     chat.addInfoMessage(`Job ${historyId} finished`);
     chat.addErrorMessage(`Job ${historyId} failed`);

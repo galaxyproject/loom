@@ -9,12 +9,23 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { inspectOutput, registerMcpOutputRecovery } from "../extensions/loom/mcp-output";
 import { registerSecretRedaction } from "../extensions/loom/secret-redaction";
-import { guardMcpOutput } from "../node_modules/pi-mcp-adapter/mcp-output-guard";
+import { convertMcpResult } from "../node_modules/@earendil-works/pi-coding-agent/dist/extensions/mcp/tools.js";
+
+/** Truncate the way pi's built-in MCP does, saving the full text to $TMPDIR/pi-mcp-*.txt. */
+async function piMcpResult(tool: string, text: string) {
+  const result = await convertMcpResult("galaxy", tool, { content: [{ type: "text", text }] });
+  const path = (result.details as { fullOutputPath?: string }).fullOutputPath!;
+  files.push(path);
+  return { ...result, path };
+}
 
 vi.mock("../shared/loom-config.js", () => ({ loadConfig: () => ({}) }));
 const dirs: string[] = [];
+// pi saves straight into $TMPDIR, so its files are removed one by one -- never their directory.
+const files: string[] = [];
 afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const file of files.splice(0)) rmSync(file, { force: true });
   vi.unstubAllEnvs();
 });
 function artifact(text: string) {
@@ -53,7 +64,7 @@ function harness() {
 }
 function event(path: string, overrides = {}): Partial<ToolResultEvent> {
   return {
-    toolName: "galaxy_get_tool_panel",
+    toolName: "mcp__galaxy__get_tool_panel",
     toolCallId: "catalog",
     input: {},
     isError: false,
@@ -93,16 +104,10 @@ describe("bounded MCP output recovery", () => {
   it("turns a spilled 57-tool response into a useful successful catalog", async () => {
     const raw = JSON.stringify(userTools());
     expect(Buffer.byteLength(raw)).toBeGreaterThan(250_000);
-    const guarded = await guardMcpOutput([{ type: "text", text: raw }]);
-    const path = guarded.outputGuard!.fullOutputPath!;
-    dirs.push(join(path, ".."));
+    const { path, content, details } = await piMcpResult("list_user_tools", raw);
     const h = harness();
     const recovered = await h.result(
-      event(path, {
-        toolName: "galaxy_list_user_tools",
-        content: guarded.content,
-        details: { outputGuard: guarded.outputGuard },
-      }),
+      event(path, { toolName: "mcp__galaxy__list_user_tools", content, details }),
     );
     const text = recovered.content![0].type === "text" ? recovered.content![0].text : "";
     expect(recovered.isError).toBe(false);
@@ -224,7 +229,7 @@ describe("bounded MCP output recovery", () => {
     );
   });
 
-  it("recovers a multi-megabyte one-line adapter result and finds a late nested tool", async () => {
+  it("recovers a multi-megabyte one-line result and finds a late nested tool", async () => {
     const raw = JSON.stringify({
       success: true,
       data: Array.from({ length: 87 }, (_, section) => ({
@@ -237,14 +242,9 @@ describe("bounded MCP output recovery", () => {
       })),
     });
     expect(Buffer.byteLength(raw)).toBeGreaterThan(2_300_000);
-    const guarded = await guardMcpOutput([{ type: "text", text: raw }]);
-    const path = guarded.outputGuard!.fullOutputPath!;
-    dirs.push(join(path, ".."));
-    expect(guarded.outputGuard?.outputLines).toBe(0);
+    const { path, content, details } = await piMcpResult("get_tool_panel", raw);
     const h = harness();
-    const recovered = await h.result(
-      event(path, { content: guarded.content, details: { outputGuard: guarded.outputGuard } }),
-    );
+    const recovered = await h.result(event(path, { content, details }));
     const text = JSON.stringify(recovered.content);
     expect(text).toContain("mcp_read_output");
     expect(text).toContain("/data");

@@ -165,7 +165,7 @@ describe("maybeNudgeGalaxyReconnect (dispatch)", () => {
     const fake = pi();
     maybeNudgeGalaxyReconnect(fake as never, { isResume: true, cwd });
     expect(fake.sendUserMessage).toHaveBeenCalledTimes(1);
-    expect(fake.sendUserMessage.mock.calls[0][0]).toContain("galaxy_connect");
+    expect(fake.sendUserMessage.mock.calls[0][0]).toContain("mcp__galaxy__connect");
     // Baseline stays at key-A until a confirmed connect, so a crash or an
     // ignored nudge leaves the next resume free to nudge again.
     expect(readStoredFingerprint(fpPath)).toBe(

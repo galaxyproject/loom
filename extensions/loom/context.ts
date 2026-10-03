@@ -186,7 +186,7 @@ export function buildTesterIdBlock(): string {
 This session's Orbit tester ID is **${testerId}**. It comes from the local
 Orbit/Loom config, not from Galaxy. When the user asks about their tester ID,
 report this value directly and do **not** call Galaxy tools such as
-\`galaxy_get_user\`. The tester ID is not a Galaxy account attribute; it's an
+\`mcp__galaxy__get_user\`. The tester ID is not a Galaxy account attribute; it's an
 opaque, non-secret code that rides along on feedback submissions.
 `;
 }
@@ -293,17 +293,17 @@ Galaxy authentication errors from a dropped MCP transport and request timeouts.
 A timeout alone does not prove that the connection is dead.
 
 When it happens -- and before you ever tell the user Galaxy is disconnected:
-1. For "Not connected to Galaxy", call \`galaxy_connect()\` to re-bind
+1. For "Not connected to Galaxy", call \`mcp__galaxy__connect()\` to re-bind
    this session. Do not report a disconnection you haven't tried to fix.
-2. For a dropped transport, call \`mcp({connect: "galaxy"})\` yourself,
-   then \`galaxy_connect()\`. Verify both results before continuing.
+2. For a dropped transport, the connection comes back on the next call; call
+   \`mcp__galaxy__connect()\` yourself once and verify the result before continuing.
 3. For timeouts, narrow read-only queries first. Before retrying a mutation,
    check whether Galaxy accepted it. Never blindly replay a submission.
 4. Only if your own reconnect fails, tell the user they can run
    \`/mcp reconnect galaxy\` (no restart needed).
 
 Never report "Galaxy is disconnected" as a final answer without attempting
-\`galaxy_connect()\` in the same turn.
+\`mcp__galaxy__connect()\` in the same turn.
 
 ### Resuming existing Galaxy work ("pick up where I left off")
 
@@ -328,20 +328,20 @@ When the user describes an analysis they want run on their data -- even as
 a question ("which genes changed between my samples?") rather than a
 request for a plan -- check the IWC registry before assembling tools by hand:
 
-1. \`galaxy_recommend_iwc_workflows({ intent, limit: 5 })\` with their goal in
+1. \`mcp__galaxy__recommend_iwc_workflows({ intent, limit: 5 })\` with their goal in
    plain words. It ranks by word overlap and always returns something, so a
    ranked hit is a candidate, not a match.
-2. \`galaxy_get_iwc_workflow_details({ trs_id })\` on the plausible ones, for
+2. \`mcp__galaxy__get_iwc_workflow_details({ trs_id })\` on the plausible ones, for
    the **inputs**. Compare them with the data the user actually has (reads vs
    count tables, paired vs single-end, collection vs dataset). The right
    analysis with the wrong starting point is not a match -- though it may be
    the second half of one, after a workflow that produces its inputs.
 3. Offer the one or two that fit, in plain language: what each does and what
    it needs from them. If none fit, say so and draft step-by-step.
-4. Once they choose: \`galaxy_import_workflow_from_iwc({ trs_id })\`, then invoke
+4. Once they choose: \`mcp__galaxy__import_workflow_from_iwc({ trs_id })\`, then invoke
    it as below.
 
-\`galaxy_search_iwc_workflows\` is plain keyword search for when the user
+\`mcp__galaxy__search_iwc_workflows\` is plain keyword search for when the user
 names a workflow or tool; it has no limit, so prefer recommend for a goal.
 
 ### Drafting a new plan
@@ -355,12 +355,12 @@ resources before deciding what runs where:
 2. Otherwise, draft step-by-step. Per step:
    - Heavy compute (alignment, large variant calling, big assemblies,
      long-running BLAST, etc.) → check Galaxy tool availability
-     (\`galaxy_search_tools_by_name\`); if installed, mark step Galaxy.
+     (\`mcp__galaxy__search_tools_by_name\`); if installed, mark step Galaxy.
    - **Gap-filling glue** between Galaxy steps (a small filter,
      reformatter, joiner, column-trimmer, etc. that isn't in the
      public tool panel) → **prefer a user-defined tool** over a local
-     script. Create it once with \`galaxy_create_user_tool\` and run it
-     with \`galaxy_run_user_tool\`. Keeps the analysis on Galaxy,
+     script. Create it once with \`mcp__galaxy__create_user_tool\` and run it
+     with \`mcp__galaxy__run_user_tool\`. Keeps the analysis on Galaxy,
      preserves provenance, stays reusable across histories. Default to
      this whenever the glue is something a future user might want to
      run again.
@@ -377,9 +377,9 @@ resources before deciding what runs where:
 
 - **User-defined tool** ("UDT"): a server-side custom tool the user
   registers in their Galaxy account, runs unprivileged. The connected
-  Galaxy MCP exposes the full lifecycle: \`galaxy_create_user_tool\`,
-  \`galaxy_list_user_tools\`, \`galaxy_run_user_tool\`,
-  \`galaxy_delete_user_tool\`. **Do not generate old-style XML tool
+  Galaxy MCP exposes the full lifecycle: \`mcp__galaxy__create_user_tool\`,
+  \`mcp__galaxy__list_user_tools\`, \`mcp__galaxy__run_user_tool\`,
+  \`mcp__galaxy__delete_user_tool\`. **Do not generate old-style XML tool
   wrappers locally when the user asks for a UDT** — that's a different
   concept (legacy ToolShed tools). Reach for the MCP tools rather than
   inventing a local workaround. When authoring the UDT definition, fetch
@@ -414,7 +414,7 @@ blocks the turn: a 2.3 GB local→Galaxy upload took 8+ minutes on a normal
 connection, where a server-side fetch runs at datacenter bandwidth.
 
 - **Preferred:** the Galaxy MCP fetch-by-URL tool
-  \`galaxy_upload_file_from_url({ url, history_id })\` (optional
+  \`mcp__galaxy__upload_file_from_url({ url, history_id })\` (optional
   \`file_name\`, \`file_type\`, \`dbkey\`). One hop, no local copy.
 - **Scripting bioblend instead?** Use the URL-fetch path
   \`gi.tools.put_url(url, history_id)\` (one URL per line for several),
@@ -427,7 +427,7 @@ connection, where a server-side fetch runs at datacenter bandwidth.
 ${SRA_IMPORT_GUIDANCE}
 ### Invoking a Galaxy workflow
 
-Call \`galaxy_get_workflow_input_template\` before \`galaxy_invoke_workflow\`.
+Call \`mcp__galaxy__get_workflow_input_template\` before \`mcp__galaxy__invoke_workflow\`.
 Take the \`inputs_template\` map out of what it returns — that field, not the
 whole wrapper — keep its keys, replace every placeholder (\`<value>\`,
 \`<dataset_id>\`, \`<collection_id>\`) with a real value, and pass that map as
@@ -870,7 +870,7 @@ the geographic distribution analysis").
 
 When the user **does** ask for a plan, follow this order strictly. With
 Galaxy connected, the order starts before the draft: call
-\`galaxy_recommend_iwc_workflows\`, then check tool availability (see
+\`mcp__galaxy__recommend_iwc_workflows\`, then check tool availability (see
 "Drafting a new plan") -- the routing tag depends on what they return.
 
 1. **Draft in chat (NOT in the notebook yet).** Reply in chat with a

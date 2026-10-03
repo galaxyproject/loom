@@ -24,7 +24,7 @@ const assistant = (text: string, extra: Record<string, unknown> = {}) => ({
 });
 const PLAN =
   "Here's a draft:\n```plan\n## Plan A: QC [local]\n- [ ] 1. **FastQC** -- raw reads\n```";
-const TOOLS = ["read", "galaxy_recommend_iwc_workflows", "galaxy_run_tool"];
+const TOOLS = ["read", "mcp__galaxy__recommend_iwc_workflows", "mcp__galaxy__run_tool"];
 
 describe("draftsPlan", () => {
   it("sees a plan fence or a bare plan heading in assistant text", () => {
@@ -39,16 +39,14 @@ describe("draftsPlan", () => {
 });
 
 describe("isIwcLookup", () => {
-  it("counts direct IWC tools and IWC calls through the mcp gateway", () => {
-    expect(isIwcLookup("galaxy_recommend_iwc_workflows", {})).toBe(true);
-    expect(isIwcLookup("mcp", { tool: "galaxy_search_iwc_workflows" })).toBe(true);
-    expect(isIwcLookup("mcp", { tool: "recommend_iwc_workflows" })).toBe(true);
+  it("counts the IWC tools", () => {
+    expect(isIwcLookup("mcp__galaxy__recommend_iwc_workflows")).toBe(true);
+    expect(isIwcLookup("mcp__galaxy__search_iwc_workflows")).toBe(true);
   });
 
   it("doesn't count other Galaxy tools", () => {
-    expect(isIwcLookup("galaxy_search_tools_by_name", {})).toBe(false);
-    expect(isIwcLookup("mcp", { tool: "galaxy_run_tool" })).toBe(false);
-    expect(isIwcLookup("mcp", { server: "galaxy" })).toBe(false);
+    expect(isIwcLookup("mcp__galaxy__search_tools_by_name")).toBe(false);
+    expect(isIwcLookup("mcp__galaxy__run_tool")).toBe(false);
   });
 });
 
@@ -101,7 +99,7 @@ describe("registerIwcPlanCheck", () => {
 
   it("sends one follow-up when a plan is drafted without an IWC lookup", async () => {
     const h = hooks();
-    await h.toolStart("galaxy_search_tools_by_name");
+    await h.toolStart("mcp__galaxy__search_tools_by_name");
     await h.agentEnd([assistant(PLAN)]);
     expect(delivered).toEqual([IWC_PLAN_NUDGE]);
     expect(activityKinds()).toEqual(["plan.iwc_check"]);
@@ -119,7 +117,7 @@ describe("registerIwcPlanCheck", () => {
 
   it("stays quiet once IWC has been consulted this session", async () => {
     const h = hooks();
-    await h.toolStart("mcp", { tool: "galaxy_recommend_iwc_workflows" });
+    await h.toolStart("mcp__galaxy__recommend_iwc_workflows", {});
     await h.agentEnd([assistant("some answer")]);
     await h.agentEnd([assistant(PLAN)]);
     expect(delivered).toEqual([]);

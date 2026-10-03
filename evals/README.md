@@ -34,6 +34,11 @@ PROXY_API_KEY=<your-key>
 (Variable names match `~/work/tacc-inference/.env` so symlinking that file
 straight in works: `ln -s ~/work/tacc-inference/.env evals/.env`.)
 
+Scenarios marked `requiresGalaxy: true` call Galaxy MCP tools and need a real
+server. Add `GALAXY_URL` and `GALAXY_API_KEY` (a test.galaxyproject.org account
+is the safe choice) to `evals/.env` to run them; without both, the runner skips
+them with a warning rather than grading a Galaxy server that never registered.
+
 ## Dimensions and the leaderboard
 
 Tier 2 scenarios are graded on up to four decision-correctness dimensions.
@@ -97,7 +102,7 @@ takes. One line per submission:
 
 ```json
 {
-  "tool": "galaxy_run_tool",
+  "tool": "mcp__galaxy__run_tool",
   "args": { "tool_id": "fastp" },
   "stepAnchor": "plan-a-step-1",
   "result": { "content": [{ "type": "text", "text": "<the GalaxyResult envelope as JSON>" }] }
@@ -106,8 +111,8 @@ takes. One line per submission:
 
 The fixtures under `scenarios/submission-capture-*/cwd/submissions.jsonl` are
 the shapes galaxy-mcp 1.9.0 really returns, read out of its source. `result` is
-a pi tool result, so the envelope sits in a text content block the way
-pi-mcp-adapter's direct-tools path delivers it.
+a pi tool result, so the envelope sits in a text content block the way pi's
+MCP tools deliver it.
 
 The seam is off unless the variable is set, the file must resolve inside the
 session directory, and every replay writes a `submission.replay` activity row

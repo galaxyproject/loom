@@ -8,7 +8,7 @@ function call(id: string, accession: string, overrides = {}) {
   return {
     type: "toolCall" as const,
     id,
-    name: "galaxy_run_tool",
+    name: "mcp__galaxy__run_tool",
     arguments: {
       history_id: "history-1",
       tool_id: TOOL,
@@ -166,7 +166,7 @@ describe("SRA import gate", () => {
       ...c,
       name: "mcp",
       arguments: {
-        tool: "galaxy_run_tool",
+        tool: "mcp__galaxy__run_tool",
         args: JSON.stringify(c.arguments),
       },
     })) as unknown as ReturnType<typeof call>[];
@@ -241,7 +241,7 @@ describe("SRA import gate", () => {
     h.assistant(calls);
     for (const c of calls) expect(h.check(c)).toBeUndefined();
     expect(
-      h.check({ ...call("read", "SRR1"), name: "galaxy_get_tool_input_template" }),
+      h.check({ ...call("read", "SRR1"), name: "mcp__galaxy__get_tool_input_template" }),
     ).toBeUndefined();
   });
 });

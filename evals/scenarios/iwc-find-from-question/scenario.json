@@ -3,14 +3,15 @@
   "description": "The milestone journey's first half, on the milestone sentence. The user asks a question about their own data and never says 'plan' or 'Galaxy', so this tests that the registry check isn't gated behind a plan request. Asserts the agent ranked IWC workflows (and the iwc-candidates hint rode along), and noticed the input-shape problem: galaxy-mcp's top hit for this sentence is a DE workflow that starts from count tables while the user has reads, so a correct reply says counts have to come first, usually by offering the reads-to-counts workflow ahead of it. Checking details for inputs isn't asserted -- models often get there from the recommend result's summaries. Checked against the live IWC manifest on 2026-09-28; if the ranking moves, the chatText assertion is the one to revisit. Needs GALAXY_URL/GALAXY_API_KEY in the environment like plan-consults-iwc.",
   "tier": 2,
   "requiresModel": true,
+  "requiresGalaxy": true,
   "inputs": [
     "I have paired-end RNA-seq from six mouse liver samples, three treated and three control, and I want to know which genes changed."
   ],
   "timeoutMs": 420000,
   "assertions": {
     "toolCalls": {
-      "mustInclude": [{ "name": "galaxy_recommend_iwc_workflows" }],
-      "mustNotInclude": ["galaxy_invoke_workflow", "galaxy_import_workflow_from_iwc"]
+      "mustInclude": [{ "name": "mcp__galaxy__recommend_iwc_workflows" }],
+      "mustNotInclude": ["mcp__galaxy__invoke_workflow", "mcp__galaxy__import_workflow_from_iwc"]
     },
     "activity": {
       "mustInclude": [{ "kind": "skill.hint", "payloadContains": { "trigger": "iwc-candidates" } }]

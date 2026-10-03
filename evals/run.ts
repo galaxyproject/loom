@@ -66,6 +66,10 @@ async function main() {
   let modelCellsRun = 0;
   for (const dir of scenarioDirs) {
     const scenario = readScenario(dir);
+    if (scenario.requiresGalaxy && !(process.env.GALAXY_URL && process.env.GALAXY_API_KEY)) {
+      console.warn(`[skip] ${scenario.name} -- requiresGalaxy but GALAXY_URL/GALAXY_API_KEY unset`);
+      continue;
+    }
     const cells: (ModelEntry | null)[] = scenario.requiresModel ? [...matrix.available] : [null];
     if (scenario.requiresModel) {
       hasRequiresModel = true;

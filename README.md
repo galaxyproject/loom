@@ -623,14 +623,14 @@ Loom registers a small set of extension tools. Plans, decisions, results, and in
 | **Skills**                     | `skills_fetch` (SKILL.md / reference docs; `repo: "foundry"` reads bundled Foundry casts) |
 | **Multi-agent (experimental)** | `team_dispatch` (gated by `LOOM_TEAM_DISPATCH=1`)                                         |
 
-Galaxy MCP (registered separately when credentials are present) provides `galaxy_connect`, `galaxy_search_tools_by_name`, `galaxy_run_tool`, `galaxy_invoke_workflow`, `galaxy_search_iwc_workflows`, `galaxy_recommend_iwc_workflows`, `galaxy_import_workflow_from_iwc`, user-defined tool lifecycle (`galaxy_create_user_tool`, `galaxy_list_user_tools`, `galaxy_run_user_tool`, `galaxy_delete_user_tool`), history/dataset operations, and more.
+Galaxy MCP (registered separately when credentials are present) provides `mcp__galaxy__connect`, `mcp__galaxy__search_tools_by_name`, `mcp__galaxy__run_tool`, `mcp__galaxy__invoke_workflow`, `mcp__galaxy__search_iwc_workflows`, `mcp__galaxy__recommend_iwc_workflows`, `mcp__galaxy__import_workflow_from_iwc`, user-defined tool lifecycle (`mcp__galaxy__create_user_tool`, `mcp__galaxy__list_user_tools`, `mcp__galaxy__run_user_tool`, `mcp__galaxy__delete_user_tool`), history/dataset operations, and more.
 
 ## Tech stack
 
 | Component  | Technology                                            |
 | ---------- | ----------------------------------------------------- |
 | Agent      | Pi.dev (`@earendil-works/pi-coding-agent`)            |
-| MCP bridge | `pi-mcp-adapter`, `uvx galaxy-mcp`                    |
+| MCP bridge | pi built-in MCP, `uvx galaxy-mcp`                     |
 | Language   | TypeScript (strict)                                   |
 | Tests      | Vitest                                                |
 | Desktop    | Electron 35                                           |

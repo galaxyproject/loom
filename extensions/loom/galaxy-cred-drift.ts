@@ -2,7 +2,7 @@
  * Galaxy credential-drift reconnect.
  *
  * The galaxy MCP connection is established by the model *choosing* to call
- * `galaxy_connect()`, and the only thing that prompts it is the startup
+ * `mcp__galaxy__connect()`, and the only thing that prompts it is the startup
  * greeting -- which is suppressed on a `--continue` resume (see
  * session-lifecycle.ts). So when the user rotates their Galaxy API key (or
  * switches server/account) in Orbit's Preferences, the brain restarts with the
@@ -13,7 +13,7 @@
  * This module closes that gap. On session_start we fingerprint the active
  * credentials and compare against a per-cwd baseline -- the creds the model
  * last *confirmed* a connection with. On a resume where the fingerprint
- * changed, we nudge the model to call `galaxy_connect()` so it rebinds. The
+ * changed, we nudge the model to call `mcp__galaxy__connect()` so it rebinds. The
  * baseline only advances on a confirmed connect (recordGalaxyConnected), so an
  * ignored nudge or a crash before the reconnect lands can't mask the drift.
  *
@@ -31,7 +31,7 @@ import { piAgentDir } from "./agent-dir.js";
 export const GALAXY_RECONNECT_NUDGE =
   "Your Galaxy credentials changed since this session was last active -- a different " +
   "server or account is now configured, so the previous connection is no longer valid. " +
-  "Call galaxy_connect() to rebind, then confirm in one short sentence which Galaxy " +
+  "Call mcp__galaxy__connect() to rebind, then confirm in one short sentence which Galaxy " +
   "account is now active. Do NOT use other Galaxy tools until reconnected.";
 
 /**
@@ -57,7 +57,7 @@ export interface CredDriftInput {
  * Decide whether to nudge a reconnect. Pure.
  *
  * Only fires on a resume (fresh starts get the greeting, which already prompts
- * galaxy_connect), only when there are usable creds to reconnect *to*, and only
+ * mcp__galaxy__connect), only when there are usable creds to reconnect *to*, and only
  * when a baseline exists to prove the creds actually changed.
  */
 export function shouldNudgeReconnect({ stored, current, isResume }: CredDriftInput): boolean {
@@ -145,7 +145,7 @@ export function maybeNudgeGalaxyReconnect(pi: ExtensionAPI, opts: ReconnectOptio
 
   // Seed an initial baseline the first time usable creds appear, but NEVER
   // overwrite an existing one here. The baseline only advances on a confirmed
-  // galaxy_connect (recordGalaxyConnected), so an ignored nudge or a crash
+  // mcp__galaxy__connect (recordGalaxyConnected), so an ignored nudge or a crash
   // before the reconnect lands can't mask the drift -- the next resume
   // re-nudges until the model actually reconnects.
   if (current && stored === null) writeStoredFingerprint(fpPath, current);
@@ -154,7 +154,7 @@ export function maybeNudgeGalaxyReconnect(pi: ExtensionAPI, opts: ReconnectOptio
 /**
  * Record that the model successfully (re)connected to Galaxy with the current
  * credentials. This advances the drift baseline so a later key/server change
- * registers as drift on the next resume. Call from the galaxy_connect success
+ * registers as drift on the next resume. Call from the mcp__galaxy__connect success
  * hook -- advancing only on confirmed connect is what keeps an unacted nudge
  * from permanently suppressing future ones.
  */

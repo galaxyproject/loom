@@ -470,7 +470,10 @@ describe("decide", () => {
 });
 
 describe("decide -- destructive Galaxy operations (#338)", () => {
-  const del = { toolName: "galaxy_update_history", toolInput: { deleted: true, history_id: "h" } };
+  const del = {
+    toolName: "mcp__galaxy__update_history",
+    toolInput: { deleted: true, history_id: "h" },
+  };
 
   it("a whole-history delete asks for confirmation (interactive)", () => {
     const r = decide(req(del), deps);
@@ -506,7 +509,7 @@ describe("decide -- destructive Galaxy operations (#338)", () => {
         toolName: "mcp",
         toolInput: {
           server: "galaxy",
-          tool: "galaxy_update_history",
+          tool: "mcp__galaxy__update_history",
           args: JSON.stringify({ deleted: true, history_id: "h" }),
         },
         modelTier: "weak",
@@ -518,14 +521,14 @@ describe("decide -- destructive Galaxy operations (#338)", () => {
   });
 
   it("does NOT gate a non-destructive Galaxy tool (catch-all unchanged)", () => {
-    expect(decide(req({ toolName: "galaxy_get_histories", toolInput: {} }), deps).decision).toBe(
-      "allow",
-    );
+    expect(
+      decide(req({ toolName: "mcp__galaxy__get_histories", toolInput: {} }), deps).decision,
+    ).toBe("allow");
   });
 
   it("does NOT gate a rename-only update_history", () => {
     expect(
-      decide(req({ toolName: "galaxy_update_history", toolInput: { name: "renamed" } }), deps)
+      decide(req({ toolName: "mcp__galaxy__update_history", toolInput: { name: "renamed" } }), deps)
         .decision,
     ).toBe("allow");
   });

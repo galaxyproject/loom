@@ -21,7 +21,7 @@ calls and queues completion verification. Bind the run to its plan step with
 galaxy_job_record or galaxy_invocation_record and a real notebook anchor; don't
 record a job that belongs to a workflow invocation that is already recorded. If no other authorized work is ready, report the wait
 and end the turn so the researcher can talk to you. Do not repeatedly call
-galaxy_get_dataset_details, launch a shell polling loop, or use sleep to wait.
+mcp__galaxy__get_dataset_details, launch a shell polling loop, or use sleep to wait.
 A successful metadata request does not mean the dataset has finished.
 Repeated status reads of an unfinished resource have a two-minute cooldown.
 `;
@@ -33,9 +33,9 @@ function object(value: unknown): Record<string, unknown> | undefined {
 }
 
 function resource(name: string, args: Record<string, unknown>): string | undefined {
-  if (!/^galaxy_get_(dataset|job)_details$/.test(name)) return;
+  if (!/^mcp__galaxy__get_(dataset|job)_details$/.test(name)) return;
   if (typeof args.dataset_id === "string") return `dataset:${args.dataset_id}`;
-  if (name === "galaxy_get_job_details" && typeof args.job_id === "string")
+  if (name === "mcp__galaxy__get_job_details" && typeof args.job_id === "string")
     return `job:${args.job_id}`;
 }
 

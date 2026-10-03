@@ -3,6 +3,7 @@
   "description": "Every other scenario in this suite stops at or before approval, so all of them grade planning. That leaves a hole a planning-only agent passes through: a model can score full marks on validity, tools and behavior while calling zero tools, and then fail on the first real invocation because it printed tool calls as code blocks instead of emitting them. This scenario asserts the other half of the gate -- once approval is given and the parameters are reviewed, the agent must actually call the tool. Three turns, because the gate is meant to hold twice before anything runs. Runs with the full tool surface deliberately: the scenario is about emitting a real tool call, which a trimmed surface makes impossible. The dataset is named by position rather than by a literal encoded id, so the scenario resolves against a real Galaxy as well as a stub: an id written into the prompt exists only on the server that issued it, and elsewhere the agent is right to refuse the call this scenario is trying to observe.",
   "tier": 2,
   "requiresModel": true,
+  "requiresGalaxy": true,
   "inputs": [
     "Run the Add column tool (tool id `addValue`) on the first dataset in history hist1, adding the value 7 as a new column. Draft a plan first and wait for my approval.",
     "I approve the plan above. Show the full parameter table for review before executing.",
@@ -16,7 +17,7 @@
     "toolCalls": {
       "mustInclude": [
         {
-          "name": "galaxy_run_tool",
+          "name": "mcp__galaxy__run_tool",
           "argsContains": {
             "tool_id": "addValue"
           }

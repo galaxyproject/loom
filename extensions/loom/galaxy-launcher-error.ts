@@ -3,8 +3,8 @@
 //
 // galaxy-transport-error.ts covers a *live* server whose stdio transport died:
 // `/mcp reconnect galaxy` fixes that. This file covers the server never having
-// started, because the `uvx` that launches it is not on PATH -- the adapter
-// reports `spawn uvx ENOENT`. Reconnecting cannot fix that: there is nothing to
+// started, because the `uvx` that launches it is not on PATH -- pi reports
+// `spawn uvx ENOENT`. Reconnecting cannot fix that: there is nothing to
 // reconnect to until uv is installed. Left unclassified, the model improvises
 // and hands the user the reconnect incantation, which burns their time on an
 // action that cannot possibly work.
@@ -15,6 +15,7 @@
 // executable.
 
 import { uvxMissingNotice } from "../../shared/uvx-runner.js";
+import { isGalaxyMcpTool } from "../../shared/galaxy-mcp-tools.js";
 
 // Deliberately narrow. A missing launcher is always a spawn/ENOENT failure
 // naming the runner; anything vaguer risks swallowing a real Galaxy error and
@@ -39,7 +40,7 @@ export function isGalaxyLauncherError(
   toolName: string | undefined,
   text: string | undefined,
 ): boolean {
-  if (!toolName || !toolName.startsWith("galaxy_")) return false;
+  if (!isGalaxyMcpTool(toolName)) return false;
   if (!text) return false;
   return LAUNCHER_ERROR_PATTERNS.some((pattern) => pattern.test(text));
 }

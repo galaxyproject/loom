@@ -2,16 +2,12 @@
  * Galaxy server profile management
  *
  * Stores named profiles in the `galaxy` section of ~/.loom/config.json.
- * Each profile holds a URL + API key. The active profile's URL is synced
- * to mcp.json's env block; the API key is referenced as the literal
- * `${GALAXY_API_KEY}` env interpolation (resolved by pi-mcp-adapter at
- * spawn time) so plaintext keys never land on disk in mcp.json.
+ * Each profile holds a URL + API key. The active profile reaches the Galaxy
+ * MCP server through GALAXY_URL/GALAXY_API_KEY in the process env, which
+ * mcp-servers.ts references when it registers the server.
  */
 
-import * as fs from "fs";
-import * as path from "path";
 import { loadConfig, saveConfig } from "./config";
-import { piAgentDir } from "./agent-dir.js";
 
 export interface GalaxyProfile {
   url: string;
@@ -149,7 +145,7 @@ export function validateGalaxyUrl(url: string): { ok: true } | { ok: false; reas
 }
 
 /**
- * Save a profile (insert or update), mark it active, and sync to mcp.json.
+ * Save a profile (insert or update) and mark it active.
  *
  * The brain process can't encrypt (no Electron safeStorage), so the
  * plaintext key lands on disk briefly. Orbit's main process watches
@@ -172,7 +168,6 @@ export function saveProfile(name: string, url: string, apiKey: string): void {
   profiles.profiles[name] = { url, apiKey };
   profiles.active = name;
   writeProfiles(profiles);
-  syncMcpConfig(url);
 }
 
 /**
@@ -224,8 +219,7 @@ export function activeGalaxyStatus(): ActiveGalaxyStatus {
 }
 
 /**
- * Switch to an existing profile. Updates active marker, syncs mcp.json,
- * and sets process.env so the current session picks it up immediately.
+ * Switch to an existing profile. Updates the active marker and sets process.env so the current session picks it up immediately.
  *
  * Two paths for the API key:
  *   1) plaintext `apiKey` -> set env to it.
@@ -257,10 +251,6 @@ export function switchProfile(name: string): boolean {
         `re-inject the decrypted key for this profile.`,
     );
   }
-  // mcp.json holds a literal "${GALAXY_API_KEY}" reference; pi-mcp-adapter
-  // resolves it at MCP spawn time. So the only thing we sync per-profile
-  // is the URL.
-  syncMcpConfig(profile.url);
   return true;
 }
 
@@ -278,38 +268,4 @@ export function deleteProfile(name: string): boolean {
   }
   writeProfiles(profiles);
   return true;
-}
-
-/**
- * Keep mcp.json's galaxy URL in sync with the active profile.
- *
- * The API key is written as the literal `${GALAXY_API_KEY}` reference,
- * which pi-mcp-adapter (`server-manager.ts:resolveEnv`) interpolates from
- * the live process env at spawn time. That keeps plaintext keys off disk
- * in mcp.json -- the env is populated by Orbit's safeStorage decrypt or
- * by the user's explicit `export GALAXY_API_KEY=...`.
- */
-export function syncMcpConfig(url: string): void {
-  try {
-    const mcpPath = path.join(piAgentDir(), "mcp.json");
-    if (!fs.existsSync(mcpPath)) return;
-
-    const config = JSON.parse(fs.readFileSync(mcpPath, "utf-8"));
-    if (config.mcpServers?.galaxy) {
-      config.mcpServers.galaxy.env = {
-        GALAXY_URL: url,
-        GALAXY_API_KEY: "${GALAXY_API_KEY}",
-      };
-      // 0600 first so a concurrent reader can't catch the file with a
-      // wider mode between writeFile and chmod.
-      fs.writeFileSync(mcpPath, JSON.stringify(config, null, 2), { mode: 0o600 });
-      try {
-        fs.chmodSync(mcpPath, 0o600);
-      } catch {
-        /* perm-tightening best-effort */
-      }
-    }
-  } catch {
-    // Non-fatal
-  }
 }

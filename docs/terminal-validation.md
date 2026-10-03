@@ -56,7 +56,7 @@ node /path/to/loom/bin/loom.js --provider anthropic --model claude-sonnet-4-6
 
 Notes:
 
-- `loom` writes Galaxy MCP configuration into `~/.pi/agent/mcp.json` during startup. With no Galaxy credentials available, it strips the `galaxy` server entry instead of writing a placeholder key.
+- The brain registers the Galaxy MCP server with pi at startup, and only when Galaxy credentials are available. `loom` no longer writes MCP config; it only removes the entries older versions left in `~/.pi/agent/mcp.json`.
 - Informational wrapper commands are side-effect free: `loom --help`, `loom --version`, `loom --list-models` should not rewrite MCP config.
 
 Check:

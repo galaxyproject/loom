@@ -90,7 +90,7 @@ describe("SRA gate through the Pi runtime", () => {
               ? runs.map((run, i) => ({
                   type: "toolCall",
                   id: `single-${i}`,
-                  name: "galaxy_run_tool",
+                  name: "mcp__galaxy__run_tool",
                   arguments: inputsFor(run),
                 }))
               : turn === 1
@@ -98,7 +98,7 @@ describe("SRA gate through the Pi runtime", () => {
                     {
                       type: "toolCall",
                       id: "batch",
-                      name: "galaxy_run_tool",
+                      name: "mcp__galaxy__run_tool",
                       arguments: inputsFor(runs.join(",")),
                     },
                   ]
@@ -134,10 +134,10 @@ describe("SRA gate through the Pi runtime", () => {
         modelRuntime: runtime,
         model: runtime.getModel("sra-gate-fixture", "fixture"),
         thinkingLevel: "off",
-        tools: ["galaxy_run_tool"],
+        tools: ["mcp__galaxy__run_tool"],
         customTools: [
           {
-            name: "galaxy_run_tool",
+            name: "mcp__galaxy__run_tool",
             label: "Fixture Galaxy run",
             description: "Test-only Galaxy submission",
             parameters: Type.Object({

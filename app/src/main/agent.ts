@@ -106,7 +106,7 @@ function resolveNodeBin(): string {
 }
 
 // Bundled uv directory (contains uv + uvx). When packaged, prepend this to
-// the brain's PATH so `command: "uvx"` in mcp.json resolves the shipped
+// the brain's PATH so the Galaxy MCP server's `uvx` command resolves the shipped
 // binary rather than depending on the user's system uv install.
 function resolveUvDir(): string | null {
   if (app?.isPackaged) {

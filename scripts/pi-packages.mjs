@@ -62,9 +62,9 @@ export function distinctVersions(trees) {
  * Named packages on the command line matter beyond brevity. npm treats an
  * explicitly requested package as an override and downgrades a conflicting
  * peer to a warning, whereas re-resolving a manifest edited in place turns the
- * same conflict into a fatal ERESOLVE. pi-mcp-adapter declares an optional peer
- * on a caret range of pi-ai, so the first pi minor that leaves that range would
- * abort a manifest-edit bump before it ever produced a branch to look at.
+ * same conflict into a fatal ERESOLVE. A pi extension with a caret peer range on
+ * pi-ai would abort a manifest-edit bump on the first pi minor that leaves that
+ * range, before it ever produced a branch to look at.
  */
 export function installPlan(trees, version) {
   const plan = [];

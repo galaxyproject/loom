@@ -92,13 +92,13 @@ describe("formatActivityTail", () => {
         kind: "tool.end",
         source: "agent",
         payload: {
-          toolName: "galaxy_invoke_workflow",
+          toolName: "mcp__galaxy__invoke_workflow",
           isError: true,
           resultSummary: "ERROR: bad adapter",
         },
       },
     ]);
-    expect(out).toBe("t tool.end galaxy_invoke_workflow ✗ ERROR: bad adapter");
+    expect(out).toBe("t tool.end mcp__galaxy__invoke_workflow ✗ ERROR: bad adapter");
   });
 
   it("renders user prompts and falls back to kind+source for unknown kinds", () => {

@@ -385,7 +385,7 @@ const HIDDEN_MARKER = "[hidden]";
 describe("redaction", () => {
   it("hides the value of anything that looks like a credential, at any depth", () => {
     const out = redactForDisplay({
-      toolName: "galaxy_connect",
+      toolName: "mcp__galaxy__connect",
       apiKey: "abc123",
       nested: { AUTHORIZATION: "Bearer xyz", url: "https://usegalaxy.org" },
       list: [{ access_token: "t0ken" }],
@@ -881,7 +881,7 @@ describe("mounted activity widget", () => {
     activityWidget.mount(h.el, h.ctx);
     h.emit([
       event("tool.start", {
-        toolName: "galaxy_connect",
+        toolName: "mcp__galaxy__connect",
         args: { url: "https://usegalaxy.org", api_key: "SUPERSECRET" },
       }),
     ]);

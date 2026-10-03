@@ -17,18 +17,18 @@ import { deliverAutoFollowUp } from "./auto-resume";
 import { activeGalaxyStatus } from "./profiles";
 import { getNotebookPath } from "./state";
 
-const RECOMMEND_TOOL = "galaxy_recommend_iwc_workflows";
+const RECOMMEND_TOOL = "mcp__galaxy__recommend_iwc_workflows";
 
 export const IWC_TOOLS: ReadonlySet<string> = new Set([
   RECOMMEND_TOOL,
-  "galaxy_search_iwc_workflows",
-  "galaxy_get_iwc_workflow_details",
-  "galaxy_get_iwc_workflows",
+  "mcp__galaxy__search_iwc_workflows",
+  "mcp__galaxy__get_iwc_workflow_details",
+  "mcp__galaxy__get_iwc_workflows",
 ]);
 
 export const IWC_PLAN_NUDGE =
   "[Loom check] That plan was drafted without checking the IWC workflow registry. Call " +
-  "`galaxy_recommend_iwc_workflows` with the analysis goal now. If a workflow (or a short " +
+  "`mcp__galaxy__recommend_iwc_workflows` with the analysis goal now. If a workflow (or a short " +
   "chain of them) covers it and fits the user's data, revise the draft to run it on Galaxy; " +
   "if nothing fits, or the user asked for something else, keep the draft and say you " +
   "checked. It is still a draft: don't write it to the notebook or run anything.";
@@ -51,12 +51,8 @@ export function draftsPlan(messages: readonly Message[]): boolean {
   );
 }
 
-/** An IWC lookup, called directly or through the mcp gateway. */
-export function isIwcLookup(toolName: string, args: unknown): boolean {
-  if (IWC_TOOLS.has(toolName)) return true;
-  if (toolName !== "mcp" || !args || typeof args !== "object") return false;
-  const tool = (args as { tool?: unknown }).tool;
-  return typeof tool === "string" && (IWC_TOOLS.has(tool) || IWC_TOOLS.has(`galaxy_${tool}`));
+export function isIwcLookup(toolName: string): boolean {
+  return IWC_TOOLS.has(toolName);
 }
 
 export function registerIwcPlanCheck(pi: ExtensionAPI): void {
@@ -69,7 +65,7 @@ export function registerIwcPlanCheck(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_execution_start", async (event) => {
-    if (isIwcLookup(event.toolName, event.args)) consulted = true;
+    if (isIwcLookup(event.toolName)) consulted = true;
   });
 
   pi.on("agent_end", async (event) => {

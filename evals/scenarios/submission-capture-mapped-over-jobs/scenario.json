@@ -21,7 +21,7 @@
           "kind": "submission.registered",
           "source": "submission-capture",
           "payloadContains": {
-            "tool": "galaxy_run_tool",
+            "tool": "mcp__galaxy__run_tool",
             "kind": "jobs",
             "step_anchor": "plan-a-step-1"
           }

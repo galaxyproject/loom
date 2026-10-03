@@ -80,7 +80,7 @@ export function registerGalaxyUploadTool(pi: ExtensionAPI): void {
     description:
       "Upload a LOCAL file from the user's machine to a Galaxy history using a resumable " +
       "(TUS) upload, then waits for Galaxy to finish ingesting the dataset before returning. " +
-      "For a file already at a public URL, use galaxy_upload_file_from_url instead.",
+      "For a file already at a public URL, use mcp__galaxy__upload_file_from_url instead.",
     parameters: Type.Object({
       path: Type.String({ description: "Path to the local file to upload" }),
       history_id: Type.Optional(

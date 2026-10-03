@@ -5,7 +5,8 @@ import { galaxyCall } from "./mcp-recovery";
 export const PROGRESS_INTERVAL_MS = 60_000;
 
 function describeTool(name: string, input: Record<string, unknown>): string {
-  const galaxy = galaxyCall(name, input)?.name;
+  // Loom's own galaxy_* tools (upload, job/invocation records) count as Galaxy work too.
+  const galaxy = galaxyCall(name, input)?.name ?? (name.startsWith("galaxy_") ? name : undefined);
   if (galaxy) {
     if (/get_(dataset|job|history|invocation)/.test(galaxy))
       return "checking Galaxy data and job status";

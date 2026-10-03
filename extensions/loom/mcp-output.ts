@@ -1,4 +1,4 @@
-/** Read adapter spill files without putting megabytes back into model context. */
+/** Read saved MCP output without putting megabytes back into model context. */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { constants } from "node:fs";
@@ -240,15 +240,22 @@ export function inspectOutput(text: string, args: OutputQuery): Recordish {
   };
 }
 
-/** Only adapter-created artifacts registered by tool-result metadata are readable. */
+/** Whether `path` (parent already resolved) is a file pi's MCP support saved its full output to. */
+function isMcpOutputFile(root: string, parent: string, name: string): boolean {
+  if (parent === root) return /^pi-mcp-[a-f0-9]{16}\.txt$/.test(name);
+  // pi-mcp-adapter's spill files, still named by tool results in older sessions.
+  return (
+    dirname(parent) === root &&
+    /^pi-mcp-output-[\w-]+$/.test(basename(parent)) &&
+    /^(?:output|mcp-result)-[a-f0-9]+\.txt$/.test(name)
+  );
+}
+
+/** Only MCP output files registered by tool-result metadata are readable. */
 async function readArtifact(path: string): Promise<string> {
   const root = await realpath(tmpdir());
   const parent = await realpath(dirname(path));
-  if (
-    dirname(parent) !== root ||
-    !/^pi-mcp-output-[\w-]+$/.test(basename(parent)) ||
-    !/^(?:output|mcp-result)-[a-f0-9]+\.txt$/.test(basename(path))
-  ) {
+  if (!isMcpOutputFile(root, parent, basename(path))) {
     throw new Error("Not an MCP output artifact.");
   }
   const resolved = join(parent, basename(path));
@@ -285,11 +292,16 @@ async function readArtifact(path: string): Promise<string> {
 export function registerMcpOutputRecovery(pi: ExtensionAPI): void {
   const artifacts = new Map<string, string>();
   function remember(id: string, details: unknown): string | undefined {
-    const guard = record(record(details)?.outputGuard);
+    const d = record(details);
+    const guard = record(d?.outputGuard);
+    // pi's MCP tools report {server, tool, fullOutputPath} once they truncate;
+    // outputGuard is how pi-mcp-adapter reported it, in older sessions.
     const path =
-      guard?.truncated === true && typeof guard.fullOutputPath === "string"
-        ? guard.fullOutputPath
-        : undefined;
+      typeof d?.server === "string" && typeof d.fullOutputPath === "string"
+        ? d.fullOutputPath
+        : guard?.truncated === true && typeof guard.fullOutputPath === "string"
+          ? guard.fullOutputPath
+          : undefined;
     if (path) artifacts.set(id, path);
     return path;
   }

@@ -13,14 +13,14 @@ const TIMED_OUT = "Failed to call tool: Request timed out";
 describe("isGalaxyTransportError", () => {
   it("matches the bare SDK 'Not connected' on a galaxy_* tool", () => {
     expect(
-      isGalaxyTransportError("galaxy_get_histories", "Failed to call tool: Not connected"),
+      isGalaxyTransportError("mcp__galaxy__get_histories", "Failed to call tool: Not connected"),
     ).toBe(true);
   });
 
   it("matches the -32001 request-timeout transport error", () => {
     expect(
       isGalaxyTransportError(
-        "galaxy_download_dataset",
+        "mcp__galaxy__download_dataset",
         "Failed to call tool: MCP error -32001: Request timed out",
       ),
     ).toBe(true);
@@ -29,16 +29,16 @@ describe("isGalaxyTransportError", () => {
   it("matches the -32000 connection-closed transport error", () => {
     expect(
       isGalaxyTransportError(
-        "galaxy_get_history_contents",
+        "mcp__galaxy__get_history_contents",
         "Failed to call tool: MCP error -32000: Connection closed",
       ),
     ).toBe(true);
   });
 
-  it("does NOT match galaxy-mcp's own verbose auth error (needs galaxy_connect, not /mcp reconnect)", () => {
+  it("does NOT match galaxy-mcp's own verbose auth error (needs mcp__galaxy__connect, not /mcp reconnect)", () => {
     expect(
       isGalaxyTransportError(
-        "galaxy_get_histories",
+        "mcp__galaxy__get_histories",
         "Error: Not connected to Galaxy. Authenticate via OAuth or run connect() with your Galaxy URL and API key.",
       ),
     ).toBe(false);
@@ -50,19 +50,19 @@ describe("isGalaxyTransportError", () => {
 
   it("ignores healthy galaxy results", () => {
     expect(
-      isGalaxyTransportError("galaxy_get_histories", '{"histories": [], "success": true}'),
+      isGalaxyTransportError("mcp__galaxy__get_histories", '{"histories": [], "success": true}'),
     ).toBe(false);
   });
 
   it("handles missing tool name / text", () => {
     expect(isGalaxyTransportError(undefined, "Not connected")).toBe(false);
-    expect(isGalaxyTransportError("galaxy_get_histories", undefined)).toBe(false);
+    expect(isGalaxyTransportError("mcp__galaxy__get_histories", undefined)).toBe(false);
   });
 });
 
 describe("transportNudgeDecision", () => {
   it("fires the nudge once on the first transport error and disarms that kind", () => {
-    const d = transportNudgeDecision(ALL_NUDGES_ARMED, "galaxy_get_histories", DROPPED);
+    const d = transportNudgeDecision(ALL_NUDGES_ARMED, "mcp__galaxy__get_histories", DROPPED);
     expect(d.nudge).toBe(GALAXY_RECONNECT_NUDGE);
     expect(d.armed).toEqual({ timeout: true, dropped: false });
   });
@@ -70,7 +70,7 @@ describe("transportNudgeDecision", () => {
   it("suppresses repeat nudges while disarmed (no spam during the retry loop)", () => {
     const d = transportNudgeDecision(
       { timeout: true, dropped: false },
-      "galaxy_get_histories",
+      "mcp__galaxy__get_histories",
       DROPPED,
     );
     expect(d.nudge).toBeNull();
@@ -80,7 +80,7 @@ describe("transportNudgeDecision", () => {
   it("re-arms both kinds after a healthy galaxy call so a later outage nudges again", () => {
     const d = transportNudgeDecision(
       { timeout: false, dropped: false },
-      "galaxy_get_histories",
+      "mcp__galaxy__get_histories",
       '{"success": true}',
     );
     expect(d.nudge).toBeNull();
@@ -102,17 +102,17 @@ describe("transportNudgeDecision", () => {
   // The reason arming is per kind: these two need opposite advice, so one must
   // not be able to silence the other before the user has seen it.
   it("still warns about a drop that follows a timeout", () => {
-    const first = transportNudgeDecision(ALL_NUDGES_ARMED, "galaxy_run_tool", TIMED_OUT);
+    const first = transportNudgeDecision(ALL_NUDGES_ARMED, "mcp__galaxy__run_tool", TIMED_OUT);
     expect(first.nudge).toBe(GALAXY_TIMEOUT_NUDGE);
-    const second = transportNudgeDecision(first.armed, "galaxy_run_tool", DROPPED);
+    const second = transportNudgeDecision(first.armed, "mcp__galaxy__run_tool", DROPPED);
     expect(second.nudge).toBe(GALAXY_RECONNECT_NUDGE);
     expect(second.armed).toEqual({ timeout: false, dropped: false });
   });
 
   it("still warns about a timeout that follows a drop", () => {
-    const first = transportNudgeDecision(ALL_NUDGES_ARMED, "galaxy_run_tool", DROPPED);
+    const first = transportNudgeDecision(ALL_NUDGES_ARMED, "mcp__galaxy__run_tool", DROPPED);
     expect(first.nudge).toBe(GALAXY_RECONNECT_NUDGE);
-    const second = transportNudgeDecision(first.armed, "galaxy_run_tool", TIMED_OUT);
+    const second = transportNudgeDecision(first.armed, "mcp__galaxy__run_tool", TIMED_OUT);
     expect(second.nudge).toBe(GALAXY_TIMEOUT_NUDGE);
   });
 

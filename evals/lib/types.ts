@@ -148,6 +148,13 @@ export interface Scenario {
    * path (slash-command preflight, etc.) leave it false and run once.
    */
   requiresModel?: boolean;
+  /**
+   * The scenario needs a live Galaxy MCP server: GALAXY_URL and GALAXY_API_KEY
+   * in the environment (or evals/.env). Without them no galaxy server
+   * registers, and a run would fail as if the model had chosen not to call a
+   * Galaxy tool -- so the runner skips it instead.
+   */
+  requiresGalaxy?: boolean;
   /** How many times to run each (scenario, model) cell. Default 3 when
    *  requiresModel, else 1. Lets flaky models surface as pass-rates. */
   runs?: number;
