@@ -557,6 +557,44 @@ export interface GateAdjudication {
   outcome: GateOutcome;
 }
 
+export interface EvidenceDecisionInfo {
+  outcome: GateOutcome;
+  toolName: string;
+  /** Plan-step keys the decision was about. */
+  steps: string[];
+  mode: EvidenceGateMode;
+}
+
+export type EvidenceDecisionListener = (info: EvidenceDecisionInfo) => void;
+
+// The gate already records every decision to activity.jsonl; this is the
+// in-process twin of that row, so another subsystem can react to a block
+// without re-deriving an adjudication that depends on this module's private
+// override set. Listeners are registered once at startup and are not cleared
+// at a session boundary -- the override set is session state, a subscription
+// is not.
+const decisionListeners = new Set<EvidenceDecisionListener>();
+
+export function onEvidenceDecision(listener: EvidenceDecisionListener): () => void {
+  decisionListeners.add(listener);
+  return () => {
+    decisionListeners.delete(listener);
+  };
+}
+
+/** Exported for tests; the hook below is the only production caller. */
+export function notifyEvidenceDecision(info: EvidenceDecisionInfo): void {
+  for (const listener of decisionListeners) {
+    try {
+      listener(info);
+    } catch (err) {
+      // Isolate subscribers: a throwing listener must never turn the gate's
+      // decision into an exception out of the tool_call hook.
+      console.error("evidence decision listener failed:", err);
+    }
+  }
+}
+
 /**
  * The full decision for one write, overrides included. Split out from the hook
  * so the interesting half is testable without a session: the hook's only job
@@ -713,6 +751,13 @@ export function registerEvidenceGate(pi: ExtensionAPI): void {
         overridden: adjudication.block ? [] : adjudication.cleared.map((c) => c.step.key),
         outcome: adjudication.outcome,
       },
+    });
+
+    notifyEvidenceDecision({
+      outcome: adjudication.outcome,
+      toolName: event.toolName,
+      steps: decision.completions.map((s) => s.key),
+      mode: decision.mode,
     });
 
     if (!adjudication.block) return;

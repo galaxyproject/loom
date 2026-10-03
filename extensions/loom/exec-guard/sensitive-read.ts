@@ -15,10 +15,23 @@ const SENSITIVE_HOME_DIRS = [
 // Exact files under $HOME.
 // Both brain config locations: a newer release may have copied the config
 // into ~/.orbit, and this one reads it from there when it exists.
+//
+// The observation files are here for the same reason config.json is. The
+// token store holds the retract tokens the intake route accepts as proof of
+// ownership, and the outbox holds the install token that ties rows together --
+// neither belongs in a model request. The sent log carries neither token, but
+// it is the user's record of what they reported and is read through
+// /observations, not by the agent.
 const SENSITIVE_HOME_FILES = [
   ".netrc",
   ".loom/config.json",
   ".orbit/config.json",
+  ".loom/observations-tokens.json",
+  ".orbit/observations-tokens.json",
+  ".loom/observations-outbox.jsonl",
+  ".orbit/observations-outbox.jsonl",
+  ".loom/observations-sent.jsonl",
+  ".orbit/observations-sent.jsonl",
   ".pgpass",
   ".npmrc",
 ];

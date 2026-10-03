@@ -36,6 +36,25 @@ export interface LoomConfig {
    * settable per-session via the LOOM_TESTER_ID env var.
    */
   testerId?: string;
+  /**
+   * Automatic observation collection for the community knowledge loop.
+   * Opt-in by design: `ask` (the default) shows the exact payload and sends
+   * nothing without a confirm, `auto` sends silently and logs what it sent,
+   * `off` collects nothing. `ORBIT_OBSERVATIONS=off` / `LOOM_OBSERVATIONS=off`
+   * hard-disables it for a managed deployment; no env value can turn it on.
+   */
+  observations?: {
+    mode?: "off" | "ask" | "auto";
+    /**
+     * 32 lowercase hex, random, generated on first need. Pseudonymous, not a
+     * secret and not a user id -- it exists so the Worker can rate-limit and so
+     * a row can be retracted. The Worker only ever stores a monthly-rotating
+     * HMAC of it.
+     */
+    installToken?: string;
+    /** ISO timestamp of the one-time "here is a real sample payload" consent. */
+    autoAcknowledgedAt?: string;
+  };
   llm?: {
     /** Name of the currently-active provider, e.g. "anthropic". */
     active: string;

@@ -172,3 +172,96 @@ describe("evals scenarios: udt-authoring-select-params grades typed inputs", () 
     expect(f).toEqual(["chatText.mustMatch", "chatText.mustMatch", "chatText.mustMatch"]);
   });
 });
+
+import {
+  buildObservation,
+  extractDatatypes,
+  extractToolIds,
+  buildCheckedObservation,
+} from "../extensions/loom/observations";
+import { factsForToolResult } from "../extensions/loom/observation-triggers";
+import { scanObservationForLeaks, validateObservation } from "../shared/observation-contract.js";
+import type { ObservationEnvelope } from "../extensions/loom/observations";
+
+describe("observation-redaction-hostile-result: the fixture against the real pipeline", () => {
+  const dir = path.join(scenariosDir, "observation-redaction-hostile-result");
+  const entries = fs
+    .readFileSync(path.join(dir, "cwd", "observations.jsonl"), "utf-8")
+    .split("\n")
+    .filter((l) => l.trim())
+    .map((l) => JSON.parse(l) as { tool: string; args: Record<string, unknown>; text: string });
+
+  const envelope: ObservationEnvelope = {
+    id: "550e8400-e29b-41d4-a716-446655440000",
+    clientTs: "2026-09-30T12:00:00.000Z",
+    app: "loom-cli",
+    version: "0.8.0",
+    platform: "darwin",
+    installToken: "0".repeat(32),
+    server: "usegalaxy.org",
+  };
+
+  // Everything in the fixture that must not reach the wire, verbatim.
+  const FORBIDDEN = [
+    "alice",
+    "patient-07",
+    "institute.edu",
+    "2a56fb8e4c1d9f70b3ac55e1d2f80911",
+    "f2db41e1fa331b3e",
+    "1203847",
+    "https://",
+    "/Users/",
+    "etc/passwd",
+    "C:/Users",
+    "~/bin",
+  ];
+
+  it("scrubs the hostile lines, and withholds only the signature the staging exists for", () => {
+    expect(entries).toHaveLength(6);
+    const scrubbed =
+      "ToolExecutionError: dataset <id> in history <n> failed; wrote <path> see <url> mail <email>";
+    const expected = [
+      scrubbed,
+      "HTTPError: 400 Bad Request from <path>",
+      scrubbed,
+      scrubbed,
+      "ToolExecutionError: Job <n> failed because an input is in state 'error'",
+      "unknown",
+    ];
+    entries.forEach((entry, i) => {
+      const facts = factsForToolResult(entry.tool, entry.args, entry.text)!;
+      const checked = buildCheckedObservation(facts, envelope, "full");
+      expect(checked.errors, entry.text).toEqual([]);
+      expect(checked.leaks, entry.text).toEqual([]);
+      expect(checked.obs.signature, entry.text).toBe(expected[i]);
+      expect(checked.withheld, entry.text).toEqual(i === 5 ? ["host-port"] : []);
+    });
+  });
+
+  it("leaves nothing identifying in what the builder produces, sendable or not", () => {
+    for (const entry of entries) {
+      const facts = factsForToolResult(entry.tool, entry.args, entry.text)!;
+      for (const shape of ["full", "structured"] as const) {
+        const obs = buildObservation(facts, envelope, shape);
+        expect(validateObservation(obs), obs.signature).toEqual({ ok: true });
+        expect(scanObservationForLeaks(obs), obs.signature).toEqual([]);
+        const serialized = JSON.stringify(obs);
+        for (const secret of FORBIDDEN) {
+          expect(serialized, `${secret} in ${obs.signature}`).not.toContain(secret);
+        }
+      }
+    }
+  });
+
+  it("drops the path posing as a tool id and the drive path posing as a datatype", () => {
+    const hostile = entries[1];
+    expect(extractToolIds(hostile.args)).toEqual([]);
+    expect(extractDatatypes(hostile.args)).toEqual([]);
+  });
+
+  it("asserts no row kind that the replay path can produce", () => {
+    const scenario = loadScenario("observation-redaction-hostile-result");
+    expect(scenario.assertions.activity?.mustNotIncludeKinds).toContain("observation.sent");
+    expect(scenario.assertions.activity?.mustNotIncludeKinds).toContain("observation.queued");
+  });
+});

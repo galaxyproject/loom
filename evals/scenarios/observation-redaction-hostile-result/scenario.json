@@ -1,0 +1,107 @@
+{
+  "name": "nothing identifying survives the observation validator",
+  "description": "A hostile galaxy_run_tool failure -- absolute path, project directory name, 32-hex dataset id, five-digit history number, dataset URL and email address, all on the one line the normalizer reads -- plus hostile tool arguments, replayed through the real build-and-check path with no model attached, in the default ask shape. The leak scan is staged, so the rewrites that scrub a path, an id or a URL can't hide a host or a port: the hostile lines are scrubbed and pass, the same line three times is reported once as a retry-loop, a clean failure passes, and a line whose port the normalizer would have rewritten (galaxyprod:12345) keeps its report but has its signature withheld. No activity row carries a signature; the exact signatures are pinned by the unit test over the same fixture. The replay reaches the build step only, so nothing may be sent.",
+  "tier": 1,
+  "inputs": ["/observations status"],
+  "env": {
+    "ANTHROPIC_API_KEY": "fake-eval-key",
+    "LOOM_OBSERVATION_REPLAY": "observations.jsonl",
+    "GALAXY_URL": "https://usegalaxy.org",
+    "GALAXY_API_KEY": "fake-eval-galaxy-key"
+  },
+  "timeoutMs": 15000,
+  "assertions": {
+    "events": {
+      "mustNotInclude": ["agent_start", "tool_execution_start", "turn_start"]
+    },
+    "activity": {
+      "mustNotIncludeKinds": [
+        "observation.sent",
+        "observation.queued",
+        "observation.invalid",
+        "observation.declined",
+        "observation.skipped"
+      ],
+      "mustInclude": [
+        {
+          "kind": "observation.replay",
+          "source": "observation-replay",
+          "payloadContains": {
+            "file": "observations.jsonl",
+            "entries": "6"
+          }
+        },
+        {
+          "kind": "observation.built",
+          "source": "observation-replay",
+          "payloadContains": {
+            "kind": "tool-error",
+            "trigger": "tool_error",
+            "stage": "tool-parameterization",
+            "shape": "full",
+            "mcpTool": "galaxy_run_tool",
+            "toolIds": "toolshed.g2.bx.psu.edu/repos/iuc/hisat2/hisat2",
+            "datatypes": "fastqsanger.gz",
+            "server": "usegalaxy.org",
+            "descriptionLength": "0",
+            "signatureWithheld": "",
+            "valid": "true",
+            "leakScan": "clean"
+          }
+        },
+        {
+          "kind": "observation.built",
+          "source": "observation-replay",
+          "payloadContains": {
+            "kind": "tool-error",
+            "toolIds": "",
+            "datatypes": "",
+            "signatureWithheld": "",
+            "valid": "true",
+            "leakScan": "clean"
+          }
+        },
+        {
+          "kind": "observation.built",
+          "source": "observation-replay",
+          "payloadContains": {
+            "kind": "retry-loop",
+            "trigger": "retry_loop",
+            "signatureWithheld": "",
+            "valid": "true",
+            "leakScan": "clean"
+          }
+        },
+        {
+          "kind": "observation.built",
+          "source": "observation-replay",
+          "payloadContains": {
+            "kind": "tool-error",
+            "trigger": "tool_error",
+            "stage": "tool-parameterization",
+            "shape": "full",
+            "mcpTool": "galaxy_run_tool",
+            "toolIds": "toolshed.g2.bx.psu.edu/repos/iuc/hisat2/hisat2",
+            "datatypes": "fastqsanger.gz",
+            "server": "usegalaxy.org",
+            "signatureWithheld": "",
+            "valid": "true",
+            "leakScan": "clean"
+          }
+        },
+        {
+          "kind": "observation.built",
+          "source": "observation-replay",
+          "payloadContains": {
+            "kind": "tool-error",
+            "toolIds": "Filter1",
+            "datatypes": "tabular",
+            "signatureWithheld": "host-port",
+            "valid": "true",
+            "leakScan": "clean"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -10,6 +10,7 @@ vi.mock("../extensions/loom/config", () => ({ loadConfig: () => ({}) }));
 import * as state from "../extensions/loom/state";
 import {
   adjudicateNotebookWrite,
+  onEvidenceDecision,
   overrideToken,
   registerEvidenceGate,
   resetEvidenceOverrides,
@@ -170,6 +171,21 @@ describe("the deny persists while the contradiction does", () => {
     expect(first?.block).toBe(true);
     expect(second?.block).toBe(true);
     expect(payloads("evidence.decision").map((p) => p.outcome)).toEqual(["blocked", "blocked"]);
+  });
+
+  it("tells decision listeners about the block, with the step keys", async () => {
+    const pi = fakePi();
+    registerEvidenceGate(pi.api);
+    const seen: Array<{ outcome: string; steps: string[]; toolName: string; mode: string }> = [];
+    const off = onEvidenceDecision((i) => seen.push(i));
+    try {
+      await pi.write(flipEdit(STEP2));
+    } finally {
+      off();
+    }
+    expect(seen).toEqual([
+      { outcome: "blocked", toolName: "edit", steps: ["#plan-a-step-2"], mode: "deny" },
+    ]);
   });
 
   it("keeps denying across a third and fourth attempt", async () => {

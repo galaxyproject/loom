@@ -424,3 +424,35 @@ describe("decideNotebookWrite modes", () => {
     expect(d.reason).toMatch(/leave the step pending|`- \[!\]`/);
   });
 });
+
+import { onEvidenceDecision, notifyEvidenceDecision } from "../extensions/loom/evidence-gate";
+
+describe("evidence decision listeners", () => {
+  it("delivers a decision to every listener and unsubscribes cleanly", () => {
+    const seen: string[] = [];
+    const offA = onEvidenceDecision((i) => seen.push(`a:${i.outcome}`));
+    const offB = onEvidenceDecision((i) => seen.push(`b:${i.outcome}`));
+    notifyEvidenceDecision({ outcome: "blocked", toolName: "edit", steps: ["#s1"], mode: "deny" });
+    expect(seen).toEqual(["a:blocked", "b:blocked"]);
+
+    offA();
+    seen.length = 0;
+    notifyEvidenceDecision({ outcome: "warned", toolName: "edit", steps: [], mode: "warn" });
+    expect(seen).toEqual(["b:warned"]);
+    offB();
+  });
+
+  it("isolates a throwing listener so the others still run", () => {
+    const seen: string[] = [];
+    const offA = onEvidenceDecision(() => {
+      throw new Error("listener boom");
+    });
+    const offB = onEvidenceDecision(() => seen.push("b"));
+    expect(() =>
+      notifyEvidenceDecision({ outcome: "blocked", toolName: "write", steps: [], mode: "deny" }),
+    ).not.toThrow();
+    expect(seen).toEqual(["b"]);
+    offA();
+    offB();
+  });
+});

@@ -76,6 +76,8 @@ Saving a large response is normal output handling, not a model context failure.
 | `/profiles`               | List saved Galaxy server profiles                                                                                                                 |
 | `/execute` (alias `/run`) | Tell the agent to run the next pending step in the latest plan section                                                                            |
 | `/override <step> <why>`  | User-only. Clear the evidence gate for one plan step, once, with the reason recorded                                                              |
+| `/observations [sub]`     | User-only. Show or change Galaxy-failure reporting: `status`, `mode <off\|ask\|auto>`, `sent`, `retract <id>`                                     |
+| `/observe [note]`         | User-only. Report something that went wrong, as one generic line. The payload is shown before it is sent                                          |
 | `/dashboard [sub]`        | Show the dashboard layout; `preset <name>`, `reset`, `undo` change it. User-only                                                                  |
 | `/compact [instructions]` | Compact the conversation to reclaim context; optional summary steer (Orbit defaults to a notebook-aware summary; terminal CLI uses pi's built-in) |
 
@@ -84,6 +86,15 @@ steps the evidence gate is currently holding and the anchor to address
 each one by. A clearance covers one step and the invocation that was in
 flight when it was granted, and is spent by the next write it lets
 through.
+
+`/observations` and `/observe` are the user's, not yours. In `ask`, the
+default, the signature and description are shown to the user in full and
+sent only if they confirm; an error line that still looks identifying after
+scrubbing is withheld and only the rest is offered. In `auto` no free text is sent at all -- only the
+structured fields, never an error line or a description; `/observe` always
+asks first, whatever the mode. Do not offer to file one
+for them, do not ask them to switch the mode, and do not treat a tool
+failure as a reason to bring it up.
 
 ## The dashboard
 

@@ -467,6 +467,51 @@ If you have a tester ID, you can set it like this:
 
 Run `/tester-id` with no argument to see the current value. It writes only the `testerId` key to `~/.loom/config.json` (the rest of the file is left untouched), and Orbit attaches it to any feedback you send so reports can be traced back to your session. It can also be supplied via the `LOOM_TESTER_ID` environment variable.
 
+#### Sharing Galaxy failure patterns
+
+When a Galaxy tool fails, or the same step fails three times in a row, Loom
+can report the _shape_ of it -- which tool, which stage, which datatypes, and,
+in `ask` mode, a normalized one-line signature -- to the Galaxy team's private
+intake queue. Those reports are how a problem one person hits becomes a lesson
+Loom surfaces for the next person who hits it (you included), and how the team
+finds what to fix upstream. Nothing goes without your say-so: the default `ask`
+mode shows you the exact payload after a turn that hit a Galaxy error and sends
+only if you confirm.
+
+```
+/observations               # mode, counts, and where the local log lives
+/observations mode ask      # show me the payload and ask, every time (default)
+/observations mode auto     # send without asking, structured fields only
+/observations mode off      # collect nothing
+/observations sent          # everything this install has sent
+/observations retract <id>  # delete a sent row, or cancel one still queued
+/observe <note>             # report something yourself
+```
+
+In `ask` mode the signature and your optional description are shown to you in
+full and sent only if you say yes. In `auto` mode no free text is sent at all:
+no error text and no description, only the structured fields (tool, stage,
+datatypes, server, client). `/observe` is the one exception -- it always asks
+first and shows your note, whatever the mode. Every field is checked before it
+leaves the machine: the mcp tool name, Galaxy's own tool ids and the datatypes
+against lists generated from galaxy-mcp and Galaxy releases (a toolshed tool's
+owner and repository can only be shape-checked), and the error line in
+stages: URLs and email addresses are replaced first, then the line is checked
+for hosts, ports, network addresses, UUIDs and the like before paths, ids and
+long numbers are rewritten (so a rewrite can't hide one), then the rewritten
+line is checked again in full. Common errors come out scrubbed (`Dataset <id>
+not found`, `No such file: <path>`). If the line still looks like it carries a
+host, address, path or id, the error text is withheld and you are offered the
+rest of the report, with a one-line reason. No pattern catches every name,
+which is why only `ask`, where you read it first, sends text. The server is recorded as its
+public name (`usegalaxy.org`, `usegalaxy.eu`, ...) or as the literal `private`
+for anything else -- an institutional mirror is never named. Rows are tied to a
+random per-install token, not to your account, and expire after 180 days.
+
+Switching to `auto` shows you a real sample payload first. For a managed
+deployment, `ORBIT_OBSERVATIONS=off` (or `LOOM_OBSERVATIONS=off`) disables the
+whole thing and cannot be overridden from the app.
+
 ### Custom endpoints (local LLMs, gateways, proxies)
 
 Loom works with any OpenAI-compatible API -- a hosted service like [Jetstream](https://docs.jetstream-cloud.org/inference-service/overview/), or a local backend like [LiteLLM](https://litellm.ai/) or [Ollama](https://ollama.com/) -- and with Anthropic-compatible gateways that front the Messages API, such as an institutional proxy or LiteLLM in anthropic mode.
