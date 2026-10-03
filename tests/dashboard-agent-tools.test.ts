@@ -138,6 +138,7 @@ describe("registration", () => {
     // the one the shipped preset uses.
     expect(widgetCatalogLines()).toContain('notebook (config {"follow":true})');
     expect(widgetCatalogLines()).toContain("jobs (config {})");
+    expect(widgetCatalogLines().some((line) => line.startsWith("html-sandbox"))).toBe(false);
     expect(presetLines().some((line) => line.startsWith("current-analysis --"))).toBe(true);
   });
 });
@@ -517,17 +518,27 @@ describe("dashboard_update -- what it refuses", () => {
     expect(fs.existsSync(dashPath)).toBe(false);
   });
 
+  it("refuses the sandboxed HTML widget while its flag is off", async () => {
+    const result = await run("dashboard_update", {
+      reason: "why",
+      actions: [{ action: "add_panel", widget: "html-sandbox", config: '{"html":"<b>hi</b>"}' }],
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("feature flag");
+    expect(fs.existsSync(dashPath)).toBe(false);
+  });
+
   it("refuses a widget type smuggled in through the whole-document path", async () => {
     const result = await run("dashboard_update", {
       reason: "why",
       document: JSON.stringify(
         documentWith([
-          { id: "p-x", widget: "volcano-plot", config: {}, layout: { span: 1, rows: 2 } },
+          { id: "p-x", widget: "html-sandbox", config: {}, layout: { span: 1, rows: 2 } },
         ]),
       ),
     });
     expect(result.success).toBe(false);
-    expect(result.error).toContain("not a widget this build can draw");
+    expect(result.error).toContain("feature flag");
   });
 
   it("names the unknown panel rather than guessing", async () => {
@@ -1263,19 +1274,19 @@ describe("what a refusal says", () => {
 
   it("checks the widget allowlist even for a change the user typed", async () => {
     // `asUser` relaxes provenance, not what this build can draw -- the day a
-    // preset carries a widget this build lacks, the slash command must refuse too.
+    // preset carries a flag-gated widget, the slash command must refuse too.
     const outcome = await commitDashboardChange(
       () => ({
         ok: true,
         document: documentWith([
-          { id: "p-x", widget: "volcano-plot", config: {}, layout: { span: 1, rows: 2 } },
+          { id: "p-x", widget: "html-sandbox", config: {}, layout: { span: 1, rows: 2 } },
         ]),
         notes: ["n"],
       }),
       { asUser: true },
     );
     expect(outcome.ok).toBe(false);
-    expect(outcome.ok === false && outcome.error).toContain("not a widget this build can draw");
+    expect(outcome.ok === false && outcome.error).toContain("feature flag");
     expect(fs.existsSync(dashPath)).toBe(false);
   });
 });
