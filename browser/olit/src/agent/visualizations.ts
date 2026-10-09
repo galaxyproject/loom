@@ -836,9 +836,11 @@ export function visualizationTools(resolveOptions: ResolveOptions = chartOptions
         "inline and placeable in the record with {{artifact}}. Leave `data` out of the spec: it " +
         "is pointed at the dataset here, so the chart reads the file rather than carrying a copy " +
         "of it. Refer to columns as this dataset names them, `col:1`, `col:2` and so on where it " +
-        "names none. For a chart of something the dataset does not hold, make a derived dataset " +
-        "with a Galaxy tool and chart that. Where an installed visualization fits, " +
-        "save_visualization keeps a Galaxy object instead.",
+        "names none. Vega-Lite computes aggregates, bins and filters itself, so an average, sum " +
+        "or count per group charts straight from the dataset, with `aggregate` in an encoding or " +
+        "a transform. Make a derived dataset with a Galaxy tool only for what Vega-Lite cannot " +
+        "compute from this one dataset, such as a join with another. Where an installed " +
+        "visualization fits, save_visualization keeps a Galaxy object instead.",
       parameters: schema({ dataset_id: STR, spec: { type: "object" }, title: STR }, [
         "dataset_id",
         "spec",

@@ -75,6 +75,18 @@ function refused(out: unknown): any {
   }
 }
 
+describe("vega_dataset's description", () => {
+  it("charts a per-group statistic straight from the dataset, not through a Galaxy tool", () => {
+    const { description } = visualizationTools().find((t) => t.name === "vega_dataset")!;
+    expect(description).toContain("Vega-Lite computes aggregates, bins and filters itself");
+    expect(description).toContain(
+      "average, sum or count per group charts straight from the dataset",
+    );
+    expect(description).toContain("only for what Vega-Lite cannot compute");
+    expect(description).not.toContain("For a chart of something the dataset does not hold");
+  });
+});
+
 describe("list_visualizations", () => {
   it("is described as where showing a dataset starts, viewer named or not", () => {
     const { description } = visualizationTools().find((t) => t.name === "list_visualizations")!;
