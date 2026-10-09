@@ -34,7 +34,7 @@ const shown = (frame, pattern, ms = 120000) =>
     await frame.locator("#input").fill("run cat on it");
     await frame.locator("#send-btn").click();
     check("the tool run is submitted", await shown(frame, "Submitted.", 60000));
-    check("the record notes the job as submitted", /jreset1`? — submitted/.test((await record())?.content || ""));
+    check("the record notes the job as submitted", /jreset1`?\n\s*- Status: submitted/.test((await record())?.content || ""));
 
     await frame.locator("#reset-btn").click();
     check("Reset starts a new conversation", await shown(frame, "Started a new conversation", 30000));

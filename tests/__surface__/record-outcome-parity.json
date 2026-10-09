@@ -47,7 +47,7 @@
     "browser": [
       "## Plan A: chrM Variant Calling [remote]",
       "",
-      "- [x] 1. **Align to chrM reference** -- BWA-MEM, sorted BAM out",
+      "- [ ] 1. **Align to chrM reference** -- BWA-MEM, sorted BAM out",
       "  - Routing: galaxy",
       "  - Galaxy job `abc123` — submitted, awaiting completion",
       "  - Status: finished (ok) — recorded automatically",
@@ -110,7 +110,7 @@
       "summary: \"\"",
       "```",
       "",
-      "*Submitted jobs are currently running.*",
+      "*All submitted jobs have finished.*",
       ""
     ]
   }

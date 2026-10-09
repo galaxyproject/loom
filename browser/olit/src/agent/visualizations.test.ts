@@ -860,6 +860,17 @@ describe("show_visualization and save_visualization", () => {
   const save = (g: Server, args: Json, charts = fakeCharts()) =>
     call("save_visualization", g, { dataset_id: "d1", ...args }, charts);
 
+  it("links a saved visualization where Galaxy shows it, with its plugin, beside its id", async () => {
+    const g = Object.assign(server(), { root: "https://galaxy.example/galaxy/" });
+    const out = await save(g, { visualization: "atlas" });
+    expect(out.saved).toBe(true);
+    expect(out.visualization_id).toBe("v1");
+    expect(out.url).toBe(
+      "https://galaxy.example/galaxy/visualizations/display?visualization=atlas&visualization_id=v1",
+    );
+    expect(out.artifact.visualization_id).toBe("v1");
+  });
+
   it("puts nothing in galaxy when showing", async () => {
     const g = server();
     expect((await show(g, { visualization: "atlas" })).shown).toBe(true);

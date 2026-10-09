@@ -1,4 +1,4 @@
-import { quote } from "@galaxyproject/orbit-browser/agent";
+import { normalizeGalaxyLinkServer, quote } from "@galaxyproject/orbit-browser/agent";
 import inputs from "galaxy-charts/galaxy-charts.inputs.json";
 import {
   getOptions,
@@ -637,6 +637,15 @@ async function selectOffered(
   return null;
 }
 
+/** Where Galaxy shows a saved visualization: its plugin and id, as Galaxy's own client links it. */
+export function displayUrl(root: unknown, plugin: string, id: string): string | null {
+  const base = normalizeGalaxyLinkServer(root);
+  return base
+    ? `${base}/visualizations/display?visualization=${encodeURIComponent(plugin)}` +
+        `&visualization_id=${encodeURIComponent(id)}`
+    : null;
+}
+
 async function saveVisualization(
   galaxy: Galaxy,
   resolveOptions: Resolve,
@@ -684,9 +693,11 @@ async function saveVisualization(
       );
     }
   }
+  const url = displayUrl(galaxy.root, name, visualizationId);
   return {
     saved: true,
     visualization_id: visualizationId,
+    ...(url ? { url } : {}),
     title,
     artifact: { ...artifact!, title, visualization_id: visualizationId },
     hint:
