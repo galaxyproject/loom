@@ -304,13 +304,13 @@ describe("adding and removing panels", () => {
   });
 
   it("does not offer a widget this build only registers so old layouts still draw", () => {
-    // A widget can be registered -- a layout naming it has to render -- without
-    // being in KNOWN_WIDGET_TYPES, which is what the picker advertises.
-    registry.register(stubWidget("internal-only", { label: "Internal" }));
+    // `html-sandbox` is registered -- a layout naming it has to render -- but
+    // it is not in KNOWN_WIDGET_TYPES, which is what the picker advertises.
+    registry.register(stubWidget("html-sandbox", { label: "Custom view" }));
     build(doc("notebook"));
     startEditing();
     act("add-panel").click();
-    expect(maybeAct("add-internal-only")).toBeNull();
+    expect(maybeAct("add-html-sandbox")).toBeNull();
     expect(maybeAct("add-jobs")).not.toBeNull();
   });
 

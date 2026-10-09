@@ -1,0 +1,78 @@
+/* Agent-authored HTML widget (flag-gated). Loaded through the @import in dashboard.css.
+   Every custom property used here is already defined in styles.css. */
+.dash-sandbox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Agent-authored content must not be mistakable for a built-in panel, so the
+   area it owns is drawn as an inset with a dashed edge. The badge in the
+   header carries the word; this carries the shape. */
+.dash-sandbox-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  background: var(--bg-deep);
+}
+
+.dash-sandbox-stage::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dash-sandbox-stage::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+
+.dash-sandbox-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+}
+
+/* The header badge. A tinted background with ordinary text rather than the
+   count-badge recipe elsewhere in the app, which is 3.53:1 in the light theme. */
+.dash-sandbox-badge {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent-bg);
+  color: var(--text-bright);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: help;
+}
+
+/* A one-line explanation above the stage -- scripts blocked, data trimmed. Not
+   an error: the view is still showing what it can. */
+.dash-sandbox-note {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--bg-subtle);
+  color: var(--dash-text-meta);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+/* The frame tried to leave. That is the one thing here that is genuinely
+   alarming, so it is the one thing that gets the error colour. */
+.dash-sandbox-note.dash-sandbox-alarm {
+  border-color: var(--error);
+  border-left-color: var(--error);
+  background: var(--error-bg);
+  color: var(--text);
+}
