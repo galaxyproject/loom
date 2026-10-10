@@ -42,7 +42,7 @@ const seen = async () => (await fetch(`${STUB}/__seen`)).json();
     await p.fill("#cred-model", "stub-model");
     await p.click("#cred-save");
 
-    const ready = await waitFor(p, () => /olit ready|resumed this history/i.test(document.body.innerText), 300000);
+    const ready = await waitFor(p, () => /olit ready|restored this history/i.test(document.body.innerText), 300000);
     check("the agent is up", ready);
     if (!ready) {
         console.log(logs.slice(-20).join("\n"));

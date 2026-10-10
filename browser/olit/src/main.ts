@@ -60,15 +60,15 @@ async function launch(
   if (notYours) {
     return {
       stop:
-        `Olit opens only your own sessions, and saved session ${visualizationId} is not ` +
+        `Olit opens only your own saved conversations, and ${visualizationId} is not ` +
         `one: ${notYours}.`,
     };
   }
   const unopened = savedProblem
     ? {
         savedProblem:
-          `Could not open saved session ${visualizationId} (${savedProblem}). This is ` +
-          "the history's own conversation instead, and Save stores it as a new session.",
+          `Could not open saved conversation ${visualizationId} (${savedProblem}). This ` +
+          "is the history's conversation in this browser instead, and Save stores it as a new one.",
       }
     : {};
   // A saved session carries its own history; otherwise the launch decides it.
@@ -89,6 +89,15 @@ async function launch(
   };
 }
 
+/** The hosting Galaxy page's query; its iframe has no src, so it shares Galaxy's origin. */
+function hostSearch(): string {
+  try {
+    return window.parent === window ? "" : window.parent.location.search;
+  } catch {
+    return "";
+  }
+}
+
 async function main() {
   const scriptUrl = new URL(import.meta.url);
   const containerId = scriptUrl.searchParams.get("container") || "app";
@@ -98,7 +107,7 @@ async function main() {
     await seedDevIncoming(container);
   }
 
-  const incoming = parseIncoming(container);
+  const incoming = parseIncoming(container, hostSearch());
   const base = isDev() ? "" : `static/plugins/visualizations/${PLUGIN_NAME}/`;
   // Galaxy's client is the shell's, handed over at launch, which comes before any save.
   let saved: SavedSessions | undefined;
@@ -117,11 +126,10 @@ async function main() {
     sessions: {
       save: (document, id) => saved!.save(document, id),
       savedState: reportSavedState,
-      savedNote:
-        "Saved this conversation. Open it again from Galaxy's visualizations to continue it anywhere.",
-      label: "Save this conversation as a Galaxy visualization",
+      savedNote: "Saved. Open it from Galaxy's visualizations on any device.",
+      label: "Save this conversation to Galaxy to reopen it on any device",
       keepHint: "Save it to Galaxy to keep it.",
-      reopenHint: "A conversation saved with Save opens from Galaxy's visualizations.",
+      reopenHint: "To reopen a saved conversation, open it from Galaxy's visualizations.",
     },
   });
 }

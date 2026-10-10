@@ -16,6 +16,7 @@ export { PROVIDERS } from "./agent/providers";
 export {
   artifactsIn,
   context,
+  drawnEvents,
   Runtime,
   type RuntimeConfig,
   type RuntimeOptions,
@@ -24,3 +25,4 @@ export { usageTotals } from "./agent/saved";
 export { flavoredSkills } from "./agent/skills";
 export { claim, GUARDS, Outcome, rendered } from "./agent/tool";
 export { agentTools } from "./agent/tools";
+export { ChatView } from "./transcript";
