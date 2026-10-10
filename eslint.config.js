@@ -13,6 +13,8 @@ export default tseslint.config(
       "coverage/**",
       ".worktrees/**",
       ".claude/**",
+      // Linted on its own terms (browser/package.json) until it runs Orbit's core.
+      "browser/**",
       "package-lock.json",
       "app/package-lock.json",
       "web/package-lock.json",

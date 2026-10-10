@@ -1,0 +1,27 @@
+node_modules
+.cache
+.DS_Store
+lerna-debug.log
+
+# Python
+__pycache__/
+*.pyc
+
+# Build artifacts
+**/dist/
+
+# Build output and scratch
+static/
+temp/
+
+# Vendored skills corpus: a build artifact fetched by scripts/install_skills.js. The exact
+# revision is pinned in the committed skills.lock.json, so builds stay reproducible
+# without carrying 860 KB of third-party content in this repo.
+src/agent/skills/galaxy-skills/
+
+# Eval output
+evals/*.json
+!evals/models.json
+
+# Local credentials for a live run; never committed.
+.env.local

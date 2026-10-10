@@ -12,6 +12,10 @@ coverage/
 .worktrees/
 .claude/
 
+# The browser shell carries its own prettier config and lint scripts, and its
+# build output (Pyodide, the skills corpus) lands inside it.
+browser/
+
 *.jsonl
 *-notebook.md
 

@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "jsx": "preserve",
+    "sourceMap": false,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "lib": ["ESNext", "DOM"],
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "dompurify": ["node_modules/dompurify"],
+      "marked": ["node_modules/marked"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.js"],
+  "exclude": ["node_modules", "static"]
+}

@@ -1,0 +1,61 @@
+{
+  "name": "@galaxyproject/olit",
+  "version": "0.0.3",
+  "type": "module",
+  "license": "MIT",
+  "files": [
+    "static"
+  ],
+  "playwrightBrowsers": [
+    "chromium",
+    "firefox",
+    "webkit"
+  ],
+  "scripts": {
+    "build": "npm run build:pyodide && npm run build:skills && vite build",
+    "build:pyodide": "node scripts/install_pyodide.js",
+    "build:skills": "node scripts/install_skills.js",
+    "dev": "npm run build && vite",
+    "lint:js": "prettier --config ./prettier.config.js --check './*.{js,ts,json}' 'src/**/*.{js,ts,json,css}'",
+    "lint:scripts": "python3 -m black --check --line-length 120 scripts && ruff check --line-length 120 scripts",
+    "prettier": "prettier --config ./prettier.config.js --write './*.{js,ts,json}' 'src/**/*.{js,ts,json,css}'",
+    "preview": "vite preview",
+    "stale": "node scripts/check_stale.js",
+    "test": "npm run test:unit && npm run lint:scripts && npm run lint:js && npm run typecheck && npm run vendored && npm run test:e2e",
+    "test:e2e": "bash e2e/run-all.sh",
+    "test:ui": "vitest --ui",
+    "test:unit": "vitest run",
+    "test:watch": "vitest --watch",
+    "typecheck": "tsc --noEmit",
+    "vendored": "python3 scripts/check_vendored.py",
+    "build:session": "npm run build:pyodide && npm run build:skills && vite build --config vite.config.session.ts"
+  },
+  "devDependencies": {
+    "@earendil-works/chord": "^1.0.4",
+    "@earendil-works/pi-ai": "^1.0.4",
+    "@earendil-works/pi-durable": "https://github.com/guerler/pi/releases/download/durable-v1.0.4-olit.2/earendil-works-pi-durable-1.0.4-olit.2.tgz",
+    "@galaxyproject/galaxy-ops": "https://github.com/guerler/galaxy-mcp/releases/download/ops-v0.3.2-ops.3/galaxyproject-galaxy-ops-0.3.2-ops.3.tgz",
+    "@sqlite.org/sqlite-wasm": "^3.53.4-build2",
+    "@types/node": "^22.9.0",
+    "dompurify": "^3.4.1",
+    "galaxy-charts": "^0.1.17",
+    "galaxy-charts-xml-parser": "^1.0.3",
+    "happy-dom": "^20.0.11",
+    "marked": "^18.0.0",
+    "mermaid": "^11.16.1",
+    "playwright": "^1.62.1",
+    "prettier": "^3.7.4",
+    "pyodide": "^0.29.0",
+    "typescript": "^5.9.3",
+    "vega": "^6.4.0",
+    "vega-embed": "^7.3.0",
+    "vega-lite": "^6.4.3",
+    "vite": "^7.3.0",
+    "vitest": "^4.0.16",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  },
+  "overrides": {
+    "katex": "^0.19.0"
+  }
+}

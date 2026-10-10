@@ -1,0 +1,66 @@
+/* olit-owned styles, layered over Orbit's app/src/renderer/styles.css; additions belong here
+   rather than in Orbit's file. */
+
+/* Credentials picker — reuses Orbit's modal shell. */
+.cred-field {
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cred-field label {
+  font-size: 13px;
+  font-weight: 500;
+}
+.cred-field select,
+.cred-field input {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  /* Theme tokens, not literals, so the field follows the shell's theme. */
+  background: var(--bg-inset);
+  color: var(--text);
+  font: inherit;
+}
+.cred-field input::placeholder {
+  color: var(--text-dim);
+}
+.cred-field select option {
+  background: var(--bg-surface);
+  color: var(--text);
+}
+.cred-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.cred-optional {
+  font-weight: normal;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.cred-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.cred-row input {
+  flex: 1;
+}
+.cred-error {
+  min-height: 18px;
+  font-size: 13px;
+  color: var(--error);
+}
+
+/* Usage sits at the right end of the footer, apart from the controls. */
+#usage-bar {
+  margin-left: auto;
+}
+
+.olit-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}

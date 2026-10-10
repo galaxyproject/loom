@@ -1,0 +1,90 @@
+name: browser
+
+# browser/ is its own package (own lockfile, own lint and test scripts) and is
+# not part of the root build, so it gets its own workflow. It runs when browser/
+# changes, or Orbit's chat UI and the shared contracts it imports from there.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "browser/**"
+      - "app/src/renderer/**"
+      - "shared/**"
+      - ".github/workflows/browser.yml"
+  pull_request:
+    paths:
+      - "browser/**"
+      - "app/src/renderer/**"
+      - "shared/**"
+      - ".github/workflows/browser.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: browser
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: browser/package-lock.json
+
+      # Node 22 ships npm 10.9, whose peer resolution crashes with
+      # "Cannot read properties of null (reading 'edgesOut')" on a cold install.
+      - name: Use npm 11
+        run: npm install -g npm@11
+
+      # black and ruff, for `npm run lint:scripts`.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: browser/requirements.txt
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "version=$(npx --no-install playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.pw.outputs.version }}
+
+      # Firefox and WebKit too: e2e/run-all.sh drives python-isolation in both.
+      - name: Install Playwright browsers
+        run: npx --no-install playwright install --with-deps chromium firefox webkit
+
+      # Unit tests and the typecheck read the skills corpus that the build fetches.
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Keep e2e logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-logs
+          path: /tmp/olit-e2e-*.log
+          retention-days: 7
+          if-no-files-found: ignore
