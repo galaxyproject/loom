@@ -3,6 +3,7 @@
 // brings back the session's identity and record, and the record reaches the model as it always
 // does, while the conversation itself, which was lost with the browser, stays lost.
 const playwright = require("playwright");
+const storedProvider = require("./stored-provider.cjs");
 const BROWSER = process.env.BROWSER || "chromium";
 const STUB = "http://127.0.0.1:8099";
 const LAUNCH = `${STUB}/plugins/visualizations/olit?dataset_id=drecover&frame=1`;
@@ -16,14 +17,9 @@ function check(name, ok, detail) {
 /** A fresh browser profile, so nothing of an earlier session is stored: another machine. */
 async function machine(browser) {
     const page = await (await browser.newContext()).newPage();
+    await storedProvider(page, { provider: "openrouter", baseUrl: `${STUB}/v1`, apiKey: "sk-or-v1-stubkeystubkey", model: "stub-model" });
     await page.goto(LAUNCH, { waitUntil: "domcontentloaded" });
     const frame = page.frameLocator("#galaxy_visualization");
-    await frame.locator("#cred-provider").waitFor({ timeout: 30000 });
-    await frame.locator("#cred-provider").selectOption("openrouter");
-    await frame.locator("#cred-endpoint").fill(`${STUB}/v1`);
-    await frame.locator("#cred-key").fill("sk-or-v1-stubkeystubkey");
-    await frame.locator("#cred-model").fill("stub-model");
-    await frame.locator("#cred-save").click();
     return { page, frame };
 }
 

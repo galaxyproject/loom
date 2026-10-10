@@ -1,6 +1,7 @@
 // Drives the built bundle the way a deployment serves it: the stub renders Galaxy's
 // host page, so data-incoming, the plugin href and the Pyodide path are production's.
 const { chromium } = require("playwright");
+const openPicker = require("./open-picker.cjs");
 const OUT = process.env.OUT || "/tmp";
 const STUB = "http://127.0.0.1:8099";
 const APP = process.env.APP_URL || `${STUB}/plugins/visualizations/olit?dataset_id=d1`;
@@ -54,7 +55,8 @@ async function connect(page) {
     await fetch(`${STUB}/__script?name=confirm`);
     await p.goto(APP, { waitUntil: "domcontentloaded" });
 
-    check("a built app asks for a provider before booting", await waitFor(p, credOpen, 20000));
+    check("a built app starts without asking for a provider", !(await waitFor(p, credOpen, 4000)));
+    await openPicker(p);
     await connect(p);
 
     const ready = await waitFor(p, isReady, 300000);

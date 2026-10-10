@@ -26,6 +26,7 @@ const MARKUP = `
       <div class="cred-field">
         <label for="cred-provider">Provider</label>
         <select id="cred-provider"></select>
+        <p class="cred-note" id="cred-galaxy-note">Use the AI service configured by your Galaxy administrator. No API key required.</p>
       </div>
       <div class="cred-field" id="cred-model-field">
         <label for="cred-model">Model</label>
@@ -54,6 +55,7 @@ const MARKUP = `
       <div class="modal-actions">
         <button id="cred-forget" class="plan-btn hidden">Disconnect</button>
         <button id="cred-save" class="plan-btn primary">Connect</button>
+        <button id="cred-close" class="plan-btn primary hidden">Close</button>
       </div>
     </div>
   </div>
@@ -87,10 +89,12 @@ function openPicker(
   const endpointInput = container.querySelector<HTMLInputElement>("#cred-endpoint")!;
   const forgetBtn = container.querySelector<HTMLButtonElement>("#cred-forget")!;
   const discoverBtn = container.querySelector<HTMLButtonElement>("#cred-discover")!;
+  const galaxyNote = container.querySelector<HTMLElement>("#cred-galaxy-note")!;
   const keyField = container.querySelector<HTMLElement>("#cred-key-field")!;
   const keyInput = container.querySelector<HTMLInputElement>("#cred-key")!;
   const errorEl = container.querySelector<HTMLElement>("#cred-error")!;
   const saveBtn = container.querySelector<HTMLButtonElement>("#cred-save")!;
+  const closeBtn = container.querySelector<HTMLButtonElement>("#cred-close")!;
 
   for (const p of offered) {
     providerSel.add(new Option(p.name, p.id));
@@ -102,6 +106,13 @@ function openPicker(
   function syncFields() {
     const p = providerById(providerSel.value);
     if (!p) return;
+    // Galaxy AI has nothing to connect or forget: choosing it is all there is.
+    const galaxy = p.id === "galaxy";
+    galaxyNote.classList.toggle("hidden", !galaxy);
+    saveBtn.classList.toggle("hidden", galaxy);
+    closeBtn.classList.toggle("hidden", !galaxy);
+    // Only offered when something is stored: a session with no key has nothing to forget.
+    forgetBtn.classList.toggle("hidden", galaxy || !stored);
     keyField.classList.toggle("hidden", !needsKey(p));
     // The Galaxy proxy picks its own model; everyone else names one, from the
     // suggestions where we bundle any and freely where the catalog is theirs.
@@ -121,9 +132,6 @@ function openPicker(
   }
   providerSel.addEventListener("change", syncFields);
   syncFields();
-
-  // Only offered when something is stored: a session with no key has nothing to forget.
-  forgetBtn.classList.toggle("hidden", !stored);
 
   overlay.classList.remove("hidden");
   keyInput.focus();
@@ -156,7 +164,13 @@ function openPicker(
       const p = providerById(providerSel.value);
       return p && needsKey(p) ? keyInput.value.trim() || undefined : undefined;
     };
+    // Galaxy AI is the default, so choosing it forgets whatever else was stored.
+    const toGalaxy = () => {
+      clearCredentials(brand);
+      close(stored ? { provider: "galaxy" } : null);
+    };
     const submit = () => {
+      if (providerSel.value === "galaxy") return toGalaxy();
       const creds: Credentials = {
         provider: providerSel.value,
         model: modelInput.value.trim() || undefined,
@@ -191,6 +205,7 @@ function openPicker(
       if (!found.models.includes(modelInput.value.trim())) modelInput.value = found.models[0]!;
     });
     forgetBtn.addEventListener("click", () => {
+      if (offered.some((p) => p.id === "galaxy")) return toGalaxy();
       clearCredentials(brand);
       keyInput.value = "";
       modelInput.value = "";
@@ -198,6 +213,7 @@ function openPicker(
       forgetBtn.classList.add("hidden");
       errorEl.textContent = "Disconnected. Choose a provider to connect again.";
     });
+    closeBtn.addEventListener("click", toGalaxy);
     saveBtn.addEventListener("click", submit);
     overlay.addEventListener("keydown", (e) => {
       if ((e as KeyboardEvent).key === "Enter") {
@@ -218,7 +234,11 @@ export async function switchProvider(
   return picked && JSON.stringify(picked) !== before ? picked : undefined;
 }
 
-/** First-run entry point. Not dismissible: there is nothing to fall back to. */
+/**
+ * First-run entry point: Galaxy AI where the page offers it, unless a selection is stored. A stored
+ * selection that no longer works opens the picker, not dismissible, so it is fixed rather than
+ * silently replaced.
+ */
 export async function ensureCredentials(
   container: HTMLElement,
   brand: Brand = DEFAULT_BRAND,
@@ -227,8 +247,9 @@ export async function ensureCredentials(
   const stored = loadCredentials(brand);
   if (stored && !credentialProblem(stored, offered)) return stored;
   // Dev override, as in config.ts: the vite proxy attaches the key, so there is nothing
-  // to ask for. A deployed build has no LLM_PROVIDER and always shows the picker.
+  // to ask for. A deployed build has no LLM_PROVIDER.
   const provider = process.env.llm_provider as string | undefined;
   if (provider) return { provider, model: process.env.llm_model as string | undefined };
+  if (!stored && offered.some((p) => p.id === "galaxy")) return { provider: "galaxy" };
   return (await openPicker(container, false, brand, offered)) as Credentials;
 }
