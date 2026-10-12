@@ -9,6 +9,7 @@ import { OLIT_KINDS } from "../artifacts/kinds";
 import type { Galaxy } from "@galaxyproject/orbit-browser/agent";
 import type { Context } from "@galaxyproject/orbit-browser/agent";
 import { claim, connectWeb, Outcome, rendered } from "@galaxyproject/orbit-browser/testing";
+import { HttpError } from "@galaxyproject/orbit-browser/agent";
 import {
   chartOptions,
   checkLevel,
@@ -94,6 +95,7 @@ describe("list_visualizations", () => {
     expect(description).toContain("open or view a dataset in a viewer");
     expect(description).not.toMatch(/chart|plot/i);
     expect(description).toContain("no tool search lists them");
+    expect(description).toContain("Without a dataset_id, list every visualization");
   });
 
   const COMPATIBLE = [
@@ -109,7 +111,7 @@ describe("list_visualizations", () => {
 
   function list(dataset: Json, compatible: Json[] = COMPATIBLE, preferred: string[] = []) {
     const g = fakeGalaxy((path) => {
-      if (path.startsWith("api/datasets/")) return dataset;
+      if (path.startsWith("api/datasets/")) return { state: "ok", ...dataset };
       if (path.startsWith("api/plugins")) return compatible;
       if (path.endsWith("/visualizations"))
         return preferred.map((name) => ({ visualization: name }));
@@ -117,6 +119,48 @@ describe("list_visualizations", () => {
     });
     return call("list_visualizations", g, { dataset_id: "d1" });
   }
+
+  it("lists every offered visualization and its datatypes without a dataset", async () => {
+    const asked: string[] = [];
+    const g = fakeGalaxy((path) => {
+      asked.push(path);
+      if (path === "api/plugins")
+        return [
+          {
+            name: "cytoscape",
+            description: "Graph viewer",
+            data_sources: [
+              {
+                model_class: "HistoryDatasetAssociation",
+                tests: [{ attr: "ext", type: "eq", result: "cytoscapejson" }],
+              },
+            ],
+          },
+          {
+            name: "ngl",
+            description: "Molecular structures",
+            data_sources: [
+              {
+                model_class: "HistoryDatasetAssociation",
+                tests: [
+                  { attr: "ext", type: "eq", result: "pdb" },
+                  { attr: "ext", type: "eq", result: "gro" },
+                ],
+              },
+            ],
+          },
+          { name: "olit", data_sources: [] },
+        ];
+      return [];
+    });
+    const out = await call("list_visualizations", g, {});
+    expect(out.visualizations).toEqual([
+      { name: "cytoscape", description: "Graph viewer", datatypes: ["cytoscapejson"] },
+      { name: "ngl", description: "Molecular structures", datatypes: ["gro", "pdb"] },
+    ]);
+    expect(out.hint).toContain("Pass a dataset_id");
+    expect(asked).toEqual(["api/plugins"]);
+  });
 
   it("lets the server decide what is compatible", async () => {
     const out = await list({
@@ -165,6 +209,30 @@ describe("list_visualizations", () => {
     );
     expect(out.visualizations).toEqual([]);
     expect(out.hint).toContain("No installed visualization accepts");
+  });
+
+  it("says a dataset that is not ok yet is why nothing is offered, not its datatype", async () => {
+    for (const state of ["new", "upload", "queued", "running", "setting_metadata", "paused"]) {
+      const out = await list({ extension: "pdb", state }, []);
+      expect(out.state).toBe(state);
+      expect(out).not.toHaveProperty("visualizations");
+      expect(out.error).toContain(`state "${state}"`);
+      expect(out.hint).toContain("call list_visualizations for it again");
+      expect(JSON.stringify(out)).not.toContain("No installed visualization accepts");
+    }
+  });
+
+  it("says a dataset that ended without data can never be displayed", async () => {
+    for (const state of ["error", "discarded", "failed_metadata", "empty"]) {
+      const out = await list({ extension: "pdb", state }, []);
+      expect(out).not.toHaveProperty("visualizations");
+      expect(out.hint).toContain("no visualization can display it");
+    }
+  });
+
+  it("lists a deferred dataset, as Galaxy tests its datatype too", async () => {
+    const out = await list({ extension: "pdb", state: "deferred" }, [{ name: "ngl" }]);
+    expect(out.visualizations.map((v: Json) => v.name)).toEqual(["ngl"]);
   });
 
   it("reports column parameters so the agent knows what must be filled", async () => {
@@ -329,6 +397,62 @@ describe("get_visualization_details", () => {
   it("does not publish a numeric default that is not a number", async () => {
     const plugin = { name: "igv", settings: [{ name: "width", type: "integer", value: "wide" }] };
     expect((await details(plugin)).settings[0]).not.toHaveProperty("default");
+  });
+});
+
+describe("a visualization the server does not have", () => {
+  const unknown = (status: number) =>
+    fakeGalaxy((path) => {
+      if (path.startsWith("api/plugins/")) {
+        throw new HttpError(`HTTP ${status}: Unknown or invalid visualization`, status);
+      }
+      return [];
+    });
+
+  it("is refused with where to look, by details and options alike", async () => {
+    for (const [tool, args] of [
+      ["get_visualization_details", { visualization: "nope" }],
+      ["get_visualization_options", { visualization: "nope", parameter: "settings.x" }],
+    ] as const) {
+      const text = refused(await call(tool, unknown(404), args));
+      expect(text).toBe(
+        'Refused: "nope" is not an installed visualization. ' +
+          "Call list_visualizations without a dataset_id to see what this server offers.",
+      );
+    }
+  });
+
+  it("is told apart from a server failure, which propagates", async () => {
+    await expect(
+      call("get_visualization_details", unknown(500), { visualization: "igv" }),
+    ).rejects.toThrow("HTTP 500");
+  });
+
+  it("includes one this session does not offer, without asking Galaxy", async () => {
+    const asked: string[] = [];
+    const g = fakeGalaxy((path) => {
+      asked.push(path);
+      return { name: "olit" };
+    });
+    expect(
+      refused(await call("get_visualization_details", g, { visualization: "olit" })),
+    ).toContain("not an installed visualization");
+    expect(asked).toEqual([]);
+  });
+
+  it("is refused by a save that finds the definition gone after the listing", async () => {
+    const g = fakeGalaxy((path) => {
+      if (path.startsWith("api/plugins/")) throw new HttpError("HTTP 404: gone", 404);
+      if (path.startsWith("api/datasets/")) return { extension: "tabular", state: "ok" };
+      return [{ name: "atlas" }];
+    });
+    const out = await call("save_visualization", g, { dataset_id: "d1", visualization: "atlas" });
+    expect(out).toMatchObject({
+      saved: false,
+      error: 'Refused: "atlas" is not an installed visualization.',
+      hint: "Call list_visualizations without a dataset_id to see what this server offers.",
+    });
+    expect(g.posted).toBeUndefined();
   });
 });
 
@@ -820,7 +944,8 @@ describe("show_visualization and save_visualization", () => {
   /** A server holding atlas and aladin, with `plugins` answering per-plugin declarations. */
   function server(compatible = ["atlas"], plugins: Record<string, Json> = {}) {
     return fakeGalaxy((path) => {
-      if (path.startsWith("api/datasets/")) return { extension: "tabular", name: "sample.tabular" };
+      if (path.startsWith("api/datasets/"))
+        return { extension: "tabular", name: "sample.tabular", state: "ok" };
       if (path === "api/visualizations/v9")
         return {
           id: "v9",
@@ -845,7 +970,7 @@ describe("show_visualization and save_visualization", () => {
           },
         };
       const declared = path.match(/^api\/plugins\/(.+)$/);
-      if (declared) return plugins[declared[1]] ?? [];
+      if (declared) return plugins[declared[1]] ?? { name: declared[1] };
       if (path.startsWith("api/plugins?")) return compatible.map((n) => ({ name: n }));
       if (path === "api/plugins")
         return [...INSTALLED, ...compatible.filter((n) => n !== "atlas").map((n) => ({ name: n }))];
@@ -1088,6 +1213,25 @@ describe("show_visualization and save_visualization", () => {
       expect(out[key]).toBe(false);
       expect(g.posted).toBeUndefined();
       expect(out.can_render_it).toEqual(["atlas"]);
+    }
+  });
+
+  it("refuses a dataset that is not ok yet either way, not blaming its datatype", async () => {
+    for (const [run, key] of [
+      [show, "shown"],
+      [save, "saved"],
+    ] as const) {
+      const g = fakeGalaxy((path) => {
+        if (path.startsWith("api/datasets/")) return { extension: "pdb", state: "queued" };
+        if (path.startsWith("api/plugins"))
+          return path.includes("dataset_id") ? [] : [{ name: "ngl" }];
+        return [];
+      });
+      const out = await run(g, { visualization: "ngl" });
+      expect(out[key]).toBe(false);
+      expect(g.posted).toBeUndefined();
+      expect(out.error).toContain('state "queued"');
+      expect(out).not.toHaveProperty("can_render_it");
     }
   });
 
@@ -1596,9 +1740,10 @@ describe("show_visualization and save_visualization", () => {
 describe("artifact claim", () => {
   const DATASET = "0f74b56904a59856";
   const galaxy = fakeGalaxy((path) => {
+    if (path.startsWith("api/plugins/")) return { name: "ngl", settings: [], tracks: [] };
     if (path.startsWith("api/plugins")) return [{ name: "ngl", settings: [], tracks: [] }];
     if (path.startsWith("api/datasets/"))
-      return { id: DATASET, name: "peptide.pdb", extension: "pdb" };
+      return { id: DATASET, name: "peptide.pdb", extension: "pdb", state: "ok" };
     return [];
   });
 

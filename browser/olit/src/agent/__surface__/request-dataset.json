@@ -1727,7 +1727,7 @@
       "type": "function",
       "function": {
         "name": "list_visualizations",
-        "description": "List the Galaxy visualizations that can display a dataset, such as genome browsers and structure viewers. Start here when the user wants to open or view a dataset in a viewer, whether or not they name one. Visualizations are not tools, so no tool search lists them.",
+        "description": "List the Galaxy visualizations that can display a dataset, such as genome browsers and structure viewers. Start here when the user wants to open or view a dataset in a viewer, whether or not they name one. Without a dataset_id, list every visualization this server has and the datatypes each renders. Visualizations are not tools, so no tool search lists them.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -1735,9 +1735,7 @@
               "type": "string"
             }
           },
-          "required": [
-            "dataset_id"
-          ]
+          "required": []
         }
       }
     },

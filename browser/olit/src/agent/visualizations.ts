@@ -7,13 +7,21 @@ import {
   type ValueIssueType,
 } from "galaxy-charts/runtime";
 
-import { query, segment, type Galaxy, type Web } from "@galaxyproject/orbit-browser/agent";
+import {
+  HttpError,
+  query,
+  segment,
+  type Galaxy,
+  type Web,
+} from "@galaxyproject/orbit-browser/agent";
 import type { ArtifactOf } from "@galaxyproject/orbit-browser/artifacts";
 import {
   fail,
   type Artifact,
   type Context,
   type AgentTool,
+  isTerminal,
+  outcomeOf,
 } from "@galaxyproject/orbit-browser/agent";
 import * as vega from "./vega";
 import { tables } from "@galaxyproject/orbit-browser/agent";
@@ -50,6 +58,36 @@ const rootPath = (galaxy: Galaxy) => new URL(galaxy.root || "/", "http://localho
 
 /** This agent, and a standalone plugin that defers its chart to its own LLM at view time. */
 export const NOT_OFFERED = new Set(["olit", "vintent"]);
+
+const NOT_INSTALLED_HINT =
+  "Call list_visualizations without a dataset_id to see what this server offers.";
+
+const notInstalled = (name: unknown) =>
+  `Refused: ${quote(name)} is not an installed visualization.`;
+
+/** The definition of a visualization this server offers, or what to say when it offers none by that
+ * name. Galaxy answers an unknown name with 404; any other failure is the server's and propagates. */
+async function installedPlugin(
+  galaxy: Galaxy,
+  name: unknown,
+): Promise<{ plugin?: Json; missing?: string }> {
+  if (NOT_OFFERED.has(name as string)) {
+    return { missing: notInstalled(name) };
+  }
+  let plugin: unknown;
+  try {
+    plugin = await galaxy.get(`api/plugins/${segment(name)}`);
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 404) {
+      return { missing: notInstalled(name) };
+    }
+    throw error;
+  }
+  return isObject(plugin) && plugin.name ? { plugin } : { missing: notInstalled(name) };
+}
+
+/** The dataset states Galaxy tests a plugin's datatypes in; in any other, no plugin matches. */
+const VIEWABLE = new Set(["ok", "deferred"]);
 
 const MATCH_CAP = 5;
 const ROW_CAP = 100;
@@ -140,9 +178,54 @@ async function preferredVisualizations(galaxy: Galaxy, extension: unknown): Prom
   return new Set(mappings.filter(isObject).map((m) => m.visualization));
 }
 
+/** Why Galaxy offers no visualization for a dataset in its state, or nothing when it would. */
+function notViewable(dataset: Json): Json | undefined {
+  const state = dataset.state;
+  if (VIEWABLE.has(state)) {
+    return undefined;
+  }
+  const final = isTerminal("dataset", state) && outcomeOf("dataset", state) !== "paused";
+  return {
+    error:
+      `Dataset is in state ${quote(state)}, and Galaxy offers visualizations only for a ` +
+      'dataset in state "ok", whatever its datatype.',
+    hint: final
+      ? "It will not reach that state, so no visualization can display it."
+      : "Wait until it is ok, then call list_visualizations for it again.",
+  };
+}
+
+/** The datatypes a plugin renders: Galaxy matches only `ext` equality tests, subclasses included. */
+function acceptedDatatypes(plugin: Json): string[] {
+  const tests = ((plugin.data_sources as Json[]) || []).flatMap((s) => (s.tests as Json[]) || []);
+  const datatypes = tests.filter((t) => t.attr === "ext" && t.type === "eq").map((t) => t.result);
+  return [...new Set(datatypes)].sort();
+}
+
+/** Every visualization this server offers, with the datatypes each renders. */
+async function installedVisualizations(galaxy: Galaxy): Promise<Json> {
+  const installed: Json[] = (await galaxy.get("api/plugins")) || [];
+  return {
+    visualizations: installed
+      .filter((p) => !NOT_OFFERED.has(p.name))
+      .map((p) => ({ name: p.name, description: p.description, datatypes: acceptedDatatypes(p) }))
+      .sort((p, q) => p.name.localeCompare(q.name)),
+    hint:
+      "Each renders datasets of its datatypes or ones derived from them. Pass a dataset_id to " +
+      "see which can display that dataset.",
+  };
+}
+
 async function listVisualizations(galaxy: Galaxy, a: Json): Promise<Json> {
+  if (!present(a.dataset_id)) {
+    return installedVisualizations(galaxy);
+  }
   const dataset: Json = (await galaxy.get(`api/datasets/${segment(a.dataset_id)}`)) || {};
   const extension = dataset.extension;
+  const unready = notViewable(dataset);
+  if (unready) {
+    return { dataset_id: a.dataset_id, extension, state: dataset.state, ...unready };
+  }
   const numeric = tables.numericColumns(dataset);
 
   let matching: Json[] =
@@ -179,13 +262,14 @@ async function resolveVisualization(
   const installed: Json[] = (await galaxy.get("api/plugins")) || [];
   if (NOT_OFFERED.has(name) || !installed.some((p) => p.name === name)) {
     return {
-      refusal: {
-        error: `Refused: ${quote(name)} is not an installed visualization.`,
-        hint: "Call list_visualizations for the dataset to see what this server offers.",
-      },
+      refusal: { error: notInstalled(name), hint: NOT_INSTALLED_HINT },
     };
   }
   const dataset: Json = (await galaxy.get(`api/datasets/${segment(datasetId)}`)) || {};
+  const unready = notViewable(dataset);
+  if (unready) {
+    return { refusal: { ...unready, error: `Refused: ${unready.error}` } };
+  }
   const compatible: Json[] =
     (await galaxy.get(`api/plugins${query({ dataset_id: datasetId })}`)) || [];
   if (!compatible.some((p) => p.name === name)) {
@@ -270,12 +354,9 @@ function describeParameter(param: Json, types: Types, path: string[] = []): Json
 
 async function getVisualizationDetails(galaxy: Galaxy, a: Json): Promise<unknown> {
   const name = a.visualization;
-  const plugin: Json = (await galaxy.get(`api/plugins/${segment(name)}`)) || {};
-  if (!plugin.name) {
-    return fail(
-      `Refused: ${quote(name)} is not an installed visualization. Call list_visualizations ` +
-        "for a dataset to see what this server offers.",
-    );
+  const { plugin, missing } = await installedPlugin(galaxy, name);
+  if (!plugin) {
+    return fail(`${missing} ${NOT_INSTALLED_HINT}`);
   }
   return {
     name: plugin.name,
@@ -308,9 +389,9 @@ async function getVisualizationOptions(
 ): Promise<unknown> {
   const name = a.visualization;
   const asked = a.parameter;
-  const plugin = (await galaxy.get(`api/plugins/${segment(name)}`)) || {};
-  if (!isObject(plugin) || !plugin.name) {
-    return fail(`Refused: ${quote(name)} is not an installed visualization.`);
+  const { plugin, missing } = await installedPlugin(galaxy, name);
+  if (!plugin) {
+    return fail(`${missing} ${NOT_INSTALLED_HINT}`);
   }
 
   const { hit, problem } = resolveParameter(plugin, asked, a.config);
@@ -396,7 +477,10 @@ async function checked(
   if (refusal) {
     return { refusal };
   }
-  const plugin: Json = (await galaxy.get(`api/plugins/${segment(a.visualization)}`)) || {};
+  const { plugin, missing } = await installedPlugin(galaxy, a.visualization);
+  if (!plugin) {
+    return { refusal: { error: missing, hint: NOT_INSTALLED_HINT } };
+  }
   const chosen = { ...a, settings: structuredClone(a.settings), tracks: structuredClone(a.tracks) };
   // The values as sent are checked before galaxy-charts' coercion could hide a wrong one; from
   // then on, checks and the stored config are the one resolved config.
@@ -864,8 +948,10 @@ export function visualizationTools(resolveOptions: ResolveOptions = chartOptions
       description:
         "List the Galaxy visualizations that can display a dataset, such as genome browsers and " +
         "structure viewers. Start here when the user wants to open or view a dataset in a viewer, " +
-        "whether or not they name one. Visualizations are not tools, so no tool search lists them.",
-      parameters: schema({ dataset_id: STR }, ["dataset_id"]),
+        "whether or not they name one. Without a dataset_id, list every visualization this " +
+        "server has and the datatypes each renders. Visualizations are not tools, so no tool " +
+        "search lists them.",
+      parameters: schema({ dataset_id: STR }, []),
       run: (args, ctx) => listVisualizations(ctx.galaxy, args),
     },
   ];
