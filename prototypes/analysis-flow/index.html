@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Orbit · Analysis flow prototype</title>
+    <link rel="stylesheet" href="../../app/src/renderer/styles.css" />
+    <link rel="stylesheet" href="./preview.css" />
+  </head>
+  <body class="flow-preview">
+    <header class="prototype-bar">
+      <div class="brand">
+        <span aria-hidden="true">◉</span> Orbit <span class="prototype-tag">PROTOTYPE</span>
+      </div>
+      <div class="controls">
+        <label for="scenario">Preview</label>
+        <select id="scenario">
+          <option value="returned">Outputs returned · example</option>
+          <option value="queued">Waiting on Galaxy · example</option>
+          <option value="blocked">Blocked · example</option>
+          <option value="stale">Updates unavailable · example</option>
+          <option value="empty">No activity · example</option>
+        </select>
+        <button id="theme" type="button">Light theme</button>
+      </div>
+    </header>
+    <main class="workspace">
+      <aside class="conversation" aria-label="Example chat summary">
+        <div class="pane-tabs"><span>Chat</span><span class="muted">Summary preview</span></div>
+        <div class="chat-content">
+          <p class="eyebrow">EXAMPLE · INPUT PREPARATION</p>
+          <div class="user-message">
+            Prepare the reference cohorts in Galaxy and give me a verified, reusable input package.
+          </div>
+          <div class="assistant-heading"><span aria-hidden="true">◉</span> Orbit</div>
+          <p id="chat-summary"></p>
+          <button id="show-current" class="text-button" type="button">Show current stage →</button>
+          <div class="design-note">
+            <strong>Less noise in chat</strong>
+            <p>
+              This example summary changes at a milestone or blocker. The Activity flow holds the
+              details between updates.
+            </p>
+          </div>
+          <div class="preview-disclosure">
+            <strong>Isolated design preview</strong>
+            <p id="disclosure">Loading example activity…</p>
+            <p>
+              All data are illustrative. Selections only change this preview; no analysis commands
+              are run.
+            </p>
+          </div>
+        </div>
+      </aside>
+      <section class="activity-pane" aria-label="Activity pane prototype">
+        <div class="pane-tabs">
+          <span class="muted">Notebook</span><span class="active-tab">Activity</span
+          ><span class="muted">Dashboard</span><span class="project-name">example-project</span>
+        </div>
+        <div class="activity-scroll">
+          <details class="flow-section" open>
+            <summary class="section-title">
+              <span>Analysis flow</span><span class="summary-hint">Major stages</span>
+            </summary>
+            <div class="flow-content">
+              <div class="flow-heading">
+                <div>
+                  <p class="eyebrow" id="provenance-label"></p>
+                  <h1 id="analysis-title">Preparing reference cohorts</h1>
+                </div>
+                <span id="overall-state" class="state-badge"></span>
+              </div>
+              <p id="current-summary" class="current-summary" role="status" aria-live="polite"></p>
+              <div id="freshness" class="freshness"></div>
+              <div id="empty-state" hidden>
+                <span aria-hidden="true">◇</span>
+                <h2>No activity to group yet</h2>
+                <p>
+                  As work happens, Loom can name its stages here. Opening this panel does not create
+                  a plan or start an analysis.
+                </p>
+              </div>
+              <div id="flow-work">
+                <ol id="stage-flow" class="stage-flow" aria-label="Major analysis stages"></ol>
+                <div id="issue-strip" class="issue-strip"></div>
+                <section
+                  id="stage-detail"
+                  class="stage-detail"
+                  aria-label="Selected stage details"
+                ></section>
+                <details id="issues-drawer" class="issues-drawer">
+                  <summary>
+                    <span>Issues across this analysis</span><span id="issue-count"></span>
+                  </summary>
+                  <div class="issues-toolbar">
+                    <label
+                      ><input type="checkbox" id="include-recovered" checked /> Include recovered
+                      issues</label
+                    ><span>Grouped by the stage they affected</span>
+                  </div>
+                  <div id="issues-list"></div>
+                </details>
+              </div>
+            </div>
+          </details>
+          <details class="existing-section" open>
+            <summary>Recent on Galaxy <span>Example workspace</span></summary>
+            <div id="galaxy-links" class="galaxy-links"></div>
+          </details>
+          <details class="existing-section">
+            <summary>Shell <span>Commands and full output</span></summary>
+            <div class="section-copy">
+              The existing Shell stays here for command-level inspection. This prototype shows
+              selected error excerpts in the stage details above.
+            </div>
+          </details>
+          <details class="existing-section">
+            <summary>Processes <span>Local process monitor</span></summary>
+            <div class="section-copy">
+              This isolated preview is not connected to Orbit's process monitor.
+            </div>
+          </details>
+        </div>
+      </section>
+    </main>
+    <footer class="prototype-footer">
+      <span id="footer-source">Example data · no live feed</span
+      ><span>Click a stage to inspect its evidence</span>
+    </footer>
+    <script type="module" src="./preview.js"></script>
+  </body>
+</html>
