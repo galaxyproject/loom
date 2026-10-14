@@ -975,7 +975,7 @@
       "type": "function",
       "function": {
         "name": "get_visualization_options",
-        "description": "Resolve a visualization parameter's selectable options from wherever the plugin says they live. `parameter` is the `path` get_visualization_details publishes. Where a name is declared in several cases of a conditional, pass `config` in the shape save_visualization takes, so the test parameter in it says which case. Use `search` to find the id to choose.",
+        "description": "Resolve a visualization parameter's selectable options from wherever the plugin says they live. `parameter` is the path of a property marked `gx_source` in get_visualization_details' `parameters_schema`, such as `settings.source.genome`, not the `gx_source` itself. Where a name is declared in several cases of a conditional, pass `config` in the shape save_visualization takes, so the test parameter in it says which case. Use `search` to find the id to choose.",
         "parameters": {
           "type": "object",
           "properties": {
