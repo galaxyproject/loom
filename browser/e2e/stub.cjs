@@ -521,7 +521,9 @@ const server = http.createServer(async (req, res) => {
     // Everything else is Galaxy; record it so tests can assert on the PUT.
     seen.push(`${req.method} ${url}`);
     cookies.push({ url: `${req.method} ${url}`, cookie: req.headers.cookie || null });
-    if (!galaxyUp && url.includes("/api/")) return json(res, 503, { err_msg: "galaxy is down" });
+    if (!galaxyUp && (url.includes("/api/") || url.startsWith("/history/"))) {
+        return json(res, 503, { err_msg: "galaxy is down" });
+    }
     if (url.includes("/api/plugins/olit")) return json(res, 200, pluginDict());
     if (url.includes("/api/plugins/ngl")) return json(res, 200, NGL);
     if (url.includes("/api/plugins")) return json(res, 200, [{ name: "ngl", settings: [], tracks: [] }]);

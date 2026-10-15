@@ -23,7 +23,7 @@ async function seedDevIncoming(container: HTMLElement): Promise<void> {
   container.dataset.incoming = JSON.stringify({
     root: "/",
     visualization_config: {
-      dataset_id: pageUrl.searchParams.get("dataset_id") || "__test__",
+      dataset_id: pageUrl.searchParams.get("dataset_id") || undefined,
       settings: {},
     },
     visualization_plugin: await parseXML("olit.xml"),
