@@ -211,7 +211,7 @@ export function durableTool(tool: AgentTool, host: ToolHost): ToolRegistration {
         ...(guard ? { refused: true, guard } : {}),
       };
       return {
-        content: [{ type: "text", text }],
+        output: [{ type: "text", text }],
         isError: value instanceof Outcome && value.isError,
         ...(Object.keys(details).length ? { details: details as JsonObject } : {}),
       };

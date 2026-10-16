@@ -42,7 +42,6 @@ const ARTIFACT_LIMIT = 20;
 export const LOOP = {
   toolExecution: "sequential",
   followUpMode: "all",
-  promptPlacement: "lead",
 } as const;
 
 /**
