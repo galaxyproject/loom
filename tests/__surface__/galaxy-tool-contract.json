@@ -53,12 +53,15 @@
   "browserOnly": [
     "ena_runs",
     "finish",
+    "get_job_logs",
+    "get_user_tool",
     "get_visualization",
     "get_visualization_details",
     "get_visualization_options",
     "gtn_fetch",
     "gtn_search",
     "lineage_report",
+    "list_jobs",
     "list_visualizations",
     "notebook_resume",
     "organize_datasets",
@@ -81,6 +84,13 @@
   "orbitOnly": ["connect", "get_schemas", "run_galaxy_tool", "search"],
   "knownDifferences": {
     "parameters": {
+      "get_invocations": {
+        "browserOnly": ["offset", "sort_by", "sort_desc", "include_terminal"],
+        "upstreamOnly": []
+      },
+      "get_tool_details": { "browserOnly": ["tool_version"], "upstreamOnly": [] },
+      "get_job_details": { "browserOnly": ["job_id"], "upstreamOnly": [] },
+      "get_workflow_input_template": { "browserOnly": ["version"], "upstreamOnly": [] },
       "update_page": {
         "browserOnly": ["section_heading", "section_content", "expect_hash"],
         "upstreamOnly": []
@@ -93,9 +103,7 @@
     },
     "forkOnly": [
       { "tool": "update_page", "param": "section_heading", "in": "parameters" },
-      { "tool": "update_page", "param": "expect_hash", "in": "parameters" },
-      { "tool": "get_job_details", "param": "job_stderr", "in": "description" },
-      { "tool": "get_job_details", "param": "tool_stderr", "in": "description" }
+      { "tool": "update_page", "param": "expect_hash", "in": "parameters" }
     ]
   }
 }

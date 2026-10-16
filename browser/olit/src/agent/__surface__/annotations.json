@@ -42,7 +42,7 @@
   {
     "name": "get_invocations",
     "args": {},
-    "note": "[olit] Invocation i1: outcome \"failed\", jobs {\"error\":1,\"ok\":2}. A job in this invocation failed. Galaxy's `state` describes scheduling only. Report the failure rather than the state, and read the failing dataset's get_job_details before proposing a repair."
+    "note": "[olit] Invocation i1: outcome \"failed\", jobs {\"error\":1,\"ok\":2}. A job in this invocation failed. Galaxy's `state` describes scheduling only. Report the failure rather than the state, and read the failing job's details and logs (get_job_details, then get_job_logs) before proposing a repair."
   },
   {
     "name": "get_invocations",

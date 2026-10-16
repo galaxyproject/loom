@@ -44,8 +44,6 @@ const upstreamSummary = new Map(allOperations.map((op) => [op.name, op.summary])
 const FORK_ONLY = [
   { tool: "update_page", param: "section_heading", in: "parameters" },
   { tool: "update_page", param: "expect_hash", in: "parameters" },
-  { tool: "get_job_details", param: "job_stderr", in: "description" },
-  { tool: "get_job_details", param: "tool_stderr", in: "description" },
 ] as const;
 
 function paramDifferences() {

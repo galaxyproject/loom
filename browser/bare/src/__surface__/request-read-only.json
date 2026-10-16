@@ -54,7 +54,7 @@
               ]
             },
             "limit": {
-              "description": "Maximum number of invocations to return. Leave it unset and none is\n   sent, so Galaxy applies its own default of 20 -- not \"no limit\". Raise\n   it to see more.",
+              "description": "Maximum number of invocations to return, at most 100 -- Galaxy's\n   invocation index serves no larger page, so page with offset to see\n   more. Leave it unset and none is sent, so Galaxy applies its own\n   default of 20 -- not \"no limit\".",
               "anyOf": [
                 {
                   "type": "integer",
@@ -74,6 +74,32 @@
             "step_details": {
               "default": false,
               "description": "Include details on individual workflow steps -- each step's\n         jobs. Applies to one invocation by id, and to a listing when\n         view is 'element' (default: False)",
+              "type": "boolean"
+            },
+            "offset": {
+              "default": 0,
+              "description": "Number of invocations to skip before the page starts, for walking a\n    listing longer than one page of limit (default: 0)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "sort_by": {
+              "description": "Order the listing by 'create_time' or 'update_time'. Left unset,\n     Galaxy's own order applies, which is newest first (optional)",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "sort_desc": {
+              "description": "With sort_by, True orders newest first and False oldest first.\n       Left unset, Galaxy's own direction applies (optional)",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "include_terminal": {
+              "default": true,
+              "description": "Whether invocations that have finished -- scheduled,\n              failed or cancelled -- are listed. False keeps only the\n              ones still in flight (default: True)",
               "type": "boolean"
             }
           },
@@ -400,6 +426,13 @@
               "default": false,
               "description": "Set True to include detailed input/output parameter schemas.\n        Essential for understanding how to call run_tool().",
               "type": "boolean"
+            },
+            "tool_version": {
+              "description": "Describe this installed version of the tool rather than the one\n        Galaxy picks for the id. Refused when Galaxy answers with a\n        different version, so the answer is never about another one.",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "required": [
@@ -413,7 +446,7 @@
       "type": "function",
       "function": {
         "name": "search_tools_by_name",
-        "description": "Search Galaxy tools whose name, ID, or description contains the given query (substring match).\n\nResults are paginated. pagination.total_items is how many tools matched in total;\npagination.next_offset is where the next page starts (None on the last page).\n\nRECOMMENDED WORKFLOW:\n1. Use this function to find tools by name/keyword\n2. Review the returned tool IDs and names\n3. Call get_tool_details(tool_id) for full input parameters\n4. Call run_tool() with the correct inputs",
+        "description": "Search Galaxy tools whose name, ID, or description contains the given query (substring match),\nfollowed by those whose name, ID and description hold every word of it between them.\n\nResults are paginated. pagination.total_items is how many tools matched in total;\npagination.next_offset is where the next page starts (None on the last page).\n\nRECOMMENDED WORKFLOW:\n1. Use this function to find tools by name/keyword\n2. Review the returned tool IDs and names\n3. Call get_tool_details(tool_id) for full input parameters\n4. Call run_tool() with the correct inputs",
         "parameters": {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
           "type": "object",
@@ -570,26 +603,127 @@
       "type": "function",
       "function": {
         "name": "get_job_details",
-        "description": "Get detailed information about the job that created a specific dataset\n\nThe job is read in full, so a failed job's logs come back with it: tool_stdout,\ntool_stderr, job_stdout, job_stderr, stdout and stderr. A log longer than 4 KB keeps its\nfirst and last 2 KB, cut on line boundaries, with a line saying how much was left out.",
+        "description": "Get a job's record, by its own id or by a dataset it created.\n\nThe record carries the job's state, exit code, tool id and version, create and update\ntimes, params, inputs and outputs. It does not carry the job's stdout or stderr: a\nfailed job's logs are one get_job_logs call away. Exactly one of dataset_id and job_id\nis required.",
         "parameters": {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
           "type": "object",
           "properties": {
             "dataset_id": {
-              "type": "string",
-              "description": "Galaxy dataset ID - a hexadecimal hash string identifying the dataset\n       (a 16-character hex string)"
+              "description": "Galaxy dataset ID whose creating job to look up - a hexadecimal hash\n       string (a 16-character hex string). Give this or job_id, not both",
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "history_id": {
-              "description": "Galaxy history ID containing the dataset - optional for performance optimization\n       (a 16-character hex string)",
+              "description": "Galaxy history ID containing the dataset - optional for performance optimization\n       (a 16-character hex string); only used with dataset_id",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "job_id": {
+              "description": "Galaxy job ID to look up directly (a 16-character hex string). Give this or\n   dataset_id, not both",
               "type": [
                 "string",
                 "null"
               ]
             }
           },
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "get_job_logs",
+        "description": "Read a job's logs: the stdout and stderr Galaxy keeps for it, each cut to a byte budget.\n\nOne GET /api/jobs/{job_id}?full=true, answered with only the six log fields the full\nrecord adds -- tool_stdout, tool_stderr, job_stdout, job_stderr, stdout, stderr -- and\nnothing the plain get_job_details read already has. The four tool_* and job_* fields are\nnull until the job has written them, and are then left out rather than returned empty;\nstdout and stderr are the older combined form of those pairs, which Galaxy always answers\nas a string, so a job that has not run reads as an empty stdout and stderr, and on a\ncurrent Galaxy the same text can appear under two names. A log longer than log_bytes\nkeeps its first and last half, cut on line boundaries, with one line in the middle saying\nhow many of how many bytes were omitted, so a cut field carries at most log_bytes of the\nlog plus that line; the cause of a failure is usually at the end and the context at the\nstart, and a one-ended read loses one of them.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "job_id": {
+              "type": "string",
+              "description": "Galaxy job ID (a 16-character hex string), as run_tool, list_jobs or\n   get_job_details report it"
+            },
+            "log_bytes": {
+              "default": 4096,
+              "description": "Budget per log field in UTF-8 bytes (default 4096). 0 returns every log\n      uncut, however long; a negative value is refused",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
           "required": [
-            "dataset_id"
+            "job_id"
           ],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "list_jobs",
+        "description": "List jobs, optionally narrowed to one history, one state and a time window.\n\nWhat an agent reconciling its own record of a history against Galaxy reads: the\njobs updated since a time, in one history, newest first, a page at a time. Galaxy\nwindows this index itself and reports no total, so the answer carries a count and\nno pagination block: a page shorter than limit is the last one, and the next page\nstarts at offset + limit.\n\nGalaxy filters this index by history_id without looking the history up, so a\nwell-formed id of a history that does not exist answers with an empty page -- the\nsame answer as a history with no jobs, not a 404. A reconcile that has to tell the\ntwo apart confirms the history with get_history_details first. A history the user\ncannot read is refused with a 403, and an id Galaxy cannot decode with a 400.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "history_id": {
+              "description": "Only jobs in this history (an encoded history id). Leave it unset\n       for jobs from any history the user can see. The id of a history\n       that does not exist is not an error here: it answers with an empty\n       page.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "state": {
+              "description": "Only jobs in this state -- 'new', 'queued', 'running', 'ok', 'error',\n  'paused', 'deleted' and the rest of Galaxy's job states. A\n  comma-separated list matches any of them.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "date_range_min": {
+              "description": "Only jobs updated at or after this time, as an ISO 8601 date or\n           datetime such as '2026-01-01' or '2026-01-01T12:00:00'.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "date_range_max": {
+              "description": "Only jobs updated at or before this time, in the same format.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "order_by": {
+              "default": "update_time",
+              "description": "Sort by 'update_time' (default) or 'create_time', newest first.",
+              "type": "string"
+            },
+            "view": {
+              "default": "collection",
+              "description": "'collection' (default) returns one small summary per job -- id, state,\n tool_id, exit_code, create_time, update_time -- which is what a listing\n wants. 'admin_job_list' adds runner and handler detail and needs an\n admin key.",
+              "type": "string"
+            },
+            "limit": {
+              "default": 100,
+              "description": "Most jobs to return in one page (default 100). Galaxy puts no upper\n  cap on this, so this tool does not either; keep it to what fits the\n  output budget.",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "offset": {
+              "default": 0,
+              "description": "Skip this many jobs (default 0). Page by raising it by limit until a\n   page comes back shorter than limit.",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
           "additionalProperties": false
         }
       }
@@ -742,6 +876,27 @@
     {
       "type": "function",
       "function": {
+        "name": "get_user_tool",
+        "description": "Get one user-defined tool by its UUID, with its full representation.\n\nOne request to Galaxy's single-tool endpoint, so a caller holding a UUID from\nlist_user_tools() or create_user_tool() reads that tool's definition back without\npaging through the whole list. A value that is not a UUID is refused as not found\nbefore anything is sent.",
+        "parameters": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "uuid": {
+              "type": "string",
+              "description": "The tool's UUID as list_user_tools() reports it (32 hex digits in\n8-4-4-4-12 groups). The bare 32-digit, braced and urn:uuid: spellings\nname the same tool and are accepted too."
+            }
+          },
+          "required": [
+            "uuid"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
         "name": "get_tool_input_template",
         "description": "Return a ready-to-fill ``inputs`` skeleton for a tool, plus a compact schema.\n\nCall this before run_tool when you are unsure how to shape ``inputs``. Replace\nplaceholders (e.g. ``<dataset_id>``) with real values. Repeats show one\ninstance (``name_0|...``); duplicate with ``name_1|...`` to add more. The\nflattened-key convention is ``section|param``, ``cond|selector``,\n``repeat_0|param``.",
         "parameters": {
@@ -764,7 +919,7 @@
       "type": "function",
       "function": {
         "name": "get_workflow_input_template",
-        "description": "Return a ready-to-fill template plus a run guide for a workflow.\n\nCall this before invoke_workflow. Each slot lists its label, expected source\n(hda/hdca), accepted datatypes, collection type, and -- for parameters --\nselectable `options` as [{label, value}]. On the `style=run` path these are\nGalaxy-resolved: reference-genome dbkeys come from the server regardless of\nhistory, and passing `history_id` additionally surfaces that history's\ncompatible datasets as candidates. The legacy .ga fallback carries only the\nstatic restrictions baked into the workflow -- no server- or history-resolved\nvalues -- see `guide.notes`. `guide` carries a short description and provenance.\nFill `inputs_template` (keyed by step_index) and invoke with\n`inputs_by=\"step_index|step_uuid\"`. Pass `verbose=True` for the full readme\nand uncapped option lists. `warnings` flags legacy patterns.",
+        "description": "Return a ready-to-fill template plus a run guide for a workflow.\n\nCall this before invoke_workflow. Each slot lists its label, expected source\n(hda/hdca), accepted datatypes, collection type, and -- for parameters --\nselectable `options` as [{label, value}]. On the `style=run` path these are\nGalaxy-resolved: reference-genome dbkeys come from the server regardless of\nhistory, and passing `history_id` additionally surfaces that history's\ncompatible datasets as candidates. The legacy .ga fallback carries only the\nstatic restrictions baked into the workflow -- no server- or history-resolved\nvalues -- see `guide.notes`. `guide` carries a short description and provenance.\nFill `inputs_template` (keyed by step_index) and invoke with\n`inputs_by=\"step_index|step_uuid\"`. Pass `verbose=True` for the full readme\nand uncapped option lists. `warnings` flags legacy patterns. `version` pins\nevery read to one stored version, counted the way get_workflow_details counts\nthem (0 is the oldest); left out, the latest is templated. A version Galaxy\ndoes not have is Galaxy's own 400. A negative one is refused before anything\nis sent, because Galaxy would quietly serve some other version for it.",
         "parameters": {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
           "type": "object",
@@ -784,6 +939,19 @@
               "default": false,
               "description": "Return the full readme and uncapped option lists (default false)",
               "type": "boolean"
+            },
+            "version": {
+              "description": "Stored version to template, counted as get_workflow_details counts them (0 is the oldest); the latest when left out",
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [
