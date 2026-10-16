@@ -48,6 +48,9 @@ export interface PromptOptions {
 }
 
 export interface OrbitAPI {
+  dictationStatus?: import("../shared/dictation.js").DictationAPI["dictationStatus"];
+  transcribeDictation?: import("../shared/dictation.js").DictationAPI["transcribeDictation"];
+  cancelDictation?: import("../shared/dictation.js").DictationAPI["cancelDictation"];
   prompt(message: string, options?: PromptOptions): Promise<void>;
   /** Absolute path for an OS-backed dropped File; empty for synthetic files. */
   getPathForFile(file: File): string;
@@ -216,6 +219,9 @@ export interface OrbitAPI {
 }
 
 const api: OrbitAPI = {
+  dictationStatus: () => ipcRenderer.invoke("dictation:status"),
+  transcribeDictation: (id, wav) => ipcRenderer.invoke("dictation:transcribe", id, wav),
+  cancelDictation: (id) => ipcRenderer.invoke("dictation:cancel", id),
   prompt: (message, options) => ipcRenderer.invoke("agent:prompt", message, options),
   getPathForFile: (file) => webUtils.getPathForFile(file),
   abort: () => ipcRenderer.invoke("agent:abort"),

@@ -5,6 +5,7 @@ import { pipeline } from "node:stream/promises";
 import { execSync, execFileSync } from "node:child_process";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { VitePlugin } from "@electron-forge/plugin-vite";
+import { prepareSpeech, SPEECH_STAGE_DIR } from "./scripts/prepare-speech.mjs";
 
 const APP_DIR = __dirname;
 const REPO_ROOT = path.resolve(APP_DIR, "..");
@@ -370,10 +371,14 @@ const config: ForgeConfig = {
     icon: "resources/icon",
     appBundleId: "org.galaxyproject.orbit",
     appCategoryType: "public.app-category.developer-tools",
+    extendInfo: {
+      NSMicrophoneUsageDescription:
+        "Orbit uses your microphone to transcribe speech locally into the prompt.",
+    },
     // Copies the staged Loom bundle, Node runtime, and uv binary to
     // Contents/Resources/ in the packaged app. agent.ts resolves
     // process.resourcesPath/{loom,node,uv}/... at brain spawn time.
-    extraResource: [LOOM_STAGE_DIR, NODE_STAGE_DIR, UV_STAGE_DIR],
+    extraResource: [LOOM_STAGE_DIR, NODE_STAGE_DIR, UV_STAGE_DIR, SPEECH_STAGE_DIR],
     ...macCodesign,
   },
   hooks: {
@@ -381,6 +386,7 @@ const config: ForgeConfig = {
     // packaging (e.g. `make --arch=x64` on an arm64 host) stages the
     // matching Node + uv binaries.
     prePackage: async (_forgeConfig, platform, arch) => {
+      await prepareSpeech(platform, arch);
       stageLoomBundle(platform, arch);
       await stageNodeBundle(platform, arch);
       await stageUvBundle(platform, arch);

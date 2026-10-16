@@ -17,6 +17,7 @@ import { formatGalaxyTooltip } from "./galaxy-tooltip.js";
 import { PromptQueue, queuedPreview } from "./prompt-queue.js";
 import { isHandledPrompt } from "../../../shared/handled-prompt.js";
 import { attachFilePathDrop } from "./file-drop.js";
+import { DictationController } from "./dictation.js";
 import { FeedbackDraftStore } from "./feedback-draft.js";
 import {
   ProviderFieldStore,
@@ -105,6 +106,14 @@ const queuedToggleIconEl = document.getElementById("queued-toggle-icon")!;
 const queuedListEl = document.getElementById("queued-list")!;
 const queuedClearBtn = document.getElementById("queued-clear") as HTMLButtonElement;
 const statusBadge = document.getElementById("agent-status")!;
+const dictation = new DictationController(
+  inputEl,
+  document.getElementById("dictation-btn") as HTMLButtonElement,
+  document.getElementById("dictation-status")!,
+  window.orbit,
+  (busy) => sendBtn.toggleAttribute("disabled", busy),
+);
+window.orbit.onCwdChanged(() => dictation.cancel());
 
 const cwdPathEl = document.getElementById("cwd-path")!;
 const cwdChangeBtn = document.getElementById("cwd-change")!;
@@ -1878,6 +1887,7 @@ function clearInput(): void {
 }
 
 function submit(): void {
+  if (dictation.busy) return;
   const text = inputEl.value.trim();
   if (!text) return;
 

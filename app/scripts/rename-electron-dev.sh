@@ -8,7 +8,13 @@ set -e
 PLIST="node_modules/electron/dist/Electron.app/Contents/Info.plist"
 [ -f "$PLIST" ] || exit 0
 CURRENT=$(/usr/libexec/PlistBuddy -c "Print :CFBundleName" "$PLIST" 2>/dev/null || echo "")
-[ "$CURRENT" = "Orbit" ] && exit 0
-/usr/libexec/PlistBuddy -c "Set :CFBundleName Orbit" "$PLIST"
-/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Orbit" "$PLIST"
+MIC=$(/usr/libexec/PlistBuddy -c "Print :NSMicrophoneUsageDescription" "$PLIST" 2>/dev/null || echo "")
+[ "$CURRENT" = "Orbit" ] && [ -n "$MIC" ] && exit 0
+if [ "$CURRENT" != "Orbit" ]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleName Orbit" "$PLIST"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Orbit" "$PLIST"
+fi
+if [ -z "$MIC" ]; then
+  /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string Orbit uses your microphone to transcribe speech locally into the prompt." "$PLIST"
+fi
 codesign --force --deep --sign - node_modules/electron/dist/Electron.app >/dev/null 2>&1 || true

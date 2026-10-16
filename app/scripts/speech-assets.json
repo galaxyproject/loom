@@ -1,0 +1,9 @@
+{
+  "version": "v1.9.5",
+  "commit": "d1be6fde11ac6e0407606b4e42fe72d34add8037",
+  "sourceSha256": "645445da884df6dbd52b30f82d7be7c01d1767c938714e477e786b88d529e9f4",
+  "modelRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+  "modelFile": "ggml-base.en-q5_1.bin",
+  "modelSha256": "4baf70dd0d7c4247ba2b81fafd9c01005ac77c2f9ef064e00dcf195d0e2fdd2f",
+  "modelBytes": 59721011
+}

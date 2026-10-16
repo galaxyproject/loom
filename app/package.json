@@ -6,7 +6,7 @@
   "license": "MIT",
   "main": ".vite/build/main.js",
   "scripts": {
-    "prestart": "./scripts/rename-electron-dev.sh",
+    "prestart": "node scripts/prepare-speech.mjs && ./scripts/rename-electron-dev.sh",
     "start": "electron-forge start -- --no-sandbox --no-zygote",
     "package": "electron-forge package",
     "make": "electron-forge make",

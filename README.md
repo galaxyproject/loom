@@ -393,6 +393,10 @@ The artifact pane reveals on the first agent turn. Switch tabs with the buttons 
 
 Keyboard shortcuts:
 
+- `Cmd/Ctrl+Shift+M` — start or finish local English dictation. You can also
+  click the microphone beside the prompt. Speech fills the editable draft;
+  review it and press Send. `Esc` cancels recording or transcription. Desktop
+  packages include Whisper Base English and work offline for transcription.
 - `Cmd/Ctrl+\` — collapse / expand the artifact pane
 - `Cmd/Ctrl+B` — collapse / expand the file tree
 - `Cmd/Ctrl+,` — open Preferences

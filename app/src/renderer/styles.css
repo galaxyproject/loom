@@ -1740,6 +1740,45 @@ body.platform-darwin #files-title {
   width: 100%;
 }
 
+#dictation-btn {
+  flex-shrink: 0;
+  align-self: stretch;
+  width: 40px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  color: var(--text-bright);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#dictation-btn[hidden],
+#dictation-status[hidden] {
+  display: none;
+}
+#dictation-btn:hover {
+  background: var(--bg-hover);
+}
+#dictation-btn[data-state="recording"] {
+  background: var(--error);
+  color: #fff;
+}
+#dictation-btn[data-state="starting"],
+#dictation-btn[data-state="transcribing"] {
+  color: var(--accent);
+}
+#dictation-btn:disabled,
+#send-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+#dictation-status {
+  padding-top: 8px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
 /* Slash-command autocomplete popup. Positioned above the textarea. */
 #slash-popup {
   position: absolute;

@@ -48,6 +48,14 @@ npm install
 cd app && npm install      # needed even if you never touch Orbit -- see below
 ```
 
+Desktop dictation stages Whisper Base English on the first `npm start` or
+package build. Developers need a C++ compiler and CMake (or `uvx`, which can
+provide CMake). The build downloads checksum-pinned source and the 59.7 MB
+model into the ignored `app/.speech-stage/` directory. Desktop packages include
+the resulting runtime and model; users do not need these build tools or a
+model download. The pinned versions and checksums live in
+`app/scripts/speech-assets.json`.
+
 **There is no build step.** `extensions/loom/` is TypeScript that Pi loads
 directly, and `shared/` is hand-written JS with checked-in `.d.ts` files.
 `tsc` is configured `noEmit` -- it only typechecks. Edit a file, restart, done.

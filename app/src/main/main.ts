@@ -19,6 +19,7 @@ import { primeOAuthProviders } from "./oauth-handler.js";
 import { AgentManager } from "./agent.js";
 import { registerFilesIpc, startFilesWatcher, stopFilesWatcher } from "./files-handler.js";
 import { registerDashboardIpc } from "./dashboard-handler.js";
+import { registerDictationIpc } from "./dictation-handler.js";
 import { ProcMonitor } from "./proc-monitor.js";
 import { migratePlaintextSecrets, isAvailable as safeStorageAvailable } from "./secure-config.js";
 import { getConfigPath } from "../../../shared/loom-config.js";
@@ -296,6 +297,7 @@ function createWindow(cwd: string): void {
   registerIpcHandlers(agentManager);
   registerFilesIpc(() => agentManager?.getCwd() ?? cwd);
   registerDashboardIpc(() => agentManager?.getCwd() ?? cwd);
+  registerDictationIpc(mainWindow);
   startFilesWatcher(mainWindow, cwd);
 
   procMonitor = new ProcMonitor(mainWindow, () => agentManager?.getPid() ?? null);

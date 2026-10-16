@@ -3,3 +3,6 @@ node_modules
 out/
 dist/
 .loom-stage/
+.speech-stage/
+test-results/
+playwright-report/
