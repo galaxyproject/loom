@@ -41,7 +41,8 @@ export async function renderVega(container: HTMLElement, spec: unknown, root = "
   try {
     await embed(container, { ...confined, width: "container", height: "container" } as any, {
       renderer: "svg",
-      actions: false,
+      // Open in Vega Editor would post the spec, and the dataset url in it, to another host.
+      actions: { export: true, source: true, compiled: true, editor: false },
       loader: confinedLoader(root) as any,
       // Expressions are interpreted rather than compiled into functions.
       ast: true,

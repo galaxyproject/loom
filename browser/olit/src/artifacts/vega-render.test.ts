@@ -27,14 +27,17 @@ describe("renderVega", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps a spec's usermeta from replacing the embed options", async () => {
+  it("offers export and source, never the editor, whatever the spec's usermeta asks", async () => {
     const spec = {
       ...chart({ values: [{ a: 1 }] }),
       usermeta: { embedOptions: { actions: true } },
     };
     const { container } = await render(spec);
     expect(container.querySelector("svg")).not.toBeNull();
-    expect(container.querySelector(".vega-actions")).toBeNull();
+    const actions = container.querySelector(".vega-actions")!;
+    expect(actions.textContent).toContain("Save as SVG");
+    expect(actions.textContent).toContain("View Source");
+    expect(actions.textContent).not.toContain("Open in Vega Editor");
   });
 
   it("draws a chart with its expressions interpreted", async () => {
