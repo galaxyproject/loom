@@ -1,4 +1,5 @@
 import { quote, segment, tables } from "@galaxyproject/orbit-browser/agent";
+import { parse } from "vega";
 import { compile } from "vega-lite";
 
 type Json = Record<string, any>;
@@ -214,6 +215,16 @@ export function build(
   if (!isObject(given) || !Object.keys(given).length) {
     return { ready: null, refusal: "`spec` has to be a Vega-Lite specification object." };
   }
+  const outdated = selections(given);
+  if (outdated.length) {
+    return {
+      ready: null,
+      refusal:
+        `the spec uses \`selection\` at ${outdated.join(", ")}, which Vega-Lite 5 replaced and ` +
+        "now ignores. Declare interactions as `params` with a `select` and refer to one with " +
+        "`param`.",
+    };
+  }
   const { data, ...unnamed } = given;
   const spec = placeholder(data) ? unnamed : given;
   const owned = dataPaths(spec);
@@ -269,7 +280,20 @@ export function build(
   };
 }
 
-/** vega-lite's verdict on a spec, with every error it logs. */
+/** Where a spec still uses `selection`, which Vega-Lite 5 replaced with `params`. */
+function selections(value: unknown, path = "spec"): string[] {
+  if (Array.isArray(value)) return value.flatMap((v, i) => selections(v, `${path}[${i}]`));
+  if (!isObject(value)) return [];
+  return Object.entries(value).flatMap(([key, v]) =>
+    key === "selection"
+      ? [`${path}.${key}`]
+      : key === "data"
+        ? []
+        : selections(v, `${path}.${key}`),
+  );
+}
+
+/** vega-lite's verdict on a spec, with every error it logs, and vega's on the expressions in it. */
 export function compiled(spec: Json): { compiles: boolean; problems: string[] } {
   const problems: string[] = [];
   const logger: any = {
@@ -280,7 +304,7 @@ export function compiled(spec: Json): { compiles: boolean; problems: string[] } 
     debug: () => logger,
   };
   try {
-    compile(spec as any, { logger });
+    parse(compile(spec as any, { logger }).spec, undefined, { ast: true });
   } catch (err) {
     problems.push(String((err as Error)?.message ?? err));
   }

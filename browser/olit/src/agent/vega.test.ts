@@ -256,6 +256,25 @@ describe("what reaches the page", () => {
     expect(broken.compiles).toBe(false);
     expect(broken.problems.length).toBeGreaterThan(0);
   });
+
+  it("reports an expression the renderer cannot parse", () => {
+    const spec = (calculate: string) =>
+      built({ ...SCATTER, transform: [{ calculate, as: "p" }] }).ready!;
+    expect(vega.compiled(spec("-log(datum['col:3']) / LN10")).compiles).toBe(true);
+    expect(vega.compiled(spec("-log10(datum['col:3'])")).problems).toEqual([
+      "Unrecognized function: log10",
+    ]);
+  });
+
+  it("refuses the selection Vega-Lite 5 replaced with params", () => {
+    const zoom = { grid: { type: "interval", bind: "scales" } };
+    const { ready, refusal } = built({ ...SCATTER, selection: zoom });
+    expect(ready).toBeNull();
+    expect(refusal).toContain("`selection` at spec.selection");
+    expect(refusal).toContain("`params` with a `select`");
+    const params = [{ name: "zoom", select: "interval", bind: "scales" }];
+    expect(vega.compiled(built({ ...SCATTER, params }).ready!).compiles).toBe(true);
+  });
 });
 
 describe("the dataset has to be readable", () => {
