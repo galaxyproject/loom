@@ -40,12 +40,16 @@ import { isSessionIndexEnabled } from "./session-index/is-enabled";
 import { registerSkillTriggers } from "./skill-triggers";
 import { registerIwcPlanCheck } from "./iwc-plan-check";
 import { registerSraImportGate } from "./sra-import-gate";
+import { registerGalaxyRepeatGuard } from "./galaxy-repeat-guard";
+import { registerGalaxyHistoryGuard } from "./galaxy-history-guard";
 import { registerEvidenceGate } from "./evidence-gate";
 import { registerEvidenceOverrideCommand } from "./evidence-override-command";
 import { registerProposalCommands } from "./proposal-commands";
 import { registerExecGuard } from "./exec-guard";
 import { registerSandbox } from "./sandbox";
 import { isLocalExecDisabled } from "./local-exec";
+import { profileFromEnv } from "../../shared/capability-profile.js";
+import { galaxyCredentials } from "./galaxy-api";
 import { registerSecretRedaction } from "./secret-redaction";
 import { registerLessonHint } from "./lesson-hint";
 import { withoutAppendedLessonHints } from "./lessons/pi-event-contract";
@@ -55,7 +59,7 @@ import { registerObservationTriggers } from "./observation-triggers";
 import { registerObservationsCommand } from "./observations-command";
 import { registerMcpOutputRecovery } from "./mcp-output";
 import { registerLoomMcpServers } from "./mcp-servers";
-import { galaxyMcpToolName } from "../../shared/galaxy-mcp-tools.js";
+import { MCP_FAMILY } from "../../shared/galaxy-mcp-tools.js";
 import { galaxyCall, registerMcpRecovery } from "./mcp-recovery";
 import { registerGalaxyPollGuard } from "./galaxy-poll-guard";
 import { registerProgressUpdates } from "./progress-updates";
@@ -84,7 +88,7 @@ import { LoomWidgetKey, encodeMarkdownWidget } from "../../shared/loom-shell-con
 
 /** Status-bar label for a Galaxy tool -- galaxy-mcp's or Loom's own -- else undefined. */
 function galaxyToolLabel(toolName: string | undefined): string | undefined {
-  const bare = galaxyMcpToolName(toolName) ?? toolName?.match(/^galaxy_(.+)/)?.[1];
+  const bare = MCP_FAMILY.toolName(toolName) ?? toolName?.match(/^galaxy_(.+)/)?.[1];
   return bare?.replace(/_/g, " ");
 }
 
@@ -102,7 +106,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   // action. Skipping both keeps the shell's gate the single tool_call authority.
   // Shells WITH a local exec surface (desktop, CLI) set LOOM_LOCAL_EXEC
   // authoritatively at spawn so an ambient value can't toggle this off here.
-  if (!isLocalExecDisabled()) {
+  if (profileFromEnv().files) {
     // Register the gate first so its tool_call decision is the authoritative
     // boundary before anything else runs.
     registerExecGuard(pi);
@@ -206,6 +210,8 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   registerIwcPlanCheck(pi);
   registerEvidenceGate(pi);
   registerSraImportGate(pi);
+  registerGalaxyRepeatGuard(pi);
+  registerGalaxyHistoryGuard(pi);
   registerEvidenceOverrideCommand(pi);
   // ── Approval registry (#476): the model proposes with loom_propose; the user
   // approves with /approve (or revokes, or lists with /pending). The registry
@@ -243,6 +249,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
       }
       const { profiles, active } = loadProfiles();
       const profileNames = Object.keys(profiles);
+      const current = galaxyCredentials();
 
       async function reloadOrMessage(url: string) {
         if (typeof ctx.reload === "function") {
@@ -291,12 +298,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
           await reloadOrMessage(profiles[name].url);
           return;
         }
-      } else if (
-        profileNames.length === 1 &&
-        active &&
-        process.env.GALAXY_URL &&
-        process.env.GALAXY_API_KEY
-      ) {
+      } else if (profileNames.length === 1 && active && current.url && current.apiKey) {
         ctx.ui.notify(`Connecting to ${profiles[active].url}...`, "info");
         await reloadOrMessage(profiles[active].url);
         return;
@@ -536,7 +538,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
       }
     }
 
-    if (event.toolName === "mcp__galaxy__connect" && !event.isError) {
+    if (MCP_FAMILY.toolName(event.toolName) === "connect" && !event.isError) {
       // A non-error mcp__galaxy__connect means we're now bound to the current env
       // creds (galaxy-mcp raises on failure -> isError), so advance the
       // credential-drift baseline. Keyed off isError, not the loose success
@@ -555,7 +557,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
       }
     }
 
-    if (event.toolName === "mcp__galaxy__create_history" && !event.isError) {
+    if (MCP_FAMILY.toolName(event.toolName) === "create_history" && !event.isError) {
       try {
         const resultText =
           typeof event.result === "string" ? event.result : JSON.stringify(event.result);
@@ -604,7 +606,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
       /* stale/headless context -- a dropped reconnect hint is fine */
     }
 
-    if (event.toolName === "mcp__galaxy__connect") {
+    if (MCP_FAMILY.toolName(event.toolName) === "connect") {
       try {
         const firstContent = event.content?.[0];
         const resultText = firstContent && "text" in firstContent ? firstContent.text : undefined;
@@ -617,7 +619,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
       }
     }
 
-    if (event.toolName === "mcp__galaxy__create_history") {
+    if (MCP_FAMILY.toolName(event.toolName) === "create_history") {
       try {
         const firstContent = event.content?.[0];
         const resultText = firstContent && "text" in firstContent ? firstContent.text : undefined;

@@ -14,8 +14,9 @@ __pycache__/
 static/
 temp/
 
-# Vendored skills corpus: a build artifact fetched by core/scripts/install_skills.js. The
-# exact revision is pinned in the committed core/skills.lock.json, so builds stay
+# Vendored skills corpus: a build artifact core/scripts/install_skills.js copies from Orbit's
+# extensions/loom/vendor/skills (or fetches from GitHub without it). The exact revision is
+# pinned in the committed core/skills.lock.json, so builds stay
 # reproducible without carrying 860 KB of third-party content in this repo.
 core/src/agent/skills/galaxy-skills/
 

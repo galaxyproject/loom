@@ -151,6 +151,12 @@ describe("SraImportGate", () => {
     expect(calls.every((c) => g.check(c))).toBe(true);
   });
 
+  it("matches run_tool however the model spaces or cases it", () => {
+    const calls = [call("a", "SRR1"), call("b", "SRR2")].map((c) => ({ ...c, name: " Run_Tool " }));
+    g.assistant(calls);
+    expect(calls.every((c) => g.check(c))).toBe(true);
+  });
+
   it("accepts one list-file HDA as the correction of a rejected batch", () => {
     g.assistant([call("a", "SRR1"), call("b", "SRR2")]);
     const corrected = call("file", "unused");

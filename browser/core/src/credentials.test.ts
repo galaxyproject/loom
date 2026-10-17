@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { PROVIDERS as providers, providerById, takesModel } from "./agent/providers";
+import {
+  offeredProviders,
+  PROVIDERS as providers,
+  providerById,
+  takesModel,
+} from "./agent/providers";
 import { credentialProblem } from "./credentials";
 
 describe("credentialProblem", () => {
@@ -29,6 +34,15 @@ describe("credentialProblem", () => {
 
   it("needs no key for the Galaxy proxy", () => {
     expect(credentialProblem({ provider: "galaxy" })).toBeNull();
+  });
+
+  it("refuses a stored Galaxy proxy selection on a page Galaxy serves no proxy for", () => {
+    const offered = offeredProviders(false);
+    expect(offered.some((p) => p.id === "galaxy")).toBe(false);
+    expect(offered.length).toBe(providers.length - 1);
+    expect(credentialProblem({ provider: "galaxy" }, offered)).toContain("not available");
+    expect(credentialProblem({ provider: "ollama" }, offered)).toBeNull();
+    expect(offeredProviders(true)).toBe(providers);
   });
 
   it("lets a local server name its own model", () => {

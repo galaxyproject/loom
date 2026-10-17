@@ -1,7 +1,7 @@
 /** Provider/model/key selection, held on the client and never sent to Galaxy. */
 
 import { DEFAULT_BRAND, type Brand } from "./agent/brand";
-import { needsKey, providerById, takesModel } from "./agent/providers";
+import { needsKey, PROVIDERS, providerById, takesModel, type Provider } from "./agent/providers";
 
 export interface Credentials {
   provider: string;
@@ -47,10 +47,15 @@ export function clearCredentials(brand: Brand = DEFAULT_BRAND): void {
  * keep the overlay up and say what is missing, instead of starting an agent that
  * fails on its first request.
  */
-export function credentialProblem(creds: Credentials | null): string | null {
+export function credentialProblem(
+  creds: Credentials | null,
+  offered: readonly Provider[] = PROVIDERS,
+): string | null {
   if (!creds) return "Choose a provider to continue.";
   const p = providerById(creds.provider);
   if (!p) return `Unknown provider "${creds.provider}".`;
+  // A selection stored under a page that offered the Galaxy proxy is no use on one without it.
+  if (!offered.includes(p)) return `${p.name} is not available on this page.`;
   if (needsKey(p) && !creds.apiKey?.trim()) return `${p.name} requires an API key.`;
   // A server that takes no key ignores the model name too, so only hosted providers need one.
   if (takesModel(p) && needsKey(p) && !creds.model?.trim()) {

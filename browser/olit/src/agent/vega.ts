@@ -1,4 +1,5 @@
 import { quote, segment, tables } from "@galaxyproject/orbit-browser/agent";
+import { parse } from "vega";
 import { compile } from "vega-lite";
 
 type Json = Record<string, any>;
@@ -68,7 +69,13 @@ export function dataBlock(datasetId: string, details: Json, root = "/"): Json {
       ? { type: "csv" }
       : { type: "dsv", delimiter }
     : { type: "dsv", delimiter, header: tables.columnNames(details) };
-  const parse = Object.fromEntries(tables.numericColumns(details).map((name) => [name, "number"]));
+  const later = tables.dataRows(details)?.numericAfter ?? [];
+  const parse = Object.fromEntries(
+    tables
+      .numericColumns(details)
+      .filter((name) => !later.includes(name))
+      .map((name) => [name, "number"]),
+  );
   if (Object.keys(parse).length) {
     format.parse = parse;
   }
@@ -208,6 +215,16 @@ export function build(
   if (!isObject(given) || !Object.keys(given).length) {
     return { ready: null, refusal: "`spec` has to be a Vega-Lite specification object." };
   }
+  const outdated = selections(given);
+  if (outdated.length) {
+    return {
+      ready: null,
+      refusal:
+        `the spec uses \`selection\` at ${outdated.join(", ")}, which Vega-Lite 5 replaced and ` +
+        "now ignores. Declare interactions as `params` with a `select` and refer to one with " +
+        "`param`.",
+    };
+  }
   const { data, ...unnamed } = given;
   const spec = placeholder(data) ? unnamed : given;
   const owned = dataPaths(spec);
@@ -240,13 +257,43 @@ export function build(
     }
   }
   const { $schema: _, ...rest } = spec;
+  // At the top, where every layer, facet and concatenated view reads the one source from.
+  const rows = tables.dataRows(details);
+  const kept = rows
+    ? [
+        { filter: rows.test },
+        ...rows.numericAfter.map((name) => ({
+          calculate: `toNumber(datum[${JSON.stringify(name)}])`,
+          as: name,
+        })),
+      ]
+    : [];
+  const transform = [...kept, ...((rest.transform as Json[] | undefined) ?? [])];
   return {
-    ready: { $schema: SCHEMA, ...rest, data: dataBlock(datasetId, details, root) },
+    ready: {
+      $schema: SCHEMA,
+      ...rest,
+      data: dataBlock(datasetId, details, root),
+      ...(transform.length ? { transform } : {}),
+    },
     refusal: null,
   };
 }
 
-/** vega-lite's verdict on a spec, with every error it logs. */
+/** Where a spec still uses `selection`, which Vega-Lite 5 replaced with `params`. */
+function selections(value: unknown, path = "spec"): string[] {
+  if (Array.isArray(value)) return value.flatMap((v, i) => selections(v, `${path}[${i}]`));
+  if (!isObject(value)) return [];
+  return Object.entries(value).flatMap(([key, v]) =>
+    key === "selection"
+      ? [`${path}.${key}`]
+      : key === "data"
+        ? []
+        : selections(v, `${path}.${key}`),
+  );
+}
+
+/** vega-lite's verdict on a spec, with every error it logs, and vega's on the expressions in it. */
 export function compiled(spec: Json): { compiles: boolean; problems: string[] } {
   const problems: string[] = [];
   const logger: any = {
@@ -257,7 +304,7 @@ export function compiled(spec: Json): { compiles: boolean; problems: string[] } 
     debug: () => logger,
   };
   try {
-    compile(spec as any, { logger });
+    parse(compile(spec as any, { logger }).spec, undefined, { ast: true });
   } catch (err) {
     problems.push(String((err as Error)?.message ?? err));
   }

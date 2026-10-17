@@ -1,3 +1,5 @@
+import { fetchSameOriginOnly } from "../../../../shared/redirect-guard.js";
+
 const RETRY_STATUS = new Set([429, 500, 502, 503, 504]);
 const IDEMPOTENT = new Set(["GET", "HEAD", "PUT", "DELETE"]);
 const ATTEMPTS = 3;
@@ -90,14 +92,29 @@ export function galaxyFetch({ key, credentials = "include", signal }: GalaxyOpti
       headers.set("x-api-key", key);
     }
     const method = request.method.toUpperCase();
+    // Read once: a same-origin hop or a retry sends it again.
+    const body =
+      key && method !== "GET" && method !== "HEAD"
+        ? await request.clone().arrayBuffer()
+        : undefined;
     for (let attempt = 0; ; attempt++) {
-      const response = await fetch(
-        new Request(request.clone(), {
-          headers,
-          credentials: key ? "omit" : credentials,
-          cache: "no-store",
-        }),
-      );
+      // Node's fetch carries x-api-key along a redirect to any host, so a key only follows a
+      // same-origin hop. Without one the page's session authenticates and the browser follows
+      // redirects itself; a manual redirect there would only answer an opaque status 0.
+      const response = key
+        ? await fetchSameOriginOnly(
+            request.url,
+            {
+              method,
+              headers,
+              body,
+              signal: request.signal,
+              credentials: "omit",
+              cache: "no-store",
+            },
+            { serverLabel: "Galaxy" },
+          )
+        : await fetch(new Request(request.clone(), { headers, credentials, cache: "no-store" }));
       // A POST Galaxy already applied would run twice; a rate limit applied nothing.
       const retryable =
         response.status === 429 || (IDEMPOTENT.has(method) && RETRY_STATUS.has(response.status));

@@ -65,6 +65,7 @@ import { release } from "node:os";
 import { getConfigDir } from "./config.js";
 import { readLoomVersion } from "./feedback.js";
 import { loadProfiles } from "./profiles.js";
+import { galaxyCredentials } from "./galaxy-api.js";
 import { isWsl } from "../../shared/wsl.js";
 import { galaxyMcpToolName } from "../../shared/galaxy-mcp-tools.js";
 import {
@@ -274,8 +275,9 @@ export function resolveObservationServer(url: string | undefined): string {
  * configured profile and no env URL, and reading that as "private" would
  * mislabel a public server. The profile's URL is not a secret.
  */
-export function currentGalaxyUrl(env: NodeJS.ProcessEnv = process.env): string | undefined {
-  if (env.GALAXY_URL) return env.GALAXY_URL;
+export function currentGalaxyUrl(env?: NodeJS.ProcessEnv): string | undefined {
+  const { url } = galaxyCredentials(env);
+  if (url) return url;
   const { active, profiles } = loadProfiles();
   return active ? profiles[active]?.url : undefined;
 }

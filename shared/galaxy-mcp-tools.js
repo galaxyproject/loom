@@ -30,3 +30,35 @@ export function galaxyMcpToolName(toolName) {
 export function isGalaxyMcpTool(toolName) {
   return galaxyMcpToolName(toolName) !== undefined;
 }
+
+/**
+ * How a shell names galaxy-mcp's tools to the model, so a guard can ask "is
+ * this run_tool?" without knowing whether it runs under pi's MCP or in the
+ * browser, which offers the same tools by their bare names.
+ *
+ * @typedef {object} GalaxyToolFamily
+ * @property {(tool: string) => string} tool the model-facing name for a galaxy-mcp tool
+ * @property {(toolName: string | undefined) => string | undefined} toolName
+ *   the galaxy-mcp tool behind a model-facing name, or undefined when it isn't one
+ */
+
+/** @type {Readonly<GalaxyToolFamily>} */
+export const MCP_FAMILY = Object.freeze({
+  tool: (tool) => galaxyMcpTool(tool),
+  toolName: (toolName) => galaxyMcpToolName(toolName),
+});
+
+/**
+ * Bare names carry no marker, so a bare family has to be told which names are
+ * galaxy-mcp's; anything else (bash, read, a shell's own tools) isn't Galaxy.
+ *
+ * @param {Iterable<string>} tools the galaxy-mcp tool names the shell offers bare
+ * @returns {Readonly<GalaxyToolFamily>}
+ */
+export function bareFamily(tools) {
+  const known = new Set(tools);
+  return Object.freeze({
+    tool: (tool) => tool,
+    toolName: (toolName) => (toolName !== undefined && known.has(toolName) ? toolName : undefined),
+  });
+}

@@ -8,7 +8,13 @@ export interface ConfirmDeps {
   note: (text: string) => void;
 }
 
-/** Bind the modal: `show` asks, `dismiss` takes down a confirmation the agent withdrew. */
+/** The id of a question the page asks for itself; the agent's ids are numbers. */
+const PAGE = "page";
+
+/**
+ * Bind the modal: `show` asks for the agent, `dismiss` takes down a confirmation the agent
+ * withdrew, and `ask` puts the page's own question and resolves with the answer.
+ */
 export function createConfirm(deps: ConfirmDeps) {
   const { container } = deps;
   const overlay = container.querySelector<HTMLElement>("#ext-overlay")!;
@@ -21,7 +27,12 @@ export function createConfirm(deps: ConfirmDeps) {
   let shown: { id: string; close: () => void } | undefined;
 
   // One at a time, listeners torn down on answer, Escape reads as no.
-  function show(confirmId: string, request: any) {
+  function open(
+    id: string,
+    request: any,
+    answer: (approved: boolean) => void,
+    withdrawn = () => {},
+  ) {
     title.textContent = request?.title || "Confirm";
     message.textContent = request?.message || "";
     overlay.classList.remove("hidden");
@@ -31,12 +42,11 @@ export function createConfirm(deps: ConfirmDeps) {
       accept.removeEventListener("click", onYes);
       deny.removeEventListener("click", onNo);
       container.removeEventListener("keydown", onKey, true);
-      if (shown?.id === confirmId) shown = undefined;
+      if (shown?.id === id) shown = undefined;
     };
     const respond = (approved: boolean) => {
       close();
-      deps.respond(confirmId, approved);
-      deps.note(approved ? `Approved: ${request?.message || ""}` : "Declined.");
+      answer(approved);
     };
     const onYes = () => respond(true);
     const onNo = () => respond(false);
@@ -52,7 +62,22 @@ export function createConfirm(deps: ConfirmDeps) {
     deny.addEventListener("click", onNo);
     container.addEventListener("keydown", onKey, true);
     accept.focus();
-    shown = { id: confirmId, close };
+    shown = {
+      id,
+      close: () => {
+        close();
+        withdrawn();
+      },
+    };
+  }
+
+  function show(confirmId: string, request: any) {
+    // The agent's turn waits on its answer, so it takes the modal from the page's own question.
+    if (shown?.id === PAGE) shown.close();
+    open(confirmId, request, (approved) => {
+      deps.respond(confirmId, approved);
+      deps.note(approved ? `Approved: ${request?.message || ""}` : "Declined.");
+    });
   }
 
   /** Take down `confirmId` if it is still on screen; a newer confirmation stays. */
@@ -60,5 +85,11 @@ export function createConfirm(deps: ConfirmDeps) {
     if (shown?.id === confirmId) shown.close();
   }
 
-  return { show, dismiss };
+  /** The page's own question: no while anything else is on screen, or when taken down. */
+  function ask(request: { title: string; message: string }): Promise<boolean> {
+    if (shown) return Promise.resolve(false);
+    return new Promise((resolve) => open(PAGE, request, resolve, () => resolve(false)));
+  }
+
+  return { show, dismiss, ask };
 }

@@ -11,8 +11,8 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "^1.0.4",
-    "@earendil-works/pi-durable": "https://github.com/guerler/pi/releases/download/durable-v1.0.4-olit.2/earendil-works-pi-durable-1.0.4-olit.2.tgz",
+    "@earendil-works/pi-ai": "^1.3.0",
+    "@earendil-works/pi-durable": "https://github.com/guerler/pi/releases/download/durable-v1.3.0-olit.0/earendil-works-pi-durable-1.3.0-olit.0.tgz",
     "@galaxyproject/orbit-browser": "0.1.0",
     "@types/node": "^22.9.0",
     "happy-dom": "^20.0.11",

@@ -86,9 +86,27 @@ const GALAXY_REDIRECT_LABELS = {
   urlSettingLabel: "GALAXY_URL",
 } as const;
 
+/** The Galaxy URL and key in play, as given -- not normalized, possibly unset. */
+export interface GalaxyCredentials {
+  url: string | undefined;
+  apiKey: string | undefined;
+}
+
+/**
+ * The one place the brain reads Galaxy credentials. Without an argument it asks
+ * the transport, so a shell with no process env (the browser worker) can supply
+ * them, and falls back to GALAXY_URL/GALAXY_API_KEY. Pass `env` to read a given
+ * environment instead -- pure helpers and tests do. Writers (/connect,
+ * switchProfile) still publish into process.env.
+ */
+export function galaxyCredentials(env?: NodeJS.ProcessEnv): GalaxyCredentials {
+  if (!env && transport.credentials) return transport.credentials();
+  const source = env ?? process.env;
+  return { url: source.GALAXY_URL, apiKey: source.GALAXY_API_KEY };
+}
+
 export function getGalaxyConfig(): GalaxyConfig | null {
-  const url = process.env.GALAXY_URL;
-  const apiKey = process.env.GALAXY_API_KEY;
+  const { url, apiKey } = galaxyCredentials();
   if (!url || !apiKey) return null;
   // Galaxy URLs from the config profile / env often arrive scheme-less
   // (e.g. "test.galaxyproject.org/"). The MCP layer tolerates that, but
@@ -121,26 +139,51 @@ export class GalaxyApiError extends Error {
   }
 }
 
+type GalaxyFetch = (url: string, init: RequestInit) => Promise<Response>;
+
 /**
- * Replaces the network for every Galaxy call made here, galaxy-ops' included.
+ * How the brain reaches Galaxy when process env and the network aren't the
+ * answer. Every part is optional; an empty transport is the default.
+ */
+export interface GalaxyTransport {
+  /** Replaces the network for every Galaxy call made here, galaxy-ops' included. */
+  fetch?: GalaxyFetch;
+  /** Supplies the URL and key in place of GALAXY_URL/GALAXY_API_KEY. */
+  credentials?: () => GalaxyCredentials;
+  /** The answers are recorded, not live, so provenance marks them as fixtures. */
+  fixture?: boolean;
+}
+
+let transport: GalaxyTransport = {};
+// The transport's own fetch while a fixture stands in for it.
+let liveFetch: GalaxyFetch | undefined;
+
+export function setGalaxyTransport(next: GalaxyTransport | null): void {
+  transport = next ?? {};
+  liveFetch = undefined;
+}
+
+/**
  * Set only by the Tier-1 fixture seam (galaxy-fixture.ts) and by tests: the
  * capture scenarios have to exercise reconcile and enrichment against recorded
  * responses, and there is no other layer every one of those calls shares.
+ * Swaps only the fetch, so installed credentials survive both setting and
+ * clearing it, and clearing it puts back whatever fetch the transport had.
  */
-type GalaxyFetch = (url: string, init: RequestInit) => Promise<Response>;
-let fetchOverride: GalaxyFetch | null = null;
-
 export function setGalaxyFetchOverride(fetchImpl: GalaxyFetch | null): void {
-  fetchOverride = fetchImpl;
+  if (transport.fixture !== true) liveFetch = transport.fetch;
+  transport = fetchImpl
+    ? { ...transport, fetch: fetchImpl, fixture: true }
+    : { ...transport, fetch: liveFetch, fixture: false };
 }
 
-/** Whether Galaxy answers are coming from an override rather than a server. */
+/** Whether Galaxy answers are coming from a recorded fixture rather than a server. */
 export function isGalaxyFetchOverridden(): boolean {
-  return fetchOverride !== null;
+  return transport.fixture === true;
 }
 
 function galaxyFetch(url: string, init: RequestInit): Promise<Response> {
-  if (fetchOverride) return fetchOverride(url, init);
+  if (transport.fetch) return transport.fetch(url, init);
   return fetchSameOriginOnly(url, init, GALAXY_REDIRECT_LABELS);
 }
 

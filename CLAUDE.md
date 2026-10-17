@@ -46,7 +46,11 @@ cd app && npm start
 - Orbit should stay a shell, not a second brain.
 - `extensions/loom/vendor/` is generated from `galaxyproject/agentic-plugins` at the commit pinned
   in `scripts/skills.manifest.json`. Change the manifest and run `npm run sync:skills`; never
-  hand-edit the vendored files. `npm run check:skills` is the CI drift gate.
+  hand-edit the vendored files. `npm run check:skills` is the CI drift gate. The browser shell
+  copies its galaxy-skills corpus from the same tree (`browser/core/scripts/install_skills.js`), so
+  a manifest bump moves both shells; rebuild the browser and commit its `core/skills.lock.json`.
+  Orbit's system-prompt goldens carry the skills catalog too, so a bump that changes a description
+  also needs `npx vitest run -u tests/system-prompt-surface.test.ts`.
 
 ## Validation bias
 

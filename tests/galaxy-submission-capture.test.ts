@@ -22,6 +22,7 @@ import {
 } from "../extensions/loom/state";
 import { isUlid } from "../extensions/loom/ulid";
 import { readAttemptRecord } from "../extensions/loom/galaxy-provenance";
+import { bareFamily } from "../shared/galaxy-mcp-tools.js";
 
 // Hook run right after the notebook writer reads a file, so a test can land a
 // competing write inside the read-then-rename window deterministically.
@@ -491,6 +492,33 @@ describe("submission capture: attribution is captured at dispatch", () => {
       mcpResult(INVOCATION),
     );
     expect(findInvocationBlocks(notebook())[0].notebookAnchor).toBe("plan-a-step-1");
+  });
+
+  it("captures a run_tool a shell offers by its bare name", async () => {
+    const handlers: Record<string, ((event: any, ctx: any) => Promise<unknown>)[]> = {};
+    registerSubmissionCapture(
+      {
+        on: (event: string, h: (event: any, ctx: any) => Promise<unknown>) =>
+          (handlers[event] ??= []).push(h),
+      } as any,
+      bareFamily(["run_tool"]),
+    );
+    setCurrentStepAnchor("plan-a-step-3");
+    await handlers.tool_execution_start[0](
+      { toolCallId: "bare", toolName: "run_tool", args: { tool_id: "fastp" } },
+      {},
+    );
+    // The step comes from the start event, so a moved anchor shows the start was seen too.
+    setCurrentStepAnchor("plan-a-step-9");
+    await handlers.tool_execution_end[0](
+      { toolCallId: "bare", toolName: "run_tool", result: mcpResult(THREE_JOBS), isError: false },
+      {},
+    );
+    expect(findJobBlocks(notebook()).map((b) => b.notebookAnchor)).toEqual([
+      "plan-a-step-3",
+      "plan-a-step-3",
+      "plan-a-step-3",
+    ]);
   });
 
   it("does not clear a step that moved on while an earlier run was answering", async () => {

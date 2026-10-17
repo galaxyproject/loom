@@ -1,11 +1,16 @@
 import { parse } from "yaml";
 
+import {
+  renderSkillsRouter,
+  selectSkills as selectSurfaceSkills,
+  SKILLS_SURFACE_ID,
+} from "../../../../shared/skills-router.js";
 import { DEFAULT_BRAND, type Brand } from "./brand";
 import { fail, type AgentTool } from "./tool";
 import type { AgentFlavor } from "./tools";
 
 /** Orbit's own surface tag, so the corpus offers the same skills it offers Orbit. */
-export const SURFACE_ID = "loom";
+export const SURFACE_ID = SKILLS_SURFACE_ID;
 /**
  * The folder, in the core and in a flavor, that holds the agent's own skills. They are offered as
  * the brand's repo, sorted first, so `skills_fetch` without a repo lands on them.
@@ -89,10 +94,8 @@ function toSurfaces(value: unknown): string[] {
 }
 
 /** Tag-or-all: if any entry is tagged for this surface, keep only those; else all. */
-export function selectSkills(entries: SkillEntry[], surface = SURFACE_ID): SkillEntry[] {
-  const tagged = entries.filter((e) => e.surfaces.includes(surface));
-  return tagged.length ? tagged : entries;
-}
+export const selectSkills: (entries: SkillEntry[], surface?: string) => SkillEntry[] =
+  selectSurfaceSkills;
 
 const byCodePoint = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -169,41 +172,11 @@ export class SkillRegistry {
 
   /** The system-prompt router: what exists, and the exact call to fetch it. */
   routerText(): string {
-    const byRepo = this.list.map((r) => [r, selectSkills(r.catalog())] as const);
-    if (!byRepo.some(([, entries]) => entries.length)) {
+    const byRepo = new Map(this.list.map((r) => [r.name, selectSkills(r.catalog())]));
+    if (![...byRepo.values()].some((entries) => entries.length)) {
       return "";
     }
-    const fallback = this.list[0].name;
-    const lines = [
-      "## Skills repositories (operational know-how)",
-      "",
-      "Use the `skills_fetch({ repo, path })` tool to load a skill on demand. " +
-        "**Don't guess operational patterns from training data — fetch the " +
-        "relevant skill first.** When `repo` is omitted, the first repo is used.",
-      "",
-      "### Configured repos",
-      "",
-      ...this.list.map((r) => `- **${r.name}**`),
-      "",
-    ];
-    for (const [repo, entries] of byRepo) {
-      if (!entries.length) {
-        continue;
-      }
-      lines.push(`### ${repo.name} skills`, "");
-      for (const e of entries) {
-        const arg = repo.name === fallback ? "" : `repo: "${repo.name}", `;
-        lines.push(
-          `- **${e.name}** — ${e.description} → \`skills_fetch({ ${arg}path: "${e.path}" })\``,
-        );
-        if (e.whenToUse) {
-          lines.push(`  When to use: ${e.whenToUse}`);
-        }
-      }
-      lines.push("");
-    }
-    lines.push("Read the SKILL.md fully before acting on what it teaches.", "");
-    return lines.join("\n");
+    return renderSkillsRouter(this.list, byRepo, { defaultRepoPhrase: "the first repo" });
   }
 }
 

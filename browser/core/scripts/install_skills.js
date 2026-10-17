@@ -16,8 +16,18 @@
  * The corpus itself is a build artifact (gitignored), but `skills.lock.json` beside
  * this package's package.json is committed and pins the exact commit. Without the lock every build
  * would silently take whatever `main` points at that day, which is a poor foundation
- * for a project whose claim is reproducibility. Pass GALAXY_SKILLS_REF to move the
- * pin deliberately; the lock is rewritten and the change shows up in review.
+ * for a project whose claim is reproducibility.
+ *
+ * In this repo the corpus comes from Orbit's own vendor tree instead: scripts/sync-skills.mjs
+ * copies galaxy-skills out of galaxyproject/agentic-plugins into extensions/loom/vendor/skills,
+ * and when that tree's _manifest.json is present this copies the same files from it and pins
+ * the lock to the manifest's upstream commit. One manifest bump then moves both shells, and the
+ * build makes no GitHub round trip, so in this repo the pin moves through
+ * scripts/skills.manifest.json only: a lock moved any other way fails check_vendored.py and the
+ * next build puts it back. Under CI the build refuses a lock that disagrees instead of rewriting
+ * it. GitHub stays the fallback for an explicit GALAXY_SKILLS_REPO or GALAXY_SKILLS_REF, and for
+ * a checkout of browser/ alone, where GALAXY_SKILLS_REF is how the pin moves: the lock is
+ * rewritten and the change shows up in review.
  *
  * Env:
  *   GALAXY_SKILLS_REPO  owner/repo      (default galaxyproject/galaxy-skills)
@@ -26,6 +36,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,6 +47,9 @@ const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DEST = join(ROOT, "src", "agent", "skills", "galaxy-skills");
 const STAMP = join(DEST, "VENDORED.json");
 const LOCK = join(ROOT, "skills.lock.json");
+// Orbit's vendor tree, two levels above the core when it sits in the loom repo.
+const VENDOR = join(ROOT, "..", "..", "extensions", "loom", "vendor", "skills");
+const VENDOR_MANIFEST = join(VENDOR, "_manifest.json");
 
 // The allowlist Orbit applies at runtime, applied here at build time instead.
 const ALLOWED_OWNER = "galaxyproject";
@@ -124,7 +138,107 @@ async function download(sha, blob) {
   return content;
 }
 
+/** owner/repo from the manifest's upstream URL, held to the same owner allowlist. */
+function upstreamRepo(url) {
+  const m = /^https:\/\/github\.com\/([^/]+\/[^/]+?)(?:\.git)?\/?$/.exec(url ?? "");
+  if (!m || !m[1].startsWith(`${ALLOWED_OWNER}/`)) {
+    throw new Error(`refusing the vendored skills' upstream "${url}"`);
+  }
+  return m[1];
+}
+
+/** Copy the `as: "skills"` plugin out of Orbit's vendor tree, checked against its manifest. */
+async function vendorLocal(manifest) {
+  const plugin = (manifest.plugins || []).find((p) => p.as === "skills");
+  if (!plugin?.upstream?.commit) {
+    throw new Error(`${VENDOR_MANIFEST} has no plugin vendored as "skills"`);
+  }
+  // A transform would make these bytes differ from the commit the stamp names.
+  if (plugin.transforms?.length) {
+    throw new Error(
+      `${plugin.plugin} is transformed on the way in; refusing to stamp it as upstream`,
+    );
+  }
+  const repo = upstreamRepo(plugin.upstream.repository);
+  const sha = plugin.upstream.commit;
+  const prefix = `${plugin.as}/`;
+  const files = (manifest.files || []).filter((f) => f.plugin === plugin.plugin);
+  if (!files.length || files.some((f) => !f.target.startsWith(prefix))) {
+    throw new Error(`${VENDOR_MANIFEST} lists no files for ${plugin.plugin} under ${prefix}`);
+  }
+  const lock = { repo, ref: plugin.upstream.ref, sha };
+  let relock = false;
+  const existing = await readJson(LOCK);
+  // CI builds before it checks, so a rewrite here would hide a stale committed lock.
+  if (process.env.CI && (existing?.repo !== repo || existing?.sha !== sha)) {
+    throw new Error(
+      `core/skills.lock.json pins ${existing?.repo}@${existing?.sha}, but Orbit vendors ` +
+        `${repo}@${sha}; rebuild locally and commit the rewritten lock`,
+    );
+  }
+  if (!process.env.CI && JSON.stringify(existing) !== JSON.stringify(lock)) {
+    relock = true;
+  }
+  console.log(
+    `[skills] copying ${files.length} files of ${repo}@${sha.slice(0, 8)} from ` +
+      `${manifest.repo}@${manifest.commit.slice(0, 8)}'s vendor tree`,
+  );
+
+  await rm(DEST, { recursive: true, force: true });
+  await mkdir(DEST, { recursive: true });
+
+  let skills = 0;
+  const ids = {};
+  for (const f of files) {
+    const rel = f.target.slice(prefix.length);
+    const target = join(DEST, rel);
+    if (!target.startsWith(DEST + sep)) {
+      throw new Error(`refusing path outside the corpus dir: ${f.target}`);
+    }
+    const content = await readFile(join(VENDOR, f.target));
+    // npm run check:skills holds the tree to these hashes; holding the copy to them too means a
+    // dirty vendor tree fails here rather than shipping.
+    if (createHash("sha256").update(content).digest("hex") !== f.sha256) {
+      throw new Error(`${f.target} does not match ${VENDOR_MANIFEST}; run npm run check:skills`);
+    }
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, content);
+    ids[rel] = blobSha(content);
+    if (rel.endsWith("SKILL.md")) {
+      skills += 1;
+    }
+  }
+
+  await writeFile(
+    STAMP,
+    JSON.stringify(
+      {
+        repo,
+        ref: sha,
+        sha,
+        files: files.length,
+        skills,
+        blobs: ids,
+        via: { repo: manifest.repo, commit: manifest.commit },
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  if (relock) {
+    await writeFile(LOCK, JSON.stringify(lock, null, 2) + "\n");
+    console.log(`[skills] pinned skills.lock.json to ${sha.slice(0, 8)}`);
+  }
+  console.log(`[skills] vendored ${skills} skills (${files.length} files) at ${sha.slice(0, 8)}`);
+}
+
 async function main() {
+  const override = process.env.GALAXY_SKILLS_REPO || process.env.GALAXY_SKILLS_REF;
+  if (!override && existsSync(VENDOR_MANIFEST)) {
+    await vendorLocal(JSON.parse(await readFile(VENDOR_MANIFEST, "utf-8")));
+    return;
+  }
+
   if (!REPO.startsWith(`${ALLOWED_OWNER}/`)) {
     throw new Error(
       `Refusing to vendor "${REPO}": skill content is treated as authoritative agent ` +

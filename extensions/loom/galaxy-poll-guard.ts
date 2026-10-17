@@ -1,6 +1,7 @@
 /** Keep a model from spending a turn repeatedly reading an unfinished dataset. */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { galaxyCall } from "./mcp-recovery";
+import { MCP_FAMILY, type GalaxyToolFamily } from "../../shared/galaxy-mcp-tools.js";
 
 // How long a repeated model-facing status read waits. This throttles token
 // spend, not Galaxy load; the background poller runs on its own 15s timer.
@@ -32,11 +33,15 @@ function object(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-function resource(name: string, args: Record<string, unknown>): string | undefined {
-  if (!/^mcp__galaxy__get_(dataset|job)_details$/.test(name)) return;
+function resource(
+  name: string,
+  args: Record<string, unknown>,
+  family: GalaxyToolFamily,
+): string | undefined {
+  const tool = family.toolName(name);
+  if (tool !== "get_dataset_details" && tool !== "get_job_details") return;
   if (typeof args.dataset_id === "string") return `dataset:${args.dataset_id}`;
-  if (name === "mcp__galaxy__get_job_details" && typeof args.job_id === "string")
-    return `job:${args.job_id}`;
+  if (tool === "get_job_details" && typeof args.job_id === "string") return `job:${args.job_id}`;
 }
 
 function waitForCheck(ms: number, signal: AbortSignal): Promise<void> {
@@ -55,7 +60,10 @@ function waitForCheck(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-export function registerGalaxyPollGuard(pi: ExtensionAPI): void {
+export function registerGalaxyPollGuard(
+  pi: ExtensionAPI,
+  family: GalaxyToolFamily = MCP_FAMILY,
+): void {
   const pending = new Map<string, { checkedAt: number; jobId?: string }>();
   let generation = 0;
   let sessionAbort = new AbortController();
@@ -74,8 +82,8 @@ export function registerGalaxyPollGuard(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_call", async (event, ctx) => {
-    const call = galaxyCall(event.toolName, event.input);
-    const key = call && resource(call.name, call.args);
+    const call = galaxyCall(event.toolName, event.input, family);
+    const key = call && resource(call.name, call.args, family);
     if (!key) return;
     const observation = pending.get(key);
     if (!observation) return;
@@ -106,8 +114,8 @@ export function registerGalaxyPollGuard(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_result", (event) => {
-    const call = galaxyCall(event.toolName, event.input);
-    const key = call && resource(call.name, call.args);
+    const call = galaxyCall(event.toolName, event.input, family);
+    const key = call && resource(call.name, call.args, family);
     if (!key || event.isError || object(event.details)?.error) return;
     for (const item of event.content) {
       if (item.type !== "text") continue;

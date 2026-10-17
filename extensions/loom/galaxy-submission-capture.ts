@@ -64,6 +64,7 @@ import { readMcpOutputFile } from "./mcp-output";
 import { ensureAttemptRecord, provenanceRelativePath } from "./galaxy-provenance";
 import { getCurrentStepAnchor, getNotebookPath, setCurrentStepAnchor } from "./state";
 import { ulid } from "./ulid";
+import { MCP_FAMILY, type GalaxyToolFamily } from "../../shared/galaxy-mcp-tools.js";
 
 /** What a block carries when nothing pointed the submission at a plan step. */
 export const UNATTRIBUTED = "unattributed";
@@ -665,19 +666,38 @@ async function recordAttempt(
   }
 }
 
-export function registerSubmissionCapture(pi: ExtensionAPI): void {
+/**
+ * The submission table's name for a tool the family names, or undefined when it
+ * isn't a submission. The table is spelled in the MCP family, plus Loom's own
+ * galaxy_upload_local_file, which no family renames.
+ */
+export function submissionToolName(
+  toolName: string,
+  family: GalaxyToolFamily = MCP_FAMILY,
+): string | undefined {
+  if (isSubmissionTool(toolName)) return toolName;
+  const tool = family.toolName(toolName);
+  const canonical = tool === undefined ? undefined : MCP_FAMILY.tool(tool);
+  return canonical !== undefined && isSubmissionTool(canonical) ? canonical : undefined;
+}
+
+export function registerSubmissionCapture(
+  pi: ExtensionAPI,
+  family: GalaxyToolFamily = MCP_FAMILY,
+): void {
   pi.on("tool_execution_start", async (event) => {
-    if (!isSubmissionTool(event.toolName)) return;
+    const toolName = submissionToolName(event.toolName, family);
+    if (!toolName) return;
     const args = (event.args && typeof event.args === "object" ? event.args : {}) as Record<
       string,
       unknown
     >;
-    rememberDispatch(event.toolCallId, event.toolName, args);
+    rememberDispatch(event.toolCallId, toolName, args);
   });
 
   pi.on("tool_execution_end", async (event) => {
-    const toolName = event.toolName;
-    if (!isSubmissionTool(toolName)) return;
+    const toolName = submissionToolName(event.toolName, family);
+    if (!toolName) return;
     try {
       await handleSubmissionResult(
         event.toolCallId,

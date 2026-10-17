@@ -76,6 +76,16 @@ export function mountArtifactPane(
   observer.observe(content, { childList: true });
   signal?.addEventListener("abort", () => observer.disconnect());
 
+  // Charts sized to their container measure it again only on a window resize, so whatever
+  // opens or resizes the pane announces it as one; a chart drawn while it was shut is 0x0.
+  const resized = new ResizeObserver(() => {
+    if (content.clientWidth && content.clientHeight) {
+      window.dispatchEvent(new Event("resize"));
+    }
+  });
+  resized.observe(content);
+  signal?.addEventListener("abort", () => resized.disconnect());
+
   window.addEventListener(
     "resize",
     () => {
