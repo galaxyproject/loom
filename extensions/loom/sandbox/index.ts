@@ -7,6 +7,7 @@ import { isSandboxActive, setSandboxActive } from "../exec-guard/runtime-state";
 import { buildSandboxConfig } from "./sandbox-config";
 import { createSandboxedBashOps } from "./sandbox-bash";
 import { describeSandboxInitFailure } from "./sandbox-init-message";
+import { galaxyCredentials } from "../galaxy-api";
 
 /**
  * Bash OS sandbox (opt-in). When enabled (`--sandbox` / LOOM_SANDBOX=1 /
@@ -67,7 +68,7 @@ export function registerSandbox(pi: ExtensionAPI): void {
           cwd: sessionCwd,
           tmpDir: os.tmpdir(),
           extraWriteRoots: cfg.extraWorkspaceRoots,
-          galaxyUrl: process.env.GALAXY_URL,
+          galaxyUrl: galaxyCredentials().url,
         }),
       );
       setSandboxActive(true);

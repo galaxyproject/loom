@@ -58,7 +58,7 @@ import {
   isBundledRepo,
   readBundledRepoFile,
 } from "./vendor-skills";
-import { parse as parseHtml } from "node-html-parser";
+import { GTN_API, gtnPageText, gtnTopics, gtnTutorials, gtnUrl } from "../../shared/gtn.js";
 
 /**
  * A record call's label has to say something.
@@ -80,42 +80,12 @@ function requireLabel(label: string): string {
 }
 
 /**
- * Strip a GTN tutorial HTML document down to readable plain text.
- *
- * Replaces the prior regex-based stripper, which could be defeated by
- * malformed HTML (e.g. an unterminated `<script` tag would leak its
- * contents through the `<script>...</script>` regex). Using a real
- * parser closes that gap and is more robust to GTN page-layout drift.
+ * Reduce a GTN page to the agent's text. The reduction is shared with the browser shell
+ * (shared/gtn.js): it drops chrome, prefers the most specific content region, and degrades
+ * on malformed HTML rather than leaking an unterminated script body.
  */
 function stripGtnHtml(html: string): string {
-  const root = parseHtml(html, {
-    blockTextElements: { script: false, style: false, noscript: false, code: true, pre: true },
-  });
-  // Drop chrome we don't want in the agent's context.
-  for (const sel of ["script", "style", "nav", "header", "footer", "aside", "noscript"]) {
-    for (const el of root.querySelectorAll(sel)) el.remove();
-  }
-  // Pick the most-specific body region available.
-  const body =
-    root.querySelector("main") ||
-    root.querySelector("article") ||
-    root.querySelector(".tutorial-content") ||
-    root.querySelector("body") ||
-    root;
-  let text = body.textContent || "";
-  text = text
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&#(\d+);/g, (_m, code) => String.fromCharCode(Number(code)));
-  text = text
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-  return text;
+  return gtnPageText(html);
 }
 
 /**
@@ -171,8 +141,6 @@ in their title or objectives. Use this to find tutorial URLs before fetching wit
       ),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
-      const GTN_API = "https://training.galaxyproject.org/training-material/api";
-
       try {
         if (!params.topic) {
           const resp = await fetch(`${GTN_API}/topics.json`, { signal });
@@ -183,32 +151,16 @@ in their title or objectives. Use this to find tutorial URLs before fetching wit
             };
           }
 
-          const data = (await resp.json()) as Record<
-            string,
-            { name: string; title: string; summary: string }
-          >;
-          const topics = Object.values(data).map((t) => ({
-            name: t.name,
-            title: t.title,
-            summary: t.summary,
-          }));
-
+          const listing = gtnTopics(await resp.json());
+          if (!listing) {
+            return {
+              content: [{ type: "text", text: "Error: GTN returned an unexpected topics payload" }],
+              details: { error: true },
+            };
+          }
           return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify(
-                  {
-                    count: topics.length,
-                    topics,
-                    hint: "Use gtn_search with a topic name to list its tutorials.",
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-            details: { count: topics.length },
+            content: [{ type: "text", text: JSON.stringify(listing, null, 2) }],
+            details: { count: listing.count },
           };
         }
 
@@ -225,58 +177,21 @@ in their title or objectives. Use this to find tutorial URLs before fetching wit
           };
         }
 
-        const topicData = (await resp.json()) as {
-          name: string;
-          title: string;
-          materials: Array<{
-            title: string;
-            url: string;
-            id: string;
-            level: string;
-            time_estimation: string;
-            objectives: string[];
-            key_points: string[];
-            tools: string[];
-            workflows: unknown[];
-          }>;
-        };
-
-        let tutorials = (topicData.materials || []).map((m) => ({
-          title: m.title,
-          url: `https://training.galaxyproject.org${m.url}`,
-          id: m.id,
-          level: m.level,
-          time_estimation: m.time_estimation,
-          objectives: m.objectives || [],
-        }));
-
-        if (params.query) {
-          const q = params.query.toLowerCase();
-          tutorials = tutorials.filter(
-            (t) =>
-              t.title.toLowerCase().includes(q) ||
-              t.objectives.some((o) => o.toLowerCase().includes(q)),
-          );
+        const listing = gtnTutorials(await resp.json(), params.query);
+        if (!listing) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: Topic "${params.topic}" returned an unexpected payload.`,
+              },
+            ],
+            details: { error: true },
+          };
         }
-
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  topic: topicData.title,
-                  count: tutorials.length,
-                  ...(params.query ? { query: params.query } : {}),
-                  tutorials,
-                  hint: "Use gtn_fetch with a tutorial URL to read its full content.",
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-          details: { topic: params.topic, count: tutorials.length },
+          content: [{ type: "text", text: JSON.stringify(listing, null, 2) }],
+          details: { topic: params.topic, count: listing.count },
         };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
@@ -315,26 +230,10 @@ analyses in Galaxy.`,
       }),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
-      const GTN_HOST = "training.galaxyproject.org";
-
-      let parsed: URL;
-      try {
-        parsed = new URL(params.url);
-      } catch {
+      const checked = gtnUrl(params.url);
+      if (checked.problem !== undefined) {
         return {
-          content: [{ type: "text", text: `Error: Invalid URL "${params.url}"` }],
-          details: { error: true },
-        };
-      }
-
-      if (parsed.hostname !== GTN_HOST) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error: Only URLs on ${GTN_HOST} are allowed. Got: ${parsed.hostname}`,
-            },
-          ],
+          content: [{ type: "text", text: `Error: ${checked.problem}` }],
           details: { error: true },
         };
       }

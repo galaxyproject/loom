@@ -13,14 +13,15 @@ chains all of the checks.
 ```
 package.json              private workspace root: shared dev tooling, scripts that forward
 tsconfig.base.json        compiler options both packages extend
-scripts/ e2e/             tooling and Playwright drives, for the workspace as a whole
+scripts/ e2e/             tooling, the e2e stub and runner, and the bare flavor's drive
 dist/session.mjs          the Node build of the agent (npm run build:session)
 
 core/                     @galaxyproject/orbit-browser, TypeScript source behind package exports
   vite.ts                   the Vite preset a flavor builds with: proxies, defines, worker, Pyodide
   scripts/install_assets.js the orbit-browser-assets bin a flavor's build runs first: fetches
-                            Pyodide's wheels into temp/ and the galaxy-skills corpus into src/
-  skills.lock.json          the galaxy-skills revision the core vendors
+                            Pyodide's wheels into temp/ and copies the galaxy-skills corpus into
+                            src/ from Orbit's extensions/loom/vendor/skills (GitHub without it)
+  skills.lock.json          the galaxy-skills revision the core vendors, the commit Orbit vendors
   pyodide.requirements.txt  the Python packages run_python loads
   src/index.ts              the page entry: mountOrbitBrowser and what a page needs
   src/shell.ts              mounts Orbit's ChatPanel, starts the flavor's worker, drives the chat
@@ -50,8 +51,8 @@ core/                     @galaxyproject/orbit-browser, TypeScript source behind
     prompt.ts skills.ts notebook.ts   the system prompt, SKILL.md routers, the record page
     python.ts python-realm.js python-node.ts   `run_python` and the realm Pyodide runs in
     processes/                deterministic procedures (lineage_report, organize_datasets)
-    skills/                   own/notebook, the brand's own skills, and galaxy-skills fetched at
-                              build time
+    skills/                   own/notebook, the brand's own skills, and galaxy-skills copied in
+                              at build time
     describe.ts               what the agent publishes about itself, for an outside evaluator
 
 olit/                     @galaxyproject/olit: files ["static"]
@@ -67,6 +68,7 @@ olit/                     @galaxyproject/olit: files ["static"]
   src/agent/layout.ts       olitLayout: where --describe finds Olit, and olit.xml's ai_prompt
   src/agent/node.ts         the Node entry: runNodeSession(olitFlavor, olitLayout)
   src/agent/visualizations.ts visualization-inputs.ts vega.ts hints.ts   the visualization tools
+  e2e/                      the Playwright drives that mount the Olit plugin (helpers from ../e2e)
   src/agent/prompt.ts       the starting-dataset section
   src/agent/skills/         own/visualization, merged into the core's own
 
@@ -111,7 +113,9 @@ none of it. `e2e/bare-drive.cjs` mounts it on the current history with no sessio
 - **Page.** `mountOrbitBrowser(container, options)` takes the flavor's `createWorker`, its kinds and
   renderers, a `launch` callback (where the conversation starts and what to say about it; the
   default is Galaxy's current history), and an optional `sessions` store, without which there is
-  no Save button.
+  no Save button. A flavor Galaxy hosts as a visualization plugin passes `galaxyChatUrl`, the AI
+  proxy Galaxy serves it at `api/plugins/<name>`; that makes the keyless "galaxy" provider the
+  first-launch default. Without it the picker offers every other provider and has to be answered.
 
 The core ships as TypeScript source, so a flavor builds it with Vite: `?raw` and
 `import.meta.glob` imports, the `process.env.*` defines and the `app/src/renderer` import all
@@ -153,17 +157,10 @@ What still ties the two packages to this workspace, and why each waits:
   session. They can't collide across flavors, which never share a database or a session store,
   and renaming them would orphan every conversation Olit has kept, so they change only with a
   migration.
-- **The default "galaxy" provider assumes a plugin-hosted flavor.** It talks to Galaxy's AI proxy,
-  which Galaxy serves per visualization plugin at `api/plugins/<name>`, and it's the provider a
-  first launch uses. A flavor that isn't a registered plugin has no `galaxyChatUrl` to give, so it
-  would need that option made optional, "galaxy" dropped from the provider list, and another
-  default in `buildConfig`.
 - **One mount per document.** The shell puts its theme on the root element and the pane's state
   on body, sizes the pane from the window, injects fixed ids and configures the shared `marked`.
   Scoping all of that to the container is a follow-up; until then a host that needs the shell
   inside a larger page mounts it in an iframe.
-- **End-to-end drives.** Every drive in `e2e/` but `bare-drive.cjs` mounts the Olit plugin, so
-  they move to olit/ when it leaves; the bare drive stays with the core.
 - **Shared config.** Both packages extend `tsconfig.base.json` and use the root's Prettier config;
   a flavor that leaves takes a copy.
 
@@ -187,6 +184,14 @@ what `--describe` returns, and `olit/src/agent/surface.test.ts` pins what the ag
 
 The galaxy-skills corpus under `core/src/agent/skills/` is a copy of files owned elsewhere. It is
 synced by copy, which works only while the copy stays byte-identical, so its hashes are pinned.
+Both shells take it from one source: `core/scripts/install_skills.js` copies the plugin Orbit
+vendors `as: "skills"` out of `extensions/loom/vendor/skills/` and pins `core/skills.lock.json` to
+that plugin's upstream commit, so bumping `scripts/skills.manifest.json` at the repo root and
+running `npm run sync:skills` moves Orbit and the browser together. The check below fails while the
+lock and Orbit's manifest disagree, and under CI the build refuses to rewrite a lock that disagrees,
+so a stale committed lock fails there instead of being quietly corrected. Outside this repo, with
+no vendor tree beside it, the install falls back to fetching the locked commit from GitHub.
+
 Orbit's chat UI is not copied: it is imported from `app/src/renderer` in this repo.
 
 ```bash

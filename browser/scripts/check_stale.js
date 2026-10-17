@@ -5,12 +5,12 @@
  * would change agent behaviour without a commit saying so. Exits 0 even when behind, so
  * this can run in CI as information rather than as a gate.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const read = (p) =>
-  JSON.parse(readFileSync(join(fileURLToPath(new URL("..", import.meta.url)), p), "utf8"));
+const HERE = fileURLToPath(new URL("..", import.meta.url));
+const read = (p) => JSON.parse(readFileSync(join(HERE, p), "utf8"));
 
 /** The version spec `package.json` pins `name` to, wherever it declares it. */
 export function pinned(pkg, name) {
@@ -49,10 +49,14 @@ async function skills() {
   }
   const cmp = await github(`repos/${lock.repo}/compare/${lock.sha}...${head.sha}`);
   const touched = (cmp.files || []).filter((f) => f.filename.startsWith("skills/")).length;
+  // Inside the loom repo the lock follows Orbit's manifest; browser/ alone owns its lock.
+  const update = existsSync(join(HERE, "..", "scripts", "skills.manifest.json"))
+    ? "bump scripts/skills.manifest.json at the repo root, npm run sync:skills, node core/scripts/install_skills.js"
+    : "edit core/skills.lock.json, node core/scripts/install_skills.js";
   return (
     `skills     BEHIND by ${cmp.total_commits} commit(s): ${lock.sha.slice(0, 8)} -> ${head.sha.slice(0, 8)}\n` +
     `           ${touched} file(s) changed under skills/, the subtree olit vendors\n` +
-    `           update: edit core/skills.lock.json, node core/scripts/install_skills.js`
+    `           update: ${update}`
   );
 }
 

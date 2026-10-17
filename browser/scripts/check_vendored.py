@@ -11,10 +11,13 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
-# The skills corpus is gitignored and fetched by core/scripts/install_skills.js, which stamps each
+# The skills corpus is gitignored and vendored by core/scripts/install_skills.js, which stamps each
 # file's git blob id. Recomputing them catches an edit made after vendoring.
 SKILLS = ROOT / "core" / "src" / "agent" / "skills" / "galaxy-skills"
 SKILLS_STAMP = SKILLS / "VENDORED.json"
+SKILLS_LOCK = ROOT / "core" / "skills.lock.json"
+# Orbit's vendor tree, which the install copies from when browser/ sits in the loom repo.
+ORBIT_MANIFEST = ROOT.parent / "extensions" / "loom" / "vendor" / "skills" / "_manifest.json"
 
 
 def blob_id(path: pathlib.Path) -> str:
@@ -60,8 +63,38 @@ def skills(argv: list[str]) -> int:
     return 1
 
 
+def lock(argv: list[str]) -> int:
+    """The lock must pin the galaxy-skills commit Orbit's vendor tree carries, so one manifest
+    bump moves both shells and neither can drift onto a revision of its own."""
+    if not ORBIT_MANIFEST.exists():
+        print("no Orbit vendor manifest beside browser/; skills.lock.json is pinned on its own")
+        return 0
+    manifest = json.loads(ORBIT_MANIFEST.read_text())
+    plugin = next((p for p in manifest.get("plugins") or [] if p.get("as") == "skills"), None)
+    if plugin is None:
+        print(f'{ORBIT_MANIFEST} has no plugin vendored as "skills"')
+        return 1
+    upstream = plugin.get("upstream") or {}
+    repo = upstream.get("repository", "").removeprefix("https://github.com/").rstrip("/").removesuffix(".git")
+    want = upstream.get("commit")
+    if not want:
+        print(f'{ORBIT_MANIFEST} names no upstream commit for the plugin vendored as "skills"')
+        return 1
+    pinned = json.loads(SKILLS_LOCK.read_text())
+    if pinned.get("sha") == want and pinned.get("repo") == repo:
+        print(f"skills.lock.json matches Orbit's vendored {repo}@{want[:8]}")
+        return 0
+    print(
+        f"core/skills.lock.json pins {pinned.get('repo')}@{pinned.get('sha')}, but Orbit vendors\n"
+        f"{repo}@{want} through {manifest.get('repo')}@{manifest.get('commit', '?')[:8]}.\n"
+        "Move the pin through scripts/skills.manifest.json at the repo root (npm run sync:skills),\n"
+        "then re-vendor with: node core/scripts/install_skills.js"
+    )
+    return 1
+
+
 def main(argv: list[str]) -> int:
-    return skills(argv)
+    return lock(argv) | skills(argv)
 
 
 if __name__ == "__main__":

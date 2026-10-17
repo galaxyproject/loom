@@ -26,6 +26,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { activeGalaxyStatus } from "./profiles.js";
+import { galaxyCredentials } from "./galaxy-api.js";
 import { piAgentDir } from "./agent-dir.js";
 
 export const GALAXY_RECONNECT_NUDGE =
@@ -123,8 +124,7 @@ export interface ReconnectOptions {
 /** Fingerprint of the credentials active in this process's env, or null when
  *  Galaxy isn't usable. */
 function currentGalaxyFingerprint(): string | null {
-  const url = process.env.GALAXY_URL;
-  const key = process.env.GALAXY_API_KEY;
+  const { url, apiKey: key } = galaxyCredentials();
   // The `url && key` guard narrows both to string for the fingerprint call.
   return activeGalaxyStatus() === "usable" && url && key ? galaxyCredFingerprint(url, key) : null;
 }

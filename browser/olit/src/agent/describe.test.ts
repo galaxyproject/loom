@@ -63,6 +63,10 @@ describe("the description Olit publishes about itself", () => {
     expect(doc.prompt_blocks.length).toBeGreaterThan(0);
     const defined = new Set(doc.symbols["src/agent/prompt.ts"]);
     expect(doc.prompt_blocks.filter((b) => !defined.has(b))).toEqual([]);
+    // Built from shared/galaxy-guidance.js rather than written out as template literals.
+    expect(doc.prompt_blocks).toEqual(
+      expect.arrayContaining(["FINDING_A_WORKFLOW", "INVOKING_WORKFLOW"]),
+    );
   });
 
   it("covers the agent's modules and skips the vendored skills", () => {
