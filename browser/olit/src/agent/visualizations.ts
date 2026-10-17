@@ -774,8 +774,9 @@ async function vegaDataset(galaxy: Galaxy, a: Json): Promise<Json> {
     columns: tables.columnNames(details),
     artifact: { kind: "vega-lite", title, spec: ready } satisfies Artifact,
     hint:
-      "The chart is displayed to the user. Writing it into the record means putting " +
-      "{{artifact}} where it belongs in the page content. Say what it shows and finish.",
+      "The chart is displayed to the user. To place it in the record, put {{artifact}} " +
+      "where it belongs in the page content you send to update_page; that token works " +
+      "only there, so leave it out of your reply. Say what the chart shows and finish.",
   };
   const suspect = vega.unsatisfiableTypes(ready, details);
   if (suspect.length) {
