@@ -26,6 +26,7 @@ core/                     @galaxyproject/orbit-browser, TypeScript source behind
   src/index.ts              the page entry: mountOrbitBrowser and what a page needs
   src/shell.ts              mounts Orbit's ChatPanel, starts the flavor's worker, drives the chat
   src/layout.ts artifact-pane.ts usage-bar.ts retry-notice.ts   the pane's parts
+  src/dictation.ts          the composer's mic: the browser's Web Speech API, where it has one
   src/config.ts credentials*.ts   what the agent is handed, and by whom
   src/transcript.ts         the chat drawn from the conversation's events
   src/chat-markdown.ts      the chat's markdown: the model's raw HTML as text, images only from Galaxy
