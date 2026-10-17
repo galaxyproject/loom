@@ -40,4 +40,19 @@ describe("the confirmation modal", () => {
       ["2", true],
     ]);
   });
+
+  it("answers the page's own question, and yields it to the agent's", async () => {
+    const { confirm, respond, note, open, accept } = modal();
+    const agreed = confirm.ask({ title: "Dictation", message: "Use dictation?" });
+    accept();
+    expect(await agreed).toBe(true);
+    expect(note).not.toHaveBeenCalled();
+
+    const pending = confirm.ask({ title: "Dictation", message: "Use dictation?" });
+    confirm.show("3", { message: "Delete history h3" });
+    expect(await pending).toBe(false);
+    expect(open()).toBe(true);
+    accept();
+    expect(respond).toHaveBeenCalledWith("3", true);
+  });
 });

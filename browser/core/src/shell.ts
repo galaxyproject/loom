@@ -40,7 +40,7 @@ import { mountUsageBar } from "./usage-bar";
 import { mountBuildStamp } from "./build-stamp";
 import { localTime } from "./galaxy-time";
 import { createRetryNotice } from "./retry-notice";
-import { isDictationShortcut, mountDictation } from "./dictation";
+import { isDictationShortcut, mountDictation, rememberedConsent } from "./dictation";
 
 export type { ArtifactRenderer, ArtifactRenderers } from "./artifacts";
 
@@ -223,7 +223,10 @@ export async function mountOrbitBrowser(
   });
 
   el.input.addEventListener("input", () => autosize(el.input));
-  const dictation = mountDictation(el.mic, el.input);
+  // Asked on the first use; `confirm` is made below, before any click can reach the button.
+  const dictation = mountDictation(el.mic, el.input, {
+    consent: rememberedConsent(`${brand.id}.dictationConsent`, (request) => confirm.ask(request)),
+  });
 
   let busy = false;
   let ready = false;

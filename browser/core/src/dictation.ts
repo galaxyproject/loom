@@ -2,7 +2,7 @@
  * Dictation into the composer through the browser's Web Speech API.
  *
  * Chrome and Edge recognize speech on their vendor's service, so the audio leaves the machine;
- * the button says so. A browser without the API (Firefox) gets no button.
+ * the button says so, and the first use asks. A browser without the API (Firefox) gets no button.
  */
 
 /** The slice of the Web Speech API dictation uses, so tests can stand in for it. */
@@ -43,6 +43,37 @@ export const IDLE_TITLE =
 const LISTENING_TITLE = "Listening. Click to stop.";
 const BLOCKED_TITLE = "Microphone access is blocked for this site in the browser's settings.";
 
+/** What the first use asks before any audio goes to the browser's recognizer. */
+export const CONSENT = {
+  title: "Dictation",
+  message:
+    "Dictation uses your browser's speech recognition. Chrome and Edge send the audio to " +
+    "Google's or Microsoft's speech service to turn it into text. Nothing goes to Galaxy or " +
+    "the model until you send the message. Use dictation?",
+};
+
+/**
+ * Ask once with `ask`, then remember a yes under `key`; a no asks again next time. A blocked
+ * store only costs remembering.
+ */
+export function rememberedConsent(
+  key: string,
+  ask: (request: typeof CONSENT) => Promise<boolean>,
+): () => Promise<boolean> {
+  return async () => {
+    try {
+      if (localStorage.getItem(key) === "1") return true;
+    } catch {}
+    const agreed = await ask(CONSENT);
+    if (agreed) {
+      try {
+        localStorage.setItem(key, "1");
+      } catch {}
+    }
+    return agreed;
+  };
+}
+
 /** The browser's recognizer, if it has one. */
 export function browserRecognizer(scope: any = globalThis): RecognizerClass | undefined {
   return scope.SpeechRecognition || scope.webkitSpeechRecognition;
@@ -57,6 +88,13 @@ export function joinDictation(typed: string, spoken: string): string {
   return typed && !/\s$/.test(typed) ? `${typed} ${said}` : typed + said;
 }
 
+export interface DictationOptions {
+  Recognition?: RecognizerClass;
+  lang?: string;
+  /** Whether the user agrees to dictate, asked before listening starts; without it, it starts. */
+  consent?: () => Promise<boolean>;
+}
+
 /**
  * Show the mic button and wire it to `input`. Returns undefined, leaving the button hidden,
  * when the browser cannot recognize speech.
@@ -64,8 +102,11 @@ export function joinDictation(typed: string, spoken: string): string {
 export function mountDictation(
   button: HTMLButtonElement,
   input: HTMLTextAreaElement,
-  Recognition: RecognizerClass | undefined = browserRecognizer(),
-  lang: string = (globalThis.navigator?.language as string) || "en-US",
+  {
+    Recognition = browserRecognizer(),
+    lang = (globalThis.navigator?.language as string) || "en-US",
+    consent,
+  }: DictationOptions = {},
 ): Dictation | undefined {
   if (!Recognition) {
     return undefined;
@@ -130,8 +171,20 @@ export function mountDictation(
     r.start();
   };
 
+  let asking = false;
+  const begin = async () => {
+    if (!consent) return start();
+    if (asking) return;
+    asking = true;
+    try {
+      if (await consent()) start();
+    } finally {
+      asking = false;
+    }
+  };
+
   const stop = () => recognizer?.stop();
-  const toggle = () => (recognizer ? stop() : start());
+  const toggle = () => (recognizer ? stop() : void begin());
   const cancel = () => {
     const r = recognizer;
     if (!r) {

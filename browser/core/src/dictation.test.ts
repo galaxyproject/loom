@@ -6,6 +6,7 @@ import {
   isDictationShortcut,
   joinDictation,
   mountDictation,
+  rememberedConsent,
   type Recognizer,
   type RecognitionResultEvent,
 } from "./dictation";
@@ -67,7 +68,7 @@ function composer(text = "") {
 describe("dictation", () => {
   it("offers no button without the Web Speech API", () => {
     const { button, input } = composer();
-    expect(mountDictation(button, input, undefined)).toBeUndefined();
+    expect(mountDictation(button, input, { Recognition: undefined })).toBeUndefined();
     expect(button.classList.contains("hidden")).toBe(true);
   });
 
@@ -79,14 +80,14 @@ describe("dictation", () => {
 
   it("shows the button and says where the audio goes", () => {
     const { button, input } = composer();
-    mountDictation(button, input, FakeRecognizer, "en-GB");
+    mountDictation(button, input, { Recognition: FakeRecognizer, lang: "en-GB" });
     expect(button.classList.contains("hidden")).toBe(false);
     expect(button.title).toBe(IDLE_TITLE);
   });
 
   it("writes interim and final words after what was typed", () => {
     const { button, input, resized } = composer("Run FastQC on");
-    mountDictation(button, input, FakeRecognizer, "en-GB");
+    mountDictation(button, input, { Recognition: FakeRecognizer, lang: "en-GB" });
     button.click();
     const r = FakeRecognizer.last;
     expect(r.lang).toBe("en-GB");
@@ -103,7 +104,7 @@ describe("dictation", () => {
 
   it("keeps final words and drops interim ones when listening ends", () => {
     const { button, input } = composer();
-    const dictation = mountDictation(button, input, FakeRecognizer)!;
+    const dictation = mountDictation(button, input, { Recognition: FakeRecognizer })!;
     dictation.toggle();
     const r = FakeRecognizer.last;
     r.say("hello", true);
@@ -117,7 +118,7 @@ describe("dictation", () => {
 
   it("lets nothing late refill a composer cleared by sending", () => {
     const { button, input } = composer();
-    const dictation = mountDictation(button, input, FakeRecognizer)!;
+    const dictation = mountDictation(button, input, { Recognition: FakeRecognizer })!;
     dictation.toggle();
     const r = FakeRecognizer.last;
     r.say("run it", true);
@@ -133,7 +134,7 @@ describe("dictation", () => {
 
   it("disables itself when the microphone is blocked", () => {
     const { button, input } = composer();
-    mountDictation(button, input, FakeRecognizer);
+    mountDictation(button, input, { Recognition: FakeRecognizer });
     button.click();
     FakeRecognizer.last.fail("not-allowed");
     FakeRecognizer.last.end();
@@ -143,12 +144,42 @@ describe("dictation", () => {
 
   it("stays quiet when nothing was said", () => {
     const { button, input } = composer();
-    mountDictation(button, input, FakeRecognizer);
+    mountDictation(button, input, { Recognition: FakeRecognizer });
     button.click();
     FakeRecognizer.last.fail("no-speech");
     FakeRecognizer.last.end();
     expect(button.disabled).toBe(false);
     expect(button.title).toBe(IDLE_TITLE);
+  });
+
+  it("listens only once the user agrees", async () => {
+    const { button, input } = composer();
+    let agree = false;
+    const dictation = mountDictation(button, input, {
+      Recognition: FakeRecognizer,
+      consent: async () => agree,
+    })!;
+    const before = FakeRecognizer.last;
+    dictation.toggle();
+    await Promise.resolve();
+    expect(FakeRecognizer.last).toBe(before);
+    expect(dictation.listening).toBe(false);
+    agree = true;
+    dictation.toggle();
+    await Promise.resolve();
+    expect(dictation.listening).toBe(true);
+  });
+
+  it("remembers a yes and asks again after a no", async () => {
+    localStorage.clear();
+    const answers = [false, true];
+    let asked = 0;
+    const consent = rememberedConsent("test.dictationConsent", async () => {
+      asked++;
+      return answers.shift()!;
+    });
+    expect([await consent(), await consent(), await consent()]).toEqual([false, true, true]);
+    expect(asked).toBe(2);
   });
 
   it("toggles on Ctrl or Cmd with Shift+M", () => {
