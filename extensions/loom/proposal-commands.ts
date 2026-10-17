@@ -19,7 +19,6 @@
  */
 
 import { randomBytes } from "crypto";
-import * as fs from "fs";
 import * as path from "path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
@@ -40,6 +39,7 @@ import {
   withNotebookLock,
   type ProposalBlock,
 } from "./notebook-writer";
+import { recordStore } from "./record-store";
 import { canonicalJson, normalizeServerUrl, sha256Hex } from "./registry";
 import {
   approveProposal,
@@ -115,9 +115,9 @@ function activity(
   appendActivityEvent(path.dirname(nb), { timestamp: deps.now(), kind, source, payload });
 }
 
-function readNotebookSync(nb: string): string | null {
+async function readRecordOrNull(nb: string): Promise<string | null> {
   try {
-    return fs.readFileSync(nb, "utf-8");
+    return (await recordStore(nb).read()).content;
   } catch {
     return null;
   }
@@ -139,20 +139,15 @@ function cannotWrite(session: SessionRegistry | null): string | null {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Revoke every live approval the notebook, as it reads now, no longer backs.
- * Runs on every notebook change and before every command, so an edit can't
- * outlive the next look at the notebook.
+ * Revoke every live approval the notebook, as `content` reads now, no longer
+ * backs. Runs on every notebook change and before every command, so an edit
+ * can't outlive the next look at the notebook.
  */
-export function checkProposalDrift(deps: ProposalDeps, content?: string): Drift[] {
+export function checkProposalDrift(deps: ProposalDeps, content: string): Drift[] {
   const session = deps.registry();
   if (!session) return [];
   const nb = deps.notebookPath();
-  let text = content ?? (nb ? readNotebookSync(nb) : null);
-  // A notebook that's gone takes its proposals with it. One that exists but
-  // can't be read right now is left for the next look.
-  if (text === null && nb && !fs.existsSync(nb)) text = "";
-  if (text === null) return [];
-  const notebook = text;
+  const notebook = content;
   const stepExists = (anchor: string) => {
     const r = resolveNotebookAnchor(notebook, anchor);
     return r.kind === "resolved" && r.anchor === anchor;
@@ -199,6 +194,18 @@ async function clearEchoes(nb: string, ids: string[]): Promise<void> {
   }
 }
 
+/** The drift check against the record as it reads right now. */
+export async function checkProposalDriftNow(deps: ProposalDeps): Promise<Drift[]> {
+  if (!deps.registry()) return [];
+  const nb = deps.notebookPath();
+  let text = nb ? await readRecordOrNull(nb) : null;
+  // A notebook that's gone takes its proposals with it. One that exists but
+  // can't be read right now is left for the next look.
+  if (text === null && nb && (await recordStore(nb).stat()) === null) text = "";
+  if (text === null) return [];
+  return checkProposalDrift(deps, text);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // loom_propose
 // ─────────────────────────────────────────────────────────────────────────────
@@ -231,7 +238,7 @@ export async function propose(
   if (!nb) return { ok: false, problems: ["no notebook is open"] };
   const serverUrl = deps.galaxyUrl();
   if (!serverUrl) return { ok: false, problems: ["Galaxy isn't connected in this session"] };
-  const content = readNotebookSync(nb);
+  const content = await readRecordOrNull(nb);
   if (content === null) return { ok: false, problems: [`couldn't read ${nb}`] };
 
   const errors: string[] = [];
@@ -386,7 +393,7 @@ export async function approveCommand(
   if (!m)
     return {
       level: "info",
-      message: pendingCommand(deps).message + `\n${APPROVE_USAGE}`,
+      message: (await pendingCommand(deps)).message + `\n${APPROVE_USAGE}`,
     };
   const id = m[1];
   const yes = m[2] !== undefined;
@@ -403,7 +410,7 @@ export async function approveCommand(
     };
   }
   const nb = deps.notebookPath();
-  const content = nb ? readNotebookSync(nb) : null;
+  const content = nb ? await readRecordOrNull(nb) : null;
   if (!nb || content === null) return { level: "warning", message: "Can't approve: no notebook." };
   checkProposalDrift(deps, content);
 
@@ -453,7 +460,7 @@ export async function approveCommand(
   }
 
   // The block must still say what was just shown.
-  const latest = readNotebookSync(nb);
+  const latest = await readRecordOrNull(nb);
   const again = latest === null ? null : locate(latest, id);
   if (
     !again ||
@@ -524,14 +531,14 @@ export async function approveCommand(
   };
 }
 
-export function revokeCommand(deps: ProposalDeps, args: string): CommandReply {
+export async function revokeCommand(deps: ProposalDeps, args: string): Promise<CommandReply> {
   const m = args.match(PROPOSAL_ARG);
   if (!m) return { level: "info", message: "Usage: /revoke <proposal-id>" };
   const id = m[1];
   const session = deps.registry();
   const blocked = cannotWrite(session);
   if (blocked || !session) return { level: "warning", message: `Can't revoke: ${blocked}.` };
-  checkProposalDrift(deps);
+  await checkProposalDriftNow(deps);
   let revoked: string[];
   try {
     revoked = revokeProposal(session.store, id);
@@ -556,10 +563,10 @@ export function revokeCommand(deps: ProposalDeps, args: string): CommandReply {
   };
 }
 
-export function pendingCommand(deps: ProposalDeps): CommandReply {
+export async function pendingCommand(deps: ProposalDeps): Promise<CommandReply> {
   const session = deps.registry();
   const nb = deps.notebookPath();
-  const content = nb ? readNotebookSync(nb) : null;
+  const content = nb ? await readRecordOrNull(nb) : null;
   if (!content)
     return { level: "info", message: "No proposals: the notebook is empty or missing." };
   checkProposalDrift(deps, content);
@@ -620,17 +627,17 @@ export type BindResult = { bound: true; attemptId: string } | { bound: false; re
  * writes no harness field on the block -- a claim the harness didn't witness
  * must never read as a submission it did.
  */
-export function noteProposalBinding(
+export async function noteProposalBinding(
   deps: ProposalDeps,
   args: {
     proposalId: string;
     notebookAnchor: string;
     run: { kind: "job" | "invocation"; id: string };
   },
-): BindResult {
+): Promise<BindResult> {
   const session = deps.registry();
   if (!session) return { bound: false, reason: "the approval registry isn't open in this session" };
-  checkProposalDrift(deps);
+  await checkProposalDriftNow(deps);
   const live = liveApproval(sessionView(session), args.proposalId);
   if (!live) {
     return { bound: false, reason: `${args.proposalId} has no live approval in this session` };
@@ -764,14 +771,14 @@ Give every parameter you set a rationale. Leave version unset to take what Galax
   pi.registerCommand("revoke", {
     description: "Revoke the approval of a Galaxy run proposal: /revoke <proposal-id>",
     handler: async (args: string | undefined, ctx: ExtensionContext) => {
-      reply(ctx, revokeCommand(deps, args ?? ""));
+      reply(ctx, await revokeCommand(deps, args ?? ""));
     },
   });
 
   pi.registerCommand("pending", {
     description: "List Galaxy run proposals waiting for approval",
     handler: async (_args: string | undefined, ctx: ExtensionContext) => {
-      reply(ctx, pendingCommand(deps));
+      reply(ctx, await pendingCommand(deps));
     },
   });
 }

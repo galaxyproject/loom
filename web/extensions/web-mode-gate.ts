@@ -112,6 +112,7 @@ export const TRUSTED_RECORD_ALLOWED: ReadonlySet<string> = new Set([
   "mcp__galaxy__get_tool_input_template",
   "mcp__galaxy__get_tool_citations",
   "mcp__galaxy__get_tool_run_examples",
+  "mcp__galaxy__recommend_biocontainer",
   "mcp__galaxy__get_schemas",
   "mcp__galaxy__list_workflows",
   "mcp__galaxy__get_workflow_details",

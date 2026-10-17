@@ -23,7 +23,7 @@ describe("initSessionArtifacts", () => {
     }
   });
 
-  it("does not auto-commit notebook.md into an existing user repo", () => {
+  it("does not auto-commit notebook.md into an existing user repo", async () => {
     const dir = mkdtempSync(join(tmpdir(), "loom-existing-repo-"));
     dirs.push(dir);
     git(["init"], dir);
@@ -33,7 +33,7 @@ describe("initSessionArtifacts", () => {
     git(["add", "README.md"], dir);
     git(["commit", "-m", "Initial commit"], dir);
 
-    initSessionArtifacts(dir);
+    await initSessionArtifacts(dir);
 
     expect(existsSync(join(dir, "notebook.md"))).toBe(true);
     expect(git(["rev-list", "--count", "HEAD"], dir)).toBe("1");

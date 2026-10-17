@@ -16,9 +16,12 @@ import {
   resumeGalaxyPage,
 } from "./galaxy-pages-sync";
 import { listRecentPages } from "./galaxy-pages-api";
-import { GALAXY_PAGE_MARKDOWN_GUIDANCE } from "./galaxy-page-markdown-guidance";
+import { galaxyPageMarkdownGuidance } from "./galaxy-page-markdown-guidance";
+import { MCP_FAMILY, type GalaxyToolFamily } from "../../shared/galaxy-mcp-tools.js";
 
-export const NOTEBOOK_PUSH_TO_GALAXY_DESCRIPTION = `Push the local notebook.md to a Galaxy page. If the notebook already
+export const notebookPushToGalaxyDescription = (
+  family: GalaxyToolFamily = MCP_FAMILY,
+): string => `Push the local notebook.md to a Galaxy page. If the notebook already
 has a loom-galaxy-page binding block, updates that page in place (creates a
 new revision). If there's no binding yet, pass history_id (and optionally title,
 slug, annotation) to create a new page attached to that history and bind it.
@@ -26,7 +29,8 @@ Strips loom-galaxy-page blocks from the body sent to Galaxy, but keeps
 loom-invocation blocks (they're analysis content). Unconditional local-wins:
 any concurrent Galaxy-UI edits since the last sync are overwritten.
 
-${GALAXY_PAGE_MARKDOWN_GUIDANCE}`;
+${galaxyPageMarkdownGuidance(family)}`;
+export const NOTEBOOK_PUSH_TO_GALAXY_DESCRIPTION = notebookPushToGalaxyDescription();
 
 function errorContent(e: unknown) {
   return {
@@ -40,7 +44,10 @@ function errorContent(e: unknown) {
   };
 }
 
-export function registerNotebookSyncTools(pi: ExtensionAPI): void {
+export function registerNotebookSyncTools(
+  pi: ExtensionAPI,
+  family: GalaxyToolFamily = MCP_FAMILY,
+): void {
   pi.registerTool({
     name: "notebook_list_galaxy_pages",
     label: "List recent Galaxy pages",
@@ -90,7 +97,7 @@ notebook_resume_from_galaxy with its page_id.`,
   pi.registerTool({
     name: "notebook_push_to_galaxy",
     label: "Push notebook to Galaxy page",
-    description: NOTEBOOK_PUSH_TO_GALAXY_DESCRIPTION,
+    description: notebookPushToGalaxyDescription(family),
     parameters: Type.Object({
       history_id: Type.Optional(
         Type.String({

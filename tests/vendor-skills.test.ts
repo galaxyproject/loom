@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { maskCode } from "../scripts/sync-skills.mjs";
@@ -7,9 +7,11 @@ import {
   JOB_FAILURE_REFERENCE,
 } from "../extensions/loom/invocation-failure-hint";
 import {
+  readBundledCatalog,
   readVendorManifest,
   readVendoredSkill,
   resolveVendorPath,
+  setVendorSkillsSource,
   vendorSkillsDir,
 } from "../extensions/loom/vendor-skills";
 
@@ -157,5 +159,60 @@ describe("resolveVendorPath", () => {
   it("normalizes backslash separators", () => {
     expect(resolveVendorPath("a\\b.md")).toBe(path.join(vendorSkillsDir(), "a", "b.md"));
     expect(resolveVendorPath("..\\..\\b")).toBeNull();
+  });
+});
+
+describe("an installed vendor skills source", () => {
+  afterEach(() => setVendorSkillsSource(null));
+
+  /** The real tree, read once into memory: what a shell that bundles it would hand over. */
+  function sourceFromDisk() {
+    const dir = vendorSkillsDir();
+    const read = (name: string) => JSON.parse(fs.readFileSync(path.join(dir, name), "utf-8"));
+    const manifest = read("_manifest.json") as { files: Array<{ target: string }> };
+    const files = new Map<string, string>(
+      manifest.files.map((f) => [f.target, fs.readFileSync(path.join(dir, f.target), "utf-8")]),
+    );
+    return { catalog: read("_catalog.json"), manifest, read: (t: string) => files.get(t) ?? null };
+  }
+
+  it("answers the catalog, the manifest and every target exactly as the disk does", () => {
+    const fromDisk = {
+      catalog: readBundledCatalog(),
+      manifest: readVendorManifest(),
+      files: readVendorManifest()!.files.map((f) => [f.target, readVendoredSkill(f.target)]),
+    };
+    expect(fromDisk.catalog).not.toBeNull();
+    setVendorSkillsSource(sourceFromDisk());
+    expect(readBundledCatalog()).toEqual(fromDisk.catalog);
+    expect(readVendorManifest()).toEqual(fromDisk.manifest);
+    for (const [target, expected] of fromDisk.files) {
+      expect(readVendoredSkill(target as string)).toEqual(expected);
+    }
+  });
+
+  it("refuses the same paths with the same messages", () => {
+    const bad = ["../x", "", "nope/SKILL.md", "/../_manifest.json"];
+    const fromDisk = bad.map((p) => readVendoredSkill(p));
+    setVendorSkillsSource(sourceFromDisk());
+    expect(bad.map((p) => readVendoredSkill(p))).toEqual(fromDisk);
+    for (const res of fromDisk) expect(res.ok).toBe(false);
+  });
+
+  it("warns once when the source carries no manifest, since bundled skills are then off", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    setVendorSkillsSource({ catalog: {}, manifest: null, read: () => null });
+    expect(readVendorManifest()).toBeNull();
+    expect(readVendorManifest()).toBeNull();
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0][0]).toContain("no manifest");
+    warn.mockRestore();
+  });
+
+  it("puts the disk back when cleared", () => {
+    setVendorSkillsSource({ catalog: {}, manifest: { files: [] }, read: () => null });
+    expect(readVendorManifest()!.files).toEqual([]);
+    setVendorSkillsSource(null);
+    expect(readVendorManifest()!.files.length).toBeGreaterThan(0);
   });
 });

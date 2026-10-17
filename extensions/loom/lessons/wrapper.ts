@@ -23,8 +23,7 @@
  * lesson is a file anyone -- or any process -- could have pasted a key into.
  */
 
-import { loadConfig } from "../../../shared/loom-config.js";
-import { collectSecretValues, redactSecrets } from "../secret-redaction";
+import { currentSecretValues, redactSecrets } from "../secret-redaction";
 import { escapeContent } from "../user-instructions";
 
 export const LESSONS_WRAPPER_TAG = "loom_lessons";
@@ -49,7 +48,7 @@ say which one you are following and why.`;
  * each call so a key added mid-session is covered, the same as the redactor.
  */
 export function redactLessonText(text: string): string {
-  return redactSecrets(text, collectSecretValues(loadConfig(), process.env));
+  return redactSecrets(text, currentSecretValues({ auth: false }));
 }
 
 export function wrapLessons(body: string): string {

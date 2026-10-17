@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   approveCommand,
   checkProposalDrift,
+  checkProposalDriftNow,
   noteProposalBinding,
   sessionView,
   pendingCommand,
@@ -247,7 +248,7 @@ describe("/approve", () => {
       NOTEBOOK + "\n" + renderProposalBlock(toolProposal(), { specRevision: "f".repeat(64) }),
     );
     expect(liveApproval(session!.store.snapshot(), "prop-abc123")).toBeUndefined();
-    expect(pendingCommand(deps()).message).toMatch(/prop-abc123 -- not approved/);
+    expect((await pendingCommand(deps())).message).toMatch(/prop-abc123 -- not approved/);
   });
 
   it("refuses an unknown id, a duplicated id, and an unreadable block", async () => {
@@ -370,7 +371,7 @@ describe("edit after approve revokes, on the next read", () => {
       source: "harness",
       payload: { proposal_id: id, attempt_id: attempt, reason: "edited" },
     });
-    expect(pendingCommand(deps()).message).toMatch(new RegExp(`${id} -- approval revoked`));
+    expect((await pendingCommand(deps())).message).toMatch(new RegExp(`${id} -- approval revoked`));
   });
 
   it("an edit to the label alone leaves the approval live", async () => {
@@ -390,14 +391,14 @@ describe("edit after approve revokes, on the next read", () => {
     await approveCommand(deps(), `${id} --yes`);
     state.setNotebookPath(nb);
     try {
-      state.reemitNotebookIfChanged();
+      await state.reemitNotebookIfChanged();
       expect(liveApproval(session!.store.snapshot(), id)).toBeDefined();
       // A hand edit the watcher (or the after-tool re-sync) notices.
       fs.writeFileSync(
         nb,
         notebook().replace("step_anchor: plan-a-step-1", "step_anchor: plan-a-step-2"),
       );
-      expect(state.reemitNotebookIfChanged()).toBe(true);
+      expect(await state.reemitNotebookIfChanged()).toBe(true);
       expect(liveApproval(session!.store.snapshot(), id)).toBeUndefined();
     } finally {
       state.setNotebookPath(null);
@@ -409,16 +410,16 @@ describe("/revoke and /pending", () => {
   it("revokes a live approval, then has nothing to revoke", async () => {
     const id = await proposed();
     await approveCommand(deps(), `${id} --yes`);
-    expect(revokeCommand(deps(), id).message).toMatch(/Revoked the approval/);
-    expect(revokeCommand(deps(), id).message).toMatch(/no live approval/);
+    expect((await revokeCommand(deps(), id)).message).toMatch(/Revoked the approval/);
+    expect((await revokeCommand(deps(), id)).message).toMatch(/no live approval/);
     expect(activity().at(-1)).toMatchObject({ kind: "proposal.revoked", source: "user" });
   });
 
   it("says when nothing is pending", async () => {
-    expect(pendingCommand(deps()).message).toBe("No proposals in the notebook.");
+    expect((await pendingCommand(deps())).message).toBe("No proposals in the notebook.");
     const id = await proposed();
     await approveCommand(deps(), `${id} --yes`);
-    expect(pendingCommand(deps()).message).toBe("Nothing pending; 1 proposal(s) approved.");
+    expect((await pendingCommand(deps())).message).toBe("Nothing pending; 1 proposal(s) approved.");
   });
 });
 
@@ -447,7 +448,11 @@ describe("record tools binding a run to its proposal", () => {
     await approveCommand(deps(), `${id} --yes`);
     const before = JSON.stringify(session!.store.snapshot());
     const nbBefore = notebook();
-    const r = noteProposalBinding(deps(), { proposalId: id, notebookAnchor: "plan-a-step-1", run });
+    const r = await noteProposalBinding(deps(), {
+      proposalId: id,
+      notebookAnchor: "plan-a-step-1",
+      run,
+    });
     const attempt = liveApproval(session!.store.snapshot(), id)!.attempt_id;
     expect(r).toEqual({ bound: true, attemptId: attempt });
     expect(activity().at(-1)).toMatchObject({
@@ -462,14 +467,14 @@ describe("record tools binding a run to its proposal", () => {
   it("won't bind to a proposal that isn't approved, or to another step", async () => {
     const id = await proposed();
     expect(
-      noteProposalBinding(deps(), { proposalId: id, notebookAnchor: "plan-a-step-1", run }),
+      await noteProposalBinding(deps(), { proposalId: id, notebookAnchor: "plan-a-step-1", run }),
     ).toEqual({
       bound: false,
       reason: `${id} has no live approval in this session`,
     });
     await approveCommand(deps(), `${id} --yes`);
     expect(
-      noteProposalBinding(deps(), { proposalId: id, notebookAnchor: "plan-a-step-2", run }),
+      await noteProposalBinding(deps(), { proposalId: id, notebookAnchor: "plan-a-step-2", run }),
     ).toMatchObject({ bound: false, reason: expect.stringMatching(/approved for plan-a-step-1/) });
     expect(activity().some((e) => e.kind === "proposal.bound")).toBe(false);
   });
@@ -485,7 +490,7 @@ describe("review follow-ups", () => {
         .replace("## Plan A: QC [remote]", "## Notes")
         .replace(/^- \[ \] 1\. \*\*Trim\*\*.*$/m, ""),
     );
-    expect(checkProposalDrift(deps())).toEqual([
+    expect(await checkProposalDriftNow(deps())).toEqual([
       expect.objectContaining({ proposalId: id, reason: "step_removed" }),
     ]);
     expect(liveApproval(session!.store.snapshot(), id)).toBeUndefined();
@@ -495,7 +500,7 @@ describe("review follow-ups", () => {
     const id = await proposed();
     await approveCommand(deps(), `${id} --yes`);
     fs.rmSync(nb);
-    expect(checkProposalDrift(deps())).toEqual([
+    expect(await checkProposalDriftNow(deps())).toEqual([
       expect.objectContaining({ proposalId: id, reason: "removed" }),
     ]);
     expect(liveApproval(session!.store.snapshot(), id)).toBeUndefined();
@@ -504,7 +509,7 @@ describe("review follow-ups", () => {
   it("an unreadable-but-present notebook revokes nothing", async () => {
     const id = await proposed();
     await approveCommand(deps(), `${id} --yes`);
-    expect(checkProposalDrift(deps({ notebookPath: () => dir }))).toEqual([]);
+    expect(await checkProposalDriftNow(deps({ notebookPath: () => dir }))).toEqual([]);
     expect(liveApproval(session!.store.snapshot(), id)).toBeDefined();
   });
 
@@ -558,13 +563,13 @@ describe("drift when the registry can't be written", () => {
     });
     expect(liveApproval(sessionView(session!), id)).toBeUndefined();
     expect(
-      noteProposalBinding(deps(), {
+      await noteProposalBinding(deps(), {
         proposalId: id,
         notebookAnchor: "plan-a-step-1",
         run: { kind: "job", id: "j1" },
       }),
     ).toMatchObject({ bound: false });
-    expect(pendingCommand(deps()).message).toMatch(new RegExp(`${id} -- approval revoked`));
+    expect((await pendingCommand(deps())).message).toMatch(new RegExp(`${id} -- approval revoked`));
     // Reported once, not on every later look.
     expect(checkProposalDrift(deps(), edited)).toEqual([]);
   });

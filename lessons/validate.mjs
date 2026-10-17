@@ -26,7 +26,6 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Lexer, marked } from "marked";
 import { isAlias, parseDocument, visit } from "yaml";
@@ -1200,16 +1199,10 @@ export function validateLessonsDir(dir) {
   return out;
 }
 
-function isDirectInvocation() {
-  if (!process.argv[1]) return false;
-  try {
-    return fileURLToPath(import.meta.url) === realpathSync(process.argv[1]);
-  } catch {
-    return false;
-  }
-}
-
-if (isDirectInvocation()) {
+// Node 22.18+ sets import.meta.main on the entry module (engines pins >= 22.19);
+// a bundler or vite-node leaves it undefined, so importing this file -- which
+// shared/lesson-rules.js does from inside the brain -- never runs the CLI.
+if (import.meta.main) {
   const args = process.argv.slice(2);
   if (args.length > 1) {
     console.error(`usage: validate.mjs [dir] (got ${args.join(" ")})`);

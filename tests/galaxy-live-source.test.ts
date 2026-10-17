@@ -24,6 +24,7 @@ import {
 } from "../extensions/loom/galaxy-live-source.js";
 import { getPollTickHook } from "../extensions/loom/galaxy-poller.js";
 import { resetState, setNotebookPath } from "../extensions/loom/state";
+import { profileFromEnv, setCapabilityProfile } from "../shared/capability-profile.js";
 import {
   createDefaultDashboardDocument,
   serializeDashboardDocument,
@@ -1177,6 +1178,18 @@ describe("armGalaxyLivePanel", () => {
     const { ctx } = fakeCtx();
     armGalaxyLivePanel(ctx as never);
     expect(getPollTickHook()).toBeNull();
+  });
+
+  it("costs the browser worker nothing either: the installed profile says there is no pane", () => {
+    process.env.LOOM_SHELL_KIND = "orbit";
+    setCapabilityProfile({ ...profileFromEnv({}), ui: "worker" });
+    try {
+      const { ctx } = fakeCtx();
+      armGalaxyLivePanel(ctx as never);
+      expect(getPollTickHook()).toBeNull();
+    } finally {
+      setCapabilityProfile(null);
+    }
   });
 
   it("registers one hook in a shell that draws a dashboard, and clears it on shutdown", () => {

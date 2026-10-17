@@ -56,18 +56,39 @@ export interface VendorManifest {
 /** Re-exported so brain-side callers do not reach across into shared/ directly. */
 export { isBundledSkillRepo as isBundledRepo };
 
+/** The vendored tree handed over by a shell that cannot read the package from disk. */
+export interface VendorSkillsSource {
+  /** Parsed `_catalog.json`; filtered here exactly as the file is. */
+  catalog: unknown;
+  /** Parsed `_manifest.json`; checked here exactly as the file is. */
+  manifest: unknown;
+  /** Text of one manifest target, or null when the tree has no such file. */
+  read(target: string): string | null;
+}
+
+let installedSource: VendorSkillsSource | null = null;
+
+export function setVendorSkillsSource(next: VendorSkillsSource | null): void {
+  installedSource = next;
+}
+
+function catalogFrom(data: unknown): Record<string, SkillEntry[]> | null {
+  if (!data || typeof data !== "object") return null;
+  const out: Record<string, SkillEntry[]> = {};
+  for (const [key, value] of Object.entries(data)) {
+    // The file's own $comment.
+    if (key.startsWith("$")) continue;
+    if (Array.isArray(value)) out[key] = value as SkillEntry[];
+  }
+  return out;
+}
+
 /** The generated router catalog, keyed by configured repo name. */
 export function readBundledCatalog(): Record<string, SkillEntry[]> | null {
+  if (installedSource) return catalogFrom(installedSource.catalog);
   try {
     const raw = fs.readFileSync(path.join(vendorSkillsDir(), "_catalog.json"), "utf-8");
-    const data = JSON.parse(raw);
-    if (!data || typeof data !== "object") return null;
-    const out: Record<string, SkillEntry[]> = {};
-    for (const [key, value] of Object.entries(data)) {
-      if (key.startsWith("$")) continue;
-      if (Array.isArray(value)) out[key] = value as SkillEntry[];
-    }
-    return out;
+    return catalogFrom(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -150,12 +171,29 @@ export function resolveVendorPath(rawPath: string): string | null {
   return abs;
 }
 
+function manifestFrom(data: unknown): VendorManifest | null {
+  if (!data || typeof data !== "object" || !Array.isArray((data as VendorManifest).files)) {
+    return null;
+  }
+  return data as VendorManifest;
+}
+
+let warnedSourceManifest = false;
+
 export function readVendorManifest(): VendorManifest | null {
+  if (installedSource) {
+    const manifest = manifestFrom(installedSource.manifest);
+    // Without the manifest no repo has bundled content and skills_fetch goes to
+    // the network instead; a half-built source should say so once, not hide.
+    if (!manifest && !warnedSourceManifest) {
+      warnedSourceManifest = true;
+      console.warn("[skills] the vendor skills source has no manifest; bundled skills are off");
+    }
+    return manifest;
+  }
   try {
     const raw = fs.readFileSync(path.join(vendorSkillsDir(), "_manifest.json"), "utf-8");
-    const data = JSON.parse(raw);
-    if (!data || !Array.isArray(data.files)) return null;
-    return data as VendorManifest;
+    return manifestFrom(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -189,7 +227,23 @@ export function readVendoredSkill(rawPath: string): VendorReadResult {
   if (typeof rawPath !== "string") {
     return { ok: false, error: `Invalid vendored skill path`, available: available() };
   }
-  const abs = resolveVendorPath(LEGACY_FLAT_PATHS[rawPath] ?? rawPath);
+  const target = LEGACY_FLAT_PATHS[rawPath] ?? rawPath;
+  if (installedSource) {
+    // The string-level rules resolveVendorPath applies before it touches the disk.
+    const clean = target.replace(/^\/+/, "").replace(/\\/g, "/");
+    if (!clean || clean.includes("..")) {
+      return {
+        ok: false,
+        error: `Invalid vendored skill path "${rawPath}"`,
+        available: available(),
+      };
+    }
+    const text = installedSource.read(clean);
+    return text === null
+      ? { ok: false, error: `No vendored file "${rawPath}"`, available: available() }
+      : { ok: true, text };
+  }
+  const abs = resolveVendorPath(target);
   if (!abs) {
     return { ok: false, error: `Invalid vendored skill path "${rawPath}"`, available: available() };
   }

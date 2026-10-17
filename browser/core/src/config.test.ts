@@ -11,6 +11,14 @@ describe("buildConfig", () => {
     expect("ai_api_key" in config).toBe(false);
   });
 
+  it("defaults to the Galaxy proxy only where there is one", () => {
+    expect(buildConfig(incoming).ai_provider).toBe("galaxy");
+    expect(buildConfig(incoming).ai_base_url).toBe("/api/plugins/olit");
+    const unhosted = buildConfig({ root: "/", datasetId: "d1" });
+    expect(unhosted.ai_provider).toBeUndefined();
+    expect(unhosted.ai_base_url).toBeUndefined();
+  });
+
   // Launched has no field for either, but a launch that carries the plugin's specs along
   // anyway still mustn't pass them through.
   it("carries no Galaxy key or capability grant from whatever launched it", () => {

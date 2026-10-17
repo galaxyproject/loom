@@ -21,7 +21,7 @@ const source = fs
 
 describe("observation collector registration", () => {
   it("registers the triggers and the commands", () => {
-    expect(source).toContain("registerObservationTriggers(pi)");
+    expect(source).toContain("registerObservationTriggers(pi, family)");
     expect(source).toContain("registerObservationsCommand(pi)");
   });
 
@@ -30,14 +30,14 @@ describe("observation collector registration", () => {
     // previous one's rewrite, so reading the result before redaction would put
     // an API key one normalization away from the wire.
     const redaction = source.indexOf("registerSecretRedaction(pi)");
-    const triggers = source.indexOf("registerObservationTriggers(pi)");
+    const triggers = source.indexOf("registerObservationTriggers(pi, family)");
     expect(redaction).toBeGreaterThan(-1);
     expect(triggers).toBeGreaterThan(redaction);
     // And unconditionally: nothing between them can return early or branch the
     // trigger registration away.
     const between = source.slice(redaction, triggers);
     expect(between).not.toMatch(/\breturn\b|\bif\s*\(/);
-    expect(source.match(/registerObservationTriggers\(pi\)/g)).toHaveLength(1);
+    expect(source.match(/registerObservationTriggers\(pi, family\)/g)).toHaveLength(1);
   });
 });
 

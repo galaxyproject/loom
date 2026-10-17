@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveConfigPath, resolveStateDir } from "./state-dir.js";
+import { installedConfigSource } from "./config-source.js";
 
 export const DEFAULT_SKILLS = [
   {
@@ -73,13 +74,19 @@ export function getConfigPath() {
 }
 
 export function loadConfig() {
-  const p = getConfigPath();
+  const source = installedConfigSource();
   let raw = {};
-  if (fs.existsSync(p)) {
-    try {
-      raw = JSON.parse(fs.readFileSync(p, "utf-8"));
-    } catch {
-      raw = {};
+  if (source) {
+    // Cloned: writeProfiles and the other writers mutate what loadConfig returns.
+    raw = structuredClone(source.load() ?? {});
+  } else {
+    const p = getConfigPath();
+    if (fs.existsSync(p)) {
+      try {
+        raw = JSON.parse(fs.readFileSync(p, "utf-8"));
+      } catch {
+        raw = {};
+      }
     }
   }
   // Migrate flat llm shape (pre-multi-provider) → {active, providers} map.
@@ -152,6 +159,13 @@ export function loadConfig() {
 }
 
 export function saveConfig(config) {
+  const source = installedConfigSource();
+  if (source) {
+    if (!source.save)
+      throw new Error("The config is supplied by the shell here and can't be changed.");
+    source.save(config);
+    return;
+  }
   const dest = getConfigPath();
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   // Atomic write: never leave a half-written ~/.loom/config.json behind.

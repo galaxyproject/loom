@@ -1,3 +1,4 @@
+import { findConfusablesMatch } from "../../../../shared/confusables.js";
 import { destructiveGate, type Ask } from "./destructive";
 import { SraImportGate } from "./sra-gate";
 import type { Guard, ToolTraits } from "./tool";
@@ -8,27 +9,6 @@ const SETTLED_REPEAT_LIMIT = 3;
 const COOLDOWN_MS = 120_000;
 const MIN_SECRET_LENGTH = 8;
 const HARMONY_MARKER = "<|";
-
-const CONFUSABLES: Record<string, string> = {
-  а: "a",
-  е: "e",
-  о: "o",
-  р: "p",
-  с: "c",
-  х: "x",
-  у: "y",
-  А: "A",
-  Е: "E",
-  О: "O",
-  Р: "P",
-  С: "C",
-  Х: "X",
-  У: "Y",
-  ν: "v",
-  τ: "t",
-};
-
-const fold = (text: string) => [...text].map((ch) => CONFUSABLES[ch] ?? ch).join("");
 
 /** `name` up to the first harmony control token. */
 export const plainToolName = (name: string) => name.split(HARMONY_MARKER)[0].trim();
@@ -53,10 +33,7 @@ export function notFoundHint(name: string, advertised: string[]): string | undef
   if (trimmed !== name && advertised.includes(trimmed)) {
     return `Did you mean \`${trimmed}\`?`;
   }
-  if (![...name].some((ch) => ch in CONFUSABLES)) {
-    return undefined;
-  }
-  const match = advertised.find((candidate) => fold(candidate) === fold(name));
+  const match = findConfusablesMatch(name, advertised);
   return match
     ? `Did you mean \`${match}\`? The tool name you called contains Unicode confusables (visually similar non-Latin characters).`
     : undefined;

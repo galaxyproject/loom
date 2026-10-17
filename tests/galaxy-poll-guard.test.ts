@@ -4,6 +4,11 @@ import {
   GALAXY_POLL_INTERVAL_MS,
   registerGalaxyPollGuard,
 } from "../extensions/loom/galaxy-poll-guard";
+import {
+  createMemoryOutputStore,
+  setGalaxyOutputStore,
+} from "../extensions/loom/galaxy-output-store";
+import { bareFamily } from "../shared/galaxy-mcp-tools.js";
 
 function harness() {
   const on = vi.fn();
@@ -38,7 +43,10 @@ function harness() {
   };
 }
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  setGalaxyOutputStore(null);
+});
 
 describe("Galaxy polling cooldown", () => {
   it("directs an unfinished response to notebook tracking and preserves the original metadata", () => {
@@ -105,6 +113,130 @@ describe("Galaxy polling cooldown", () => {
     expect(h.result("running", { isError: true })).toBeUndefined();
     expect(await h.check()).toBeUndefined();
     expect(h.result("running", { details: { error: "call_failed" } })).toBeUndefined();
+    expect(await h.check()).toBeUndefined();
+  });
+});
+
+describe("invocation reads under in-process Galaxy tools", () => {
+  function invocationHarness(opts?: { invocations?: boolean }) {
+    const on = vi.fn();
+    registerGalaxyPollGuard(
+      { on } as unknown as ExtensionAPI,
+      bareFamily(["get_invocations", "get_dataset_details"]),
+      opts,
+    );
+    const ctx = {
+      hasUI: false,
+      ui: { notify: vi.fn() },
+      signal: new AbortController().signal,
+    } as unknown as ExtensionContext;
+    const fire = (name: string, event: unknown) =>
+      on.mock.calls.find(([n]) => n === name)![1](event, ctx);
+    const input = { invocation_id: "inv1" };
+    return {
+      fire,
+      check: (args: Record<string, unknown> = input) =>
+        fire("tool_call", { toolName: "get_invocations", input: args }),
+      result: (state: string) =>
+        fire("tool_result", {
+          toolName: "get_invocations",
+          input,
+          isError: false,
+          content: [
+            { type: "text", text: JSON.stringify({ success: true, data: { id: "inv1", state } }) },
+          ],
+        }),
+    };
+  }
+
+  it("holds a repeated read of an invocation that is still scheduling", async () => {
+    vi.useFakeTimers();
+    const h = invocationHarness({ invocations: true });
+    const annotated = h.result("ready");
+    expect(annotated.content[1].text).toContain("still ready");
+    let released = false;
+    const call = h.check().then(() => {
+      released = true;
+    });
+    await vi.advanceTimersByTimeAsync(GALAXY_POLL_INTERVAL_MS - 1);
+    expect(released).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await call;
+    expect(released).toBe(true);
+  });
+
+  describe("a spilled invocation, whose content is a prose preview", () => {
+    const PREVIEW =
+      "Large Galaxy response saved in memory. Showing a bounded preview.\n{...}\n[loom Galaxy output]";
+    const envelope = (state: string) => ({ success: true, data: { id: "inv1", state, steps: [] } });
+    const spilled = (
+      h: ReturnType<typeof invocationHarness>,
+      state: string,
+      structured: boolean,
+    ) => {
+      const store = createMemoryOutputStore();
+      setGalaxyOutputStore(store);
+      const outputId = structured
+        ? "01JAAAAAAAAAAAAAAAAAAAAAAA"
+        : store.put(JSON.stringify(envelope(state)), "get_invocations");
+      return h.fire("tool_result", {
+        toolName: "get_invocations",
+        input: { invocation_id: "inv1" },
+        isError: false,
+        content: [{ type: "text", text: PREVIEW }],
+        details: { galaxy: { tool: "get_invocations", outputId, elapsedMs: 1 } },
+        ...(structured ? { structuredContent: envelope(state) } : {}),
+      });
+    };
+
+    async function held(h: ReturnType<typeof invocationHarness>) {
+      let released = false;
+      const call = h.check().then(() => {
+        released = true;
+      });
+      await vi.advanceTimersByTimeAsync(GALAXY_POLL_INTERVAL_MS - 1);
+      const early = released;
+      await vi.advanceTimersByTimeAsync(1);
+      await call;
+      return early === false && released;
+    }
+
+    it("holds a repeated read when structuredContent was dropped, reading the saved output", async () => {
+      vi.useFakeTimers();
+      const h = invocationHarness({ invocations: true });
+      const annotated = spilled(h, "ready", false);
+      expect(annotated.content[0].text).toBe(PREVIEW);
+      expect(annotated.content[1].text).toContain("[Loom background monitoring]");
+      expect(await held(h)).toBe(true);
+    });
+
+    it("holds it from structuredContent when that survived", async () => {
+      vi.useFakeTimers();
+      const h = invocationHarness({ invocations: true });
+      expect(spilled(h, "new", true).content[1].text).toContain("still new");
+      expect(await held(h)).toBe(true);
+    });
+
+    it("lets a spilled finished invocation through", async () => {
+      const h = invocationHarness({ invocations: true });
+      expect(spilled(h, "scheduled", false)).toBeUndefined();
+      expect(await h.check()).toBeUndefined();
+    });
+  });
+
+  it("lets reads through once Galaxy has scheduled every step", async () => {
+    const h = invocationHarness({ invocations: true });
+    h.result("new");
+    expect(h.result("scheduled")).toBeUndefined();
+    expect(await h.check()).toBeUndefined();
+    // A listing names no single invocation, so there is nothing to hold.
+    h.result("ready");
+    expect(await h.check({ history_id: "h1" })).toBeUndefined();
+  });
+
+  it("never throttles get_invocations without the option, as on the MCP desktop", async () => {
+    const h = invocationHarness();
+    expect(h.result("ready")).toBeUndefined();
     expect(await h.check()).toBeUndefined();
   });
 });

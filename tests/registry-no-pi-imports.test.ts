@@ -1,8 +1,9 @@
 /**
  * The trusted core has to be servable unchanged from a standalone MCP process
  * or Galaxy's shared operations layer, so `registry.ts` and everything it
- * imports may use Node builtins and each other, and nothing else: no pi, no
- * extension entry point, no session state. This walks the real import graph.
+ * imports may use Node builtins, each other and the dependency-free modules
+ * under shared/, and nothing else: no pi, no extension entry point, no session
+ * state. This walks the real import graph.
  */
 
 import * as fs from "fs";
@@ -20,7 +21,9 @@ const IMPORT_RE =
 
 function resolveLocal(fromFile: string, spec: string): string {
   const base = path.resolve(path.dirname(fromFile), spec.replace(/\.js$/, ""));
-  for (const candidate of [`${base}.ts`, path.join(base, "index.ts")]) {
+  // A shared/*.js module is a real file, so the spec itself resolves too.
+  const asIs = path.resolve(path.dirname(fromFile), spec);
+  for (const candidate of [`${base}.ts`, path.join(base, "index.ts"), asIs]) {
     if (fs.existsSync(candidate)) return candidate;
   }
   throw new Error(`cannot resolve ${spec} from ${fromFile}`);

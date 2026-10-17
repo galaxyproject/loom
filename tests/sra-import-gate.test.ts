@@ -174,6 +174,25 @@ describe("SRA import gate", () => {
     expect(calls.every((c) => h.check(c)?.block)).toBe(true);
   });
 
+  it("gates run_tool under pi's galaxy_ prefix too", () => {
+    const calls = [call("a", "SRR1"), call("b", "SRR2")].map((c) => ({
+      ...c,
+      name: "galaxy_run_tool",
+    }));
+    h.assistant(calls);
+    expect(calls.every((c) => h.check(c)?.block)).toBe(true);
+  });
+
+  it("leaves an MCP proxy call to another server alone", () => {
+    const calls = [call("a", "SRR1"), call("b", "SRR2")].map((c) => ({
+      ...c,
+      name: "mcp",
+      arguments: { server: "other", tool: "run_tool", args: c.arguments },
+    })) as unknown as ReturnType<typeof call>[];
+    h.assistant(calls);
+    for (const c of calls) expect(h.check(c)).toBeUndefined();
+  });
+
   it.each(["fastq_dump", "fasterq_dump"])(
     "handles bare %s tool IDs and namespaced MCP calls",
     (toolId) => {

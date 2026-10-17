@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
@@ -10,6 +10,8 @@ import {
   renderFailures,
 } from "../extensions/loom/init-gate";
 import { setNotebookPath, setGalaxyConnection, resetState } from "../extensions/loom/state";
+import { registerGalaxyTools, setGalaxyToolSource } from "../extensions/loom/galaxy-tool-source";
+import { profileFromEnv, setCapabilityProfile } from "../shared/capability-profile.js";
 
 let tmpDir: string;
 let nbPath: string;
@@ -187,27 +189,27 @@ history_id: not_this
 });
 
 describe("checkPreconditions -- hard failures", () => {
-  it("hard-fails with notebook=hard when no notebook is set", () => {
-    const result = checkPreconditions();
+  it("hard-fails with notebook=hard when no notebook is set", async () => {
+    const result = await checkPreconditions();
     expect(result.ok).toBe(false);
     expect(result.hardFailed).toBe(true);
     expect(result.failures.map((f) => f.name)).toEqual(["notebook"]);
     expect(result.failures[0].severity).toBe("hard");
   });
 
-  it("hard-fails when a galaxy plan has no active connection", () => {
+  it("hard-fails when a galaxy plan has no active connection", async () => {
     writeNotebook(`
 ## Plan A: Run remotely [galaxy]
 
 - [ ] 1. **Heavy alignment** -- bwa-mem on big WGS
 `);
     setGalaxyConnection(false);
-    const result = checkPreconditions();
+    const result = await checkPreconditions();
     expect(result.hardFailed).toBe(true);
     expect(result.failures.find((f) => f.name === "galaxy_connection")).toBeTruthy();
   });
 
-  it("does not hard-fail on missing connection for a local plan", () => {
+  it("does not hard-fail on missing connection for a local plan", async () => {
     writeNotebook(`
 ## Plan A: Local stuff [local]
 
@@ -215,34 +217,34 @@ describe("checkPreconditions -- hard failures", () => {
   - Verification: confirm the parsed CSV exists and has the expected header
 `);
     setGalaxyConnection(false);
-    const result = checkPreconditions();
+    const result = await checkPreconditions();
     expect(result.ok).toBe(true);
     expect(result.hardFailed).toBe(false);
   });
 });
 
 describe("checkPreconditions -- soft failures", () => {
-  it("soft-fails when there's no plan section", () => {
+  it("soft-fails when there's no plan section", async () => {
     writeNotebook("# nb\n\nfreeform notes only\n");
-    const result = checkPreconditions();
+    const result = await checkPreconditions();
     expect(result.ok).toBe(false);
     expect(result.hardFailed).toBe(false);
     expect(result.failures.map((f) => f.name)).toEqual(["plan"]);
   });
 
-  it("soft-fails when galaxy plan has no history", () => {
+  it("soft-fails when galaxy plan has no history", async () => {
     writeNotebook(`
 ## Plan A: Galaxy [galaxy]
 
 - [ ] 1. **Step** -- with a description that exceeds the threshold
 `);
     setGalaxyConnection(true); // connected, but no history
-    const result = checkPreconditions();
+    const result = await checkPreconditions();
     expect(result.failures.find((f) => f.name === "history")).toBeTruthy();
     expect(result.failures.find((f) => f.name === "history")!.severity).toBe("soft");
   });
 
-  it("clears the history failure when Project context provides one", () => {
+  it("clears the history failure when Project context provides one", async () => {
     writeNotebook(`
 ## Project context
 
@@ -253,60 +255,60 @@ history_id: f5912ab34
 - [ ] 1. **Step** -- with a description that exceeds the threshold
 `);
     setGalaxyConnection(true);
-    const result = checkPreconditions();
+    const result = await checkPreconditions();
     expect(result.failures.find((f) => f.name === "history")).toBeUndefined();
   });
 
-  it("clears the history failure when state has currentHistoryId", () => {
+  it("clears the history failure when state has currentHistoryId", async () => {
     writeNotebook(`
 ## Plan A: Galaxy [galaxy]
 
 - [ ] 1. **Step** -- adequate description here
 `);
     setGalaxyConnection(true, "history_from_state");
-    const result = checkPreconditions();
+    const result = await checkPreconditions();
     expect(result.failures.find((f) => f.name === "history")).toBeUndefined();
   });
 
-  it("soft-fails on a bare-title step (no acceptance description)", () => {
+  it("soft-fails on a bare-title step (no acceptance description)", async () => {
     writeNotebook(`
 ## Plan A: Skinny [local]
 
 - [ ] 1. **Hi**
 `);
-    const result = checkPreconditions();
+    const result = await checkPreconditions();
     expect(result.failures.find((f) => f.name === "acceptance")).toBeTruthy();
     expect(result.failures.find((f) => f.name === "acceptance")!.severity).toBe("soft");
   });
 
-  it("does not block execution when verification criteria are missing", () => {
+  it("does not block execution when verification criteria are missing", async () => {
     writeNotebook(`
 ## Plan A: Legacy [local]
 
 - [ ] 1. **Write config** {#plan-a-step-1} -- create the requested config file
 `);
-    const result = checkPreconditions();
+    const result = await checkPreconditions();
     expect(result.ok).toBe(true);
     expect(result.failures).toEqual([]);
   });
 });
 
 describe("checkPreconditions -- happy path", () => {
-  it("passes for a well-formed local plan", () => {
+  it("passes for a well-formed local plan", async () => {
     writeNotebook(`
 ## Plan A: chrM [local]
 
 - [ ] 1. **QC FASTQ** {#plan-a-step-1} -- fastp adapter trim + per-base QC
   - Verification: confirm fastp HTML/JSON report exists and includes the summary module
 `);
-    const result = checkPreconditions();
+    const result = await checkPreconditions();
     expect(result.ok).toBe(true);
     expect(result.hardFailed).toBe(false);
     expect(result.failures).toEqual([]);
     expect(result.plan?.routing).toBe("local");
   });
 
-  it("passes for a galaxy plan when connection + history are present", () => {
+  it("passes for a galaxy plan when connection + history are present", async () => {
     writeNotebook(`
 ## Plan A: Aligned [galaxy]
 
@@ -314,8 +316,57 @@ describe("checkPreconditions -- happy path", () => {
   - Verification: poll the Galaxy invocation to completion and inspect BAM outputs
 `);
     setGalaxyConnection(true, "abc123");
-    const result = checkPreconditions();
+    const result = await checkPreconditions();
     expect(result.ok).toBe(true);
+  });
+});
+
+describe("checkPreconditions -- Galaxy readiness without a connect tool", () => {
+  const REMOTE = `
+## Plan A: Aligned [remote]
+
+- [ ] 1. **bwa-mem PE** {#plan-a-step-1} -- 4 samples on chrM reference
+`;
+  const connectionFailure = async () =>
+    (await checkPreconditions()).failures.find((f) => f.name === "galaxy_connection");
+  const bare = () => {
+    setCapabilityProfile({ ...profileFromEnv({}), galaxyTools: "bare" });
+    // The default in-process source: galaxy-ops' operations, which have no connect tool.
+    registerGalaxyTools({ registerTool: () => {} } as never);
+  };
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    setGalaxyToolSource(null);
+    setCapabilityProfile(null);
+  });
+
+  it("passes a [remote] plan under bare once credentials are configured", async () => {
+    writeNotebook(REMOTE);
+    vi.stubEnv("GALAXY_URL", "https://galaxy.example.org");
+    vi.stubEnv("GALAXY_API_KEY", "key");
+    bare();
+    // Nothing called connect: in-process tools have no such step.
+    setGalaxyConnection(false);
+    expect(await connectionFailure()).toBeUndefined();
+  });
+
+  it("hard-fails a [remote] plan under bare without credentials", async () => {
+    writeNotebook(REMOTE);
+    vi.stubEnv("GALAXY_URL", "");
+    vi.stubEnv("GALAXY_API_KEY", "");
+    bare();
+    const result = await checkPreconditions();
+    expect(result.hardFailed).toBe(true);
+    expect(await connectionFailure()).toBeTruthy();
+  });
+
+  it("still asks for connect under mcp, credentials or not", async () => {
+    writeNotebook(REMOTE);
+    vi.stubEnv("GALAXY_URL", "https://galaxy.example.org");
+    vi.stubEnv("GALAXY_API_KEY", "key");
+    setGalaxyConnection(false);
+    expect(await connectionFailure()).toBeTruthy();
   });
 });
 
@@ -335,12 +386,12 @@ describe("renderFailures", () => {
 });
 
 describe("checkPreconditions handles unreadable notebook", () => {
-  it("hard-fails when the path exists but isn't a readable file", () => {
+  it("hard-fails when the path exists but isn't a readable file", async () => {
     // Point notebookPath at the directory itself: existsSync returns true,
     // but readFileSync throws EISDIR. Exercises the catch branch in
     // checkPreconditions without needing an ESM-incompatible spy.
     setNotebookPath(tmpDir);
-    const result = checkPreconditions();
+    const result = await checkPreconditions();
     expect(result.hardFailed).toBe(true);
     expect(result.failures[0].name).toBe("notebook");
   });
@@ -360,36 +411,39 @@ describe("checkPreconditions -- local-shell gate", () => {
   const localExecFailure = (failures: { name: string; severity: string }[]) =>
     failures.find((f) => f.name === "local_exec");
 
-  it.each(["local", "hybrid"])("hard-fails a [%s] plan when the local shell is gone", (routing) => {
-    process.env.LOOM_LOCAL_SHELL = "off";
-    writeNotebook(
-      `## Plan A: Thing [${routing}]\n\n- [ ] 1. **Do it** -- with enough description\n`,
-    );
-    const gate = checkPreconditions();
-    expect(gate.hardFailed).toBe(true);
-    const f = localExecFailure(gate.failures);
-    expect(f?.severity).toBe("hard");
-    expect(f?.remediation).toContain("needs local execution");
-  });
+  it.each(["local", "hybrid"])(
+    "hard-fails a [%s] plan when the local shell is gone",
+    async (routing) => {
+      process.env.LOOM_LOCAL_SHELL = "off";
+      writeNotebook(
+        `## Plan A: Thing [${routing}]\n\n- [ ] 1. **Do it** -- with enough description\n`,
+      );
+      const gate = await checkPreconditions();
+      expect(gate.hardFailed).toBe(true);
+      const f = localExecFailure(gate.failures);
+      expect(f?.severity).toBe("hard");
+      expect(f?.remediation).toContain("needs local execution");
+    },
+  );
 
-  it("hard-fails an untagged (unknown) plan when the local shell is gone", () => {
+  it("hard-fails an untagged (unknown) plan when the local shell is gone", async () => {
     process.env.LOOM_LOCAL_SHELL = "off";
     writeNotebook(`## Plan A: Thing\n\n- [ ] 1. **Do it** -- with enough description\n`);
-    const gate = checkPreconditions();
+    const gate = await checkPreconditions();
     expect(localExecFailure(gate.failures)?.severity).toBe("hard");
   });
 
-  it.each(["galaxy", "remote"])("never local_exec-fails a [%s] plan", (routing) => {
+  it.each(["galaxy", "remote"])("never local_exec-fails a [%s] plan", async (routing) => {
     process.env.LOOM_LOCAL_SHELL = "off";
     writeNotebook(
       `## Plan A: Thing [${routing}]\n\n- [ ] 1. **Do it** -- with enough description\n`,
     );
-    expect(localExecFailure(checkPreconditions().failures)).toBeUndefined();
+    expect(localExecFailure((await checkPreconditions()).failures)).toBeUndefined();
   });
 
-  it("does not local_exec-fail when the shell is available (mac/linux unaffected)", () => {
+  it("does not local_exec-fail when the shell is available (mac/linux unaffected)", async () => {
     delete process.env.LOOM_LOCAL_SHELL;
     writeNotebook(`## Plan A: Thing [local]\n\n- [ ] 1. **Do it** -- with enough description\n`);
-    expect(localExecFailure(checkPreconditions().failures)).toBeUndefined();
+    expect(localExecFailure((await checkPreconditions()).failures)).toBeUndefined();
   });
 });

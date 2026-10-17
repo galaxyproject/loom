@@ -40,7 +40,7 @@ import type {
 } from "../../shared/dashboard-contract.js";
 import { appendActivityEvent } from "./activity";
 import { readDashboardDocument, updateDashboardDocument } from "./dashboard-store";
-import { isDesktopShell } from "../../shared/orbit-env.js";
+import { capabilityProfile } from "../../shared/capability-profile.js";
 
 /** More than this in one call is a rewrite, and a rewrite should say so. */
 const MAX_ACTIONS = 20;
@@ -905,7 +905,7 @@ function describePanel(panel: DashboardPanel): string {
 
 /** True when a shell with a dashboard pane is attached. */
 function hasPane(): boolean {
-  return isDesktopShell();
+  return capabilityProfile().ui === "desktop";
 }
 
 /** Where the change landed, said in one line, honestly, in either shell. */

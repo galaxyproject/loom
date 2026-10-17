@@ -128,31 +128,31 @@ describe("renderReproductionIndex", () => {
 });
 
 describe("buildReproductionLessonsContext", () => {
-  it("returns the index when the session looks like a reproduction", () => {
-    expect(buildReproductionLessonsContext("I am reproducing a paper")).toContain(
+  it("returns the index when the session looks like a reproduction", async () => {
+    expect(await buildReproductionLessonsContext("I am reproducing a paper")).toContain(
       "reproduction/condition-mapping-not-in-the-deposit",
     );
   });
 
-  it("returns nothing otherwise", () => {
-    expect(buildReproductionLessonsContext("align these reads")).toBe("");
+  it("returns nothing otherwise", async () => {
+    expect(await buildReproductionLessonsContext("align these reads")).toBe("");
   });
 
-  it("reads the plan title from the notebook when the prompt says nothing", () => {
+  it("reads the plan title from the notebook when the prompt says nothing", async () => {
     const nb = path.join(dir, "notebook.md");
     fs.writeFileSync(
       nb,
       "## Plan A: Reproduction of the DE analysis [local]\n\n- [ ] 1. **Start** -- do it\n",
     );
     setNotebookPath(nb);
-    expect(buildReproductionLessonsContext("go on then")).toContain("reproduction/");
+    expect(await buildReproductionLessonsContext("go on then")).toContain("reproduction/");
   });
 
-  it("records no surfacing -- an index of titles is not a lesson surfaced", () => {
+  it("records no surfacing -- an index of titles is not a lesson surfaced", async () => {
     const nb = path.join(dir, "notebook.md");
     fs.writeFileSync(nb, "# nb\n");
     setNotebookPath(nb);
-    buildReproductionLessonsContext("I am reproducing a paper");
+    await buildReproductionLessonsContext("I am reproducing a paper");
     expect(fs.existsSync(path.join(dir, "activity.jsonl"))).toBe(false);
   });
 });

@@ -8,6 +8,7 @@
  */
 
 import { loadConfig, saveConfig } from "./config";
+import { galaxyCredentials } from "./galaxy-api";
 
 export interface GalaxyProfile {
   url: string;
@@ -198,24 +199,26 @@ export type ActiveGalaxyStatus = "usable" | "configured-unusable" | "none";
  *   calls would 401; the fix is to run from Orbit or export GALAXY_API_KEY.
  * - `none`: no usable active profile to speak of.
  *
- * Pure given (profiles, env); `activeGalaxyStatus()` is the thin live wrapper.
+ * Pure given (profiles, env); without `env` it reads the live credentials, which
+ * is what `activeGalaxyStatus()`, the thin live wrapper, does.
  */
 export function getActiveGalaxyStatus(
   profiles: GalaxyProfiles,
-  env: NodeJS.ProcessEnv,
+  env?: NodeJS.ProcessEnv,
 ): ActiveGalaxyStatus {
-  if (env.GALAXY_URL && env.GALAXY_API_KEY) return "usable";
+  const { url, apiKey } = galaxyCredentials(env);
+  if (url && apiKey) return "usable";
   const active = profiles.active;
   if (!active) return "none";
   const profile = profiles.profiles[active];
-  if (profile && !profile.apiKey && !env.GALAXY_API_KEY && profile.apiKeyEncrypted) {
+  if (profile && !profile.apiKey && !apiKey && profile.apiKeyEncrypted) {
     return "configured-unusable";
   }
   return "none";
 }
 
 export function activeGalaxyStatus(): ActiveGalaxyStatus {
-  return getActiveGalaxyStatus(loadProfiles(), process.env);
+  return getActiveGalaxyStatus(loadProfiles());
 }
 
 /**

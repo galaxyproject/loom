@@ -39,7 +39,7 @@ export function registerExecutionCommands(pi: ExtensionAPI): void {
 
   const executeHandler = async (_args: string | undefined, ctx: ExtensionContext) => {
     const nbPath = getNotebookPath();
-    const gate = checkPreconditions();
+    const gate = await checkPreconditions();
 
     if (gate.hardFailed) {
       ctx.ui.notify(renderFailures(gate.failures), "warning");

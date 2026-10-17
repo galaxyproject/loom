@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
+import fs from "fs";
 import path from "path";
+import { allOperations } from "@galaxyproject/galaxy-ops";
 import { evaluate } from "../evals/lib/assertions";
 import { filterScenarioDirs } from "../evals/lib/select";
 import { makeRunId, substituteRunId, uvCacheEnv } from "../evals/lib/runner";
@@ -9,7 +11,7 @@ import {
   selectEvalHistories,
   type FetchLike,
 } from "../evals/lib/galaxy-teardown";
-import type { AnyEvent, Assertions, ScenarioRun } from "../evals/lib/types";
+import type { AnyEvent, Assertions, Scenario, ScenarioRun } from "../evals/lib/types";
 
 function run(events: AnyEvent[], assertions: Assertions): ScenarioRun {
   return {
@@ -75,6 +77,42 @@ describe("evals toolResults assertions", () => {
       );
       expect(failures.map((f) => f.assertion)).toEqual(["toolResults.mustSucceed"]);
     }
+  });
+
+  it("detailsContains reads dotted paths into nested details", () => {
+    const bare = end("run_tool", '{"success":true}', {
+      details: { server: "galaxy", galaxy: { tool: "run_tool", outputId: "01ABC" } },
+    });
+    const grade = (detailsContains: Record<string, string>) =>
+      evaluate(
+        run([bare], { toolResults: { mustSucceed: [{ name: "run_tool", detailsContains }] } }),
+      ).map((f) => f.assertion);
+    expect(grade({ "details.galaxy.tool": "run_tool" })).toEqual([]);
+    expect(grade({ "galaxy.tool": "run_tool" })).toEqual([]);
+    expect(grade({ "details.galaxy.outputId": "01ABC", server: "galaxy" })).toEqual([]);
+    expect(grade({ server: "galaxy" })).toEqual([]);
+    for (const miss of [
+      { "details.galaxy.tool": "get_user" },
+      { "details.galaxy.missing": "x" },
+      { "galaxy.tool.deeper": "run_tool" },
+      { "details.nothing.here": "x" },
+    ]) {
+      expect(grade(miss), JSON.stringify(miss)).toEqual(["toolResults.mustSucceed"]);
+    }
+  });
+
+  it("a top-level key that contains a dot is still read as one key", () => {
+    const dotted = end("run_tool", "{}", {
+      details: { "galaxy.tool": "flat", galaxy: { tool: "nested" } },
+    });
+    const failures = evaluate(
+      run([dotted], {
+        toolResults: {
+          mustSucceed: [{ name: "run_tool", detailsContains: { "galaxy.tool": "flat" } }],
+        },
+      }),
+    );
+    expect(failures).toEqual([]);
   });
 
   it("mustNotSucceed tolerates a blocked call but not a successful one", () => {
@@ -204,5 +242,73 @@ describe("evals Galaxy teardown", () => {
       fetchImpl,
     });
     expect(result).toEqual({ purged: [], failed: [] });
+  });
+});
+
+describe("evals bare-path clones", () => {
+  const scenariosDir = path.resolve(__dirname, "..", "evals", "scenarios");
+  const load = (name: string) =>
+    JSON.parse(
+      fs.readFileSync(path.join(scenariosDir, name, "scenario.json"), "utf-8"),
+    ) as Scenario;
+  const CLONES: Record<string, string> = {
+    "galaxy-tools-destructive-gate": "galaxy-mcp-destructive-gate",
+    "galaxy-tools-job-capture": "galaxy-mcp-job-capture",
+    "galaxy-tools-large-output": "galaxy-mcp-large-output",
+    "galaxy-tools-sra-gate": "galaxy-mcp-sra-gate",
+    "galaxy-tools-upload-hidden": "galaxy-mcp-upload-hidden",
+    "iwc-find-from-question-tools": "iwc-find-from-question",
+    "plan-consults-iwc-tools": "plan-consults-iwc",
+    "execution-after-approval-tools": "execution-after-approval",
+  };
+  // Snapshot: allOperations is one mutable array shared by both galaxy-ops entries.
+  const ops = new Set([...allOperations].map((o) => o.name));
+  const loomTools = new Set(["galaxy_read_output", "galaxy_upload_local_file"]);
+
+  for (const [clone, original] of Object.entries(CLONES)) {
+    it(`${clone} pins the bare flag and keeps ${original}'s run settings`, () => {
+      const c = load(clone);
+      const o = load(original);
+      // readEnv prefers ORBIT_ and the runner spreads ambient env first, so
+      // pinning only the LOOM_ spelling would lose to an ambient ORBIT_ value.
+      expect(c.env).toEqual({ LOOM_GALAXY_TOOLS: "bare", ORBIT_GALAXY_TOOLS: "bare" });
+      for (const k of ["tier", "timeoutMs", "requiresModel", "requiresGalaxy"] as const) {
+        expect(c[k], k).toEqual(o[k]);
+      }
+      expect(JSON.stringify(c)).not.toContain("mcp__galaxy__");
+      expect(JSON.stringify(c)).not.toContain("mcp_read_output");
+    });
+
+    it(`${clone} names only tools the bare path registers`, () => {
+      const a = load(clone).assertions;
+      const names = [
+        ...(a.toolCalls?.mustInclude ?? []).map((m) => m.name),
+        ...(a.toolCalls?.mustNotInclude ?? []),
+        ...(a.toolResults?.mustSucceed ?? []).map((m) => m.name),
+        ...(a.toolResults?.mustNotSucceed ?? []),
+      ];
+      expect(names.length).toBeGreaterThan(0);
+      for (const n of names) expect(ops.has(n) || loomTools.has(n), n).toBe(true);
+    });
+  }
+
+  it("the job-capture clone grades a bare run_tool result by its nested details", () => {
+    const c = load("galaxy-tools-job-capture");
+    const toolResults = c.assertions.toolResults!;
+    const result = (details: object) =>
+      evaluate(run([end("run_tool", '{"success":true}', { details })], { toolResults }));
+    expect(result({ galaxy: { tool: "run_tool", elapsedMs: 12 } })).toEqual([]);
+    expect(result({ server: "galaxy", tool: "run_tool" }).map((f) => f.assertion)).toEqual([
+      "toolResults.mustSucceed",
+    ]);
+  });
+
+  it("init-gate-galaxy-no-connection pins empty credentials", () => {
+    // Under bare, configured credentials count as connected (there is no
+    // connect tool), so ambient GALAXY_* would let /execute through.
+    expect(load("init-gate-galaxy-no-connection").env).toMatchObject({
+      GALAXY_URL: "",
+      GALAXY_API_KEY: "",
+    });
   });
 });

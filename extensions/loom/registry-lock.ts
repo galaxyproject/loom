@@ -14,7 +14,7 @@
  * the heartbeat interval is minutes. That is the residual, and it is small.
  */
 
-import { randomBytes } from "crypto";
+import { randomHex } from "../../shared/random.js";
 
 export const STALE_LOCK_MS = 120_000;
 
@@ -74,7 +74,7 @@ export function renameReplacing(
 }
 
 export function newWriterToken(): string {
-  return randomBytes(16).toString("hex");
+  return randomHex(16);
 }
 
 function parseLock(text: string): LockRecord | null {
@@ -149,7 +149,7 @@ export class RegistryLock {
   }
 
   private writeAtomic(rec: LockRecord): void {
-    const tmp = `${this.lockPath}.${this.pid}.${randomBytes(6).toString("hex")}.tmp`;
+    const tmp = `${this.lockPath}.${this.pid}.${randomHex(6)}.tmp`;
     this.fs.writeFileSync(tmp, JSON.stringify(rec), { flag: "wx" });
     renameReplacing(this.fs, tmp, this.lockPath, this.platform);
   }

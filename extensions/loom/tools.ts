@@ -58,7 +58,8 @@ import {
   isBundledRepo,
   readBundledRepoFile,
 } from "./vendor-skills";
-import { parse as parseHtml } from "node-html-parser";
+import { GTN_API, gtnPageText, gtnTopics, gtnTutorials, gtnUrl } from "../../shared/gtn.js";
+import { MCP_FAMILY, type GalaxyToolFamily } from "../../shared/galaxy-mcp-tools.js";
 
 /**
  * A record call's label has to say something.
@@ -80,42 +81,12 @@ function requireLabel(label: string): string {
 }
 
 /**
- * Strip a GTN tutorial HTML document down to readable plain text.
- *
- * Replaces the prior regex-based stripper, which could be defeated by
- * malformed HTML (e.g. an unterminated `<script` tag would leak its
- * contents through the `<script>...</script>` regex). Using a real
- * parser closes that gap and is more robust to GTN page-layout drift.
+ * Reduce a GTN page to the agent's text. The reduction is shared with the browser shell
+ * (shared/gtn.js): it drops chrome, prefers the most specific content region, and degrades
+ * on malformed HTML rather than leaking an unterminated script body.
  */
 function stripGtnHtml(html: string): string {
-  const root = parseHtml(html, {
-    blockTextElements: { script: false, style: false, noscript: false, code: true, pre: true },
-  });
-  // Drop chrome we don't want in the agent's context.
-  for (const sel of ["script", "style", "nav", "header", "footer", "aside", "noscript"]) {
-    for (const el of root.querySelectorAll(sel)) el.remove();
-  }
-  // Pick the most-specific body region available.
-  const body =
-    root.querySelector("main") ||
-    root.querySelector("article") ||
-    root.querySelector(".tutorial-content") ||
-    root.querySelector("body") ||
-    root;
-  let text = body.textContent || "";
-  text = text
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&#(\d+);/g, (_m, code) => String.fromCharCode(Number(code)));
-  text = text
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-  return text;
+  return gtnPageText(html);
 }
 
 /**
@@ -148,7 +119,7 @@ function recordFailure(message: string): {
   };
 }
 
-export function registerPlanTools(pi: ExtensionAPI): void {
+export function registerPlanTools(pi: ExtensionAPI, family: GalaxyToolFamily = MCP_FAMILY): void {
   // ─────────────────────────────────────────────────────────────────────────────
   // Tool: Search/browse GTN topics and tutorials
   // ─────────────────────────────────────────────────────────────────────────────
@@ -171,8 +142,6 @@ in their title or objectives. Use this to find tutorial URLs before fetching wit
       ),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
-      const GTN_API = "https://training.galaxyproject.org/training-material/api";
-
       try {
         if (!params.topic) {
           const resp = await fetch(`${GTN_API}/topics.json`, { signal });
@@ -183,32 +152,16 @@ in their title or objectives. Use this to find tutorial URLs before fetching wit
             };
           }
 
-          const data = (await resp.json()) as Record<
-            string,
-            { name: string; title: string; summary: string }
-          >;
-          const topics = Object.values(data).map((t) => ({
-            name: t.name,
-            title: t.title,
-            summary: t.summary,
-          }));
-
+          const listing = gtnTopics(await resp.json());
+          if (!listing) {
+            return {
+              content: [{ type: "text", text: "Error: GTN returned an unexpected topics payload" }],
+              details: { error: true },
+            };
+          }
           return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify(
-                  {
-                    count: topics.length,
-                    topics,
-                    hint: "Use gtn_search with a topic name to list its tutorials.",
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-            details: { count: topics.length },
+            content: [{ type: "text", text: JSON.stringify(listing, null, 2) }],
+            details: { count: listing.count },
           };
         }
 
@@ -225,58 +178,21 @@ in their title or objectives. Use this to find tutorial URLs before fetching wit
           };
         }
 
-        const topicData = (await resp.json()) as {
-          name: string;
-          title: string;
-          materials: Array<{
-            title: string;
-            url: string;
-            id: string;
-            level: string;
-            time_estimation: string;
-            objectives: string[];
-            key_points: string[];
-            tools: string[];
-            workflows: unknown[];
-          }>;
-        };
-
-        let tutorials = (topicData.materials || []).map((m) => ({
-          title: m.title,
-          url: `https://training.galaxyproject.org${m.url}`,
-          id: m.id,
-          level: m.level,
-          time_estimation: m.time_estimation,
-          objectives: m.objectives || [],
-        }));
-
-        if (params.query) {
-          const q = params.query.toLowerCase();
-          tutorials = tutorials.filter(
-            (t) =>
-              t.title.toLowerCase().includes(q) ||
-              t.objectives.some((o) => o.toLowerCase().includes(q)),
-          );
+        const listing = gtnTutorials(await resp.json(), params.query);
+        if (!listing) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: Topic "${params.topic}" returned an unexpected payload.`,
+              },
+            ],
+            details: { error: true },
+          };
         }
-
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  topic: topicData.title,
-                  count: tutorials.length,
-                  ...(params.query ? { query: params.query } : {}),
-                  tutorials,
-                  hint: "Use gtn_fetch with a tutorial URL to read its full content.",
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-          details: { topic: params.topic, count: tutorials.length },
+          content: [{ type: "text", text: JSON.stringify(listing, null, 2) }],
+          details: { topic: params.topic, count: listing.count },
         };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
@@ -315,26 +231,10 @@ analyses in Galaxy.`,
       }),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
-      const GTN_HOST = "training.galaxyproject.org";
-
-      let parsed: URL;
-      try {
-        parsed = new URL(params.url);
-      } catch {
+      const checked = gtnUrl(params.url);
+      if (checked.problem !== undefined) {
         return {
-          content: [{ type: "text", text: `Error: Invalid URL "${params.url}"` }],
-          details: { error: true },
-        };
-      }
-
-      if (parsed.hostname !== GTN_HOST) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error: Only URLs on ${GTN_HOST} are allowed. Got: ${parsed.hostname}`,
-            },
-          ],
+          content: [{ type: "text", text: `Error: ${checked.problem}` }],
           details: { error: true },
         };
       }
@@ -566,14 +466,14 @@ relevant, and a wrong path answers with the entry points that do exist.`,
     label: "Record Galaxy Invocation",
     description: `Name the plan step a Galaxy workflow invocation belongs to. The harness
 records the run; you name the step it belongs to. Loom already wrote a \`loom-invocation\`
-block the moment mcp__galaxy__invoke_workflow returned, so this normally just sets \`label\` and
+block the moment ${family.tool("invoke_workflow")} returned, so this normally just sets \`label\` and
 \`notebook_anchor\` on the block already carrying that id -- the run is pollable either way.
 If no block carries the id (a submission Loom could not see, such as one made from inside
 code mode), this creates one. Both arguments are checked before anything is written: the
 anchor must resolve in notebook.md, and the invocation id must exist on the Galaxy server.`,
     parameters: Type.Object({
       invocationId: Type.String({
-        description: "Galaxy invocation ID returned from mcp__galaxy__invoke_workflow",
+        description: `Galaxy invocation ID returned from ${family.tool("invoke_workflow")}`,
       }),
       notebookAnchor: Type.String({
         description:
@@ -608,7 +508,7 @@ anchor must resolve in notebook.md, and the invocation id must exist on the Gala
         if (check.outcome === "absent") {
           return recordFailure(
             `Galaxy has no invocation "${params.invocationId}" (${check.detail}). ` +
-              `Nothing was recorded -- re-read the id from the mcp__galaxy__invoke_workflow result.`,
+              `Nothing was recorded -- re-read the id from the ${family.tool("invoke_workflow")} result.`,
           );
         }
         // A failed check plus an aborted call is the user cancelling, not Galaxy
@@ -675,7 +575,7 @@ anchor must resolve in notebook.md, and the invocation id must exist on the Gala
 
         const where = `${inv.invocationId} (${inv.label}) at ${inv.notebookAnchor}`;
         const proposal = params.proposalId
-          ? noteProposalBinding(proposalDeps, {
+          ? await noteProposalBinding(proposalDeps, {
               proposalId: params.proposalId,
               notebookAnchor: inv.notebookAnchor,
               run: { kind: "invocation", id: inv.invocationId },
@@ -747,13 +647,13 @@ anchor must resolve in notebook.md, and the invocation id must exist on the Gala
     label: "Record Galaxy Job",
     description: `Name the plan step a Galaxy TOOL run belongs to, the same way
 galaxy_invocation_record does for a workflow. The harness records the run; you name the step
-it belongs to. Loom already wrote a \`loom-job\` block the moment mcp__galaxy__run_tool returned, so
+it belongs to. Loom already wrote a \`loom-job\` block the moment ${family.tool("run_tool")} returned, so
 this normally just sets \`label\` and \`notebook_anchor\` on the block already carrying that
 job id -- the poller is watching it either way. If no block carries the id, this creates one.
 Both arguments are checked before anything is written: the anchor must resolve in notebook.md,
 and the job id must exist on the Galaxy server. \`toolId\` is used only when creating.`,
     parameters: Type.Object({
-      jobId: Type.String({ description: "Galaxy job ID returned from mcp__galaxy__run_tool" }),
+      jobId: Type.String({ description: `Galaxy job ID returned from ${family.tool("run_tool")}` }),
       notebookAnchor: Type.String({
         description:
           "Anchor of the plan step this run belongs to, e.g. 'plan-a-step-3'. It must " +
@@ -788,7 +688,7 @@ and the job id must exist on the Galaxy server. \`toolId\` is used only when cre
         if (check.outcome === "absent") {
           return recordFailure(
             `Galaxy has no job "${params.jobId}" (${check.detail}). Nothing was recorded -- ` +
-              `re-read the id from the mcp__galaxy__run_tool result. A tool run returns a job id, ` +
+              `re-read the id from the ${family.tool("run_tool")} result. A tool run returns a job id, ` +
               `not a dataset id.`,
           );
         }
@@ -837,7 +737,7 @@ and the job id must exist on the Galaxy server. \`toolId\` is used only when cre
 
         const where = `${job.jobId} (${job.label}) at ${job.notebookAnchor}`;
         const proposal = params.proposalId
-          ? noteProposalBinding(proposalDeps, {
+          ? await noteProposalBinding(proposalDeps, {
               proposalId: params.proposalId,
               notebookAnchor: job.notebookAnchor,
               run: { kind: "job", id: job.jobId },

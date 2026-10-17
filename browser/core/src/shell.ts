@@ -14,6 +14,7 @@ import { galaxyCanRun, galaxyRefusalMessage } from "./diagnostics";
 import { buildConfig } from "./config";
 import { saveCredentials } from "./credentials";
 import { ensureCredentials, switchProvider } from "./credentials-modal";
+import { offeredProviders } from "./agent/providers";
 import { ChatView, type RunOutcome } from "./transcript";
 
 import { createConfirm } from "./confirm-modal";
@@ -80,9 +81,10 @@ export interface OrbitBrowserOptions {
   datasetId?: string;
   /**
    * Galaxy's AI proxy for the flavor's visualization plugin (`<root>api/plugins/<plugin>`), which
-   * the default "galaxy" provider talks to.
+   * the "galaxy" provider talks to; it is the first-launch default when given. A flavor Galaxy
+   * doesn't host as a plugin has none, and its picker offers every other provider.
    */
-  galaxyChatUrl: string;
+  galaxyChatUrl?: string;
   pyodideURL: string;
   /** The flavor's agent worker; see AgentClient. */
   createWorker: () => Worker;
@@ -192,7 +194,8 @@ export async function mountOrbitBrowser(
   const retryNotice = createRetryNotice({ addInfoMessage: info });
 
   // Ask for a provider/key before the worker starts.
-  let creds = await ensureCredentials(container, brand);
+  const offered = offeredProviders(!!options.galaxyChatUrl);
+  let creds = await ensureCredentials(container, brand, offered);
   const config = buildConfig(target, creds);
   const rootPath = new URL(config.galaxy_root, document.baseURI).pathname;
   chat.setGalaxyServerUrl(absolute(config.galaxy_root));
@@ -213,7 +216,8 @@ export async function mountOrbitBrowser(
     commit: (process.env.build_commit as string) || "",
     built: (process.env.build_built as string) || "",
     galaxy: config.galaxy_root,
-    provider: config.ai_provider,
+    // ensureCredentials answered, so buildConfig had a provider to name.
+    provider: config.ai_provider || creds.provider,
     model: config.ai_model || "",
   });
 
@@ -479,7 +483,7 @@ export async function mountOrbitBrowser(
   agent.open(opening);
 
   el.model.addEventListener("click", async () => {
-    const picked = await switchProvider(container, brand);
+    const picked = await switchProvider(container, brand, offered);
     if (picked) {
       const previous = { creds, model: { ...config } };
       creds = picked;

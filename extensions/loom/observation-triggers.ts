@@ -56,6 +56,7 @@ import { onEvidenceDecision } from "./evidence-gate.js";
 import { appendActivityEvent } from "./activity.js";
 import { getNotebookPath } from "./state.js";
 import { confirmObservation, describeObservation } from "./observation-ui.js";
+import { MCP_FAMILY, type GalaxyToolFamily } from "../../shared/galaxy-mcp-tools.js";
 
 export const RETRY_LOOP_THRESHOLD = 3;
 /**
@@ -174,6 +175,7 @@ export function factsForToolResult(
   toolName: string,
   input: Record<string, unknown>,
   text: string,
+  family: GalaxyToolFamily = MCP_FAMILY,
 ): ObservationFacts | null {
   let args = input ?? {};
   if (toolName === "mcp") {
@@ -181,7 +183,7 @@ export function factsForToolResult(
     if (!call) return null;
     ({ toolName, args } = call);
   }
-  const name = observationToolName(toolName);
+  const name = observationToolName(toolName, family);
   if (!name) return null;
   const raw = String(text ?? "").trim();
   if (!raw) return null;
@@ -189,6 +191,7 @@ export function factsForToolResult(
     kind: "tool-error",
     trigger: "tool_error",
     mcpTool: name,
+    ...(family === MCP_FAMILY ? {} : { inProcess: true as const }),
     toolIds: extractToolIds(args),
     datatypes: extractDatatypes(args),
     rawSignature: raw,
@@ -503,7 +506,10 @@ function errorTextOf(content: ReadonlyArray<{ type: string; text?: string }>): s
 
 const EVIDENCE_MARKER = "assertion-failed|evidence-gate";
 
-export function registerObservationTriggers(pi: ExtensionAPI): void {
+export function registerObservationTriggers(
+  pi: ExtensionAPI,
+  family: GalaxyToolFamily = MCP_FAMILY,
+): void {
   pi.on("session_start", async () => {
     resetObservationTriggers();
   });
@@ -514,14 +520,19 @@ export function registerObservationTriggers(pi: ExtensionAPI): void {
     // an API key one normalization away from the wire.
     const called =
       event.toolName === "mcp" ? proxiedGalaxyCall(event.input ?? {})?.toolName : event.toolName;
-    if (observationToolName(called) === "galaxy_connect" && !event.isError) {
+    if (observationToolName(called, family) === "galaxy_connect" && !event.isError) {
       recordGalaxyVersionFromConnect(errorTextOf(event.content));
     }
     if (resolveObservationsMode() === "off") return;
 
     const failed = event.isError || Boolean((event.details as { error?: unknown })?.error);
     if (!failed) return;
-    const facts = factsForToolResult(event.toolName, event.input, errorTextOf(event.content));
+    const facts = factsForToolResult(
+      event.toolName,
+      event.input,
+      errorTextOf(event.content),
+      family,
+    );
     if (!facts) return;
 
     const decision = decideToolResultObservation(state, {

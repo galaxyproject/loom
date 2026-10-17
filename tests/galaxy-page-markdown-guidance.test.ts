@@ -1,18 +1,23 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import * as fs from "fs";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import * as state from "../extensions/loom/state";
 import { GALAXY_PAGE_MARKDOWN_GUIDANCE } from "../extensions/loom/galaxy-page-markdown-guidance";
 import { NOTEBOOK_PUSH_TO_GALAXY_DESCRIPTION } from "../extensions/loom/tools-sync";
 import { buildGalaxyPageBindingBlock } from "../extensions/loom/context";
 
 vi.mock("../extensions/loom/state");
-vi.mock("fs", async (importOriginal) => {
-  const actual = await importOriginal<typeof fs>();
-  return { ...actual, readFileSync: vi.fn() };
-});
+
+let dir: string;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  dir = mkdtempSync(join(tmpdir(), "page-guidance-"));
+});
+
+afterEach(() => {
+  rmSync(dir, { recursive: true, force: true });
 });
 
 describe("GALAXY_PAGE_MARKDOWN_GUIDANCE", () => {
@@ -41,8 +46,9 @@ describe("notebook_push_to_galaxy tool description", () => {
 
 describe("Galaxy page binding context block", () => {
   // Reinforces the guidance per turn during the update flow, once a binding exists.
-  it("surfaces the Galaxy-Flavored-Markdown authoring guidance", () => {
-    vi.mocked(state.getNotebookPath).mockReturnValue("/work/notebook.md");
+  it("surfaces the Galaxy-Flavored-Markdown authoring guidance", async () => {
+    const nbPath = join(dir, "notebook.md");
+    vi.mocked(state.getNotebookPath).mockReturnValue(nbPath);
     const nb = [
       "```loom-galaxy-page",
       "page_id: p1",
@@ -54,7 +60,7 @@ describe("Galaxy page binding context block", () => {
       "```",
       "",
     ].join("\n");
-    vi.mocked(fs.readFileSync).mockReturnValue(nb as never);
-    expect(buildGalaxyPageBindingBlock()).toContain(GALAXY_PAGE_MARKDOWN_GUIDANCE);
+    writeFileSync(nbPath, nb, "utf-8");
+    expect(await buildGalaxyPageBindingBlock()).toContain(GALAXY_PAGE_MARKDOWN_GUIDANCE);
   });
 });

@@ -1,12 +1,18 @@
 /** User-visible heartbeats from observed events; never invoke the model. */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { galaxyCall } from "./mcp-recovery";
+import { MCP_FAMILY, type GalaxyToolFamily } from "../../shared/galaxy-mcp-tools.js";
 
 export const PROGRESS_INTERVAL_MS = 60_000;
 
-function describeTool(name: string, input: Record<string, unknown>): string {
+function describeTool(
+  name: string,
+  input: Record<string, unknown>,
+  family: GalaxyToolFamily,
+): string {
   // Loom's own galaxy_* tools (upload, job/invocation records) count as Galaxy work too.
-  const galaxy = galaxyCall(name, input)?.name ?? (name.startsWith("galaxy_") ? name : undefined);
+  const galaxy =
+    galaxyCall(name, input, family)?.name ?? (name.startsWith("galaxy_") ? name : undefined);
   if (galaxy) {
     if (/get_(dataset|job|history|invocation)/.test(galaxy))
       return "checking Galaxy data and job status";
@@ -22,7 +28,10 @@ function describeTool(name: string, input: Record<string, unknown>): string {
   return "executing an analysis tool";
 }
 
-export function registerProgressUpdates(pi: ExtensionAPI): void {
+export function registerProgressUpdates(
+  pi: ExtensionAPI,
+  family: GalaxyToolFamily = MCP_FAMILY,
+): void {
   let ctx: ExtensionContext | undefined;
   let timer: ReturnType<typeof setInterval> | undefined;
   let startedAt = 0;
@@ -65,7 +74,7 @@ export function registerProgressUpdates(pi: ExtensionAPI): void {
   });
   pi.on("tool_execution_start", (event) => {
     if (!timer) return;
-    const description = describeTool(event.toolName, event.args);
+    const description = describeTool(event.toolName, event.args, family);
     if (!active.size && completed === 0) notify(`Progress: ${description}.`);
     active.set(event.toolCallId, description);
   });

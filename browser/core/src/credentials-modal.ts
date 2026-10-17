@@ -1,7 +1,14 @@
 /** Provider/model/key picker. Mirrors Orbit's BYO-key overlay behaviour. */
 
 import { DEFAULT_BRAND, type Brand } from "./agent/brand";
-import { defaultEndpoint, needsKey, providerById, PROVIDERS, takesModel } from "./agent/providers";
+import {
+  defaultEndpoint,
+  needsKey,
+  providerById,
+  PROVIDERS,
+  takesModel,
+  type Provider,
+} from "./agent/providers";
 import { discoverModels } from "./model-discovery";
 import {
   clearCredentials,
@@ -66,6 +73,7 @@ function openPicker(
   container: HTMLElement,
   cancellable: boolean,
   brand: Brand,
+  offered: readonly Provider[],
 ): Promise<Credentials | null> {
   const stored = loadCredentials(brand);
 
@@ -84,7 +92,7 @@ function openPicker(
   const errorEl = container.querySelector<HTMLElement>("#cred-error")!;
   const saveBtn = container.querySelector<HTMLButtonElement>("#cred-save")!;
 
-  for (const p of PROVIDERS) {
+  for (const p of offered) {
     providerSel.add(new Option(p.name, p.id));
   }
   if (stored?.provider) providerSel.value = stored.provider;
@@ -155,7 +163,7 @@ function openPicker(
         apiKey: key(),
         baseUrl: endpointInput.value.trim() || undefined,
       };
-      const problem = credentialProblem(creds);
+      const problem = credentialProblem(creds, offered);
       if (problem) {
         errorEl.textContent = problem;
         return;
@@ -203,9 +211,10 @@ function openPicker(
 export async function switchProvider(
   container: HTMLElement,
   brand: Brand = DEFAULT_BRAND,
+  offered: readonly Provider[] = PROVIDERS,
 ): Promise<Credentials | undefined> {
   const before = JSON.stringify(loadCredentials(brand));
-  const picked = await openPicker(container, true, brand);
+  const picked = await openPicker(container, true, brand, offered);
   return picked && JSON.stringify(picked) !== before ? picked : undefined;
 }
 
@@ -213,12 +222,13 @@ export async function switchProvider(
 export async function ensureCredentials(
   container: HTMLElement,
   brand: Brand = DEFAULT_BRAND,
+  offered: readonly Provider[] = PROVIDERS,
 ): Promise<Credentials> {
   const stored = loadCredentials(brand);
-  if (stored && !credentialProblem(stored)) return stored;
+  if (stored && !credentialProblem(stored, offered)) return stored;
   // Dev override, as in config.ts: the vite proxy attaches the key, so there is nothing
   // to ask for. A deployed build has no LLM_PROVIDER and always shows the picker.
   const provider = process.env.llm_provider as string | undefined;
   if (provider) return { provider, model: process.env.llm_model as string | undefined };
-  return (await openPicker(container, false, brand)) as Credentials;
+  return (await openPicker(container, false, brand, offered)) as Credentials;
 }

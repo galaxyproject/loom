@@ -93,6 +93,22 @@ function toolEnds(events: AnyEvent[]): ToolEnd[] {
     });
 }
 
+/**
+ * A top-level key wins, so every existing `server`/`tool` assertion reads as
+ * before. Otherwise the key is a dotted path, with or without a leading
+ * `details.`: the in-process Galaxy tools nest their facts under
+ * `details.galaxy`, and a clone has to be able to pin `details.galaxy.tool`.
+ */
+function detailsValue(details: Record<string, unknown>, key: string): unknown {
+  if (key in details) return details[key];
+  let at: unknown = details;
+  for (const part of key.replace(/^details\./, "").split(".")) {
+    if (!at || typeof at !== "object" || !(part in at)) return undefined;
+    at = (at as Record<string, unknown>)[part];
+  }
+  return at;
+}
+
 function evaluateToolResults(
   events: AnyEvent[],
   a: ToolResultAssertions | undefined,
@@ -108,7 +124,7 @@ function evaluateToolResults(
       (r) =>
         !r.isError &&
         Object.entries(expected.detailsContains ?? {}).every(
-          ([k, v]) => String(r.details[k]) === v,
+          ([k, v]) => String(detailsValue(r.details, k)) === v,
         ) &&
         (expected.textContains === undefined || r.text.includes(expected.textContains)),
     );

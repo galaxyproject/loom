@@ -1,0 +1,29 @@
+{
+  "name": "execution (bare tools): an approved plan is actually executed",
+  "description": "Runs under LOOM_GALAXY_TOOLS=bare (and its ORBIT_ spelling, which readEnv prefers if the ambient env sets it), so the Galaxy tools are galaxy-ops operations registered in-process under bare names. Same three turns as execution-after-approval: once approval is given and the parameters are reviewed, the agent must actually call run_tool rather than print the call as a code block. The dataset is named by position so the scenario resolves against any Galaxy. Bare-path clone of execution-after-approval; the original covers the MCP path until 2e deletes it.",
+  "tier": 2,
+  "requiresModel": true,
+  "requiresGalaxy": true,
+  "inputs": [
+    "Run the Add column tool (tool id `addValue`) on the first dataset in history hist1, adding the value 7 as a new column. Draft a plan first and wait for my approval.",
+    "I approve the plan above. Show the full parameter table for review before executing.",
+    "The parameters look right. Go ahead and run it."
+  ],
+  "env": {
+    "LOOM_GALAXY_TOOLS": "bare",
+    "ORBIT_GALAXY_TOOLS": "bare"
+  },
+  "timeoutMs": 420000,
+  "assertions": {
+    "toolCalls": {
+      "mustInclude": [
+        {
+          "name": "run_tool",
+          "argsContains": {
+            "tool_id": "addValue"
+          }
+        }
+      ]
+    }
+  }
+}

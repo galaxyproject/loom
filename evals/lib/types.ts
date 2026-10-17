@@ -102,7 +102,12 @@ export interface ToolResultAssertions {
 
 export interface ToolResultExpectation {
   name: string;
-  /** Each key must be present in the result's `details` with this value (compared as strings). */
+  /**
+   * Each key must be present in the result's `details` with this value
+   * (compared as strings). A key that is not a top-level field is read as a
+   * dotted path, with or without a leading `details.` -- `details.galaxy.tool`
+   * and `galaxy.tool` both reach the in-process Galaxy tools' nested facts.
+   */
   detailsContains?: Record<string, string>;
   /** The result's text content must contain this substring. */
   textContains?: string;

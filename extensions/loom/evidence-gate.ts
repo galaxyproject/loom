@@ -116,6 +116,7 @@ import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "./config";
 import { getNotebookPath } from "./state";
+import { recordStore } from "./record-store";
 import { appendActivityEvent } from "./activity";
 import { findInvocationBlocks, type InvocationYaml } from "./notebook-writer";
 import { findJobBlocks, type JobYaml } from "./galaxy-job-block";
@@ -125,6 +126,8 @@ import { computeHandoffEligible, type Attempt, type Registry } from "./registry"
 import { NO_APPROVAL_REVISION } from "./registry-evaluation";
 import { getSessionRegistry, sessionView } from "./registry-runtime";
 import { readEnv } from "../../shared/orbit-env.js";
+import { applySectionEdit } from "../../shared/markdown-sections.js";
+import { MCP_FAMILY, type GalaxyToolFamily } from "../../shared/galaxy-mcp-tools.js";
 
 /** pi emits its built-in file tools lowercase; mirrors exec-guard's FILE_WRITE_TOOLS. */
 const WRITE_TOOLS = new Set(["write", "edit"]);
@@ -664,6 +667,7 @@ export function computeAfterContent(
   if (toolName === "write") {
     return typeof input.content === "string" ? input.content : null;
   }
+  if (toolName === "update_page") return pageAfterContent(before, input);
   if (toolName !== "edit") return null;
   const raw = input.edits;
   if (!Array.isArray(raw)) return null;
@@ -689,6 +693,21 @@ export function computeAfterContent(
   const fuzzy = locateEdits(fuzzyContent, fuzzyEdits);
   if (!fuzzy) return null;
   return applySpans(fuzzyContent, fuzzy);
+}
+
+/**
+ * The record page after an update_page call, as the page bridge would write it: whole content,
+ * or one section rewritten. A title-only call, or a combination the bridge refuses, writes no
+ * body we can judge.
+ */
+function pageAfterContent(before: string, input: Record<string, unknown>): string | null {
+  const { content, section_heading: heading, section_content: section } = input;
+  const sectioned = heading != null || section != null;
+  if (typeof content === "string") return sectioned ? null : content;
+  if (typeof heading === "string" && typeof section === "string") {
+    return applySectionEdit(before, heading, section);
+  }
+  return null;
 }
 
 export function contradictionReason(c: Contradiction): string {
@@ -1134,7 +1153,10 @@ export function recordDecision(
   });
 }
 
-export function registerEvidenceGate(pi: ExtensionAPI): void {
+export function registerEvidenceGate(
+  pi: ExtensionAPI,
+  family: GalaxyToolFamily = MCP_FAMILY,
+): void {
   // A clearance the user granted and the gate never spent must not outlive the
   // session it was granted in. Registered here rather than in
   // session-lifecycle.ts so the gate owns the whole lifetime of its own state.
@@ -1145,35 +1167,46 @@ export function registerEvidenceGate(pi: ExtensionAPI): void {
   pi.on("tool_call", async (event, ctx) => {
     const mode = resolveMode();
     if (mode === "off") return;
-    if (!WRITE_TOOLS.has(event.toolName)) return;
+    // Under a page record the model completes steps by editing the page, not a file.
+    const pageWrite = family.toolName(event.toolName) === "update_page";
+    if (!WRITE_TOOLS.has(event.toolName) && !pageWrite) return;
 
     const nbPath = getNotebookPath();
     if (!nbPath) return;
     const input = event.input as Record<string, unknown>;
-    // `file_path` is read as well as `path`, defensively. In the pinned pi it
-    // is not actually an execution alias: `editSchema`/`writeSchema` require
-    // `path`, `validateToolArguments` throws when it is missing, and both
-    // `execute` bodies destructure `path`, so a call naming only `file_path`
-    // never reaches the filesystem. Only pi's *render* helpers read the alias
-    // (`getRenderablePreviewInput`, `formatEditCall`). Kept because it costs
-    // one ternary and covers pi adding the alias, or another shell forwarding
-    // a tool call in that shape. (exec-guard/policy.ts reads only `path` too;
-    // tracked separately as P0.3.)
-    // Adjudicate if ANY spelling of the target names the notebook, rather than
-    // picking one and trusting the precedence to match pi's. Precedence is a
-    // thing to get wrong later; "does this call mention the notebook at all"
-    // is not. A call naming some other file under the other key is adversarial
-    // or malformed, and pi refuses it, so there is no honest write to misjudge.
-    const targets = [input.path, input.file_path].filter(
-      (t): t is string => typeof t === "string" && t.length > 0,
-    );
-    const touchesNotebook = targets.some((t) => resolvesToNotebook(t, ctx.cwd, nbPath));
-    if (!touchesNotebook) return;
+    let adjudicateAs = event.toolName;
+    if (pageWrite) {
+      const store = recordStore(nbPath);
+      if (store.kind !== "page" || store.pageId === undefined || store.pageId !== input.page_id) {
+        return;
+      }
+      adjudicateAs = "update_page";
+    } else {
+      // `file_path` is read as well as `path`, defensively. In the pinned pi it
+      // is not actually an execution alias: `editSchema`/`writeSchema` require
+      // `path`, `validateToolArguments` throws when it is missing, and both
+      // `execute` bodies destructure `path`, so a call naming only `file_path`
+      // never reaches the filesystem. Only pi's *render* helpers read the alias
+      // (`getRenderablePreviewInput`, `formatEditCall`). Kept because it costs
+      // one ternary and covers pi adding the alias, or another shell forwarding
+      // a tool call in that shape. (exec-guard/policy.ts reads only `path` too;
+      // tracked separately as P0.3.)
+      // Adjudicate if ANY spelling of the target names the notebook, rather than
+      // picking one and trusting the precedence to match pi's. Precedence is a
+      // thing to get wrong later; "does this call mention the notebook at all"
+      // is not. A call naming some other file under the other key is adversarial
+      // or malformed, and pi refuses it, so there is no honest write to misjudge.
+      const targets = [input.path, input.file_path].filter(
+        (t): t is string => typeof t === "string" && t.length > 0,
+      );
+      const touchesNotebook = targets.some((t) => resolvesToNotebook(t, ctx.cwd, nbPath));
+      if (!touchesNotebook) return;
+    }
 
     const registry = currentRegistryView();
     let before: string;
     try {
-      before = fs.readFileSync(nbPath, "utf-8");
+      before = (await recordStore(nbPath).read()).content;
     } catch {
       // No notebook on disk yet. Nothing to compare against -- unless the
       // registry holds a step, in which case a notebook written from scratch
@@ -1184,7 +1217,7 @@ export function registerEvidenceGate(pi: ExtensionAPI): void {
 
     const adjudication = adjudicateNotebookWrite(
       before,
-      event.toolName,
+      adjudicateAs,
       input,
       mode,
       overrides,

@@ -13,7 +13,7 @@
  * the brain's runtime surface for it is not a good trade.
  */
 
-import { randomBytes } from "crypto";
+import { randomBytes } from "../../shared/random.js";
 
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const TIME_CHARS = 10;

@@ -15,6 +15,7 @@ import {
   buildObservation,
   isAdmissibleMcpTool,
 } from "../extensions/loom/observations.js";
+import { MCP_FAMILY, bareFamily } from "../shared/galaxy-mcp-tools.js";
 import { factsForToolResult } from "../extensions/loom/observation-triggers.js";
 import { validateObservation, scanObservationForLeaks } from "../shared/observation-contract.js";
 import type { ObservationEnvelope } from "../extensions/loom/observations.js";
@@ -662,5 +663,32 @@ describe("the generated allowlists", () => {
       expect(set.size).toBeGreaterThan(40);
       for (const v of set) expect(textLeaks(v), v).toEqual([]);
     }
+  });
+});
+
+describe("Loom's bridging job ops under in-process Galaxy tools", () => {
+  const BARE = bareFamily(["list_jobs", "get_job_logs", "run_tool"]);
+
+  it.each([
+    ["list_jobs", "galaxy_list_jobs", "result-interpretation"],
+    ["get_job_logs", "galaxy_get_job_logs", "job-execution"],
+  ])("names %s and stages it, and the outbox re-check admits it", (tool, wire, stage) => {
+    const facts = factsForToolResult(tool, { history_id: "abc" }, "HTTP 500", BARE);
+    const obs = buildObservation(facts!, envelope, "structured");
+    expect(obs.mcpTool).toBe(wire);
+    expect(obs.stage).toBe(stage);
+    expect(observationProblems(obs).errors).toEqual([]);
+  });
+
+  it("leaves the MCP family's observations as they were", () => {
+    const facts = factsForToolResult("mcp__galaxy__list_jobs", {}, "HTTP 500", MCP_FAMILY);
+    expect(buildObservation(facts!, envelope, "structured").mcpTool).toBeUndefined();
+    expect(isAdmissibleMcpTool("galaxy_list_jobs")).toBe(false);
+    expect(isAdmissibleMcpTool("galaxy_get_job_logs")).toBe(false);
+  });
+
+  it("does not name galaxy_read_output, Orbit's own reader", () => {
+    const facts = factsForToolResult("galaxy_read_output", {}, "no longer available", BARE);
+    expect(buildObservation(facts!, envelope, "structured").mcpTool).toBeUndefined();
   });
 });

@@ -12,6 +12,7 @@ export interface GalaxyDestructiveOp {
   collectionId?: string;
   irreversible: boolean;
 }
+export const GALAXY_ARGS_CLASSIFIED_OPS: readonly string[];
 export function classifyGalaxyDestructive(
   toolName: string,
   input: Record<string, unknown>,

@@ -1,6 +1,7 @@
 import { query, segment, type Galaxy } from "./galaxy";
 import { contentHash } from "@galaxyproject/galaxy-ops/browser";
 
+import { ELISION_MARKER, excerptHeadTail } from "../../../../shared/record-excerpt.js";
 import { DEFAULT_BRAND, type Brand } from "./brand";
 import { pageBody } from "./page-edit";
 import { remember } from "./record-write";
@@ -12,8 +13,7 @@ This page is the running record for this analysis, maintained by ${brand.name}. 
 plan, what was executed, and what the results showed.
 `;
 
-export const HEAD_MAX_CHARS = 2000;
-export const TAIL_MAX_CHARS = 4000;
+export { HEAD_MAX_CHARS, TAIL_MAX_CHARS } from "../../../../shared/record-excerpt.js";
 export const MANIFEST_MAX = 40;
 
 /** Creating the record is a write, so a read-only session is not offered the tool. */
@@ -84,7 +84,7 @@ async function datasetManifest(galaxy: Galaxy, historyId: string): Promise<strin
   );
 }
 
-export const ELIDED = "_(... middle elided ...)_";
+export const ELIDED = ELISION_MARKER;
 
 /** The record excerpt and history binding injected each turn. */
 export async function excerpt(
@@ -103,12 +103,7 @@ export async function excerpt(
     }
   }
 
-  let body = content;
-  let elided = false;
-  if (content.length > HEAD_MAX_CHARS + TAIL_MAX_CHARS + 100) {
-    body = `${content.slice(0, HEAD_MAX_CHARS)}\n\n${ELIDED}\n\n${content.slice(-TAIL_MAX_CHARS)}`;
-    elided = true;
-  }
+  const { text: body, elided } = excerptHeadTail(content);
 
   const note = elided
     ? "_(showing head + tail; middle elided, so edit a section rather than send `content`)_\n\n"

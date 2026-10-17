@@ -24,6 +24,7 @@ import {
 import { setGalaxyFetchOverride } from "../extensions/loom/galaxy-api";
 import { resetState, setNotebookPath } from "../extensions/loom/state";
 import { isUlid, ulid } from "../extensions/loom/ulid";
+import { profileFromEnv, setCapabilityProfile } from "../shared/capability-profile.js";
 
 const SERVER = "https://usegalaxy.org";
 const HISTORY = "0a248a1f62a0cc04";
@@ -332,6 +333,19 @@ describe("reconcile", () => {
     const after = await readReconcileState(dir);
     expect(after!.analysis_started_at).toBe(start);
     expect(after!.histories[`${SERVER}|${HISTORY}`].stamp).toBe("2026-10-07T10:00:00.000Z");
+  });
+
+  it("under a page notebook keeps the cursor in memory and touches no .loom directory", async () => {
+    write("# Notebook\n");
+    setCapabilityProfile({ ...profileFromEnv({}), notebook: "page" });
+    try {
+      const result = await runReconcile("session_start", deps());
+      expect(result.skipped).toBe("no history is bound to this analysis yet");
+      expect(await readReconcileState(dir)).toMatchObject({ schema: 1 });
+      expect(fs.existsSync(path.join(dir, ".loom"))).toBe(false);
+    } finally {
+      setCapabilityProfile(null);
+    }
   });
 
   it("with no bound history, lists nothing but still checks what is recorded", async () => {

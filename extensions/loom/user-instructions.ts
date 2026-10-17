@@ -69,6 +69,17 @@ export interface DiscoveryOptions {
   fsLike?: FsLike;
 }
 
+/** A shell with no filesystem to walk hands the files over instead. */
+export interface InstructionSource {
+  files(): InstructionFile[];
+}
+
+let installedSource: InstructionSource | null = null;
+
+export function setInstructionSource(next: InstructionSource | null): void {
+  installedSource = next;
+}
+
 const nodeFs: FsLike = {
   statSync: (p) => fs.statSync(p),
   openSync: (p, flags) => fs.openSync(p, flags),
@@ -225,6 +236,9 @@ function readDirCandidate(
  * agent dir doesn't list the same file under both scopes.
  */
 export function discoverInstructionFiles(opts: DiscoveryOptions = {}): InstructionFile[] {
+  // An explicit cwd, agent dir or fs asks for the walk; the bare call is what the shell answers.
+  if (installedSource && !opts.fsLike && !opts.cwd && !opts.agentDir)
+    return installedSource.files();
   const fsLike = opts.fsLike ?? nodeFs;
   const cwd = path.resolve(opts.cwd ?? process.cwd());
   const agentDir = opts.agentDir ?? piAgentDir();

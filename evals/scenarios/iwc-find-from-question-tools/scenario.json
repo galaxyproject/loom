@@ -1,0 +1,38 @@
+{
+  "name": "IWC (bare tools): a plain question over the user's data finds a community workflow",
+  "description": "Runs under LOOM_GALAXY_TOOLS=bare (and its ORBIT_ spelling, which readEnv prefers if the ambient env sets it), so the Galaxy tools are galaxy-ops operations registered in-process under bare names. Same question as iwc-find-from-question: the user asks about their own data and never says 'plan' or 'Galaxy', so this tests that the registry check isn't gated behind a plan request on the bare path. Asserts the agent ranked IWC workflows through recommend_iwc_workflows (and the family-aware iwc-candidates hint rode along), and noticed that the top hit starts from count tables while the user has reads. Bare-path clone of iwc-find-from-question; the original covers the MCP path until 2e deletes it.",
+  "tier": 2,
+  "requiresModel": true,
+  "requiresGalaxy": true,
+  "inputs": [
+    "I have paired-end RNA-seq from six mouse liver samples, three treated and three control, and I want to know which genes changed."
+  ],
+  "env": {
+    "LOOM_GALAXY_TOOLS": "bare",
+    "ORBIT_GALAXY_TOOLS": "bare"
+  },
+  "timeoutMs": 420000,
+  "assertions": {
+    "toolCalls": {
+      "mustInclude": [
+        {
+          "name": "recommend_iwc_workflows"
+        }
+      ],
+      "mustNotInclude": ["invoke_workflow", "import_workflow_from_iwc"]
+    },
+    "activity": {
+      "mustInclude": [
+        {
+          "kind": "skill.hint",
+          "payloadContains": {
+            "trigger": "iwc-candidates"
+          }
+        }
+      ]
+    },
+    "chatText": {
+      "mustMatch": ["[Cc]ounts? (table|matri|file|data)"]
+    }
+  }
+}

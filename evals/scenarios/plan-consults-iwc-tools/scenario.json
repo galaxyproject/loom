@@ -1,0 +1,28 @@
+{
+  "name": "plan creation (bare tools): consult the IWC registry before drafting",
+  "description": "Runs under LOOM_GALAXY_TOOLS=bare (and its ORBIT_ spelling, which readEnv prefers if the ambient env sets it), so the Galaxy tools are galaxy-ops operations registered in-process under bare names. Same request as plan-consults-iwc: a workflow-shaped task IWC covers, asserted on the search call rather than on the workflow chosen. Drafting must not jump ahead to importing or invoking anything. Bare-path clone of plan-consults-iwc; the original covers the MCP path until 2e deletes it.",
+  "tier": 2,
+  "requiresModel": true,
+  "requiresGalaxy": true,
+  "inputs": [
+    "I have paired-end Illumina reads and want a standard quality-control and contamination-screening run before assembly. Draft a plan; don't execute anything yet."
+  ],
+  "env": {
+    "LOOM_GALAXY_TOOLS": "bare",
+    "ORBIT_GALAXY_TOOLS": "bare"
+  },
+  "timeoutMs": 420000,
+  "assertions": {
+    "toolCalls": {
+      "mustInclude": [
+        {
+          "name": "recommend_iwc_workflows"
+        }
+      ],
+      "mustNotInclude": ["invoke_workflow", "import_workflow_from_iwc"]
+    },
+    "plan": {
+      "exists": true
+    }
+  }
+}

@@ -23,11 +23,11 @@
  */
 
 import { randomBytes } from "node:crypto";
-import fs from "node:fs";
 import path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { appendActivityEvent } from "./activity.js";
 import { getNotebookPath } from "./state.js";
+import { recordStore } from "./record-store.js";
 import {
   currentRegistryView,
   grantEvidenceOverride,
@@ -255,7 +255,7 @@ export function registerEvidenceOverrideCommand(pi: ExtensionAPI): void {
       }
       let content: string;
       try {
-        content = fs.readFileSync(nbPath, "utf-8");
+        ({ content } = await recordStore(nbPath).read());
       } catch {
         ctx.ui.notify(`Couldn't read ${nbPath}.`, "error");
         return;

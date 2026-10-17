@@ -9,9 +9,8 @@ const root = new URL("/", window.location.href).href;
 
 void mountOrbitBrowser(document.getElementById("app")!, {
   galaxyRoot: root,
-  // Not a visualization plugin, so Galaxy serves no AI proxy for it; LAYOUT.md has the
-  // "galaxy" provider's plugin assumption under "Not split yet".
-  galaxyChatUrl: `${root}api/plugins/orbit-browser-bare`,
+  // Not a visualization plugin, so Galaxy serves no AI proxy for it and the picker offers
+  // every provider but that one.
   pyodideURL: new URL("static/pyodide", document.baseURI).href,
   createWorker: () => new Worker(new URL("./worker.ts", import.meta.url), { type: "module" }),
 });

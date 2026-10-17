@@ -11,8 +11,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as path from "path";
 import { getNotebookPath } from "./state";
 import { appendActivityEvent } from "./activity";
-import { collectSecretValues, redactSecrets } from "./secret-redaction";
-import { loadConfig } from "../../shared/loom-config.js";
+import { currentSecretValues, redactSecrets } from "./secret-redaction";
 import { withoutAppendedLessonHints } from "./lessons/pi-event-contract";
 
 // Read-only / filesystem-traversal tools clutter the log without telling the
@@ -126,7 +125,7 @@ export function registerActivityHooks(pi: ExtensionAPI): void {
     if (NOISY_TOOLS.has(event.toolName)) return;
     const dir = sessionDir();
     if (!dir) return;
-    const secrets = collectSecretValues(loadConfig(), process.env);
+    const secrets = currentSecretValues({ auth: false });
     appendActivityEvent(dir, {
       timestamp: new Date().toISOString(),
       kind: "tool.end",

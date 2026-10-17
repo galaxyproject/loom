@@ -120,6 +120,13 @@ export const PROVIDERS: Provider[] = [
 
 export const providerById = (id: string) => PROVIDERS.find((p) => p.id === id);
 
+/**
+ * The providers a page offers. Galaxy serves its AI proxy per visualization plugin, so only a
+ * flavor Galaxy hosts that way has a "galaxy" provider to offer; any other page gets the rest.
+ */
+export const offeredProviders = (galaxyProxy: boolean) =>
+  galaxyProxy ? PROVIDERS : PROVIDERS.filter((p) => p.id !== "galaxy");
+
 /** Whether a provider takes a key of the user's. */
 export const needsKey = (p: Provider) => isPiProvider(p.id) || !!p.authEnv;
 

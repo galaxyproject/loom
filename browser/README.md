@@ -90,6 +90,11 @@ npm test           # unit tests, linting, type checks, vendored-file checks, bro
 npm run stale      # where the pinned upstreams stand
 ```
 
+`core/src/agent/pi-host.ts` (Orbit's ExtensionAPI over pi-durable) has a type-only import of
+`@earendil-works/pi-coding-agent`, and `pi-host.orbit.test.ts` boots `extensions/loom` on it, so
+`npm run typecheck` and `npm run test:unit` in `core/` also need the repo root installed (`npm ci`
+at the top level; CI does both). Neither package is a dependency of this workspace.
+
 `npm run dev` against a local Galaxy and a model:
 
 ```bash

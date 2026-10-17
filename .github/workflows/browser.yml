@@ -37,6 +37,8 @@ jobs:
               - "browser/**"
               - "app/src/renderer/**"
               - "shared/**"
+              # The conformance test (core/src/agent/pi-host.orbit.test.ts) boots Orbit's brain.
+              - "extensions/**"
               - ".github/workflows/browser.yml"
 
   test:
@@ -54,7 +56,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: browser/package-lock.json
+          cache-dependency-path: |
+            browser/package-lock.json
+            package-lock.json
 
       # Node 22 ships npm 10.9, whose peer resolution crashes with
       # "Cannot read properties of null (reading 'edgesOut')" on a cold install.
@@ -70,6 +74,12 @@ jobs:
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
+
+      # pi-coding-agent's types for the pi-host shim's type-only import, and Orbit's runtime
+      # dependencies for the conformance test that boots extensions/loom on it.
+      - name: Install root dependencies
+        working-directory: .
+        run: npm ci
 
       - name: Install Node dependencies
         run: npm ci

@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
 import { isLocalExecDisabled, isLocalShellDisabled } from "../extensions/loom/local-exec.js";
+import { profileFromEnv, setCapabilityProfile } from "../shared/capability-profile.js";
 
 describe("isLocalExecDisabled", () => {
   it("disables local-exec safety only for the exact off signal", () => {
@@ -36,4 +37,23 @@ describe("isLocalShellDisabled", () => {
       expect(isLocalShellDisabled(env as NodeJS.ProcessEnv)).toBe(false);
     },
   );
+});
+
+describe("under an installed capability profile", () => {
+  afterEach(() => setCapabilityProfile(null));
+
+  it("the bare call reads the shell's own profile", () => {
+    setCapabilityProfile({ ...profileFromEnv({}), files: false });
+    expect(isLocalExecDisabled()).toBe(true);
+    expect(isLocalShellDisabled()).toBe(false);
+    setCapabilityProfile({ ...profileFromEnv({}), shell: false });
+    expect(isLocalShellDisabled()).toBe(true);
+    expect(isLocalExecDisabled()).toBe(false);
+  });
+
+  it("an explicit env still wins, so pure callers stay pure", () => {
+    setCapabilityProfile({ ...profileFromEnv({}), files: false, shell: false });
+    expect(isLocalExecDisabled({})).toBe(false);
+    expect(isLocalShellDisabled({})).toBe(false);
+  });
 });

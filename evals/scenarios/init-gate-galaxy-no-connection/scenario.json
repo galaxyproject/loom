@@ -4,7 +4,9 @@
   "tier": 1,
   "inputs": ["/execute"],
   "env": {
-    "ANTHROPIC_API_KEY": "fake-eval-key"
+    "ANTHROPIC_API_KEY": "fake-eval-key",
+    "GALAXY_URL": "",
+    "GALAXY_API_KEY": ""
   },
   "timeoutMs": 5000,
   "assertions": {

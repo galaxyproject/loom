@@ -6,6 +6,10 @@ worker-boundary wiring vitest cannot reach: the destructive-op gate, Stop, compa
 `bash e2e/run-all.sh` (or `npm run test:e2e`) runs both tiers; its loops are the list of drives.
 Drives it does not run need a real Galaxy and model, and say what they need at the top.
 
+The stub, the helpers (`eventually.cjs`, `offline.cjs`, `embed.mjs`) and `bare-drive.cjs` live
+here, with the runner. Every other drive mounts the Olit plugin, so it lives in `olit/e2e/` and
+reaches the helpers as `../../e2e/`; a flavor that leaves the workspace takes its drives with it.
+
 ## Dev tier — port 5173
 
 ```bash
@@ -16,7 +20,7 @@ GALAXY_ROOT=http://127.0.0.1:8099 \
   LLM_KEY=stub LLM_MODEL=stub-model \
   LLM_CONTEXT_WINDOW=64000 LLM_KEEP_RECENT_TOKENS=50 npm run dev &
 
-LLM_CONTEXT_WINDOW=64000 node e2e/confirm-drive.cjs   # non-zero if a check fails
+LLM_CONTEXT_WINDOW=64000 node olit/e2e/confirm-drive.cjs   # non-zero if a check fails
 ```
 
 `LLM_PROVIDER` skips the credentials modal and routes the agent through vite's `/llm` proxy.
@@ -36,8 +40,8 @@ Pyodide URL and the system prompt are the deployment's, and the credentials moda
 ```bash
 env -u LLM_PROVIDER -u LLM_ROOT -u LLM_MODEL -u LLM_KEY npm run build
 node e2e/stub.cjs &
-node e2e/galaxy-boot-drive.cjs
-BROWSER=firefox node e2e/python-isolation-drive.cjs   # chromium by default; also webkit
+node olit/e2e/galaxy-boot-drive.cjs
+BROWSER=firefox node olit/e2e/python-isolation-drive.cjs   # chromium by default; also webkit
 ```
 
 Use the dev tier for fast iteration on `core/src/` and `olit/src/`, the built tier for anything

@@ -21,6 +21,7 @@ import {
 } from "../shared/dashboard-contract.js";
 import type { DashboardDocument } from "../shared/dashboard-contract.js";
 import { resetState, setNotebookPath } from "../extensions/loom/state";
+import { profileFromEnv, setCapabilityProfile } from "../shared/capability-profile.js";
 import {
   applyDashboardActions,
   introducedWidgetTypes,
@@ -794,6 +795,20 @@ describe("shells", () => {
       actions: [{ action: "add_panel", widget: "jobs" }],
     });
     expect(result.where).toContain("Dashboard tab");
+  });
+
+  it("says there is no pane when the installed profile is a worker, whatever env says", async () => {
+    process.env.LOOM_SHELL_KIND = "orbit";
+    setCapabilityProfile({ ...profileFromEnv({}), ui: "worker" });
+    try {
+      const result = await run("dashboard_update", {
+        reason: "why",
+        actions: [{ action: "add_panel", widget: "jobs" }],
+      });
+      expect(result.where).not.toContain("Dashboard tab");
+    } finally {
+      setCapabilityProfile(null);
+    }
   });
 
   it("writes the file and says there is no pane in the terminal", async () => {

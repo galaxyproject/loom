@@ -33,10 +33,10 @@ describe("composition", () => {
       "### Getting data into a Galaxy history",
       "### Invoking a Galaxy workflow",
       "## Operating discipline",
-      "### Reproducing long text",
+      "### Saving files -- only claim a write you actually made",
       "### Context and compaction",
       "## Verification before completion",
-      "### What to check, by format",
+      "### Verification examples",
       "### Drafting a new plan",
       "### Importing SRA/ENA sequencing runs",
       "### Executing a Galaxy step",
@@ -51,7 +51,7 @@ describe("composition", () => {
   });
 
   it("owns the no-polling rule in the step block", () => {
-    expect(EXECUTING_A_STEP).toContain("Do not spend a turn in a polling loop");
+    expect(EXECUTING_A_STEP).toContain("Do not spend a turn in a polling/sleep loop");
   });
 
   it("names no flavor's tools in its terms, and places a flavor's own after the UDT one", () => {
@@ -121,7 +121,7 @@ describe("plan convention", () => {
   it("keeps all four approval stages", () => {
     expect(PLAN_CONVENTION).toContain("four-stage approval gate");
     for (const stage of [
-      "**Draft in chat.**",
+      "**Draft in chat (NOT in the record yet).**",
       "**Wait for explicit plan approval.**",
       "**Show the parameter table in chat.**",
       "**Wait for explicit parameters approval.**",
@@ -137,9 +137,9 @@ describe("plan convention", () => {
     expect(at).toBeGreaterThan(-1);
     const gate = PLAN_CONVENTION.slice(0, at);
     const after = PLAN_CONVENTION.slice(at + marker.length);
-    expect(after).toContain("write the approved plan into the record");
-    expect(after).toContain("begin executing it");
-    expect(gate).toContain("Do not start executing at this point");
+    expect(after).toContain("into the record");
+    expect(after).toContain("execution");
+    expect(gate).toContain("start executing at this point");
   });
 
   it("teaches the rigid heading", () => {
@@ -207,14 +207,14 @@ describe("other blocks", () => {
 
   it("names the resolved model and provider", () => {
     const text = systemText({ model: "gpt-oss-120b", provider: "jetstream2" });
-    expect(text).toContain("## Active model");
+    expect(text).toContain("## Active LLM");
     expect(text).toContain("**gpt-oss-120b**");
     expect(text).toContain("**jetstream2**");
   });
 
   it("omits the model block when no model is known", () => {
-    expect(systemText()).not.toContain("## Active model");
-    expect(systemText({ provider: "jetstream2" })).not.toContain("## Active model");
+    expect(systemText()).not.toContain("## Active LLM");
+    expect(systemText({ provider: "jetstream2" })).not.toContain("## Active LLM");
   });
 
   it("consults IWC before drafting step by step", () => {
@@ -227,7 +227,7 @@ describe("other blocks", () => {
   it("describes compaction as automatic and unclaimable", () => {
     const text = systemText();
     expect(text).toContain("cannot compact your own context");
-    expect(text).toContain("Never claim you");
+    expect(text).toContain("must not claim the context window was compacted");
   });
 
   it("keeps the per-format verification checks", () => {
@@ -318,9 +318,9 @@ describe("galaxy readiness", () => {
 
   it("replaces the guidance with a notice", () => {
     const down = systemText({ galaxyStatus: GALAXY_UNREACHABLE });
-    expect(down).toContain("## Galaxy: NOT AVAILABLE");
+    expect(down).toContain("## Galaxy connection: NOT CONNECTED");
     expect(down).toContain("reload");
-    expect(systemText()).not.toContain("## Galaxy: NOT AVAILABLE");
+    expect(systemText()).not.toContain("## Galaxy connection: NOT CONNECTED");
   });
 
   it("names the cause the gate measures", () => {
@@ -343,10 +343,10 @@ describe("galaxy readiness", () => {
 
   it("gives each state the notice that is true of it", () => {
     const unreachable = squash(systemText({ galaxyStatus: GALAXY_UNREACHABLE }));
-    expect(unreachable).toContain("## Galaxy: NOT AVAILABLE");
-    expect(unreachable).toContain("Nothing you propose can execute");
+    expect(unreachable).toContain("## Galaxy connection: NOT CONNECTED");
+    expect(unreachable).toContain("Nothing can run until a Galaxy server is connected");
 
-    expect(systemText()).not.toContain("Galaxy: NOT AVAILABLE");
+    expect(systemText()).not.toContain("Galaxy connection: NOT CONNECTED");
     expect(systemText({ galaxyStatus: GALAXY_READY })).toBe(systemText());
   });
 });
@@ -374,23 +374,23 @@ describe("artifact links", () => {
 
   it("names the id a tool returned", () => {
     const text = section();
-    expect(text).toContain("Use the id a tool returned");
-    expect(text).toContain("Never guess one");
-    for (const artifact of [
-      "history",
-      "dataset",
-      "collection",
-      "invocation",
-      "job",
-      "tool",
-      "page",
+    expect(text).toContain("returned ID");
+    expect(text).toContain("Never guess an ID");
+    for (const route of [
+      "/histories/view?id=",
+      "/datasets/",
+      "/collection/",
+      "/workflows/invocations/",
+      "/jobs/",
+      "?tool_id=",
+      "/published/page?id=",
     ]) {
-      expect(text.includes(`- ${artifact}:`) || text.includes(`${artifact}: \`/`)).toBe(true);
+      expect(text).toContain(route);
     }
   });
 
   it("keeps encoded ids in directives", () => {
-    expect(section()).toContain("Encoded ids inside ```galaxy directives stay exactly as they are");
+    expect(section()).toContain("Keep machine-readable IDs in ```galaxy directives unchanged");
   });
 
   it("states no convention when no root is known", () => {

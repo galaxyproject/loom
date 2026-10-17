@@ -20,14 +20,42 @@
  * Writes are atomic (a sibling temp file renamed over the target), refuse to
  * go through a symlink at any level below the analysis directory, and are
  * serialised per file inside this process.
+ *
+ * The bytes go through a ProvenanceFs: the real file system under a file
+ * notebook, a Map under a page notebook (which has no directory beside it),
+ * or whatever a shell installs with setProvenanceFs.
  */
 
-import * as fs from "fs";
-import * as fsp from "fs/promises";
 import * as path from "path";
-import { randomBytes } from "crypto";
+import { capabilityProfile } from "../../shared/capability-profile.js";
 import { isGalaxyFetchOverridden, sameGalaxyServer } from "./galaxy-api";
+import type { ProvenanceFs, ProvenanceStat } from "./provenance-fs";
+import { fileProvenanceFs } from "./provenance-fs-file";
+import { memoryProvenanceFs } from "./provenance-memory-fs";
 import { isUlid } from "./ulid";
+
+let installed: ProvenanceFs | null = null;
+// One Map per brain process, like the registry's: a page notebook has no
+// directory beside it, and a second session_start in the same worker reopens
+// what the first wrote.
+let pageFs: ProvenanceFs | null = null;
+
+/**
+ * A shell's own byte store for the records (it must keep the sync read); null
+ * restores the default and starts the page Map afresh, so one test's cursor
+ * never leaks into the next.
+ */
+export function setProvenanceFs(next: ProvenanceFs | null): void {
+  installed = next;
+  if (!next) pageFs = null;
+}
+
+// Resolved on every call: the profile is installed after import.
+function provenanceFs(): ProvenanceFs {
+  if (installed) return installed;
+  if (capabilityProfile().notebook !== "page") return fileProvenanceFs;
+  return (pageFs ??= memoryProvenanceFs());
+}
 
 export const PROVENANCE_SCHEMA_VERSION = 1;
 
@@ -160,20 +188,18 @@ async function ensureProvenanceDir(analysisDir: string, create = true): Promise<
   let current = analysisDir;
   for (const part of PROVENANCE_DIR_PARTS) {
     current = path.join(current, part);
-    let stat: fs.Stats | null = null;
-    try {
-      stat = await fsp.lstat(current);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") throw err;
-    }
+    let stat: ProvenanceStat | null = await provenanceFs().lstat(current);
     if (!stat && !create) return null;
     if (!stat) {
-      try {
-        await fsp.mkdir(current);
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") throw err;
+      await provenanceFs().mkdir(current);
+      stat = await provenanceFs().lstat(current);
+      // Removed between mkdir and lstat: surface it as the ENOENT fsp.lstat
+      // threw here before the seam, so enrichment retries instead of giving up.
+      if (!stat) {
+        throw Object.assign(new Error(`ENOENT: ${current} vanished after mkdir`), {
+          code: "ENOENT",
+        });
       }
-      stat = await fsp.lstat(current);
     }
     if (stat.isSymbolicLink() || !stat.isDirectory()) {
       throw new ProvenanceRefusal(`${current} is not a plain directory`);
@@ -210,17 +236,12 @@ export async function readAttemptRecord(
   // The directories are checked on the way in too: reading through a
   // symlinked `.loom` would hand back a record planted somewhere else.
   if (!(await ensureProvenanceDir(analysisDir, false))) return null;
-  let stat: fs.Stats;
-  try {
-    stat = await fsp.lstat(file);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return null;
-    throw err;
-  }
+  const stat = await provenanceFs().lstat(file);
+  if (!stat) return null;
   if (!stat.isFile()) throw new ProvenanceRefusal(`${file} is not a plain file`);
   let parsed: unknown;
   try {
-    parsed = JSON.parse(await fsp.readFile(file, "utf-8"));
+    parsed = JSON.parse(await provenanceFs().readFile(file));
   } catch {
     throw new ProvenanceRefusal(`${file} is not a readable provenance record`);
   }
@@ -245,26 +266,8 @@ function isAttemptRecord(value: unknown): value is AttemptRecord {
   );
 }
 
-async function writeAtomically(file: string, record: AttemptRecord): Promise<void> {
-  const dir = path.dirname(file);
-  const temp = path.join(
-    dir,
-    `.${path.basename(file)}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`,
-  );
-  // `wx`: a planted file or symlink at the temp name fails the open instead of
-  // being written through.
-  await fsp.writeFile(temp, JSON.stringify(record, null, 2) + "\n", {
-    encoding: "utf-8",
-    flag: "wx",
-  });
-  try {
-    // rename() replaces a symlink at the target rather than following it, and
-    // readers see the old record or the new one, never half of either.
-    await fsp.rename(temp, file);
-  } catch (err) {
-    await fsp.rm(temp, { force: true });
-    throw err;
-  }
+function writeAtomically(file: string, record: AttemptRecord): Promise<void> {
+  return provenanceFs().replace(file, JSON.stringify(record, null, 2) + "\n");
 }
 
 export interface AttemptSeed {
@@ -318,10 +321,7 @@ export async function ensureAttemptRecord(
       jobs: {},
     };
     try {
-      await fsp.writeFile(file, JSON.stringify(record, null, 2) + "\n", {
-        encoding: "utf-8",
-        flag: "wx",
-      });
+      await provenanceFs().writeExclusive(file, JSON.stringify(record, null, 2) + "\n");
     } catch (err) {
       if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") throw err;
       const raced = await readAttemptRecord(analysisDir, seed.attemptId);
@@ -503,11 +503,10 @@ export function readAttemptRecordSync(
     let dir = analysisDir;
     for (const part of PROVENANCE_DIR_PARTS) {
       dir = path.join(dir, part);
-      if (!fs.lstatSync(dir).isDirectory()) return null;
+      if (!provenanceFs().lstatSync(dir)?.isDirectory()) return null;
     }
-    const stat = fs.lstatSync(file);
-    if (!stat.isFile()) return null;
-    const parsed: unknown = JSON.parse(fs.readFileSync(file, "utf-8"));
+    if (!provenanceFs().lstatSync(file)?.isFile()) return null;
+    const parsed: unknown = JSON.parse(provenanceFs().readFileSync(file));
     return isAttemptRecord(parsed) && parsed.attempt_id === attemptId ? parsed : null;
   } catch {
     return null;
@@ -544,9 +543,8 @@ export async function readReconcileState(analysisDir: string): Promise<Reconcile
   if (!(await ensureProvenanceDir(analysisDir, false))) return null;
   const file = path.join(analysisDir, ...PROVENANCE_DIR_PARTS, RECONCILE_STATE_FILE);
   try {
-    const stat = await fsp.lstat(file);
-    if (!stat.isFile()) return null;
-    const parsed = JSON.parse(await fsp.readFile(file, "utf-8")) as Partial<ReconcileState>;
+    if (!(await provenanceFs().lstat(file))?.isFile()) return null;
+    const parsed = JSON.parse(await provenanceFs().readFile(file)) as Partial<ReconcileState>;
     if (
       typeof parsed.analysis_started_at !== "string" ||
       Number.isNaN(Date.parse(parsed.analysis_started_at))
@@ -573,22 +571,33 @@ export async function writeReconcileState(
   const dir = await ensureProvenanceDir(analysisDir);
   if (!dir) return;
   const file = path.join(dir, RECONCILE_STATE_FILE);
-  await withFileLock(file, async () => {
-    const temp = path.join(
-      dir,
-      `.${RECONCILE_STATE_FILE}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`,
-    );
-    await fsp.writeFile(temp, JSON.stringify(state, null, 2) + "\n", {
-      encoding: "utf-8",
-      flag: "wx",
-    });
-    try {
-      await fsp.rename(temp, file);
-    } catch (err) {
-      await fsp.rm(temp, { force: true });
-      throw err;
-    }
-  });
+  await withFileLock(file, () =>
+    provenanceFs().replace(file, JSON.stringify(state, null, 2) + "\n"),
+  );
+}
+
+/**
+ * Write a sidecar under the provenance tree (`parts` relative to it, e.g.
+ * `["udt", "<stem>.yaml"]`), creating the directories on the way down and
+ * never overwriting: an existing file at the name is the record, since the
+ * callers put a uuid in the name. Exclusive create refuses a planted symlink
+ * too, the way the attempt records do.
+ */
+export async function writeProvenanceSidecar(
+  analysisDir: string,
+  parts: readonly string[],
+  text: string,
+): Promise<void> {
+  let dir = analysisDir;
+  for (const part of [...PROVENANCE_DIR_PARTS, ...parts.slice(0, -1)]) {
+    dir = path.join(dir, part);
+    await provenanceFs().mkdir(dir);
+  }
+  try {
+    await provenanceFs().writeExclusive(path.join(dir, parts[parts.length - 1]), text);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") throw err;
+  }
 }
 
 /**
@@ -600,7 +609,7 @@ export async function listAttemptRecords(analysisDir: string): Promise<AttemptRe
   const dir = await ensureProvenanceDir(analysisDir, false);
   if (!dir) return [];
   const out: AttemptRecord[] = [];
-  for (const name of await fsp.readdir(dir)) {
+  for (const name of await provenanceFs().readdir(dir)) {
     const id = name.endsWith(".json") ? name.slice(0, -5) : "";
     if (!isUlid(id)) continue;
     try {

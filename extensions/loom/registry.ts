@@ -21,7 +21,8 @@
  * `tests/registry-no-pi-imports.test.ts` holds that line.
  */
 
-import { createHmac, randomBytes, timingSafeEqual } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
+import { randomBytes, randomHex } from "../../shared/random.js";
 import * as path from "path";
 import { computeHandoffEligible } from "./registry-eligibility";
 import { applyImportRule } from "./registry-import";
@@ -109,7 +110,7 @@ export class RegistryStore {
 
   // Private class field: not enumerable, not reachable by JSON.stringify,
   // structuredClone, or anything that walks the object's own keys.
-  readonly #sessionKey: Buffer = randomBytes(32);
+  readonly #sessionKey: Uint8Array = randomBytes(32);
   readonly #fs: RegistryFs;
   readonly #clock: () => number;
   readonly #pid: number;
@@ -440,7 +441,7 @@ export class RegistryStore {
   }
 
   private writeAtomic(file: string, text: string): void {
-    const tmp = `${file}.${this.#pid}.${randomBytes(6).toString("hex")}.tmp`;
+    const tmp = `${file}.${this.#pid}.${randomHex(6)}.tmp`;
     this.#fs.writeFileSync(tmp, text, { flag: "wx" });
     renameReplacing(this.#fs, tmp, file, this.#platform);
   }

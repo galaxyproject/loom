@@ -483,6 +483,77 @@ describe("resolveResultPayload", () => {
     expect(resolved.truncatedPath).toBe("/tmp/pi-mcp-0123.txt");
   });
 
+  it("takes a flat envelope from structuredContent behind details.galaxy", () => {
+    const resolved = resolveResultPayload({
+      content: [{ type: "text", text: "Large Galaxy response saved in memory." }],
+      structuredContent: RUN_TOOL,
+      details: {
+        galaxy: { tool: "run_tool", outputId: "01J0000000000000000000000Z", elapsedMs: 3 },
+      },
+    });
+    expect(resolved.value).toEqual(RUN_TOOL);
+    expect(resolved.outputId).toBe("01J0000000000000000000000Z");
+    expect(
+      parse(
+        "mcp__galaxy__run_tool",
+        {},
+        {
+          content: [{ type: "text", text: "preview" }],
+          structuredContent: RUN_TOOL,
+          details: { galaxy: { tool: "run_tool", elapsedMs: 3 } },
+        },
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("does not take the same flat envelope without details.galaxy", () => {
+    // An MCP result's structuredContent is a whole CallToolResult; a flat
+    // envelope there is not a shape pi produces, so it is not read as one.
+    const resolved = resolveResultPayload({
+      content: [{ type: "text", text: "preview" }],
+      structuredContent: RUN_TOOL,
+      details: { server: "galaxy" },
+    });
+    expect(resolved.value).toBeUndefined();
+    expect(resolved.outputId).toBeUndefined();
+    expect(resolved.text).toBe("preview");
+  });
+
+  it("falls back to the text when details.galaxy has no structuredContent", () => {
+    const resolved = resolveResultPayload({
+      content: [{ type: "text", text: JSON.stringify(RUN_TOOL) }],
+      details: { galaxy: { tool: "run_tool", elapsedMs: 3 } },
+    });
+    expect(resolved.value).toBeUndefined();
+    expect(resolved.text).toContain('"jobs"');
+    expect(
+      parse(
+        "mcp__galaxy__run_tool",
+        {},
+        {
+          content: [{ type: "text", text: JSON.stringify(RUN_TOOL) }],
+          details: { galaxy: { tool: "run_tool", elapsedMs: 3 } },
+        },
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("names the saved Galaxy output in the reason when that re-read did not parse", () => {
+    const out = parse(
+      "mcp__galaxy__run_tool",
+      {},
+      {
+        content: [{ type: "text", text: "preview" }],
+        details: {
+          galaxy: { tool: "run_tool", outputId: "01J0000000000000000000000Z", elapsedMs: 3 },
+        },
+      },
+    );
+    expect(out.ok).toBe(false);
+    if (out.ok) return;
+    expect(out.reason).toContain("even after re-reading the saved Galaxy output");
+  });
+
   it("says so in the reason when even the full-output file did not parse", () => {
     const out = parse(
       "mcp__galaxy__run_tool",

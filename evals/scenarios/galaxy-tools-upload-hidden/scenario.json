@@ -1,0 +1,49 @@
+{
+  "name": "galaxy-tools: a local upload goes through Loom's uploader, never galaxy-ops' upload_file",
+  "description": "Runs under LOOM_GALAXY_TOOLS=bare (and its ORBIT_ spelling, which readEnv prefers if the ambient env sets it), so the Galaxy tools are galaxy-ops operations registered in-process under bare names. galaxy-ops' upload_file is registered hidden on the bare path, as toolExposure hides it on the MCP path: galaxy_upload_local_file (resumable TUS) replaces it. The prompt names a file in the workspace, which is exactly the request upload_file would have answered. The upload has to land: Loom's uploader must return a success and the submission hook must register its job. The history is loom-eval- prefixed for --galaxy-cleanup, and the timeout sits above the uploader's own 600s ingest bound. Bare-path clone of galaxy-mcp-upload-hidden; the original covers the MCP path until 2e deletes it.",
+  "tier": 2,
+  "requiresModel": true,
+  "requiresGalaxy": true,
+  "inputs": [
+    "Create a new Galaxy history named exactly `loom-eval-upload-{{RUN_ID}}`, then upload the local file `counts.tsv` from this folder into that history as a tabular dataset. Tell me the new dataset's id when it's done. This is a quick data-staging request, so skip the plan and don't edit the notebook."
+  ],
+  "env": {
+    "LOOM_GALAXY_TOOLS": "bare",
+    "ORBIT_GALAXY_TOOLS": "bare"
+  },
+  "timeoutMs": 720000,
+  "assertions": {
+    "toolCalls": {
+      "mustInclude": [
+        {
+          "name": "create_history",
+          "argsContains": {
+            "history_name": "loom-eval-upload-"
+          }
+        },
+        {
+          "name": "galaxy_upload_local_file"
+        }
+      ],
+      "mustNotInclude": ["upload_file"]
+    },
+    "toolResults": {
+      "mustSucceed": [
+        {
+          "name": "galaxy_upload_local_file"
+        }
+      ]
+    },
+    "activity": {
+      "mustInclude": [
+        {
+          "kind": "submission.registered",
+          "source": "submission-capture",
+          "payloadContains": {
+            "tool": "galaxy_upload_local_file"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import { readEnv } from "../../shared/orbit-env.js";
+import { capabilityProfile } from "../../shared/capability-profile.js";
 
 /**
  * Local-execution capability signal.
@@ -21,8 +21,8 @@ import { readEnv } from "../../shared/orbit-env.js";
  * spawn rather than letting an ambient value in the launching environment leak
  * through and silently disable the guard.
  */
-export function isLocalExecDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return readEnv("LOCAL_EXEC", env) === "off";
+export function isLocalExecDisabled(env?: NodeJS.ProcessEnv): boolean {
+  return !capabilityProfile(env).files;
 }
 
 /**
@@ -34,6 +34,6 @@ export function isLocalExecDisabled(env: NodeJS.ProcessEnv = process.env): boole
  * whose routing requires a local execution leg. Fail-safe: only the exact "off"
  * disables it, so an unset var (mac/linux) keeps local plans runnable.
  */
-export function isLocalShellDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return readEnv("LOCAL_SHELL", env) === "off";
+export function isLocalShellDisabled(env?: NodeJS.ProcessEnv): boolean {
+  return !capabilityProfile(env).shell;
 }

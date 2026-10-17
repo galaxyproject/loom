@@ -24,13 +24,13 @@ export const stream = (delta: Record<string, unknown>, finish: string) =>
 export const text = (content: string) => stream({ content }, "stop");
 
 /** A reply that calls one tool. */
-export const toolCall = (name: string, args: Record<string, unknown>) =>
+export const toolCall = (name: string, args: Record<string, unknown>, id = "call_1") =>
   stream(
     {
       tool_calls: [
         {
           index: 0,
-          id: "call_1",
+          id,
           type: "function",
           function: { name, arguments: JSON.stringify(args) },
         },

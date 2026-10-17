@@ -1,6 +1,9 @@
 /** Keep a model from spending a turn repeatedly reading an unfinished dataset. */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { INVOCATION_SCHEDULING_DONE } from "./galaxy-api";
+import { galaxyOutputStore } from "./galaxy-output-store";
 import { galaxyCall } from "./mcp-recovery";
+import { MCP_FAMILY, type GalaxyToolFamily } from "../../shared/galaxy-mcp-tools.js";
 
 // How long a repeated model-facing status read waits. This throttles token
 // spend, not Galaxy load; the background poller runs on its own 15s timer.
@@ -8,7 +11,9 @@ export const GALAXY_POLL_INTERVAL_MS = 120_000;
 const PENDING = new Set(["new", "upload", "queued", "running", "waiting", "setting_metadata"]);
 const MARKER = "[Loom background monitoring]";
 
-export const GALAXY_POLL_GUIDANCE = `### Waiting for Galaxy and reporting progress
+export const galaxyPollGuidance = (
+  family: GalaxyToolFamily,
+): string => `### Waiting for Galaxy and reporting progress
 
 Give a short progress update before starting a long sequence of tools, at each
 meaningful milestone, and about once a minute while actively working. Explain
@@ -21,10 +26,11 @@ calls and queues completion verification. Bind the run to its plan step with
 galaxy_job_record or galaxy_invocation_record and a real notebook anchor; don't
 record a job that belongs to a workflow invocation that is already recorded. If no other authorized work is ready, report the wait
 and end the turn so the researcher can talk to you. Do not repeatedly call
-mcp__galaxy__get_dataset_details, launch a shell polling loop, or use sleep to wait.
+${family.tool("get_dataset_details")}, launch a shell polling loop, or use sleep to wait.
 A successful metadata request does not mean the dataset has finished.
 Repeated status reads of an unfinished resource have a two-minute cooldown.
 `;
+export const GALAXY_POLL_GUIDANCE = galaxyPollGuidance(MCP_FAMILY);
 
 function object(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -32,11 +38,66 @@ function object(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-function resource(name: string, args: Record<string, unknown>): string | undefined {
-  if (!/^mcp__galaxy__get_(dataset|job)_details$/.test(name)) return;
+function parsed(text: string): Record<string, unknown> | undefined {
+  try {
+    return object(JSON.parse(text));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The envelopes a result carries. An in-process result over the spill size shows the model a prose
+ * preview, so its envelope is read from structuredContent, or from the saved output when a handler
+ * that rewrote the content made pi drop structuredContent. Only the in-process wrapper sets
+ * `details.galaxy`; everything else is read from its text as it always was.
+ */
+function envelopes(event: {
+  content: readonly { type: string; text?: string }[];
+  details?: unknown;
+  structuredContent?: unknown;
+}): Record<string, unknown>[] {
+  const galaxy = object(object(event.details)?.galaxy);
+  if (galaxy) {
+    const structured = object(event.structuredContent);
+    if (structured && "success" in structured) return [structured];
+    const saved =
+      typeof galaxy.outputId === "string" ? galaxyOutputStore().get(galaxy.outputId) : undefined;
+    const envelope = saved === undefined ? undefined : parsed(saved);
+    if (envelope) return [envelope];
+  }
+  return event.content.flatMap((item) => {
+    const result =
+      item.type === "text" && typeof item.text === "string" ? parsed(item.text) : undefined;
+    return result ? [result] : [];
+  });
+}
+
+export interface GalaxyPollGuardOptions {
+  /**
+   * Also watch `get_invocations(invocation_id)`. On only under in-process Galaxy tools: the
+   * desktop's MCP path never throttled invocation reads, and stays as it was.
+   */
+  invocations?: boolean;
+}
+
+const INVOCATION = "invocation:";
+
+function resource(
+  name: string,
+  args: Record<string, unknown>,
+  family: GalaxyToolFamily,
+  opts: GalaxyPollGuardOptions,
+): string | undefined {
+  const tool = family.toolName(name);
+  if (tool === "get_invocations" && opts.invocations) {
+    return typeof args.invocation_id === "string"
+      ? `${INVOCATION}${args.invocation_id}`
+      : undefined;
+  }
+  if (tool !== "get_dataset_details" && tool !== "get_job_details") return;
   if (typeof args.dataset_id === "string") return `dataset:${args.dataset_id}`;
-  if (name === "mcp__galaxy__get_job_details" && typeof args.job_id === "string")
-    return `job:${args.job_id}`;
+  if (tool === "get_job_details" && typeof args.job_id === "string") return `job:${args.job_id}`;
 }
 
 function waitForCheck(ms: number, signal: AbortSignal): Promise<void> {
@@ -55,7 +116,11 @@ function waitForCheck(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-export function registerGalaxyPollGuard(pi: ExtensionAPI): void {
+export function registerGalaxyPollGuard(
+  pi: ExtensionAPI,
+  family: GalaxyToolFamily = MCP_FAMILY,
+  opts: GalaxyPollGuardOptions = {},
+): void {
   const pending = new Map<string, { checkedAt: number; jobId?: string }>();
   let generation = 0;
   let sessionAbort = new AbortController();
@@ -74,8 +139,8 @@ export function registerGalaxyPollGuard(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_call", async (event, ctx) => {
-    const call = galaxyCall(event.toolName, event.input);
-    const key = call && resource(call.name, call.args);
+    const call = galaxyCall(event.toolName, event.input, family);
+    const key = call && resource(call.name, call.args, family, opts);
     if (!key) return;
     const observation = pending.get(key);
     if (!observation) return;
@@ -106,23 +171,19 @@ export function registerGalaxyPollGuard(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_result", (event) => {
-    const call = galaxyCall(event.toolName, event.input);
-    const key = call && resource(call.name, call.args);
+    const call = galaxyCall(event.toolName, event.input, family);
+    const key = call && resource(call.name, call.args, family, opts);
     if (!key || event.isError || object(event.details)?.error) return;
-    for (const item of event.content) {
-      if (item.type !== "text") continue;
-      let result: Record<string, unknown> | undefined;
-      try {
-        result = object(JSON.parse(item.text));
-      } catch {
-        continue;
-      }
-      if (!result || result.success === false) continue;
+    for (const result of envelopes(event)) {
+      if (result.success === false) continue;
       const data = object(result.data) ?? result;
-      const details = object(data.dataset) ?? object(data.job) ?? data;
+      const invocation = key.startsWith(INVOCATION);
+      const details = invocation ? data : (object(data.dataset) ?? object(data.job) ?? data);
       const state = details.state;
       if (typeof state !== "string") continue;
-      if (!PENDING.has(state)) {
+      // An invocation is unfinished until Galaxy stops scheduling its steps; `ready` and `new`
+      // are not dataset states, so PENDING would never hold one back.
+      if (invocation ? INVOCATION_SCHEDULING_DONE.has(state) : !PENDING.has(state)) {
         pending.delete(key);
         return;
       }

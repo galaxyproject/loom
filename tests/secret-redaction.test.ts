@@ -1,14 +1,17 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import {
   collectSecretValues,
+  currentSecretValues,
   loadPiAuth,
   redactSecrets,
   redactContent,
   REDACTED,
 } from "../extensions/loom/secret-redaction";
+import { setGalaxyTransport } from "../extensions/loom/galaxy-api";
+import { setConfigSource } from "../shared/config-source.js";
 
 describe("collectSecretValues", () => {
   it("gathers plaintext + encrypted keys from llm providers and galaxy profiles", () => {
@@ -50,6 +53,16 @@ describe("collectSecretValues", () => {
   it("ignores short/empty values so ordinary output isn't mangled", () => {
     const config = { llm: { active: "x", providers: { x: { apiKey: "abc" } } } } as never;
     expect(collectSecretValues(config, { GALAXY_API_KEY: "" })).toEqual([]);
+  });
+
+  it("takes extra values a caller already holds, under the same length rule", () => {
+    const secrets = collectSecretValues({} as never, {}, null, [
+      "extra-key-000000",
+      "short",
+      7,
+      null,
+    ]);
+    expect(secrets).toEqual(["extra-key-000000"]);
   });
 
   it("tolerates a config with no llm/galaxy sections", () => {
@@ -164,5 +177,71 @@ describe("pi auth.json (the credentials Loom cannot encrypt at rest)", () => {
     expect(collectSecretValues({} as never, {}, loadPiAuth(dir))).toContain(
       "DISK-ACCESS-0000000000",
     );
+  });
+});
+
+describe("currentSecretValues (what the hooks scrub right now)", () => {
+  let dir: string;
+  const prev = {
+    HOME: process.env.HOME,
+    USERPROFILE: process.env.USERPROFILE,
+    PI: process.env.PI_CODING_AGENT_DIR,
+  };
+  afterEach(() => {
+    setGalaxyTransport(null);
+    setConfigSource(null);
+    process.env.HOME = prev.HOME;
+    process.env.USERPROFILE = prev.USERPROFILE;
+    if (prev.PI === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = prev.PI;
+    if (dir) fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  function sandbox(): void {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "loom-current-secrets-"));
+    process.env.HOME = dir;
+    process.env.USERPROFILE = dir;
+    process.env.PI_CODING_AGENT_DIR = path.join(dir, "agent");
+    fs.mkdirSync(path.join(dir, "agent"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "agent", "auth.json"),
+      JSON.stringify({ p: { type: "oauth", access: "AUTH-JSON-TOKEN-00000" } }),
+    );
+  }
+
+  it("reads pi's auth.json and the transport's Galaxy key on the default path", () => {
+    sandbox();
+    setGalaxyTransport({
+      credentials: () => ({ url: "http://g.test", apiKey: "transport-key-1234567" }),
+    });
+    const secrets = currentSecretValues();
+    expect(secrets).toContain("AUTH-JSON-TOKEN-00000");
+    expect(secrets).toContain("transport-key-1234567");
+  });
+
+  it("leaves auth.json out for the activity log and lesson text (auth: false)", () => {
+    sandbox();
+    setGalaxyTransport({
+      credentials: () => ({ url: "http://g.test", apiKey: "transport-key-1234567" }),
+    });
+    const secrets = currentSecretValues({ auth: false });
+    expect(secrets).toContain("transport-key-1234567");
+    expect(secrets).not.toContain("AUTH-JSON-TOKEN-00000");
+  });
+
+  it("takes the shell's list instead of auth.json while a config source is installed", () => {
+    sandbox();
+    setGalaxyTransport({
+      credentials: () => ({ url: "http://g.test", apiKey: "transport-key-1234567" }),
+    });
+    setConfigSource({
+      load: () => ({ llm: { active: "x", providers: { x: { apiKey: "source-config-key-000" } } } }),
+      secrets: () => ["shell-held-secret-000"],
+    });
+    const secrets = currentSecretValues();
+    expect(secrets).toContain("transport-key-1234567");
+    expect(secrets).toContain("source-config-key-000");
+    expect(secrets).toContain("shell-held-secret-000");
+    expect(secrets).not.toContain("AUTH-JSON-TOKEN-00000");
   });
 });

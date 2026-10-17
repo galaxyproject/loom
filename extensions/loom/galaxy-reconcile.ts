@@ -30,7 +30,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as path from "path";
-import { galaxyMcpToolName } from "../../shared/galaxy-mcp-tools.js";
+import { MCP_FAMILY, type GalaxyToolFamily } from "../../shared/galaxy-mcp-tools.js";
 import { appendActivityEvent } from "./activity";
 import {
   INVOCATION_SCHEDULING_DONE,
@@ -925,7 +925,10 @@ function summarize(result: {
  * Register reconcile and enrichment: session start, `galaxy_connect`, the
  * poller tick, and `/reconcile`.
  */
-export function registerCaptureFollowThrough(pi: ExtensionAPI): void {
+export function registerCaptureFollowThrough(
+  pi: ExtensionAPI,
+  family: GalaxyToolFamily = MCP_FAMILY,
+): void {
   pi.on("session_start", async () => {
     resetEnrichmentState();
     resetReconcileState();
@@ -937,7 +940,9 @@ export function registerCaptureFollowThrough(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_execution_end", async (event) => {
-    if (event.isError || galaxyMcpToolName(event.toolName) !== "connect") return;
+    // No bare family has a connect tool, so this trigger is inert there;
+    // session_start, the tick and /reconcile carry reconcile instead.
+    if (event.isError || family.toolName(event.toolName) !== "connect") return;
     void followThrough("galaxy_connect").catch((err) => {
       console.error("[reconcile] after connect failed:", err);
     });

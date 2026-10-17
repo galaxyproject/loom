@@ -14,7 +14,9 @@
  */
 
 import * as fs from "fs";
+import { capabilityProfile } from "../../shared/capability-profile.js";
 import { appendActivityEvent } from "./activity";
+import { memoryRegistryFs } from "./registry-memory-fs";
 import {
   RegistryStore,
   canonicalJson,
@@ -36,6 +38,16 @@ export interface SessionRegistry {
 
 let current: SessionRegistry | null = null;
 let heartbeat: ReturnType<typeof setInterval> | null = null;
+
+// One Map per brain process: a page notebook has no .loom/state beside it, and
+// a second session_start in the same worker reopens what the first wrote. The
+// paths inside it carry the analysis dir, so two records opened by one worker
+// keep separate registries on the one Map.
+let pageFs: RegistryFs | null = null;
+function defaultRegistryFs(): RegistryFs {
+  if (capabilityProfile().notebook !== "page") return fs;
+  return (pageFs ??= memoryRegistryFs());
+}
 
 export function getSessionRegistry(): SessionRegistry | null {
   return current;
@@ -65,7 +77,7 @@ export function openSessionRegistry(opts: OpenOptions): {
     analysisDir: opts.analysisDir,
     serverUrl: opts.serverUrl,
     sessionId: opts.sessionId,
-    fs: opts.fs ?? fs,
+    fs: opts.fs ?? defaultRegistryFs(),
     clock: opts.clock ?? Date.now,
   });
   const session: SessionRegistry = { store, analysisDir: opts.analysisDir };

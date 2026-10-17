@@ -121,6 +121,11 @@ export interface ResolvedResult {
   text?: string;
   /** pi's full-output file for a truncated result; the caller may re-read it. */
   truncatedPath?: string;
+  /**
+   * The in-memory saved copy of an in-process Galaxy result that was too big to
+   * show in full; the caller may re-read it.
+   */
+  outputId?: string;
   /** Loom-native tool details, when the tool is one of ours. */
   details?: Record<string, unknown>;
 }
@@ -147,6 +152,14 @@ function firstTextBlock(content: unknown): string | undefined {
  * Preference order is least-mangled-first: the untruncated `CallToolResult`
  * pi keeps in `structuredContent`, then the text block, with the full-output
  * file reported for the caller to fall back on.
+ *
+ * An in-process Galaxy tool (marked by `details.galaxy`, which only its wrapper
+ * sets) keeps the envelope itself in `structuredContent` rather than a whole
+ * `CallToolResult`, and names its saved copy in `details.galaxy.outputId`. The
+ * flat envelope is taken only behind that marker, so an MCP result reads
+ * exactly as it always has. The text and saved-copy paths stay load-bearing:
+ * pi drops `structuredContent` whenever a `tool_result` handler rewrites the
+ * content, never persists it, and the browser shim never forwards it.
  */
 export function resolveResultPayload(result: unknown): ResolvedResult {
   if (typeof result === "string") return { text: result };
@@ -159,6 +172,16 @@ export function resolveResultPayload(result: unknown): ResolvedResult {
 
   if (typeof details?.fullOutputPath === "string") {
     out.truncatedPath = details.fullOutputPath;
+  }
+
+  const galaxy = asRecord(details?.galaxy);
+  if (galaxy) {
+    if (typeof galaxy.outputId === "string") out.outputId = galaxy.outputId;
+    const envelope = asRecord(r.structuredContent);
+    if (envelope && "data" in envelope) {
+      out.value = envelope;
+      return out;
+    }
   }
 
   const call = asRecord(r.structuredContent);
@@ -444,9 +467,11 @@ export function parseSubmission(
   const envelope = parseGalaxyResultEnvelope(resolved);
   if (!envelope) {
     return fail(
-      resolved.truncatedPath
-        ? "result was not parseable JSON even after re-reading the full-output file"
-        : "result was not a parseable GalaxyResult envelope",
+      resolved.outputId
+        ? "result was not parseable JSON even after re-reading the saved Galaxy output"
+        : resolved.truncatedPath
+          ? "result was not parseable JSON even after re-reading the full-output file"
+          : "result was not a parseable GalaxyResult envelope",
     );
   }
   const data = envelope.data;

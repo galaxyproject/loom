@@ -28,10 +28,10 @@ describe("reemitNotebookIfChanged (#253 notebook panel re-sync)", () => {
     }
   });
 
-  function freshSession(): { dir: string; seen: string[]; unsub: () => void } {
+  async function freshSession(): Promise<{ dir: string; seen: string[]; unsub: () => void }> {
     const dir = mkdtempSync(join(tmpdir(), "loom-reemit-"));
     dirs.push(dir);
-    initSessionArtifacts(dir); // creates notebook.md, emits the initial "" once
+    await initSessionArtifacts(dir); // creates notebook.md, emits the initial "" once
     // These tests exercise reemitNotebookIfChanged() in isolation; drop the real
     // chokidar watcher so a late awaitWriteFinish callback can't append to `seen`
     // and make exact-array assertions flaky. reemit reads state.notebookPath
@@ -42,42 +42,42 @@ describe("reemitNotebookIfChanged (#253 notebook panel re-sync)", () => {
     return { dir, seen, unsub };
   }
 
-  it("emits once when notebook.md changed out of band", () => {
-    const { dir, seen, unsub } = freshSession();
+  it("emits once when notebook.md changed out of band", async () => {
+    const { dir, seen, unsub } = await freshSession();
 
     writeFileSync(join(dir, "notebook.md"), "# Results\n", "utf-8");
-    expect(reemitNotebookIfChanged()).toBe(true);
+    expect(await reemitNotebookIfChanged()).toBe(true);
 
     expect(seen).toEqual(["# Results\n"]);
     unsub();
   });
 
-  it("does not emit when notebook.md is unchanged", () => {
-    const { seen, unsub } = freshSession();
+  it("does not emit when notebook.md is unchanged", async () => {
+    const { seen, unsub } = await freshSession();
 
-    expect(reemitNotebookIfChanged()).toBe(false);
+    expect(await reemitNotebookIfChanged()).toBe(false);
     expect(seen).toEqual([]);
     unsub();
   });
 
-  it("does not re-emit the same change on a second call", () => {
-    const { dir, seen, unsub } = freshSession();
+  it("does not re-emit the same change on a second call", async () => {
+    const { dir, seen, unsub } = await freshSession();
 
     writeFileSync(join(dir, "notebook.md"), "# Results\n", "utf-8");
-    expect(reemitNotebookIfChanged()).toBe(true);
-    expect(reemitNotebookIfChanged()).toBe(false);
+    expect(await reemitNotebookIfChanged()).toBe(true);
+    expect(await reemitNotebookIfChanged()).toBe(false);
 
     expect(seen).toEqual(["# Results\n"]);
     unsub();
   });
 
-  it("returns false when there is no active notebook", () => {
+  it("returns false when there is no active notebook", async () => {
     resetState();
-    expect(reemitNotebookIfChanged()).toBe(false);
+    expect(await reemitNotebookIfChanged()).toBe(false);
   });
 
-  it("emits on an inode-replacing write even when size and mtime are unchanged", () => {
-    const { dir, seen, unsub } = freshSession();
+  it("emits on an inode-replacing write even when size and mtime are unchanged", async () => {
+    const { dir, seen, unsub } = await freshSession();
     const nb = join(dir, "notebook.md");
     // Pin a fixed mtime so a mtime+size-only guard would treat the replacement
     // as identical -- this is the watcher-evading write #253 is really about.
@@ -85,7 +85,7 @@ describe("reemitNotebookIfChanged (#253 notebook panel re-sync)", () => {
 
     writeFileSync(nb, "AAAA", "utf-8");
     utimesSync(nb, fixed, fixed);
-    expect(reemitNotebookIfChanged()).toBe(true);
+    expect(await reemitNotebookIfChanged()).toBe(true);
     expect(seen).toEqual(["AAAA"]);
 
     // Atomic temp-and-rename: new inode, same byte length, restored mtime.
@@ -96,15 +96,15 @@ describe("reemitNotebookIfChanged (#253 notebook panel re-sync)", () => {
     expect(statSync(nb).size).toBe(4); // same size as before
 
     seen.length = 0;
-    expect(reemitNotebookIfChanged()).toBe(true);
+    expect(await reemitNotebookIfChanged()).toBe(true);
     expect(seen).toEqual(["BBBB"]);
     unsub();
   });
 
-  it("does not let a throwing listener break the caller or starve other listeners", () => {
+  it("does not let a throwing listener break the caller or starve other listeners", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      const { dir, unsub } = freshSession();
+      const { dir, unsub } = await freshSession();
       const unsubBad = onNotebookChange(() => {
         throw new Error("listener boom");
       });
@@ -115,7 +115,7 @@ describe("reemitNotebookIfChanged (#253 notebook panel re-sync)", () => {
 
       // The tool_execution_end hook calls reemit; a misbehaving subscriber must
       // not throw out of it, and the well-behaved subscriber must still fire.
-      expect(() => reemitNotebookIfChanged()).not.toThrow();
+      await expect(reemitNotebookIfChanged()).resolves.toBe(true);
       expect(seen).toEqual(["# After throw\n"]);
       expect(errSpy).toHaveBeenCalled();
 
@@ -127,8 +127,8 @@ describe("reemitNotebookIfChanged (#253 notebook panel re-sync)", () => {
     }
   });
 
-  it("re-emits when the notebook path switches to a same-content file", () => {
-    const { unsub } = freshSession(); // notebook.md == ""
+  it("re-emits when the notebook path switches to a same-content file", async () => {
+    const { unsub } = await freshSession(); // notebook.md == ""
     unsub();
 
     const dir2 = mkdtempSync(join(tmpdir(), "loom-reemit-alt-"));
@@ -143,7 +143,7 @@ describe("reemitNotebookIfChanged (#253 notebook panel re-sync)", () => {
 
     // A new notebook that happens to share the old one's content must still
     // emit so the panel/header re-sync to the new file.
-    expect(reemitNotebookIfChanged()).toBe(true);
+    expect(await reemitNotebookIfChanged()).toBe(true);
     expect(seen).toEqual([""]);
     unsub2();
   });

@@ -4,11 +4,15 @@ import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { listEnabledSkillRepos, type ConfiguredSkillRepo } from "./skills";
 import { resolveStateDir } from "../../shared/state-dir.js";
+import {
+  SKILLS_SURFACE_ID,
+  selectSkills as selectSurfaceSkills,
+} from "../../shared/skills-router.js";
 import { hasBundledContent, isBundledRepo, readBundledCatalog } from "./vendor-skills";
 export type { ConfiguredSkillRepo };
 
 /** The product-surface id Loom claims. A skill opts in with `surfaces: [loom]`. */
-export const SURFACE_ID = "loom";
+export const SURFACE_ID = SKILLS_SURFACE_ID;
 
 /** Catalog freshness window. SKILL.md frontmatter + the tree listing use this; deep refs stay 24h. */
 export const CATALOG_TTL_MS = 60 * 60 * 1000;
@@ -65,10 +69,8 @@ export function parseFrontmatter(text: string): SkillFrontmatter {
 }
 
 /** Tag-or-all: if any entry is tagged for this surface, keep only those; else keep all. */
-export function selectSkills(entries: SkillEntry[], surface: string = SURFACE_ID): SkillEntry[] {
-  const tagged = entries.filter((e) => e.surfaces.includes(surface));
-  return tagged.length ? tagged : entries;
-}
+export const selectSkills: (entries: SkillEntry[], surface?: string) => SkillEntry[] =
+  selectSurfaceSkills;
 
 /** Short stable tag derived from `${url}@${branch}` for the skills-cache directory. */
 export function createSkillsCacheTag(url: string, branch: string): string {

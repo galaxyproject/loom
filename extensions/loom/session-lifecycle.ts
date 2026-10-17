@@ -21,11 +21,14 @@ import {
   type SessionSummaryYaml,
 } from "./notebook-writer.js";
 import { activeGalaxyStatus, type ActiveGalaxyStatus } from "./profiles.js";
+import { recordStore } from "./record-store.js";
 import { isUvxAvailable, uvxMissingNotice } from "../../shared/uvx-runner.js";
 import { maybeNudgeGalaxyReconnect } from "./galaxy-cred-drift.js";
 import * as fs from "fs";
 import * as path from "path";
-import { isDesktopShell, readEnv } from "../../shared/orbit-env.js";
+import { readEnv } from "../../shared/orbit-env.js";
+import { capabilityProfile } from "../../shared/capability-profile.js";
+import { MCP_FAMILY } from "../../shared/galaxy-mcp-tools.js";
 import {
   closeSessionRegistry,
   openSessionRegistry,
@@ -81,7 +84,7 @@ export function registerSessionLifecycle(pi: ExtensionAPI): void {
 
     syncSessionJsonlSymlink(ctx);
 
-    initSessionArtifacts(process.cwd());
+    await initSessionArtifacts(process.cwd());
 
     // Resume the per-history Galaxy page and arm debounce auto-push (no-op
     // unless LOOM_GALAXY_PAGE_SYNC=auto and Galaxy creds are present).
@@ -132,8 +135,16 @@ export function registerSessionLifecycle(pi: ExtensionAPI): void {
 
     // The approval registry. Opening it never blocks the session: a registry
     // that can't be loaded or locked comes up read-only, with one notice.
+    // It hangs off the record the way the activity log does: a page record's
+    // key is per conversation, so two pages hosted by one worker never share
+    // approvals, while a file record's dirname is the cwd it always was.
+    const notebookPath = getNotebookPath();
+    const analysisDir =
+      capabilityProfile().notebook === "page" && notebookPath
+        ? path.dirname(notebookPath)
+        : process.cwd();
     const registry = openSessionRegistry({
-      analysisDir: process.cwd(),
+      analysisDir,
       sessionId: sessionStart.id,
       serverUrl: getGalaxyConfig()?.url ?? "",
     });
@@ -148,8 +159,12 @@ export function registerSessionLifecycle(pi: ExtensionAPI): void {
     // thing that prompts mcp__galaxy__connect() -- is suppressed, so a key/server
     // change made while this session was idle would leave the model believing
     // it's still connected as the old account. Refresh the per-cwd credential
-    // baseline and, on a resume where it changed, nudge a reconnect.
-    maybeNudgeGalaxyReconnect(pi, { isResume });
+    // baseline and, on a resume where it changed, nudge a reconnect. The nudge
+    // asks for mcp__galaxy__connect and the baseline only advances on that
+    // tool, so it has nothing to say where Galaxy tools are not the MCP ones.
+    if (capabilityProfile().galaxyTools === "mcp") {
+      maybeNudgeGalaxyReconnect(pi, { isResume });
+    }
 
     if (freshSession || isResume) {
       return;
@@ -162,7 +177,7 @@ export function registerSessionLifecycle(pi: ExtensionAPI): void {
   // re-orient by re-reading. Notebook is the source of truth — no plan struct
   // to persist.
   pi.on("session_before_compact", async () => {
-    snapshotNotebook(pi);
+    await snapshotNotebook(pi);
     return {};
   });
 
@@ -180,17 +195,17 @@ export function registerSessionLifecycle(pi: ExtensionAPI): void {
     // that fire. #271
     stopWatchingNotebook();
     await writeSessionSummary(orphaned);
-    snapshotNotebook(pi);
+    await snapshotNotebook(pi);
     // Best-effort final push (debounce already pushed recent changes).
     await flushNotebookToGalaxy();
   });
 }
 
-function snapshotNotebook(pi: ExtensionAPI): void {
+async function snapshotNotebook(pi: ExtensionAPI): Promise<void> {
   const nbPath = getNotebookPath();
   if (!nbPath) return;
   try {
-    const content = fs.readFileSync(nbPath, "utf-8");
+    const { content } = await recordStore(nbPath).read();
     pi.appendEntry("notebook_snapshot", { path: nbPath, content });
   } catch (err) {
     console.error("notebook snapshot failed:", err);
@@ -264,12 +279,18 @@ type GreetingAction = { kind: "model"; message: string } | NotifyAction;
  * Decide the startup greeting from the active Galaxy credential status. Pure so
  * it can be unit-tested without a live session.
  *
- * `usable` keeps a real model turn -- it has to nudge mcp__galaxy__connect(). The
- * other two states are pure pleasantries, so they render as a static notify:
- * no model round-trip, no leaked instruction, and the same call surfaces in
- * both the terminal TUI and Orbit (which renders the notify RPC event).
+ * `usable` keeps a real model turn -- under MCP it has to nudge the connect
+ * tool; a shell whose Galaxy tools are in-process has no such tool and passes
+ * null, and the turn says the tools are ready instead. The other two states
+ * are pure pleasantries, so they render as a static notify: no model
+ * round-trip, no leaked instruction, and the same call surfaces in both the
+ * terminal TUI and Orbit (which renders the notify RPC event).
  */
-export function planStartupGreeting(status: ActiveGalaxyStatus, isOrbit: boolean): GreetingAction {
+export function planStartupGreeting(
+  status: ActiveGalaxyStatus,
+  isOrbit: boolean,
+  connectTool: string | null = MCP_FAMILY.tool("connect"),
+): GreetingAction {
   if (status === "usable") {
     const message =
       `Session started in this project directory. Read \`notebook.md\` to see prior work. ` +
@@ -278,8 +299,10 @@ export function planStartupGreeting(status: ActiveGalaxyStatus, isOrbit: boolean
           `No greeting, no emojis, no product branding.`
         : `Give a brief welcome, then ask what to work on next, referencing the notebook contents if there is prior work. ` +
           `Keep it to 2-3 sentences.`) +
-      ` Galaxy credentials are configured -- call mcp__galaxy__connect() to establish the connection.` +
-      ` Do NOT call other Galaxy tools until connected.`;
+      (connectTool
+        ? ` Galaxy credentials are configured -- call ${connectTool}() to establish the connection.` +
+          ` Do NOT call other Galaxy tools until connected.`
+        : ` Galaxy credentials are configured and the Galaxy tools are ready to use.`);
     return { kind: "model", message };
   }
 
@@ -322,13 +345,15 @@ export function planUvxWarning(
   return { kind: "notify", level: "warning", text: uvxMissingNotice() };
 }
 
+// No MCP server means no runner to look for, so the probe (a walk of PATH) is
+// skipped and the warning cannot fire.
 export function sendStartupGreeting(
   pi: ExtensionAPI,
   ctx: ExtensionContext,
-  uvxAvailable: boolean = isUvxAvailable(),
+  uvxAvailable: boolean = capabilityProfile().galaxyTools === "mcp" ? isUvxAvailable() : true,
 ): void {
-  // Surface the missing-runner warning before the greeting: the greeting tells
-  // the model to call mcp__galaxy__connect(), which is exactly what will fail.
+  // Surface the missing-runner warning before the greeting: the MCP greeting
+  // tells the model to call mcp__galaxy__connect(), which is exactly what will fail.
   const uvxWarning = planUvxWarning(activeGalaxyStatus(), uvxAvailable);
   if (uvxWarning) {
     try {
@@ -338,8 +363,12 @@ export function sendStartupGreeting(
     }
   }
 
-  const isOrbit = isDesktopShell();
-  const action = planStartupGreeting(activeGalaxyStatus(), isOrbit);
+  const isOrbit = capabilityProfile().ui === "desktop";
+  const action = planStartupGreeting(
+    activeGalaxyStatus(),
+    isOrbit,
+    capabilityProfile().galaxyTools === "mcp" ? MCP_FAMILY.tool("connect") : null,
+  );
   if (action.kind === "model") {
     pi.sendUserMessage(action.message);
   } else {

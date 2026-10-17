@@ -12,15 +12,15 @@ const MANIFEST = join(__dirname, "..", "package.json");
 const EXPORTS = Object.keys(JSON.parse(readFileSync(MANIFEST, "utf8")).exports);
 
 /** A flavor's own sources: not what it installs, builds or snapshots. */
-export function sources(dir: string, skip: string[] = []): string[] {
+export function sources(dir: string, skip: string[] = [], ext = /\.(ts|js)$/): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
     if (statSync(path).isDirectory()) {
       return ["node_modules", "static", "dist", "skills", "__surface__", ...skip].includes(name)
         ? []
-        : sources(path, skip);
+        : sources(path, skip, ext);
     }
-    return /\.(ts|js)$/.test(name) ? [path] : [];
+    return ext.test(name) ? [path] : [];
   });
 }
 
@@ -38,6 +38,16 @@ export function specifiers(text: string): string[] {
   );
   const globbed = [...text.matchAll(GLOB)].flatMap((m) => [...m[1].matchAll(QUOTED)]);
   return [...found, ...globbed].map((m) => m[2]);
+}
+
+/** The text without its type-only imports, which the build erases. */
+export function withoutTypeImports(text: string): string {
+  return text
+    .replace(/\b(?:import|export)\s+type\s[\s\S]*?from\s*["'][^"']+["']\s*;?/g, "")
+    .replace(
+      /\bimport\s*\{\s*(?:type\s+\w+(?:\s+as\s+\w+)?\s*,?\s*)+\}\s*from\s*["'][^"']+["']\s*;?/g,
+      "",
+    );
 }
 
 /** Why `spec`, named by `file` in the flavor at `root`, reaches past the core's exports. */

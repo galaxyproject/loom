@@ -117,6 +117,12 @@ export interface LoomConfig {
      */
     autoResumeMaxTurns?: number;
     /**
+     * How the desktop runs Galaxy tools: "mcp" (galaxy-mcp over uvx, the
+     * default) or "bare" (in-process through galaxy-ops, under bare names).
+     * LOOM_GALAXY_TOOLS wins over this.
+     */
+    galaxyTools?: "bare" | "mcp";
+    /**
      * Register the experimental session-index tools (chat_search,
      * chat_session_context, chat_find_tool_calls) that query Pi's JSONL
      * session corpus via a SQLite+FTS5 mirror at ~/.loom/sessions-index.db.

@@ -57,7 +57,7 @@ import { findJobBlocks } from "./galaxy-job-block.js";
 import { findInvocationBlocks } from "./notebook-writer.js";
 import { setPollTickHook } from "./galaxy-poller.js";
 import { getDashboardPath, readDashboardDocument } from "./dashboard-store.js";
-import { isDesktopShell } from "../../shared/orbit-env.js";
+import { capabilityProfile } from "../../shared/capability-profile.js";
 
 /** The only Galaxy reads this source is allowed to make. Anything not built by
  *  these two functions never leaves the module, so there is no path from a
@@ -864,7 +864,7 @@ let armGeneration = 0;
  * registering the hook at all.
  */
 function shellDrawsDashboard(): boolean {
-  return isDesktopShell();
+  return capabilityProfile().ui === "desktop";
 }
 
 /**

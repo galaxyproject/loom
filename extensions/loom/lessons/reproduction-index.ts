@@ -18,9 +18,10 @@
  * actually pulls a body.
  */
 
-import * as fs from "node:fs";
 import { parseMostRecentPlan } from "../init-gate.js";
+import { recordStore } from "../record-store";
 import { getNotebookPath } from "../state";
+import { isLessonsEnabled } from "./enabled";
 import { isMatchable } from "./matcher";
 import { getLessonStore } from "./store";
 import { collapse } from "./text";
@@ -43,11 +44,11 @@ export function looksLikeReproduction(lastUserText: string, planTitle: string | 
   return REPRODUCING.test(lastUserText) || REPRODUCING.test(planTitle ?? "");
 }
 
-export function currentPlanTitle(): string | null {
+export async function currentPlanTitle(): Promise<string | null> {
   const notebook = getNotebookPath();
   if (!notebook) return null;
   try {
-    return parseMostRecentPlan(fs.readFileSync(notebook, "utf-8"))?.title ?? null;
+    return parseMostRecentPlan((await recordStore(notebook).read()).content)?.title ?? null;
   } catch {
     return null;
   }
@@ -74,7 +75,9 @@ export function renderReproductionIndex(lessons: readonly Lesson[]): string {
   );
 }
 
-export function buildReproductionLessonsContext(lastUserText: string): string {
-  if (!looksLikeReproduction(lastUserText, currentPlanTitle())) return "";
+export async function buildReproductionLessonsContext(lastUserText: string): Promise<string> {
+  // The store is empty with the switch off; gating here also spares the record read.
+  if (!isLessonsEnabled()) return "";
+  if (!looksLikeReproduction(lastUserText, await currentPlanTitle())) return "";
   return renderReproductionIndex(getLessonStore().lessons);
 }

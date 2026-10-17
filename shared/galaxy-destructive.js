@@ -36,6 +36,12 @@ const DESTRUCTIVE_OPS = {
   },
 };
 
+/** The ops whose arguments decide whether a call is destructive. A gate reading galaxy-ops'
+ *  `destructiveHint` leaves these to the classifier: the hint marks the op, not the call, and
+ *  would ask about a rename as if it were a delete.
+ * @type {readonly string[]} */
+export const GALAXY_ARGS_CLASSIFIED_OPS = Object.freeze(Object.keys(DESTRUCTIVE_OPS));
+
 /** Lowercase + drop a leading `mcp__galaxy__` or `galaxy_` so the pi tool name, the bare op name
  *  (and either gate's casing) resolve the same.
  * @param {unknown} toolName @returns {string} */

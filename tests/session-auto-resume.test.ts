@@ -25,8 +25,11 @@ vi.mock("../extensions/loom/registry-runtime.js", () => ({
 }));
 
 import { startGalaxyPoller } from "../extensions/loom/galaxy-poller.js";
+import { getNotebookPath } from "../extensions/loom/state.js";
+import { openSessionRegistry } from "../extensions/loom/registry-runtime.js";
 import { registerSessionLifecycle } from "../extensions/loom/session-lifecycle";
 import { registerCommandsAsUserInput } from "../extensions/loom/auto-resume";
+import { profileFromEnv, setCapabilityProfile } from "../shared/capability-profile.js";
 
 type SessionHandler = (event: unknown, ctx: ExtensionContext) => void | Promise<void>;
 
@@ -62,6 +65,23 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.useRealTimers();
+  setCapabilityProfile(null);
+  vi.mocked(getNotebookPath).mockReturnValue(null);
+});
+
+describe("where session_start opens the approval registry", () => {
+  it("is the cwd for a file notebook", async () => {
+    vi.mocked(getNotebookPath).mockReturnValue("/elsewhere/notebook.md");
+    await start();
+    expect(vi.mocked(openSessionRegistry).mock.calls[0][0].analysisDir).toBe(process.cwd());
+  });
+
+  it("is the record's own dirname for a page notebook, so two pages in one worker stay apart", async () => {
+    setCapabilityProfile({ ...profileFromEnv({}), notebook: "page" });
+    vi.mocked(getNotebookPath).mockReturnValue("/pages/p1/notebook.md");
+    await start();
+    expect(vi.mocked(openSessionRegistry).mock.calls[0][0].analysisDir).toBe("/pages/p1");
+  });
 });
 
 describe("session Galaxy follow-up wiring", () => {

@@ -48,15 +48,15 @@ ran=""
 for d in confirm session reload tabs unsaved-changes approval-gate ratelimit visualization-artifact artifact-survives-switch artifact-restore-newest run-python; do
     ran="$ran $d"
     curl -sf -o /dev/null http://127.0.0.1:8099/__reset
-    if LLM_CONTEXT_WINDOW=64000 node "e2e/$d-drive.cjs" > "/tmp/olit-e2e-$d.log" 2>&1; then
+    if LLM_CONTEXT_WINDOW=64000 node "olit/e2e/$d-drive.cjs" > "/tmp/olit-e2e-$d.log" 2>&1; then
         echo "PASS  $d"
     else
         failed "$d" "/tmp/olit-e2e-$d.log"
     fi
 done
 
-# The core under a flavor that adds nothing, launched on the current history. Every drive
-# above mounts Olit, so this is what fails when the core starts leaning on Olit.
+# The core under a flavor that adds nothing, launched on the current history. The drives
+# above are Olit's, so this is what fails when the core starts leaning on Olit.
 GALAXY_ROOT=http://127.0.0.1:8099 LLM_PROVIDER=ollama LLM_ROOT=http://127.0.0.1:8099 \
   LLM_PATH=/v1 LLM_KEY=stub LLM_MODEL=stub-model \
   LLM_CONTEXT_WINDOW=64000 LLM_KEEP_RECENT_TOKENS=50 \
@@ -81,7 +81,7 @@ fi
 for d in credentials artifact-pane provider-switch galaxy-boot galaxy-frame saved-session recovery reset python-isolation; do
     ran="$ran $d"
     curl -sf -o /dev/null http://127.0.0.1:8099/__reset
-    if node "e2e/$d-drive.cjs" > "/tmp/olit-e2e-$d.log" 2>&1; then
+    if node "olit/e2e/$d-drive.cjs" > "/tmp/olit-e2e-$d.log" 2>&1; then
         echo "PASS  $d"
     else
         failed "$d" "/tmp/olit-e2e-$d.log"
@@ -92,7 +92,7 @@ done
 # Galaxy's SameSite-less cookie to a credentialed request from an opaque origin.
 for browser in firefox webkit; do
     curl -sf -o /dev/null http://127.0.0.1:8099/__reset
-    if BROWSER=$browser node e2e/python-isolation-drive.cjs > "/tmp/olit-e2e-python-isolation-$browser.log" 2>&1; then
+    if BROWSER=$browser node olit/e2e/python-isolation-drive.cjs > "/tmp/olit-e2e-python-isolation-$browser.log" 2>&1; then
         echo "PASS  python-isolation ($browser)"
     else
         failed "python-isolation ($browser)" "/tmp/olit-e2e-python-isolation-$browser.log"
@@ -102,7 +102,7 @@ done
 # Derived from what is on disk, so a driver this script forgets to run is named here
 # instead of vanishing. These need a real Galaxy; a green run above is not coverage of them.
 echo
-for f in e2e/*-drive.cjs; do
+for f in e2e/*-drive.cjs olit/e2e/*-drive.cjs; do
     d=$(basename "$f" -drive.cjs)
     case " $ran " in *" $d "*) continue;; esac
     printf '  SKIP  %-22s not run here: it needs a real Galaxy (see the header of %s)\n' "$d" "$f"

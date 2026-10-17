@@ -16,22 +16,26 @@ import { appendActivityEvent } from "./activity";
 import { deliverAutoFollowUp } from "./auto-resume";
 import { activeGalaxyStatus } from "./profiles";
 import { getNotebookPath } from "./state";
+import { MCP_FAMILY, type GalaxyToolFamily } from "../../shared/galaxy-mcp-tools.js";
 
-const RECOMMEND_TOOL = "mcp__galaxy__recommend_iwc_workflows";
+export const iwcTools = (family: GalaxyToolFamily): ReadonlySet<string> =>
+  new Set(
+    [
+      "recommend_iwc_workflows",
+      "search_iwc_workflows",
+      "get_iwc_workflow_details",
+      "get_iwc_workflows",
+    ].map((tool) => family.tool(tool)),
+  );
+export const IWC_TOOLS = iwcTools(MCP_FAMILY);
 
-export const IWC_TOOLS: ReadonlySet<string> = new Set([
-  RECOMMEND_TOOL,
-  "mcp__galaxy__search_iwc_workflows",
-  "mcp__galaxy__get_iwc_workflow_details",
-  "mcp__galaxy__get_iwc_workflows",
-]);
-
-export const IWC_PLAN_NUDGE =
+export const iwcPlanNudge = (family: GalaxyToolFamily): string =>
   "[Loom check] That plan was drafted without checking the IWC workflow registry. Call " +
-  "`mcp__galaxy__recommend_iwc_workflows` with the analysis goal now. If a workflow (or a short " +
+  `\`${family.tool("recommend_iwc_workflows")}\` with the analysis goal now. If a workflow (or a short ` +
   "chain of them) covers it and fits the user's data, revise the draft to run it on Galaxy; " +
   "if nothing fits, or the user asked for something else, keep the draft and say you " +
   "checked. It is still a draft: don't write it to the notebook or run anything.";
+export const IWC_PLAN_NUDGE = iwcPlanNudge(MCP_FAMILY);
 
 // A ```plan fence or a bare plan heading, the two shapes the plan gate accepts.
 const PLAN_DRAFT_RE = /^\s*(?:```plan\b|##\s+Plan\s+[A-Za-z0-9]+\s*[:-])/m;
@@ -51,11 +55,14 @@ export function draftsPlan(messages: readonly Message[]): boolean {
   );
 }
 
-export function isIwcLookup(toolName: string): boolean {
-  return IWC_TOOLS.has(toolName);
+export function isIwcLookup(toolName: string, family: GalaxyToolFamily = MCP_FAMILY): boolean {
+  return iwcTools(family).has(toolName);
 }
 
-export function registerIwcPlanCheck(pi: ExtensionAPI): void {
+export function registerIwcPlanCheck(
+  pi: ExtensionAPI,
+  family: GalaxyToolFamily = MCP_FAMILY,
+): void {
   let consulted = false;
   let nudged = false;
 
@@ -65,7 +72,7 @@ export function registerIwcPlanCheck(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_execution_start", async (event) => {
-    if (isIwcLookup(event.toolName)) consulted = true;
+    if (isIwcLookup(event.toolName, family)) consulted = true;
   });
 
   pi.on("agent_end", async (event) => {
@@ -74,11 +81,11 @@ export function registerIwcPlanCheck(pi: ExtensionAPI): void {
     if (last && "stopReason" in last && last.stopReason === "aborted") return;
     if (activeGalaxyStatus() !== "usable") return;
     // A restricted tool set (e.g. --tools read,write,edit) can't act on it.
-    if (!pi.getActiveTools().includes(RECOMMEND_TOOL)) return;
+    if (!pi.getActiveTools().includes(family.tool("recommend_iwc_workflows"))) return;
     if (!draftsPlan(event.messages as Message[])) return;
 
     nudged = true;
-    if (!deliverAutoFollowUp(IWC_PLAN_NUDGE, { dropOnStop: true })) return;
+    if (!deliverAutoFollowUp(iwcPlanNudge(family), { dropOnStop: true })) return;
     const notebook = getNotebookPath();
     if (notebook) {
       appendActivityEvent(path.dirname(notebook), {

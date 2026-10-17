@@ -1,0 +1,72 @@
+{
+  "name": "galaxy-tools: a real tool run lands as a loom-job block and the poller follows it",
+  "description": "Runs under LOOM_GALAXY_TOOLS=bare (and its ORBIT_ spelling, which readEnv prefers if the ambient env sets it), so the Galaxy tools are galaxy-ops operations registered in-process under bare names. Capture keeps its internal table keyed on the canonical run_tool and records the name the model called, and it reads the job ids from the wrapper's envelope (structuredContent, or the text when a handler rewrote the content). A change in either shows up here as a run that went through with nothing recorded. The agent stages a small BED file by URL, runs wc_gnu on it and waits for the result, so the session stays alive across poller ticks: the scenario asserts that the run_tool result came from the in-process wrapper (details.galaxy.tool), the submission.registered row under the bare name, the loom-job block in notebook.md, and a poll.transition row for the wc_gnu job reaching a terminal state. upload_file is hidden on the bare path too. The history is loom-eval- prefixed for --galaxy-cleanup. Bare-path clone of galaxy-mcp-job-capture; the original covers the MCP path until 2e deletes it.",
+  "tier": 2,
+  "requiresModel": true,
+  "requiresGalaxy": true,
+  "inputs": [
+    "Create a new Galaxy history named exactly `loom-eval-job-{{RUN_ID}}`. Upload this BED file into it by URL: https://raw.githubusercontent.com/galaxyproject/galaxy/release_24.0/test-data/1.bed . Then run the Galaxy tool `wc_gnu` (Line/Word/Character count) on that dataset with default settings. Wait until the wc_gnu job has finished -- check on it every so often -- and then tell me how many lines the BED file has according to the tool's output. Skip the formal plan; this is a quick check."
+  ],
+  "env": {
+    "LOOM_GALAXY_TOOLS": "bare",
+    "ORBIT_GALAXY_TOOLS": "bare"
+  },
+  "timeoutMs": 600000,
+  "assertions": {
+    "toolCalls": {
+      "mustInclude": [
+        {
+          "name": "create_history",
+          "argsContains": {
+            "history_name": "loom-eval-job-"
+          }
+        },
+        {
+          "name": "upload_file_from_url"
+        },
+        {
+          "name": "run_tool",
+          "argsContains": {
+            "tool_id": "wc_gnu"
+          }
+        }
+      ],
+      "mustNotInclude": ["upload_file"]
+    },
+    "toolResults": {
+      "mustSucceed": [
+        {
+          "name": "run_tool",
+          "detailsContains": {
+            "details.galaxy.tool": "run_tool"
+          }
+        }
+      ]
+    },
+    "activity": {
+      "mustNotIncludeKinds": ["submission.unparsed"],
+      "mustInclude": [
+        {
+          "kind": "submission.registered",
+          "source": "submission-capture",
+          "payloadContains": {
+            "tool": "run_tool",
+            "kind": "jobs"
+          }
+        },
+        {
+          "kind": "poll.transition",
+          "source": "galaxy-poller",
+          "payloadContains": {
+            "blockKind": "job",
+            "toolId": "wc_gnu",
+            "to": "completed"
+          }
+        }
+      ]
+    },
+    "notebook": {
+      "contains": ["```loom-job", "tool_id: wc_gnu"]
+    }
+  }
+}

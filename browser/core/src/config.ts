@@ -5,13 +5,21 @@ import type { Credentials } from "./credentials";
 export interface Launched {
   root: string;
   datasetId?: string;
-  /** Galaxy's AI proxy for the flavor's visualization plugin; the "galaxy" provider talks to it. */
-  galaxyChatUrl: string;
+  /**
+   * Galaxy's AI proxy, which the "galaxy" provider talks to. Galaxy serves one per visualization
+   * plugin, so only a flavor it hosts that way has one; without it there is no "galaxy" provider.
+   */
+  galaxyChatUrl?: string;
 }
 
 export function buildConfig(incoming: Launched, creds?: Credentials | null) {
   const picked = creds ? providerById(creds.provider) : undefined;
-  const provider = creds?.provider || (process.env.llm_provider as string) || "galaxy";
+  // The Galaxy proxy is the first-launch default where there is one, since it asks for no key;
+  // elsewhere the picker has to be answered, so there is nothing to default to.
+  const provider =
+    creds?.provider ||
+    (process.env.llm_provider as string) ||
+    (incoming.galaxyChatUrl ? "galaxy" : undefined);
   return {
     // Dev routes through the vite proxy; a provider the agent defines carries its own base URL and
     // one pi defines is reached at pi's; the Galaxy chat proxy answers at the plugin's route.

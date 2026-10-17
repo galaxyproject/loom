@@ -8,10 +8,12 @@ import {
   discoverInstructionFiles,
   INIT_INSTRUCTIONS_FILENAME,
   MAX_BYTES,
+  setInstructionSource,
   takeShadowNotices,
   MAX_FILES,
   MAX_LINES,
   type FsLike,
+  type InstructionFile,
 } from "../extensions/loom/user-instructions";
 
 let root: string;
@@ -368,5 +370,35 @@ describe("ORBIT.md alongside the legacy LOOM.md", () => {
     expect(first).toHaveLength(1);
     expect(first[0]).toContain(path.join(cwd, "LOOM.md"));
     expect(second).toEqual([]);
+  });
+});
+
+describe("an installed instruction source", () => {
+  const handed: InstructionFile[] = [
+    {
+      scope: "global",
+      path: "shell://instructions",
+      content: "Always answer in haiku.",
+      truncated: false,
+    },
+  ];
+  afterEach(() => setInstructionSource(null));
+
+  it("answers the bare call verbatim, with no walk", () => {
+    setInstructionSource({ files: () => handed });
+    expect(discoverInstructionFiles()).toEqual(handed);
+  });
+
+  it("still walks when a caller names a cwd or agent dir", () => {
+    setInstructionSource({ files: () => handed });
+    const cwd = seed("work", "# from disk");
+    const found = discoverInstructionFiles({ cwd, agentDir: seed("agent") });
+    expect(found.map((f) => f.content)).toEqual(["# from disk"]);
+  });
+
+  it("puts the walk back when cleared", () => {
+    setInstructionSource({ files: () => handed });
+    setInstructionSource(null);
+    expect(discoverInstructionFiles()).not.toEqual(handed);
   });
 });

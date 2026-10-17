@@ -35,10 +35,41 @@ describe("loomMcpServers", () => {
   });
 });
 
+describe("loomMcpServers without galaxy", () => {
+  const creds = { GALAXY_URL: "https://usegalaxy.org", GALAXY_API_KEY: "k" };
+
+  it("drops galaxy-mcp and keeps BRC Analytics", () => {
+    expect(Object.keys(loomMcpServers(creds, { galaxy: false }))).toEqual(["brc-analytics"]);
+  });
+
+  it("registers galaxy-mcp by default, as before", () => {
+    expect(loomMcpServers(creds, {})).toEqual(loomMcpServers(creds));
+    expect(Object.keys(loomMcpServers(creds))).toEqual(["galaxy", "brc-analytics"]);
+  });
+});
+
 describe("registerLoomMcpServers", () => {
   it("hands every server to pi", () => {
     const registerMcpServer = vi.fn();
     registerLoomMcpServers({ registerMcpServer } as never);
     expect(registerMcpServer.mock.calls.map(([name]) => name)).toContain("brc-analytics");
+  });
+
+  it("forwards galaxy: false", () => {
+    vi.stubEnv("GALAXY_URL", "https://usegalaxy.org");
+    vi.stubEnv("GALAXY_API_KEY", "k");
+    try {
+      const registerMcpServer = vi.fn();
+      registerLoomMcpServers({ registerMcpServer } as never, { galaxy: false });
+      expect(registerMcpServer.mock.calls.map(([name]) => name)).toEqual(["brc-analytics"]);
+      registerMcpServer.mockClear();
+      registerLoomMcpServers({ registerMcpServer } as never);
+      expect(registerMcpServer.mock.calls.map(([name]) => name)).toEqual([
+        "galaxy",
+        "brc-analytics",
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

@@ -21,8 +21,10 @@
  *   - `content_format` defaults to `"html"` server-side; always pass
  *     `"markdown"` explicitly for notebook content.
  *
- * No tools are registered against these calls yet — the client lands now,
- * the tool wiring waits for #22361 to merge.
+ * The model's page tools do not go through this client. get_page and update_page
+ * are galaxy-ops operations, widened in galaxy-page-ops.ts until galaxy-ops ships
+ * #155's S6, and `updatePage` here always sends `content_format`, which would
+ * relabel a page authored as HTML.
  */
 
 import { galaxyGet, galaxyPost, galaxyPut } from "./galaxy-api";
@@ -50,7 +52,9 @@ export interface GalaxyPageSummary {
 }
 
 export interface GalaxyPage extends GalaxyPageSummary {
+  /** The embed-expanded render; `content_editor` is the source the agent edits. */
   content?: string;
+  content_editor?: string;
   content_format?: "markdown" | "html";
   edit_source?: "user" | "agent" | "restore";
 }

@@ -16,7 +16,9 @@ import * as path from "path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "../../shared/loom-config.js";
 import type { LoomConfig } from "../../shared/loom-config.js";
+import { installedConfigSource } from "../../shared/config-source.js";
 import { piAgentDir } from "./agent-dir";
+import { galaxyCredentials } from "./galaxy-api";
 
 export const REDACTED = "[redacted]";
 
@@ -95,12 +97,14 @@ interface ContentItem {
  * (plaintext apiKey AND the apiKeyEncrypted blob, for LLM providers and Galaxy
  * profiles) plus the known secret-valued env vars. Pure -- env is passed in so
  * it's testable. `testerId` is deliberately not a secret, so it survives (the
- * #189 path can read it without leaking keys).
+ * #189 path can read it without leaking keys). `extra` is for values a caller
+ * already holds that live in none of those places.
  */
 export function collectSecretValues(
   config: LoomConfig,
   env: Record<string, string | undefined>,
   auth: unknown = null,
+  extra: readonly unknown[] = [],
 ): string[] {
   const out = new Set<string>();
   const add = (v: unknown): void => {
@@ -128,7 +132,25 @@ export function collectSecretValues(
         for (const nested of Object.values(value as Record<string, unknown>)) add(nested);
     }
   }
+  for (const v of extra) add(v);
   return [...out];
+}
+
+/**
+ * Everything the redactor scrubs right now: the config's keys, the secret env
+ * vars, pi's auth.json where pi runs natively, the Galaxy key the transport
+ * holds, and whatever the shell's config source lists. `auth: false` leaves
+ * auth.json out: only the tool_result redactor has ever read it, and the
+ * activity log and lesson text keep the set they had.
+ */
+export function currentSecretValues({ auth = true }: { auth?: boolean } = {}): string[] {
+  const source = installedConfigSource();
+  // A shell that hands over the config hands over its secrets too; auth.json is pi's own store.
+  const piAuth = auth && !source ? loadPiAuth() : null;
+  return collectSecretValues(loadConfig(), process.env, piAuth, [
+    galaxyCredentials().apiKey,
+    ...(source?.secrets?.() ?? []),
+  ]);
 }
 
 /**
@@ -176,7 +198,7 @@ export function redactContent<T extends ContentItem>(content: T[], secrets: stri
  */
 export function registerSecretRedaction(pi: ExtensionAPI): void {
   pi.on("tool_result", async (event) => {
-    const secrets = collectSecretValues(loadConfig(), process.env, loadPiAuth());
+    const secrets = currentSecretValues();
     const content = redactContent(event.content, secrets);
     if (content) return { content };
   });

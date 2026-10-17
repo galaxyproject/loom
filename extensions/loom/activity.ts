@@ -13,6 +13,7 @@
 
 import { appendFileSync, mkdirSync, readFileSync, existsSync } from "fs";
 import * as path from "path";
+import { capabilityProfile } from "../../shared/capability-profile.js";
 
 export interface ActivityEvent {
   timestamp: string;
@@ -66,7 +67,8 @@ export function resetActivity(): void {
 export function loadActivityLog(sessionDir: string): void {
   const filePath = path.join(sessionDir, "activity.jsonl");
   currentEvents = [];
-  if (!existsSync(filePath)) {
+  // A page notebook has no directory beside it, so the mirror starts empty.
+  if (capabilityProfile().notebook !== "file" || !existsSync(filePath)) {
     notifyActivityChange();
     return;
   }
@@ -90,17 +92,23 @@ export function loadActivityLog(sessionDir: string): void {
 /**
  * Append an event to <sessionDir>/activity.jsonl. Creates the directory if
  * missing. Returns the absolute path of the file that was written, or null
- * on failure. Also updates the in-memory mirror and notifies listeners so
- * the UI can refresh incrementally.
+ * when nothing was written (a page notebook has no file; a failed write).
+ * Also updates the in-memory mirror and notifies listeners so the UI can
+ * refresh incrementally.
  */
 export function appendActivityEvent(sessionDir: string, event: ActivityEvent): string | null {
   const filePath = path.join(sessionDir, "activity.jsonl");
+  // The mirror is what the UI bridge and the lesson nudge read; the file is
+  // the audit sidecar, which only a file notebook has a directory for.
+  const onDisk = capabilityProfile().notebook === "file";
   try {
-    mkdirSync(sessionDir, { recursive: true });
-    appendFileSync(filePath, JSON.stringify(event) + "\n", "utf-8");
+    if (onDisk) {
+      mkdirSync(sessionDir, { recursive: true });
+      appendFileSync(filePath, JSON.stringify(event) + "\n", "utf-8");
+    }
     currentEvents.push(event);
     notifyActivityChange();
-    return filePath;
+    return onDisk ? filePath : null;
   } catch (err) {
     console.error("activity append failed:", err);
     return null;

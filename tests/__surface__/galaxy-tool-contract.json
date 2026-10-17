@@ -1,0 +1,113 @@
+{
+  "sources": {
+    "browser": "bare/src/__surface__/request-plain.json + olit/src/agent/__surface__/traits.json",
+    "orbit": "@galaxyproject/galaxy-ops 0.3.1 allOperations (Node entry)",
+    "parameters": "createGalaxyOpsToolSource().tools() (root galaxy-ops + Loom bridges)"
+  },
+  "intersection": [
+    "cancel_workflow_invocation",
+    "create_history",
+    "create_page",
+    "create_user_tool",
+    "delete_user_tool",
+    "download_dataset",
+    "get_collection_details",
+    "get_dataset_details",
+    "get_histories",
+    "get_history_contents",
+    "get_history_details",
+    "get_invocations",
+    "get_iwc_workflow_details",
+    "get_iwc_workflows",
+    "get_job_details",
+    "get_page",
+    "get_page_revision",
+    "get_server_info",
+    "get_tool_citations",
+    "get_tool_details",
+    "get_tool_input_template",
+    "get_tool_panel",
+    "get_tool_run_examples",
+    "get_user",
+    "get_workflow_details",
+    "get_workflow_input_template",
+    "import_workflow_from_iwc",
+    "invoke_workflow",
+    "list_history_ids",
+    "list_page_revisions",
+    "list_pages",
+    "list_user_tools",
+    "list_workflows",
+    "recommend_biocontainer",
+    "recommend_iwc_workflows",
+    "revert_page_revision",
+    "run_tool",
+    "run_user_tool",
+    "search_iwc_workflows",
+    "search_tools_by_keywords",
+    "search_tools_by_name",
+    "update_history",
+    "update_page",
+    "upload_file",
+    "upload_file_from_url"
+  ],
+  "browserOnly": [
+    "ena_runs",
+    "finish",
+    "get_visualization",
+    "get_visualization_details",
+    "get_visualization_options",
+    "gtn_fetch",
+    "gtn_search",
+    "lineage_report",
+    "list_visualizations",
+    "notebook_resume",
+    "organize_datasets",
+    "run_python",
+    "save_visualization",
+    "show_visualization",
+    "skills_fetch",
+    "vega_dataset"
+  ],
+  "olitFlavorOnly": [
+    "get_visualization",
+    "get_visualization_details",
+    "get_visualization_options",
+    "list_visualizations",
+    "save_visualization",
+    "show_visualization",
+    "vega_dataset"
+  ],
+  "orbitOnly": [],
+  "loomBridging": {
+    "tools": ["list_jobs", "get_job_logs", "galaxy_read_output"],
+    "wraps": [
+      "get_job_details(job_id)",
+      "update_page(section, expect_hash)",
+      "get_page(content_hash)"
+    ]
+  },
+  "upstreamPending": [
+    "get_invocations.offset",
+    "get_invocations.sort_by",
+    "get_invocations.sort_desc",
+    "get_invocations.include_terminal",
+    "get_tool_details.tool_version",
+    "get_workflow_input_template.version",
+    "get_user_tool"
+  ],
+  "knownDifferences": {
+    "parameters": {
+      "get_job_details": { "browserOnly": [], "upstreamOnly": ["job_id"] },
+      "download_dataset": {
+        "browserOnly": [],
+        "upstreamOnly": ["file_path", "use_default_filename", "require_ok_state"]
+      },
+      "upload_file": { "browserOnly": ["file_name", "file_type", "dbkey"], "upstreamOnly": [] }
+    },
+    "forkOnly": [
+      { "tool": "get_job_details", "param": "job_stderr", "in": "description" },
+      { "tool": "get_job_details", "param": "tool_stderr", "in": "description" }
+    ]
+  }
+}

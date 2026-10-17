@@ -7,9 +7,14 @@
  * Galaxy invocation polling tools read and write.
  */
 
-import { randomBytes } from "crypto";
-import * as fs from "fs/promises";
 import * as path from "path";
+import {
+  NotebookChangedError,
+  recordStore,
+  withRecordCas,
+  withRecordLock,
+  type RecordVersion,
+} from "./record-store";
 import {
   isNotebookFenceOpen,
   notebookFenceOpen,
@@ -40,221 +45,40 @@ export function slugify(title: string): string {
 }
 
 /**
- * Per-path mutex chain. Two parallel `upsertInvocationBlock` calls (e.g.
- * `galaxy_invocation_check_all` polling several invocations concurrently)
- * would race read-modify-write on the same notebook file: each reads the
- * pre-update content, applies its block, and the second writer overwrites
- * the first. Serializing via a per-path Promise chain prevents the lost
- * update without paying for an OS-level lock.
+ * The I/O below is a thin delegate onto the record store (record-store.ts).
+ * These names stay because sixteen modules and their tests import them; the
+ * lock, the compare-and-swap loop and the atomic file write live in the store.
  */
-const writeLocks = new Map<string, Promise<void>>();
 
-export function withNotebookLock<T>(filePath: string, work: () => Promise<T>): Promise<T> {
-  const prev = writeLocks.get(filePath) ?? Promise.resolve();
-  const next = prev.then(work, work);
-  // Always clear so completed locks don't pin memory; the chain is preserved
-  // through the Promise we just created.
-  writeLocks.set(
-    filePath,
-    next.then(
-      () => undefined,
-      () => undefined,
-    ),
-  );
-  return next;
-}
+/** Opaque record version, the expected-value half of a compare-and-swap write. */
+export type NotebookStamp = RecordVersion;
 
-/**
- * Cheap fingerprint of the notebook on disk, used as the expected-value half
- * of a compare-and-swap write. Size alone catches every append; mtime catches
- * same-length rewrites.
- *
- * A heuristic, not a content hash: a rewrite that preserves both the byte count
- * and the observed mtime (coarse filesystem timestamps, or a tool that restores
- * times) still compares equal. Good enough for the accidental-interleaving case
- * this guards, and cheap enough to run on every write.
- */
-export interface NotebookStamp {
-  mtimeMs: number;
-  size: number;
-}
+export { NotebookChangedError };
 
-/** Thrown by a guarded `writeNotebook` when the file moved under the caller. */
-export class NotebookChangedError extends Error {
-  constructor(filePath: string) {
-    super(`Notebook changed on disk since it was read: ${filePath}`);
-    this.name = "NotebookChangedError";
-  }
-}
+/** Per-key mutex chain; see withRecordLock. */
+export const withNotebookLock = withRecordLock;
 
-/** Fingerprint the notebook, or null if it isn't there. */
-export async function statNotebook(filePath: string): Promise<NotebookStamp | null> {
-  try {
-    const st = await fs.stat(filePath);
-    return { mtimeMs: st.mtimeMs, size: st.size };
-  } catch {
-    return null;
-  }
-}
+/** Version the record, or null if it isn't there. */
+export const statNotebook = (filePath: string) => recordStore(filePath).stat();
 
-// Per-write scratch name. A fixed `<file>.tmp` is shared by every writer, so
-// two of them (two Loom processes on one notebook, or one process that abandons
-// a guarded write while another is staging one) can overwrite or delete each
-// other's staging file and rename the wrong bytes into place. Random names cost
-// nothing and take that off the table; paired with the `wx` flag below they also
-// mean we never write through a path someone else got to first.
-function tmpPathFor(filePath: string): string {
-  return `${filePath}.tmp.${randomBytes(8).toString("hex")}`;
-}
-
-/**
- * Atomic notebook write: render to a scratch sibling then rename. The rename
- * is atomic on POSIX, so the destination either has the old or the new
- * content — never partial. The file watcher in state.ts may still fire
- * on the rename, but it can no longer observe a half-written file.
- *
- * Pass `expected` (a stamp taken *before* the read this content was derived
- * from) to make the write a compare-and-swap: if the file changed in the
- * meantime — an agent `edit`/`bash` append, or another writer entirely — the
- * write is abandoned with `NotebookChangedError` instead of overwriting a
- * stranger's update (#391). Callers are expected to re-read and retry; without
- * `expected` the write is unconditional, as before.
- *
- * The check sits between the staging write and the rename, which narrows the
- * exposure to a single `rename` syscall but does not close it: stat-then-rename
- * is not atomic, and a writer that lands in that gap is still overwritten.
- * Closing it for real needs an OS-level lock (or routing every notebook write
- * through one owner), which is a bigger change than #391.
- */
+/** Write the record; with `expected` it is a compare-and-swap (see RecordStore.write). */
 export async function writeNotebook(
   filePath: string,
   content: string,
   expected?: NotebookStamp,
 ): Promise<void> {
-  const tmp = tmpPathFor(filePath);
-  // `wx` is O_CREAT | O_EXCL: create the scratch file or fail. Never follow an
-  // existing path — a symlink planted at a scratch name would otherwise let a
-  // write land on whatever it points at.
-  await fs.writeFile(tmp, content, { encoding: "utf-8", flag: "wx" });
-  if (expected) {
-    const current = await statNotebook(filePath);
-    if (!current || current.mtimeMs !== expected.mtimeMs || current.size !== expected.size) {
-      await fs.rm(tmp, { force: true });
-      throw new NotebookChangedError(filePath);
-    }
-  }
-  await renameReplacing(tmp, filePath);
+  await recordStore(filePath).write(content, expected);
 }
 
-// Windows refuses to replace a file another rename (or a scanner) is touching
-// at that instant, with EPERM/EACCES/EBUSY, where POSIX would just swap it in.
-// Retrying briefly gives the same last-writer-wins outcome POSIX gets.
-async function renameReplacing(from: string, to: string): Promise<void> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      await fs.rename(from, to);
-      return;
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
-      const transient = code === "EPERM" || code === "EACCES" || code === "EBUSY";
-      if (process.platform !== "win32" || !transient || attempt >= 10) {
-        await fs.rm(from, { force: true });
-        throw err;
-      }
-      await new Promise((r) => setTimeout(r, 10 * (attempt + 1)));
-    }
-  }
-}
-
-/**
- * Read notebook from file.
- */
 export async function readNotebook(filePath: string): Promise<string> {
-  return await fs.readFile(filePath, "utf-8");
+  return (await recordStore(filePath).read()).content;
 }
 
-/**
- * How many times a guarded update re-reads and retries before giving up. A
- * write only loses the stamp check when someone else wrote in the microseconds
- * between our read and our rename; three attempts is far more than convergence
- * needs, and bounding it keeps a pathological writer from spinning us.
- */
-const MAX_CAS_ATTEMPTS = 3;
-
-/**
- * Read -> apply -> write as a compare-and-swap, retrying against fresh content
- * when the notebook moved under us.
- *
- * This is the discipline the poller already writes under (#391), packaged for
- * the callers that mutate a block from outside a poll. An unguarded whole-file
- * write renders the file from content captured before whatever landed in
- * between -- a poll advancing a block, an agent `edit`, a `bash` append -- and
- * the in-process lock cannot help, because it only orders Loom's own writers.
- *
- * Call with the notebook lock held. The stamp is taken *before* the read on
- * purpose: stamping afterwards would let a write that landed in between look
- * unchanged, which is the exact clobber this prevents, while stamping first can
- * only ever cost a spurious retry.
- *
- * `apply` runs against each attempt's fresh content and may throw to abandon
- * the update outright -- a validation that depends on what the file says now
- * belongs inside it, not before the loop.
- */
-export async function withNotebookCas<T>(
+/** Read -> apply -> write under compare-and-swap; call with the lock held. See withRecordCas. */
+export const withNotebookCas = <T>(
   filePath: string,
   apply: (content: string) => { content: string; result: T },
-): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
-    const stamp = await statNotebook(filePath);
-    // Read regardless of the stat, so a notebook that's actually gone or
-    // unreadable fails with its own ENOENT/EACCES instead of being dressed up
-    // as a race.
-    const fresh = await readNotebook(filePath);
-    // Readable but unstattable: without a stamp there's no compare-and-swap,
-    // and an unguarded whole-file write is the thing this exists to stop.
-    if (!stamp) {
-      lastError = new NotebookChangedError(filePath);
-      continue;
-    }
-    const { content, result } = apply(fresh);
-    try {
-      await writeNotebook(filePath, content, stamp);
-      return result;
-    } catch (error) {
-      if (!(error instanceof NotebookChangedError)) throw error;
-      lastError = error;
-    }
-  }
-  throw lastError;
-}
-
-/**
- * Check if a file exists.
- */
-export async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * List notebook files in a directory. Each session dir has exactly one
- * fixed-name file, `notebook.md`. We still return an array so callers
- * that iterate stay working.
- */
-export async function listNotebooks(directory: string): Promise<string[]> {
-  const fixed = path.join(directory, "notebook.md");
-  try {
-    await fs.access(fixed);
-    return [fixed];
-  } catch {
-    return [];
-  }
-}
+): Promise<T> => withRecordCas(recordStore(filePath), apply);
 
 /**
  * Default notebook path for a session directory. `title` is kept in the

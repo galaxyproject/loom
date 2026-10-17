@@ -1,18 +1,18 @@
 /**
  * Session state — connection, notebook path, file watcher, listeners.
  *
- * The notebook (notebook.md in the session cwd) is the durable record. State
- * here is just enough to wire the file watcher, track Galaxy connection, and
- * route notebook changes to UI listeners.
+ * The notebook (notebook.md in the session cwd, or the record store a shell
+ * installed) is the durable record. State here is just enough to wire the
+ * record watcher, track Galaxy connection, and route notebook changes to UI
+ * listeners.
  */
 
 import type { AnalystState } from "./types";
 import { getDefaultNotebookPath } from "./notebook-writer";
 import { commitFile, ensureGitRepo } from "./git";
 import { appendActivityEvent, loadActivityLog, resetActivity } from "./activity";
-import * as fs from "fs";
+import { installedRecordStore, recordStore } from "./record-store";
 import * as path from "path";
-import chokidar, { type FSWatcher } from "chokidar";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Module state
@@ -67,8 +67,8 @@ export function resetState(): void {
 type NotebookChangeListener = (markdown: string) => void;
 const notebookChangeListeners: NotebookChangeListener[] = [];
 
-// Content last handed to listeners, plus a cheap stat fingerprint of the file
-// state we last inspected. Both feed reemitNotebookIfChanged() so a re-sync
+// Content last handed to listeners, plus the record version we last
+// inspected. Both feed reemitNotebookIfChanged() so a re-sync
 // trigger only emits when notebook.md actually changed.
 let lastEmittedNotebookContent: string | null = null;
 let lastInspectedFingerprint: string | null = null;
@@ -97,45 +97,36 @@ function notifyNotebookChange(markdown: string): void {
 }
 
 /**
- * Re-read notebook.md and emit a change if its content differs from what was
+ * Re-read the record and emit a change if its content differs from what was
  * last emitted; returns whether it emitted.
  *
  * The chokidar watcher tracks a single file path and can miss a bash write
  * that replaces the inode (an atomic temp-and-rename save, e.g. `sed -i` or an
  * editor) or one that races its awaitWriteFinish window, leaving the Notebook
- * panel stale until the next `/notebook`. The tool_execution_end hook calls
- * this after every tool so the panel re-syncs. A cheap stat fingerprint skips
- * the read when the file is untouched, and a content compare suppresses emits
- * when nothing actually changed, so calling this on every tool end is not
+ * panel stale until the next `/notebook`; under the page backend it is the only
+ * way an out-of-band page edit is seen at all. The tool_execution_end hook calls
+ * this after every tool so the panel re-syncs. The store's cheap version check
+ * skips the read when the record is untouched, and a content compare suppresses
+ * emits when nothing actually changed, so calling this on every tool end is not
  * churn. #253
  */
-export function reemitNotebookIfChanged(): boolean {
-  const filePath = state.notebookPath;
-  if (!filePath) return false;
+export async function reemitNotebookIfChanged(): Promise<boolean> {
+  const key = state.notebookPath;
+  if (!key) return false;
+  const store = recordStore(key);
 
-  let stat: fs.Stats;
-  try {
-    stat = fs.statSync(filePath);
-  } catch {
-    // Missing/unreadable right now (e.g. mid-rename); the watcher and the next
-    // real write recover. Don't advance the fingerprint so the follow-up is seen.
-    return false;
-  }
-
-  // Include dev/ino and ctimeMs, not just mtime+size: an atomic temp-and-rename
-  // save swaps the inode (changing ino), and ctime moves on any write -- so an
-  // inode-replacing or same-size rewrite with a preserved/coarse mtime is still
-  // seen as changed, which is the whole point of #253.
-  const fingerprint = `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`;
-  if (fingerprint === lastInspectedFingerprint) return false;
+  const version = await store.stat();
+  // Missing/unreadable right now (e.g. mid-rename): the watcher and the next
+  // real write recover. Don't advance the fingerprint so the follow-up is seen.
+  if (!version || version === lastInspectedFingerprint) return false;
 
   let content: string;
   try {
-    content = fs.readFileSync(filePath, "utf-8");
+    ({ content } = await store.read());
   } catch {
     return false;
   }
-  lastInspectedFingerprint = fingerprint;
+  lastInspectedFingerprint = version;
 
   // mtime/size moved but the bytes are identical (e.g. a rewrite) -> no churn.
   if (content === lastEmittedNotebookContent) return false;
@@ -145,55 +136,23 @@ export function reemitNotebookIfChanged(): boolean {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// File watcher — refresh UI + auto-commit on every notebook write
+// Record watcher -- refresh UI + auto-commit on every notebook write
 // ─────────────────────────────────────────────────────────────────────────────
 
-let currentWatcher: FSWatcher | null = null;
-let watcherPath: string | null = null;
-let watcherAutoCommit = false;
+let unsubscribeWatch: (() => void) | null = null;
 
-function startWatchingNotebook(filePath: string, autoCommit = false): void {
+function startWatchingNotebook(key: string, autoCommit = false): void {
   stopWatchingNotebook();
-  if (!fs.existsSync(filePath)) return;
-  try {
-    watcherPath = filePath;
-    watcherAutoCommit = autoCommit;
-    currentWatcher = chokidar.watch(filePath, {
-      ignoreInitial: true,
-      awaitWriteFinish: {
-        stabilityThreshold: 500,
-        pollInterval: 100,
-      },
-    });
-    currentWatcher.on("change", () => {
-      if (watcherPath && fs.existsSync(watcherPath)) {
-        try {
-          const content = fs.readFileSync(watcherPath, "utf-8");
-          notifyNotebookChange(content);
-          if (watcherAutoCommit) {
-            commitFile(watcherPath, "Notebook updated");
-          }
-        } catch (err) {
-          console.error("notebook watcher read failed:", err);
-        }
-      }
-    });
-  } catch (err) {
-    console.error("failed to start notebook watcher:", err);
-  }
+  const store = recordStore(key);
+  unsubscribeWatch = store.onChange((content) => {
+    notifyNotebookChange(content);
+    if (autoCommit && store.kind === "file") commitFile(key, "Notebook updated");
+  });
 }
 
 export function stopWatchingNotebook(): void {
-  if (currentWatcher) {
-    try {
-      currentWatcher.close();
-    } catch {
-      /* ignore */
-    }
-    currentWatcher = null;
-  }
-  watcherPath = null;
-  watcherAutoCommit = false;
+  unsubscribeWatch?.();
+  unsubscribeWatch = null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -230,13 +189,14 @@ export function getDefaultPath(_title: string, directory: string): string {
 }
 
 /**
- * Ensure every session has a notebook.md in cwd. Creates an empty file if
- * missing, attaches the watcher, hydrates the activity log, and emits the
- * first notebook-change notification so the Notebook pane paints immediately.
- * Idempotent; safe to call every session_start.
+ * Ensure every session has a record. On the desktop that is notebook.md in
+ * cwd, created empty if missing; under a shell that installed a record store
+ * it is whatever the shell bound. Attaches the watcher, hydrates the activity
+ * log, and emits the first notebook-change notification so the Notebook pane
+ * paints immediately. Idempotent; safe to call every session_start.
  */
-export function initSessionArtifacts(cwd: string): void {
-  const notebookPath = path.join(cwd, "notebook.md");
+export async function initSessionArtifacts(cwd: string): Promise<void> {
+  const notebookPath = installedRecordStore()?.key ?? path.join(cwd, "notebook.md");
   const sessionDir = cwd;
   // Fresh session: Pi has cleared extension widgets, so reset the mode too.
   notebookWidgetMode = "auto";
@@ -245,13 +205,12 @@ export function initSessionArtifacts(cwd: string): void {
   lastInspectedFingerprint = null;
 
   try {
-    const autoCommit = ensureGitRepo(cwd);
+    const store = recordStore(notebookPath);
+    // Auto-commit needs a working tree; a page has none.
+    const autoCommit = store.kind === "file" ? ensureGitRepo(cwd) : false;
 
-    if (!fs.existsSync(notebookPath)) {
-      fs.writeFileSync(notebookPath, "", "utf-8");
-      if (autoCommit) {
-        commitFile(notebookPath, "Initialize notebook");
-      }
+    if ((await store.ensure()) && autoCommit) {
+      commitFile(notebookPath, "Initialize notebook");
     }
 
     state.notebookPath = notebookPath;
@@ -259,8 +218,7 @@ export function initSessionArtifacts(cwd: string): void {
     startWatchingNotebook(notebookPath, autoCommit);
     loadActivityLog(sessionDir);
 
-    const content = fs.readFileSync(notebookPath, "utf-8");
-    notifyNotebookChange(content);
+    notifyNotebookChange((await store.read()).content);
 
     appendActivityEvent(sessionDir, {
       timestamp: new Date().toISOString(),

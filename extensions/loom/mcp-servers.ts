@@ -9,12 +9,21 @@
 import type { ExtensionAPI, McpServerConfig } from "@earendil-works/pi-coding-agent";
 import { GALAXY_MCP_SPEC } from "../../shared/galaxy-mcp-spec.js";
 
+export interface LoomMcpServerOptions {
+  /**
+   * Register galaxy-mcp (default true). False under in-process Galaxy tools,
+   * which would otherwise sit beside the server's mcp__galaxy__* copies.
+   */
+  galaxy?: boolean;
+}
+
 export function loomMcpServers(
   env: NodeJS.ProcessEnv = process.env,
+  { galaxy = true }: LoomMcpServerOptions = {},
 ): Record<string, McpServerConfig> {
   const servers: Record<string, McpServerConfig> = {};
 
-  if (env.GALAXY_URL && env.GALAXY_API_KEY) {
+  if (galaxy && env.GALAXY_URL && env.GALAXY_API_KEY) {
     servers.galaxy = {
       command: "uvx",
       args: [GALAXY_MCP_SPEC],
@@ -46,8 +55,8 @@ export function loomMcpServers(
   return servers;
 }
 
-export function registerLoomMcpServers(pi: ExtensionAPI): void {
-  for (const [name, config] of Object.entries(loomMcpServers())) {
+export function registerLoomMcpServers(pi: ExtensionAPI, opts?: LoomMcpServerOptions): void {
+  for (const [name, config] of Object.entries(loomMcpServers(process.env, opts))) {
     pi.registerMcpServer(name, config);
   }
 }
