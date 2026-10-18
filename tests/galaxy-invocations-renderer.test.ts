@@ -250,3 +250,42 @@ describe("the registry's verdict on a row", () => {
     expect(rows.filter((t) => t.includes("hand off"))).toHaveLength(2);
   });
 });
+
+describe("Run elsewhere controls", () => {
+  it("sends the exact connection for identical run IDs, including runs bound to a step", async () => {
+    document.body.innerHTML =
+      '<div id="activity-galaxy-section"><span id="galaxy-invocations-count"></span><div id="galaxy-invocations-body"></div></div>';
+    let content = "";
+    for (const [name, url] of [
+      ["us", "https://usegalaxy.org"],
+      ["eu", "https://usegalaxy.eu"],
+    ])
+      content = upsertJobBlock(
+        content,
+        {
+          jobId: "same-id",
+          galaxyServerUrl: url,
+          notebookAnchor: "step-one",
+          label: name,
+          submittedAt: "2026-10-18T12:00:00Z",
+          status: "in_progress",
+        },
+        { connectionId: name, accountId: "account-" + name },
+      );
+    const prompts: string[] = [];
+    await refreshGalaxyInvocations({
+      readFile: async () => ({ ok: true, bytes: new TextEncoder().encode(content) }),
+      prompt: async (message) => {
+        prompts.push(message);
+      },
+    });
+    const buttons = [...document.querySelectorAll<HTMLButtonElement>(".galaxy-run-elsewhere")];
+    expect(buttons).toHaveLength(2);
+    for (const button of buttons) button.click();
+    expect(prompts.map((p) => JSON.parse(p.slice("/reroute ".length)).source).sort()).toEqual([
+      "eu",
+      "us",
+    ]);
+    expect(document.body.textContent).toContain("account-eu");
+  });
+});

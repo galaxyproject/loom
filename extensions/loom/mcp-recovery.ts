@@ -1,3 +1,4 @@
+import { currentGalaxyConnection } from "./galaxy-connections.js";
 /** Agent-facing recovery, alongside the short human-facing transport notice. */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { classifyGalaxyFailure, type GalaxyFailureKind } from "./galaxy-transport-error";
@@ -79,23 +80,37 @@ function stable(value: unknown): string {
 }
 
 export function registerMcpRecovery(pi: ExtensionAPI): void {
-  const timedOutReads = new Set<string>();
-  const retriedAfterRebind = new Set<string>();
-  const retryPermits = new Set<string>();
-  let transportFailed = false;
-  let rebindAttempts = 0;
-  const reset = () => {
-    timedOutReads.clear();
-    retriedAfterRebind.clear();
-    retryPermits.clear();
-    transportFailed = false;
-    rebindAttempts = 0;
+  type Incident = {
+    timedOutReads: Set<string>;
+    retriedAfterRebind: Set<string>;
+    retryPermits: Set<string>;
+    transportFailed: boolean;
+    rebindAttempts: number;
   };
+  const incidents = new Map<string, Incident>();
+  const incident = () => {
+    const c = currentGalaxyConnection();
+    const key = c ? `${c.id}:${c.accountId ?? ""}` : "default";
+    let state = incidents.get(key);
+    if (!state) {
+      state = {
+        timedOutReads: new Set(),
+        retriedAfterRebind: new Set(),
+        retryPermits: new Set(),
+        transportFailed: false,
+        rebindAttempts: 0,
+      };
+      incidents.set(key, state);
+    }
+    return state;
+  };
+  const reset = () => incidents.clear();
   pi.on("input", reset);
   pi.on("session_start", reset);
   pi.on("session_tree", reset);
   pi.on("tool_call", (event) => {
-    if (event.toolName === CONNECT && transportFailed && rebindAttempts++ >= 1) {
+    const state = incident();
+    if (event.toolName === CONNECT && state.transportFailed && state.rebindAttempts++ >= 1) {
       return {
         block: true,
         reason:
@@ -111,11 +126,11 @@ export function registerMcpRecovery(pi: ExtensionAPI): void {
       };
     }
     const key = call.name + stable(call.args);
-    if (retryPermits.delete(key)) {
-      retriedAfterRebind.add(key);
+    if (state.retryPermits.delete(key)) {
+      state.retriedAfterRebind.add(key);
       return;
     }
-    if (timedOutReads.has(key)) {
+    if (state.timedOutReads.has(key)) {
       return {
         block: true,
         reason: `This identical read-only request already timed out. ${galaxyRecoveryHint(call.name, "timeout")}`,
@@ -123,10 +138,12 @@ export function registerMcpRecovery(pi: ExtensionAPI): void {
     }
   });
   pi.on("tool_result", (event) => {
+    const state = incident();
     const details = event.details as { error?: unknown } | undefined;
     // A good re-bind earns each timed-out read one more try.
-    if (event.toolName === CONNECT && transportFailed && !event.isError && !details?.error) {
-      for (const key of timedOutReads) if (!retriedAfterRebind.has(key)) retryPermits.add(key);
+    if (event.toolName === CONNECT && state.transportFailed && !event.isError && !details?.error) {
+      for (const key of state.timedOutReads)
+        if (!state.retriedAfterRebind.has(key)) state.retryPermits.add(key);
       return;
     }
     const call = galaxyCall(event.toolName, event.input);
@@ -136,11 +153,11 @@ export function registerMcpRecovery(pi: ExtensionAPI): void {
         // A verified read ends this incident. Future polling of the same
         // dataset/history must remain possible after a successful retry.
         const key = call.name + stable(call.args);
-        timedOutReads.delete(key);
-        retryPermits.delete(key);
-        retriedAfterRebind.delete(key);
-        transportFailed = false;
-        rebindAttempts = 0;
+        state.timedOutReads.delete(key);
+        state.retryPermits.delete(key);
+        state.retriedAfterRebind.delete(key);
+        state.transportFailed = false;
+        state.rebindAttempts = 0;
       }
       return;
     }
@@ -151,13 +168,25 @@ export function registerMcpRecovery(pi: ExtensionAPI): void {
     if (text.includes(MARKER)) return;
     const kind = classifyGalaxyFailure(call.name, text);
     if (!kind) return;
-    transportFailed = true;
+    state.transportFailed = true;
     if (kind === "timeout" && READ_ONLY.test(call.name))
-      timedOutReads.add(call.name + stable(call.args));
+      state.timedOutReads.add(call.name + stable(call.args));
     return {
       content: [
         ...event.content,
-        { type: "text" as const, text: galaxyRecoveryHint(call.name, kind) },
+        {
+          type: "text" as const,
+          text: (() => {
+            const hint = galaxyRecoveryHint(call.name, kind);
+            const c = currentGalaxyConnection();
+            return c
+              ? `Origin: ${c.name} (${c.url}).\n` +
+                  hint
+                    .replaceAll("mcp__galaxy__", `mcp__${c.mcpServer}__`)
+                    .replaceAll("/mcp reconnect galaxy", `/mcp reconnect ${c.mcpServer}`)
+              : hint;
+          })(),
+        },
       ],
     };
   });

@@ -1,3 +1,4 @@
+import { parseRerouteState, type RerouteState } from "./galaxy-reroute-state.js";
 /**
  * The approval and attempt registry's schema (design v3 §3), its canonical
  * JSON form, and the parser that is the only way a document from disk or a
@@ -28,6 +29,7 @@ export type StepAnchor = string;
 export const CURRENT_REGISTRY_VERSION = 3;
 
 export interface Registry {
+  reroutes?: Record<string, RerouteState>;
   version: 3;
   revision: number;
   writer_token: string;
@@ -49,6 +51,9 @@ export interface Registry {
 export type AttemptKind = "workflow" | "tool" | "udt" | "upload" | "rerun";
 
 export interface Attempt {
+  connection_id?: string;
+  account_id?: string;
+  superseded_by?: AttemptId;
   attempt_id: AttemptId;
   kind: AttemptKind;
   binding: { step_anchor: StepAnchor | "unattributed"; bound_at: string };
@@ -597,6 +602,11 @@ function parseAttempt(v: unknown, path: string): Attempt {
     };
   }
 
+  if (o.connection_id !== undefined)
+    attempt.connection_id = str(o.connection_id, `${path}.connection_id`);
+  if (o.account_id !== undefined) attempt.account_id = str(o.account_id, `${path}.account_id`);
+  if (o.superseded_by !== undefined)
+    attempt.superseded_by = attemptId(o.superseded_by, `${path}.superseded_by`);
   if (o.rerun_of !== undefined) {
     attempt.rerun_of = arr(o.rerun_of, `${path}.rerun_of`).map((x, i) =>
       attemptId(x, `${path}.rerun_of[${i}]`),
@@ -684,6 +694,16 @@ export function parseRegistry(v: unknown): Registry {
     exceptions,
     supervision,
   };
+  if (o.reroutes !== undefined) {
+    const routes = rec(o.reroutes, "registry.reroutes");
+    registry.reroutes = Object.fromEntries(
+      Object.entries(routes).map(([key, value]) => {
+        const route = parseRerouteState(value);
+        if (route.id !== key) fail("registry.reroutes", "reroute identity mismatch");
+        return [key, route];
+      }),
+    );
+  }
   if (quarantine !== undefined) registry.quarantine = quarantine;
   return registry;
 }

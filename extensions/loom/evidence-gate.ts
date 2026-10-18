@@ -394,7 +394,7 @@ export function registryHolds(registry: Registry | null | undefined): {
   if (!registry) return { bound, held };
   const byAnchor = new Map<string, Attempt[]>();
   for (const a of Object.values(registry.attempts)) {
-    if (!a.submission || a.binding.step_anchor === "unattributed") continue;
+    if (a.superseded_by || !a.submission || a.binding.step_anchor === "unattributed") continue;
     const list = byAnchor.get(a.binding.step_anchor) ?? [];
     list.push(a);
     byAnchor.set(a.binding.step_anchor, list);

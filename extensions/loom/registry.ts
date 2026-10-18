@@ -58,8 +58,9 @@ export const STATE_DIR = path.join(".loom", "state");
 
 export interface RegistryStoreOptions {
   analysisDir: string;
-  /** The Galaxy server this session talks to; attempts for any other are quarantined. */
+  /** Default Galaxy server; serverUrls extends the set of permitted attempt origins. */
   serverUrl: string;
+  serverUrls?: readonly string[];
   sessionId: string;
   fs: RegistryFs;
   /** Milliseconds since the epoch. */
@@ -104,6 +105,7 @@ export class RegistryStore {
   readonly lockPath: string;
   readonly templatesDir: string;
   readonly serverUrl: string;
+  readonly serverUrls: ReadonlySet<string>;
   /** Human-readable things the session should be told about. */
   readonly notices: string[] = [];
 
@@ -126,6 +128,7 @@ export class RegistryStore {
     this.lockPath = path.join(this.stateDir, "lock");
     this.templatesDir = path.join(this.stateDir, "templates");
     this.serverUrl = normalizeServerUrl(opts.serverUrl);
+    this.serverUrls = new Set([opts.serverUrl, ...(opts.serverUrls ?? [])].map(normalizeServerUrl));
     this.#fs = opts.fs;
     this.#clock = opts.clock;
     this.#pid = opts.pid ?? process.pid;
@@ -252,7 +255,9 @@ export class RegistryStore {
     if (imported.revision > MAX_REGISTRY_REVISION - REVISION_HEADROOM) {
       return this.reject("revision too close to the ceiling to keep writing", fromFile);
     }
-    const { registry, quarantined } = applyImportRule(imported, this.serverUrl);
+    const { registry, quarantined } = applyImportRule(imported, this.serverUrl, [
+      ...this.serverUrls,
+    ]);
     // Keep revisions monotonic across the import, so an older own copy that
     // turns up later still reads as stale.
     registry.revision = Math.max(imported.revision, this.#registry.revision);
@@ -291,7 +296,7 @@ export class RegistryStore {
       throw new RegistryFormatError(`refusing to write: ${(err as Error).message}`);
     }
     for (const a of Object.values(next.attempts)) {
-      if (normalizeServerUrl(a.server_url) !== this.serverUrl) {
+      if (!this.serverUrls.has(normalizeServerUrl(a.server_url))) {
         throw new RegistryFormatError(
           `refusing to write: attempt ${a.attempt_id} is for ${a.server_url}, not ${this.serverUrl}`,
         );

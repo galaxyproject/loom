@@ -15,6 +15,10 @@ import { galaxyArtifactUrl } from "../../../shared/galaxy-artifact-links.js";
 import { isNotebookFenceOpen } from "../../../shared/notebook-fences.js";
 
 export interface Invocation {
+  connectionId?: string;
+  accountId?: string;
+  supersededBy?: string;
+  rerouteId?: string;
   invocationId: string;
   galaxyServerUrl: string;
   notebookAnchor: string;
@@ -54,6 +58,13 @@ export interface Invocation {
  * before: they are the plan's, and the dashboard's jobs widget lists them.
  */
 export interface UnattributedJob {
+  notebookAnchor?: string;
+  connectionId?: string;
+  accountId?: string;
+  supersededBy?: string;
+  rerouteId?: string;
+  galaxyState?: string;
+  lastPolledAt?: string;
   jobId: string;
   galaxyServerUrl: string;
   label: string;
@@ -228,6 +239,10 @@ export function parseInvocationBlocks(content: string): Invocation[] {
     out.push({
       invocationId: fields.invocation_id,
       galaxyServerUrl: fields.galaxy_server_url ?? "",
+      connectionId: rawFields.galaxy_connection_id,
+      accountId: rawFields.galaxy_account_id,
+      supersededBy: rawFields.superseded_by,
+      rerouteId: rawFields.reroute_id,
       notebookAnchor: fields.notebook_anchor,
       label: fields.label,
       submittedAt: fields.submitted_at,
@@ -261,12 +276,15 @@ export function parseInvocationBlocks(content: string): Invocation[] {
 const JOB_STATUSES = new Set(["in_progress", "completed", "failed", "cancelled", "skipped"]);
 
 /** `loom-job` blocks whose anchor is `unattributed`. See UnattributedJob. */
-export function parseUnattributedJobBlocks(content: string): UnattributedJob[] {
+export function parseUnattributedJobBlocks(
+  content: string,
+  includeBound = false,
+): UnattributedJob[] {
   const out: UnattributedJob[] = [];
   for (const { fields, raw } of readBlocks(content, "job")) {
     if (
       !fields.job_id ||
-      fields.notebook_anchor !== UNATTRIBUTED ||
+      (!includeBound && fields.notebook_anchor !== UNATTRIBUTED) ||
       !fields.label ||
       !fields.submitted_at ||
       !JOB_STATUSES.has(fields.status)
@@ -275,7 +293,14 @@ export function parseUnattributedJobBlocks(content: string): UnattributedJob[] {
     }
     out.push({
       jobId: fields.job_id,
+      notebookAnchor: fields.notebook_anchor,
+      galaxyState: fields.galaxy_state,
+      lastPolledAt: fields.last_polled_at,
       galaxyServerUrl: fields.galaxy_server_url ?? "",
+      connectionId: raw.galaxy_connection_id,
+      accountId: raw.galaxy_account_id,
+      supersededBy: raw.superseded_by,
+      rerouteId: raw.reroute_id,
       label: fields.label,
       toolId: fields.tool_id || undefined,
       submittedAt: fields.submitted_at,
@@ -367,12 +392,43 @@ function provenanceParts(block: {
   return parts;
 }
 
+function serverHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "unknown server";
+  }
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function rerouteControl(
+  kind: "job" | "invocation",
+  record: {
+    galaxyServerUrl: string;
+    connectionId?: string;
+    supersededBy?: string;
+    rerouteId?: string;
+    status: string;
+  },
+  id: string,
+): string {
+  if (record.supersededBy)
+    return `<div class="galaxy-invocation-meta">Replacement attempt: ${escapeHtml(record.supersededBy)}${record.rerouteId ? ` <button class="plan-btn galaxy-reroute-status" data-route="${escapeHtml(record.rerouteId)}">Reroute status</button>` : ""}</div>`;
+  if (!["in_progress", "failed", "cancelled"].includes(record.status) || !record.galaxyServerUrl)
+    return "";
+  const payload = JSON.stringify({
+    kind,
+    id,
+    source: record.connectionId || record.galaxyServerUrl,
+  });
+  return `<button type="button" class="plan-btn galaxy-run-elsewhere" data-reroute="${escapeHtml(payload)}">Run elsewhere…</button>`;
 }
 
 function renderRow(inv: Invocation): string {
@@ -421,9 +477,11 @@ function renderRow(inv: Invocation): string {
         <div class="galaxy-invocation-bar-fill" style="width: ${pct}%"></div>
       </div>
       <div class="galaxy-invocation-meta"${errorTitle}>
-        ${escapeHtml(inv.status)}${hostText} · submitted ${escapeHtml(submitted)}${escapeHtml(unconfirmed)}${provenanceText}
+        ${escapeHtml(inv.status)}${hostText}${inv.accountId ? ` · account ${escapeHtml(inv.accountId)}` : ""} · submitted ${escapeHtml(submitted)}${escapeHtml(unconfirmed)}${provenanceText}
       </div>
       ${versions ? `<div class="galaxy-invocation-meta galaxy-invocation-versions">${escapeHtml(versions)}</div>` : ""}
+      <div class="galaxy-invocation-meta">Last successful check: ${escapeHtml(inv.lastPolledAt || "not yet observed")}</div>
+      ${rerouteControl("invocation", inv, inv.invocationId)}
     </div>
   `;
 }
@@ -435,7 +493,10 @@ function renderUnattributedJobRow(job: UnattributedJob): string {
     ? `<a class="galaxy-invocation-label" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="Open Galaxy job">${escapeHtml(job.label)}</a>`
     : `<span class="galaxy-invocation-label" title="${escapeHtml(job.label)}">${escapeHtml(job.label)}</span>`;
   const unconfirmed = job.serverVerified === false ? " · unconfirmed" : "";
-  const provenance = provenanceParts({ ...job, notebookAnchor: UNATTRIBUTED });
+  const provenance = provenanceParts({
+    ...job,
+    notebookAnchor: job.notebookAnchor || UNATTRIBUTED,
+  });
   const versions = describeToolVersions(job.jobs);
   const errorTitle = job.enrichmentError ? ` title="${escapeHtml(job.enrichmentError)}"` : "";
   // `completed`/`failed` reuse the invocation row's colouring; the rest draw neutral.
@@ -444,12 +505,14 @@ function renderUnattributedJobRow(job: UnattributedJob): string {
     <div class="galaxy-invocation-row galaxy-unattributed-job ${statusClass}">
       <div class="galaxy-invocation-head">
         ${label}
-        <span class="galaxy-invocation-counts">tool run</span>
+        <span class="galaxy-invocation-counts">${escapeHtml(job.notebookAnchor && job.notebookAnchor !== UNATTRIBUTED ? job.notebookAnchor : "tool run")}</span>
       </div>
       <div class="galaxy-invocation-meta"${errorTitle}>
-        ${escapeHtml(job.status)} · submitted ${escapeHtml(submitted)}${escapeHtml(unconfirmed)} · ${escapeHtml(provenance.join(" · "))}
+        ${escapeHtml(job.galaxyState || job.status)} · ${escapeHtml(serverHost(job.galaxyServerUrl))}${job.accountId ? ` · account ${escapeHtml(job.accountId)}` : ""} · submitted ${escapeHtml(submitted)}${escapeHtml(unconfirmed)} · ${escapeHtml(provenance.join(" · "))}
       </div>
       ${versions ? `<div class="galaxy-invocation-meta galaxy-invocation-versions">${escapeHtml(versions)}</div>` : ""}
+      <div class="galaxy-invocation-meta">Last successful check: ${escapeHtml(job.lastPolledAt || "not yet observed")}</div>
+      ${rerouteControl("job", job, job.jobId)}
     </div>
   `;
 }
@@ -461,6 +524,7 @@ function renderUnattributedJobRow(job: UnattributedJob): string {
  */
 export async function refreshGalaxyInvocations(api: {
   readFile: (p: string) => Promise<{ ok: true; bytes: Uint8Array } | { ok: false }>;
+  prompt?: (message: string) => Promise<void>;
 }): Promise<void> {
   const section = document.getElementById("activity-galaxy-section");
   const body = document.getElementById("galaxy-invocations-body");
@@ -474,7 +538,7 @@ export async function refreshGalaxyInvocations(api: {
     if (res.ok) {
       const text = new TextDecoder("utf-8").decode(res.bytes);
       invocations = parseInvocationBlocks(text);
-      strayJobs = parseUnattributedJobBlocks(text);
+      strayJobs = parseUnattributedJobBlocks(text, true);
     }
   } catch {
     /* notebook missing — leave invocations empty */
@@ -500,6 +564,24 @@ export async function refreshGalaxyInvocations(api: {
 
   body.innerHTML =
     invocations.map(renderRow).join("") + strayJobs.map(renderUnattributedJobRow).join("");
+  for (const button of body.querySelectorAll<HTMLButtonElement>(".galaxy-run-elsewhere")) {
+    button.disabled = !api.prompt;
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      try {
+        await api.prompt?.("/reroute " + button.dataset.reroute);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+  for (const button of body.querySelectorAll<HTMLButtonElement>(".galaxy-reroute-status")) {
+    button.disabled = !api.prompt;
+    button.addEventListener(
+      "click",
+      () => void api.prompt?.("/reroute status " + button.dataset.route),
+    );
+  }
   countEl.textContent = String(inProgressCount);
   countEl.classList.toggle("zero", inProgressCount === 0);
   section.classList.remove("hidden");

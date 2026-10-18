@@ -123,11 +123,11 @@ describe("poller clears server_verified: false", () => {
     expect(notify).toHaveBeenCalledOnce();
   });
 
-  it("does not write at all for a running job that never carried the flag", async () => {
+  it("records the current Galaxy queue state without inventing a verification flag", async () => {
     // The pre-existing shape. One extra write per tick, per job, forever would
     // be a poor trade for a field nobody claimed.
     writeFileSync(nbPath, renderJobYaml(job()), "utf-8");
-    const before = readFileSync(nbPath, "utf-8");
+
     mockJobDetails.mockResolvedValue({
       id: "job-1",
       state: "running",
@@ -138,7 +138,8 @@ describe("poller clears server_verified: false", () => {
     startGalaxyPoller(notify);
     await pollGalaxyNow();
 
-    expect(readFileSync(nbPath, "utf-8")).toBe(before);
+    expect(readFileSync(nbPath, "utf-8")).toContain("galaxy_state: running");
+    expect(readFileSync(nbPath, "utf-8")).not.toContain("server_verified:");
   });
 
   it("clears the flag on an invocation the check could poll", async () => {

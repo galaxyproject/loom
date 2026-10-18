@@ -1,3 +1,5 @@
+import { GalaxyConnectionsEditor } from "./galaxy-connections-editor.js";
+import { UNCHANGED_SECRET } from "../../../shared/config-secrets.js";
 import { ChatPanel } from "./chat/chat-panel.js";
 import { renderMarkdown } from "./chat/markdown.js";
 import { runCostCommand, type Usage } from "./cost-table.js";
@@ -20,7 +22,6 @@ import { attachFilePathDrop } from "./file-drop.js";
 import { FeedbackDraftStore } from "./feedback-draft.js";
 import {
   ProviderFieldStore,
-  captureProviderState,
   providerStateFor,
   snapshotProviderState,
   type ProviderFields,
@@ -3813,8 +3814,6 @@ prefsSkillsRefreshBtn.addEventListener("click", async () => {
   }
 });
 
-/** Sentinel mirrors UNCHANGED_SECRET in main/ipc-handlers.ts. */
-const UNCHANGED_SECRET = "__loom_unchanged_secret__";
 let prefsProviderStates: Record<string, ProviderState> = {};
 let prefsActiveProvider = "anthropic";
 let prefsGalaxyHadKey = false;
@@ -3966,6 +3965,16 @@ function loadProviderFields(provider: string): void {
   }
 }
 
+const galaxyConnectionsEditor = new GalaxyConnectionsEditor(
+  prefsGalaxyUrl,
+  prefsGalaxyKey,
+  (hadKey) => {
+    prefsGalaxyHadKey = hadKey;
+    prefsGalaxyActionsRow.classList.toggle("hidden", !(prefsGalaxyUrl.value || hadKey));
+    updatePrefsGalaxyValidity();
+  },
+);
+
 async function openPreferences(): Promise<void> {
   const config = (await window.orbit.getConfig()) as {
     llm?: {
@@ -4004,18 +4013,7 @@ async function openPreferences(): Promise<void> {
   await updatePrefsAuthUi();
   void refreshDiscoveredModels(prefsActiveProvider, false);
 
-  // Galaxy: use active profile
-  const activeProfile = config.galaxy?.active
-    ? config.galaxy.profiles?.[config.galaxy.active]
-    : null;
-  prefsGalaxyUrl.value = activeProfile?.url || "";
-  prefsGalaxyHadKey = Boolean(activeProfile?.hasApiKey);
-  prefsGalaxyKey.value = "";
-  prefsGalaxyKey.placeholder = prefsGalaxyHadKey ? "•••••••• (unchanged)" : "";
-  // Disconnect button only makes sense when a profile is currently
-  // configured. Hide entirely when nothing's stored.
-  prefsGalaxyActionsRow.classList.toggle("hidden", !(activeProfile?.url || prefsGalaxyHadKey));
-  updatePrefsGalaxyValidity();
+  galaxyConnectionsEditor.hydrate(config.galaxy);
 
   prefsDefaultCwd.value = config.defaultCwd || "";
   prefsCondaBin.value = config.condaBin || "auto";
@@ -4072,7 +4070,6 @@ async function savePreferences(): Promise<void> {
 
   const typedGalaxyKey = prefsGalaxyKey.value.trim();
   const galaxyUrl = prefsGalaxyUrl.value.trim();
-  const galaxyApiKey = typedGalaxyKey ? typedGalaxyKey : prefsGalaxyHadKey ? UNCHANGED_SECRET : "";
 
   const hasGalaxyUrl = Boolean(galaxyUrl);
   const hasGalaxyKey = Boolean(typedGalaxyKey || prefsGalaxyHadKey);
@@ -4128,17 +4125,7 @@ async function savePreferences(): Promise<void> {
     llm: { active: activeProvider, providers },
   };
 
-  if (galaxyUrl || prefsGalaxyHadKey || typedGalaxyKey) {
-    config.galaxy = {
-      active: "default",
-      profiles: {
-        default: {
-          url: galaxyUrl,
-          apiKey: galaxyApiKey,
-        },
-      },
-    };
-  }
+  config.galaxy = galaxyConnectionsEditor.value();
 
   config.defaultCwd = prefsDefaultCwd.value.trim() || undefined;
   config.condaBin = (prefsCondaBin.value as "auto" | "mamba" | "conda") || undefined;
@@ -4246,7 +4233,7 @@ prefsGalaxyDisconnect.addEventListener("click", async () => {
   } else {
     if (
       !confirm(
-        "Disconnect Galaxy and clear stored credentials? Other Preferences are saved as well.",
+        "Remove this connection and its stored credentials? Monitoring its existing runs will pause. Other connections are preserved.",
       )
     )
       return;
@@ -4254,14 +4241,23 @@ prefsGalaxyDisconnect.addEventListener("click", async () => {
   prefsGalaxyDisconnect.disabled = true;
   try {
     const current = (await window.orbit.getConfig()) as Record<string, unknown>;
-    current.galaxy = { active: null, profiles: {} };
+    const galaxy = current.galaxy as
+      { active: string | null; profiles: Record<string, unknown> } | undefined;
+    if (galaxy) {
+      delete galaxy.profiles[galaxyConnectionsEditor.selectedName()];
+      if (galaxy.active === galaxyConnectionsEditor.selectedName())
+        galaxy.active = Object.keys(galaxy.profiles)[0] ?? null;
+    }
+    current.galaxy = galaxy ?? { active: null, profiles: {} };
     const result = await window.orbit.saveConfig(current);
     if (!result.success) {
       alert(`Failed to disconnect: ${result.error}`);
       return;
     }
     closePreferences();
-    chat.addInfoMessage("<i>Disconnected from Galaxy. Agent restarted.</i>");
+    chat.addInfoMessage(
+      "<i>Galaxy connection removed. Other connections are preserved. Agent restarted.</i>",
+    );
     void refreshGalaxyStatus();
   } finally {
     prefsGalaxyDisconnect.disabled = false;

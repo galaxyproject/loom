@@ -1,3 +1,4 @@
+import { currentGalaxyConnection } from "./galaxy-connections.js";
 /**
  * Session state — connection, notebook path, file watcher, listeners.
  *
@@ -17,6 +18,8 @@ import chokidar, { type FSWatcher } from "chokidar";
 // ─────────────────────────────────────────────────────────────────────────────
 // Module state
 // ─────────────────────────────────────────────────────────────────────────────
+
+const connectionHistories = new Map<string, string>();
 
 let state: AnalystState = {
   galaxyConnected: false,
@@ -48,6 +51,7 @@ export function setNotebookWidgetMode(mode: NotebookWidgetMode): void {
 
 export function resetState(): void {
   stopWatchingNotebook();
+  connectionHistories.clear();
   notebookWidgetMode = "auto";
   lastEmittedNotebookContent = null;
   lastInspectedFingerprint = null;
@@ -282,6 +286,10 @@ export function setGalaxyConnection(
   historyId?: string,
   _serverUrl?: string,
 ): void {
+  const connection = currentGalaxyConnection();
+  if (connection && historyId)
+    connectionHistories.set(`${connection.id}:${connection.accountId ?? ""}`, historyId);
+  if (connection && connection.mcpServer !== "galaxy") return;
   state.galaxyConnected = connected;
   if (historyId) {
     state.currentHistoryId = historyId;
@@ -289,6 +297,12 @@ export function setGalaxyConnection(
 }
 
 export function getCurrentHistoryId(): string | null {
+  const connection = currentGalaxyConnection();
+  if (connection) {
+    const history = connectionHistories.get(`${connection.id}:${connection.accountId ?? ""}`);
+    if (history) return history;
+    if (connection.mcpServer !== "galaxy") return null;
+  }
   return state.currentHistoryId;
 }
 

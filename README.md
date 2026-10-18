@@ -748,3 +748,12 @@ For a full terminal-only runbook, see [docs/terminal-validation.md](docs/termina
 ## License
 
 MIT
+
+### Multiple Galaxy instances
+
+Orbit Preferences can keep several Galaxy server/account profiles connected.
+Existing runs keep their origin when the default changes. Use **Activity → Run
+elsewhere…** to preflight, approve and start a linked replacement on another
+instance, with verified input copies and explicit source-cancellation handling.
+See [multiple Galaxy instances](docs/multiple-galaxy-instances.md) for setup,
+receipt recovery and current boundaries.

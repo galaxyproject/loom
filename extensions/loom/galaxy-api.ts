@@ -15,6 +15,12 @@ import {
   type InvocationDetail,
 } from "@galaxyproject/galaxy-ops";
 import { fetchSameOriginOnly } from "../../shared/redirect-guard.js";
+import {
+  currentGalaxyConnection,
+  listGalaxyConnections,
+  withGalaxyOrigin,
+  type GalaxyOrigin,
+} from "./galaxy-connections.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Galaxy API response types
@@ -87,6 +93,8 @@ const GALAXY_REDIRECT_LABELS = {
 } as const;
 
 export function getGalaxyConfig(): GalaxyConfig | null {
+  const scoped = currentGalaxyConnection();
+  if (scoped) return { url: scoped.url, apiKey: scoped.apiKey };
   const url = process.env.GALAXY_URL;
   const apiKey = process.env.GALAXY_API_KEY;
   if (!url || !apiKey) return null;
@@ -140,6 +148,7 @@ export function isGalaxyFetchOverridden(): boolean {
 }
 
 function galaxyFetch(url: string, init: RequestInit): Promise<Response> {
+  init = { ...init, signal: init.signal ?? AbortSignal.timeout(20_000) };
   if (fetchOverride) return fetchOverride(url, init);
   return fetchSameOriginOnly(url, init, GALAXY_REDIRECT_LABELS);
 }
@@ -507,4 +516,25 @@ export async function galaxyListHistoryInvocations(
         ...(typeof row.history_id === "string" ? { history_id: row.history_id } : {}),
       };
     });
+}
+
+/** Old single-server records remain readable; explicit origins never fall back. */
+export function onRecordedGalaxy<T>(
+  origin: GalaxyOrigin,
+  work: () => Promise<T>,
+  defaultUrl = getGalaxyConfig()?.url,
+): Promise<T> {
+  if (
+    !origin.connectionId &&
+    !origin.accountId &&
+    sameGalaxyServer(origin.galaxyServerUrl, defaultUrl)
+  ) {
+    if (
+      listGalaxyConnections().filter((c) => sameGalaxyServer(c.url, origin.galaxyServerUrl))
+        .length > 1
+    )
+      throw new Error("Legacy run origin is ambiguous across configured accounts.");
+    return work();
+  }
+  return withGalaxyOrigin(origin, work);
 }

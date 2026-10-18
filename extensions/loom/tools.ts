@@ -1,3 +1,5 @@
+import { currentGalaxyConnection, matchesGalaxyOrigin } from "./galaxy-connections.js";
+import { onRecordedGalaxy } from "./galaxy-api.js";
 /**
  * Loom-extension-specific tool registrations.
  *
@@ -1081,7 +1083,9 @@ export async function checkInvocations(
   // write (a just-finished invocation_record) whole, but hold it only for the
   // read: there is no network I/O in here.
   const blocks = await withNotebookLock(notebookPath, async () =>
-    findInvocationBlocks(await readNotebook(notebookPath)),
+    findInvocationBlocks(await readNotebook(notebookPath)).filter(
+      (b) => !currentGalaxyConnection() || matchesGalaxyOrigin(b),
+    ),
   );
 
   let toCheck: InvocationYaml[];
@@ -1131,153 +1135,165 @@ export async function checkInvocations(
   const results: CheckResultEntry[] = [];
   const updates: InvocationPollUpdate[] = [];
 
-  for (const block of toCheck) {
-    try {
-      // galaxyGetInvocation asks for step details, which the counters below
-      // depend on: without them every step's `jobs` list is empty, neither the
-      // completed nor the failed branch can fire, and the block sits at
-      // in_progress forever with no toast and no transition.
-      const inv = await galaxyGetInvocation(block.invocationId, signal);
+  await Promise.all(
+    toCheck.map(async (block) => {
+      try {
+        await onRecordedGalaxy(
+          block,
+          async () => {
+            // galaxyGetInvocation asks for step details, which the counters below
+            // depend on: without them every step's `jobs` list is empty, neither the
+            // completed nor the failed branch can fire, and the block sits at
+            // in_progress forever with no toast and no transition.
+            const inv = await galaxyGetInvocation(block.invocationId, signal);
 
-      const { summary, otherStates, activeJobs, totalJobs, completedSteps } =
-        rollUpInvocationJobs(inv);
+            const { summary, otherStates, activeJobs, totalJobs, completedSteps } =
+              rollUpInvocationJobs(inv);
 
-      let autoAction: string | undefined;
-      let transition: InvocationPollUpdate["transition"];
+            let autoAction: string | undefined;
+            let transition: InvocationPollUpdate["transition"];
 
-      // Two questions, both of which the old predicate skipped: is Galaxy done
-      // handing out jobs, and is any job it already handed out still moving? A
-      // workflow whose first two steps are ok while the third is still being
-      // scheduled is not finished, and neither is one holding a paused job.
-      const schedulingDone = TERMINAL_INVOCATION_STATES.has(inv.state);
+            // Two questions, both of which the old predicate skipped: is Galaxy done
+            // handing out jobs, and is any job it already handed out still moving? A
+            // workflow whose first two steps are ok while the third is still being
+            // scheduled is not finished, and neither is one holding a paused job.
+            const schedulingDone = TERMINAL_INVOCATION_STATES.has(inv.state);
 
-      if (schedulingDone && activeJobs === 0) {
-        const ended = describeStates(otherStates);
-        if (inv.state === "cancelled") {
-          // A cancel is not a failure and not a completion, and the block has
-          // no third word for it -- so it lands terminal (nothing is coming
-          // that would move it again) and the summary says what happened.
-          const unfinished = summary.error > 0 ? `, ${summary.error} did not` : "";
-          transition = {
-            status: "failed",
-            summary: `Workflow cancelled: ${summary.ok} job(s) finished before it stopped${unfinished}`,
-          };
-          autoAction = "cancelled";
-        } else if (summary.error > 0) {
-          transition = {
-            status: "failed",
-            summary: `Workflow failed: ${summary.error} job(s) errored, ${summary.ok} succeeded`,
-          };
-          autoAction = "failed";
-        } else if (inv.state === "failed") {
-          // Galaxy failed to schedule the workflow. No job carries the failure,
-          // so without this the block sits at in_progress with nothing left to
-          // poll it into a terminal state.
-          transition = {
-            status: "failed",
-            summary: `Workflow failed: Galaxy reported invocation state "failed"`,
-          };
-          autoAction = "failed";
-        } else if (summary.ok > 0 && INVOCATION_SCHEDULED_OK.has(inv.state)) {
-          transition = {
-            status: "completed",
-            summary:
-              `Workflow completed: ${summary.ok} jobs succeeded` + (ended ? ` (${ended})` : ""),
-          };
-          autoAction = "completed";
-        }
-      } else {
-        // A cancel is not instant: Galaxy moves the invocation to `cancelled`
-        // and then deletes its jobs one at a time. Naming it is what lets the
-        // renderer tell a deliberate stop from a failure -- it has no
-        // invocation state to look at, only this sentence -- and without it the
-        // loudest surface in the product raises a red alarm about something the
-        // user asked for.
-        const stopping = inv.state === "cancelled" || inv.state === "cancelling";
-        const tail =
-          activeJobs > 0
-            ? `${activeJobs} still running`
-            : stopping
-              ? `waiting for Galaxy to finish the cancel (state: ${inv.state})`
-              : `invocation still scheduling (state: ${inv.state})`;
-        if (stopping) {
-          // Deliberately not gated on the failed counter. Right after a cancel
-          // every job is still running, so nothing has landed in it yet -- and
-          // that is exactly the window where the panel would otherwise say the
-          // run is going along fine.
-          //
-          // "did not finish" rather than "failed" because the counter cannot
-          // tell the two apart: rollUpInvocationJobs scores a `deleted` job
-          // beside a genuinely errored one, so a run that broke and was then
-          // cancelled has both in the same number. It is the word the panel
-          // itself uses for a stopping row.
-          transition = {
-            status: "in_progress",
-            summary: `Workflow cancelling: ${summary.error} job(s) did not finish, ${tail}`,
-          };
-          autoAction = "cancelling";
-        } else if (summary.error > 0) {
-          // A failure with work still in flight. Keep the block in_progress so
-          // the rest stays under observation -- terminal blocks are never polled
-          // again -- but say so in the summary and let the poller raise it once.
-          transition = {
-            status: "in_progress",
-            summary: `Workflow in progress: ${summary.error} job(s) failed, ${tail}`,
-          };
-          autoAction = "failing";
-        }
+            if (schedulingDone && activeJobs === 0) {
+              const ended = describeStates(otherStates);
+              if (inv.state === "cancelled") {
+                // A cancel is not a failure and not a completion, and the block has
+                // no third word for it -- so it lands terminal (nothing is coming
+                // that would move it again) and the summary says what happened.
+                const unfinished = summary.error > 0 ? `, ${summary.error} did not` : "";
+                transition = {
+                  status: "failed",
+                  summary: `Workflow cancelled: ${summary.ok} job(s) finished before it stopped${unfinished}`,
+                };
+                autoAction = "cancelled";
+              } else if (summary.error > 0) {
+                transition = {
+                  status: "failed",
+                  summary: `Workflow failed: ${summary.error} job(s) errored, ${summary.ok} succeeded`,
+                };
+                autoAction = "failed";
+              } else if (inv.state === "failed") {
+                // Galaxy failed to schedule the workflow. No job carries the failure,
+                // so without this the block sits at in_progress with nothing left to
+                // poll it into a terminal state.
+                transition = {
+                  status: "failed",
+                  summary: `Workflow failed: Galaxy reported invocation state "failed"`,
+                };
+                autoAction = "failed";
+              } else if (summary.ok > 0 && INVOCATION_SCHEDULED_OK.has(inv.state)) {
+                transition = {
+                  status: "completed",
+                  summary:
+                    `Workflow completed: ${summary.ok} jobs succeeded` +
+                    (ended ? ` (${ended})` : ""),
+                };
+                autoAction = "completed";
+              }
+            } else {
+              // A cancel is not instant: Galaxy moves the invocation to `cancelled`
+              // and then deletes its jobs one at a time. Naming it is what lets the
+              // renderer tell a deliberate stop from a failure -- it has no
+              // invocation state to look at, only this sentence -- and without it the
+              // loudest surface in the product raises a red alarm about something the
+              // user asked for.
+              const stopping = inv.state === "cancelled" || inv.state === "cancelling";
+              const tail =
+                activeJobs > 0
+                  ? `${activeJobs} still running`
+                  : stopping
+                    ? `waiting for Galaxy to finish the cancel (state: ${inv.state})`
+                    : `invocation still scheduling (state: ${inv.state})`;
+              if (stopping) {
+                // Deliberately not gated on the failed counter. Right after a cancel
+                // every job is still running, so nothing has landed in it yet -- and
+                // that is exactly the window where the panel would otherwise say the
+                // run is going along fine.
+                //
+                // "did not finish" rather than "failed" because the counter cannot
+                // tell the two apart: rollUpInvocationJobs scores a `deleted` job
+                // beside a genuinely errored one, so a run that broke and was then
+                // cancelled has both in the same number. It is the word the panel
+                // itself uses for a stopping row.
+                transition = {
+                  status: "in_progress",
+                  summary: `Workflow cancelling: ${summary.error} job(s) did not finish, ${tail}`,
+                };
+                autoAction = "cancelling";
+              } else if (summary.error > 0) {
+                // A failure with work still in flight. Keep the block in_progress so
+                // the rest stays under observation -- terminal blocks are never polled
+                // again -- but say so in the summary and let the poller raise it once.
+                transition = {
+                  status: "in_progress",
+                  summary: `Workflow in progress: ${summary.error} job(s) failed, ${tail}`,
+                };
+                autoAction = "failing";
+              }
+            }
+
+            // Always update the block — even if the rolled-up status didn't
+            // change, the per-poll counters (and last_polled_at) did, and the
+            // renderer wants those for the live progress bar. Status and summary
+            // ride along only on a transition, so a no-op poll can't overwrite an
+            // edit the agent made to the block while we were talking to Galaxy.
+            const lastPolledAt = new Date().toISOString();
+            updates.push({
+              galaxyServerUrl: block.galaxyServerUrl,
+              connectionId: block.connectionId,
+              accountId: block.accountId,
+              invocationId: block.invocationId,
+              totalSteps: inv.steps.length,
+              completedSteps,
+              totalJobs,
+              completedJobs: summary.ok,
+              failedJobs: summary.error,
+              lastPolledAt,
+              // We just got an answer out of Galaxy for this id, which is the proof a
+              // block recorded `server_verified: false` is waiting for -- but only if
+              // the answer came from the server the block names. A profile switch
+              // must not let another server's `inv-1` certify this one.
+              serverVerified: sameGalaxyServer(block.galaxyServerUrl, getGalaxyConfig()?.url),
+              transition,
+            });
+
+            results.push({
+              invocationId: block.invocationId,
+              notebookAnchor: block.notebookAnchor,
+              label: block.label,
+              invocationState: inv.state,
+              priorStatus: block.status,
+              jobSummary: summary,
+              otherStates,
+              activeJobs,
+              newStatus: transition?.status,
+              lastPolledAt,
+              autoAction,
+            });
+          },
+          getGalaxyConfig()?.url,
+        );
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        results.push({
+          invocationId: block.invocationId,
+          notebookAnchor: block.notebookAnchor,
+          label: block.label,
+          invocationState: "error_checking",
+          priorStatus: block.status,
+          jobSummary: { ok: 0, running: 0, queued: 0, error: 0, other: 0 },
+          otherStates: {},
+          activeJobs: 0,
+          autoAction: `check_error: ${msg}`,
+        });
       }
-
-      // Always update the block — even if the rolled-up status didn't
-      // change, the per-poll counters (and last_polled_at) did, and the
-      // renderer wants those for the live progress bar. Status and summary
-      // ride along only on a transition, so a no-op poll can't overwrite an
-      // edit the agent made to the block while we were talking to Galaxy.
-      const lastPolledAt = new Date().toISOString();
-      updates.push({
-        invocationId: block.invocationId,
-        totalSteps: inv.steps.length,
-        completedSteps,
-        totalJobs,
-        completedJobs: summary.ok,
-        failedJobs: summary.error,
-        lastPolledAt,
-        // We just got an answer out of Galaxy for this id, which is the proof a
-        // block recorded `server_verified: false` is waiting for -- but only if
-        // the answer came from the server the block names. A profile switch
-        // must not let another server's `inv-1` certify this one.
-        serverVerified: sameGalaxyServer(block.galaxyServerUrl, getGalaxyConfig()?.url),
-        transition,
-      });
-
-      results.push({
-        invocationId: block.invocationId,
-        notebookAnchor: block.notebookAnchor,
-        label: block.label,
-        invocationState: inv.state,
-        priorStatus: block.status,
-        jobSummary: summary,
-        otherStates,
-        activeJobs,
-        newStatus: transition?.status,
-        lastPolledAt,
-        autoAction,
-      });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      results.push({
-        invocationId: block.invocationId,
-        notebookAnchor: block.notebookAnchor,
-        label: block.label,
-        invocationState: "error_checking",
-        priorStatus: block.status,
-        jobSummary: { ok: 0, running: 0, queued: 0, error: 0, other: 0 },
-        otherStates: {},
-        activeJobs: 0,
-        autoAction: `check_error: ${msg}`,
-      });
-    }
-  }
+    }),
+  );
 
   // Phase 3 — persist. The lock still keeps two Loom writers from losing each
   // other's updates, but the guarantee now comes from re-reading inside it

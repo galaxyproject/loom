@@ -84,6 +84,10 @@ export interface BlockEvaluation {
 }
 
 export interface HarnessBlockFields {
+  connectionId?: string;
+  accountId?: string;
+  supersededBy?: string;
+  rerouteId?: string;
   /** ULID minted at submission dispatch; the join key for the provenance file. */
   attemptId?: string;
   historyId?: string;
@@ -109,6 +113,10 @@ export interface HarnessBlockFields {
  * `stripHarnessFields`; keep in sync with `HarnessBlockFields`.
  */
 export const HARNESS_FIELD_KEYS = [
+  "connectionId",
+  "accountId",
+  "supersededBy",
+  "rerouteId",
   "attemptId",
   "historyId",
   "submittedBy",
@@ -370,6 +378,14 @@ export function blockLine(key: string, value: string, field = key): string {
  */
 export function renderHarnessFieldLines(fields: HarnessBlockFields): string[] {
   const lines: string[] = [];
+  for (const [key, value] of [
+    ["galaxy_connection_id", fields.connectionId],
+    ["galaxy_account_id", fields.accountId],
+    ["superseded_by", fields.supersededBy],
+    ["reroute_id", fields.rerouteId],
+  ]) {
+    if (value && isBareScalar(value)) lines.push(`${key}: ${value}`);
+  }
   if (fields.attemptId && isBareScalar(fields.attemptId)) {
     lines.push(`attempt_id: ${fields.attemptId}`);
   }
@@ -413,6 +429,10 @@ export function renderHarnessFieldLines(fields: HarnessBlockFields): string[] {
  */
 export function parseHarnessFields(get: (key: string) => string | undefined): HarnessBlockFields {
   const fields: HarnessBlockFields = {};
+  if (get("galaxy_connection_id")) fields.connectionId = get("galaxy_connection_id");
+  if (get("galaxy_account_id")) fields.accountId = get("galaxy_account_id");
+  if (get("reroute_id")) fields.rerouteId = get("reroute_id");
+  if (get("superseded_by")) fields.supersededBy = get("superseded_by");
 
   const attemptId = get("attempt_id");
   if (attemptId) fields.attemptId = attemptId;

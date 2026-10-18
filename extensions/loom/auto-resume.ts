@@ -20,6 +20,8 @@ export function isResumableOutcome(status: string): status is "completed" | "fai
 }
 
 export interface GalaxyFollowUp {
+  serverUrl?: string;
+  connectionId?: string;
   kind: "job" | "invocation";
   id: string;
   label: string;

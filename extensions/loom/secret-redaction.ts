@@ -12,6 +12,7 @@
  */
 
 import * as fs from "fs";
+import { listGalaxyConnections } from "./galaxy-connections.js";
 import * as path from "path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "../../shared/loom-config.js";
@@ -115,6 +116,8 @@ export function collectSecretValues(
     add(p?.apiKeyEncrypted);
   }
   for (const name of SECRET_ENV_VARS) add(env[name]);
+  for (const [name, value] of Object.entries(env))
+    if (/^(LOOM|ORBIT)_GALAXY_MCP_.*_TOKEN$/.test(name)) add(value);
   // pi's auth.json: the one credential class Loom cannot encrypt at rest, so
   // value-redaction is the only backstop its tokens get.
   for (const cred of Object.values((auth ?? {}) as Record<string, unknown>)) {
@@ -176,7 +179,10 @@ export function redactContent<T extends ContentItem>(content: T[], secrets: stri
  */
 export function registerSecretRedaction(pi: ExtensionAPI): void {
   pi.on("tool_result", async (event) => {
-    const secrets = collectSecretValues(loadConfig(), process.env, loadPiAuth());
+    const secrets = [
+      ...collectSecretValues(loadConfig(), process.env, loadPiAuth()),
+      ...listGalaxyConnections().map((c) => c.apiKey),
+    ];
     const content = redactContent(event.content, secrets);
     if (content) return { content };
   });

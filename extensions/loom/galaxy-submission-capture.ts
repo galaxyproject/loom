@@ -1,3 +1,4 @@
+import { currentGalaxyConnection } from "./galaxy-connections.js";
 /**
  * Auto-registration: every Galaxy submission gets a notebook block, the
  * moment it happens, without the agent being asked to do anything.
@@ -27,7 +28,6 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import * as fs from "fs";
 import * as fsp from "fs/promises";
 import * as path from "path";
 import { stringify as stringifyYaml } from "yaml";
@@ -134,6 +134,8 @@ function rememberDispatch(toolCallId: string, toolName: string, args: unknown): 
 
 /** Supplied by a caller that knows the dispatch details but had no start event. */
 export interface DispatchOverride {
+  /** Harness-reserved identity for an approved native submission. */
+  attemptId?: string;
   args?: Record<string, unknown>;
   stepAnchor?: string | null;
   /**
@@ -159,7 +161,7 @@ function takeDispatch(toolCallId: string, toolName: string, override?: DispatchO
     return found;
   }
   return {
-    attemptId: ulid(),
+    attemptId: override?.attemptId ?? ulid(),
     toolName,
     args: override?.args ?? {},
     stepAnchor: override
@@ -231,7 +233,9 @@ export function safeProvenanceFilename(toolId: string): string | null {
  * about the record rather than claims about a server.
  */
 function harnessFields(dispatch: Dispatch, historyId?: string): HarnessBlockFields {
+  const connection = currentGalaxyConnection();
   return {
+    ...(connection ? { connectionId: connection.id, accountId: connection.accountId } : {}),
     attemptId: dispatch.attemptId,
     ...(historyId ? { historyId } : {}),
     ...(dispatch.replayed ? {} : { submittedBy: "harness" as const }),

@@ -1,3 +1,13 @@
+import { isSupersededAttempt } from "./registry-runtime.js";
+import {
+  currentGalaxyConnection,
+  listGalaxyConnections,
+  verifyGalaxyAccount,
+  withGalaxyConnection,
+  matchesGalaxyOrigin,
+  type GalaxyOrigin,
+} from "./galaxy-connections.js";
+import { onRecordedGalaxy } from "./galaxy-api.js";
 /**
  * Background poller for active Galaxy workflow invocations.
  *
@@ -172,7 +182,7 @@ function logTransition(payload: Record<string, unknown>): void {
 const announcedFailing = new Set<string>();
 
 /** A block the poller has seen in flight in the notebook this session. */
-interface TrackedBlock {
+interface TrackedBlock extends GalaxyOrigin {
   kind: "invocation" | "job";
   id: string;
   label: string;
@@ -199,8 +209,8 @@ const MAX_MISSING_CHECK_ATTEMPTS = 3;
  */
 const trackedActive = new Map<string, TrackedBlock>();
 
-function trackKey(kind: TrackedBlock["kind"], id: string): string {
-  return `${kind}:${id}`;
+function trackKey(kind: TrackedBlock["kind"], id: string, origin: GalaxyOrigin): string {
+  return `${origin.galaxyServerUrl}:${origin.connectionId ?? ""}:${origin.accountId ?? ""}:${kind}:${id}`;
 }
 
 /**
@@ -210,9 +220,12 @@ function trackKey(kind: TrackedBlock["kind"], id: string): string {
  */
 function trackActiveBlocks(content: string): void {
   for (const inv of findInvocationBlocks(content)) {
-    const key = trackKey("invocation", inv.invocationId);
+    const key = trackKey("invocation", inv.invocationId, inv);
     if (inv.status === "in_progress") {
       trackedActive.set(key, {
+        galaxyServerUrl: inv.galaxyServerUrl,
+        connectionId: inv.connectionId,
+        accountId: inv.accountId,
         kind: "invocation",
         id: inv.invocationId,
         label: inv.label || inv.notebookAnchor || inv.invocationId,
@@ -222,9 +235,12 @@ function trackActiveBlocks(content: string): void {
     }
   }
   for (const job of findJobBlocks(content)) {
-    const key = trackKey("job", job.jobId);
+    const key = trackKey("job", job.jobId, job);
     if (job.status === "in_progress") {
       trackedActive.set(key, {
+        galaxyServerUrl: job.galaxyServerUrl,
+        connectionId: job.connectionId,
+        accountId: job.accountId,
         kind: "job",
         id: job.jobId,
         label: job.label || job.toolId || job.jobId,
@@ -279,11 +295,14 @@ async function reportMissingBlocks(content: string): Promise<void> {
   if (trackedActive.size === 0) return;
   const present = new Set<string>();
   for (const inv of findInvocationBlocks(content)) {
-    present.add(trackKey("invocation", inv.invocationId));
+    present.add(trackKey("invocation", inv.invocationId, inv));
   }
-  for (const job of findJobBlocks(content)) present.add(trackKey("job", job.jobId));
+  for (const job of findJobBlocks(content)) present.add(trackKey("job", job.jobId, job));
 
-  const missing = [...trackedActive.entries()].filter(([key]) => !present.has(key));
+  const missing = [...trackedActive.entries()].filter(
+    ([key, block]) =>
+      !present.has(key) && (!currentGalaxyConnection() || matchesGalaxyOrigin(block)),
+  );
   if (missing.length === 0) return;
   // No credentials, no verdict: keep the ids and ask again next tick.
   if (!getGalaxyConfig()) return;
@@ -291,7 +310,7 @@ async function reportMissingBlocks(content: string): Promise<void> {
   for (const [key, block] of missing) {
     let result: { live: boolean; state?: string };
     try {
-      result = await isStillLive(block);
+      result = await onRecordedGalaxy(block, () => isStillLive(block), getGalaxyConfig()?.url);
     } catch (err) {
       // Galaxy briefly unreachable. Stay tracked and ask again next tick; one
       // unreachable id must not cost the others their check. A few attempts in,
@@ -339,7 +358,16 @@ async function persistJobUpdate(
     // The status as it is now, not as the tick's opening snapshot had it: the
     // write below refreshes last_polled_at either way, so "we wrote" is not the
     // same question as "we changed the outcome".
-    const priorStatus = findJobBlocks(fresh).find((j) => j.jobId === update.jobId)?.status;
+    const priorStatus = findJobBlocks(fresh).find(
+      (j) =>
+        j.jobId === update.jobId &&
+        matchesGalaxyOrigin(
+          j,
+          update.galaxyServerUrl
+            ? { ...update, galaxyServerUrl: update.galaxyServerUrl }
+            : undefined,
+        ),
+    )?.status;
     const updated = applyJobPollUpdate(fresh, update);
     // Block gone, or already carrying this result: nothing to write, nothing
     // to announce.
@@ -406,7 +434,9 @@ async function tickJobs(content: string, followUps: GalaxyFollowUp[]): Promise<v
   const nbPath = getNotebookPath();
   if (!nbPath) return;
 
-  const pending = findJobBlocks(content).filter((j) => j.status === "in_progress");
+  const pending = findJobBlocks(content).filter(
+    (j) => j.status === "in_progress" && (!currentGalaxyConnection() || matchesGalaxyOrigin(j)),
+  );
   if (pending.length === 0) return;
   const currentServer = getGalaxyConfig()?.url;
   if (!currentServer) return;
@@ -414,7 +444,9 @@ async function tickJobs(content: string, followUps: GalaxyFollowUp[]): Promise<v
   for (const job of pending) {
     let state: string | undefined;
     try {
-      state = (await galaxyGetJobDetails(job.jobId)).state;
+      state = (
+        await onRecordedGalaxy(job, () => galaxyGetJobDetails(job.jobId), getGalaxyConfig()?.url)
+      ).state;
     } catch (err) {
       // One unreachable job must not stop the others, or kill the timer.
       console.error(`[galaxy-poller] job ${job.jobId} poll failed:`, err);
@@ -425,16 +457,25 @@ async function tickJobs(content: string, followUps: GalaxyFollowUp[]): Promise<v
       // answered, which is the proof a block the record tool could only write
       // `server_verified: false` is waiting for. Without this the flag would
       // sit false for the whole run and only clear when the job ends.
-      if (job.serverVerified === false && sameGalaxyServer(job.galaxyServerUrl, currentServer)) {
+      if (
+        job.galaxyState !== state ||
+        !job.lastPolledAt ||
+        Date.now() - Date.parse(job.lastPolledAt) > 60_000 ||
+        job.serverVerified === false
+      ) {
         try {
           await withNotebookLock(nbPath, () =>
             // Only the flag and the timestamp: this write knows nothing about
             // the outcome, and the snapshot's status is already older than
             // whatever the fresh read inside persistJobUpdate will see.
             persistJobUpdate(nbPath, {
+              galaxyServerUrl: job.galaxyServerUrl,
+              connectionId: job.connectionId,
+              accountId: job.accountId,
               jobId: job.jobId,
+              galaxyState: state,
               lastPolledAt: new Date().toISOString(),
-              serverVerified: true,
+              serverVerified: sameGalaxyServer(job.galaxyServerUrl, currentServer),
             }),
           );
         } catch (err) {
@@ -451,6 +492,9 @@ async function tickJobs(content: string, followUps: GalaxyFollowUp[]): Promise<v
     try {
       persisted = await withNotebookLock(nbPath, () =>
         persistJobUpdate(nbPath, {
+          galaxyServerUrl: job.galaxyServerUrl,
+          connectionId: job.connectionId,
+          accountId: job.accountId,
           jobId: job.jobId,
           status,
           galaxyState: state,
@@ -484,7 +528,7 @@ async function tickJobs(content: string, followUps: GalaxyFollowUp[]): Promise<v
     });
     const willResume = resume !== null && isResumableOutcome(status);
     notifySafely(...jobFinishedToast(status, label, state, willResume));
-    if (isResumableOutcome(status)) {
+    if (isResumableOutcome(status) && !isSupersededAttempt(job.attemptId)) {
       followUps.push({
         kind: "job",
         id: job.jobId,
@@ -515,6 +559,20 @@ export function pollGalaxyNow(): Promise<void> {
 }
 
 async function runTick(): Promise<void> {
+  const connections = listGalaxyConnections();
+  if (connections.length < 2) return runConnectionTick();
+  await Promise.all(
+    connections.map(async (connection) => {
+      try {
+        await withGalaxyConnection(await verifyGalaxyAccount(connection), runConnectionTick);
+      } catch (error) {
+        console.error(`[galaxy-poller] ${connection.name}:`, (error as Error).message);
+      }
+    }),
+  );
+}
+
+async function runConnectionTick(): Promise<void> {
   const tickNotebook = getNotebookPath();
   const followUps: GalaxyFollowUp[] = [];
   try {
@@ -530,7 +588,10 @@ async function runTick(): Promise<void> {
     // that is talking to a Galaxy that has stopped answering. The hook is
     // responsible for its own re-entrancy; both failure paths are swallowed
     // here so a rejection cannot surface as an unhandled one.
-    if (tickHook) {
+    if (
+      tickHook &&
+      (!currentGalaxyConnection() || currentGalaxyConnection()?.mcpServer === "galaxy")
+    ) {
       try {
         void tickHook(content).catch((err) => {
           console.error("[galaxy-poller] tick hook failed:", err);
@@ -651,7 +712,26 @@ async function runTick(): Promise<void> {
     const deliver = resume;
     if (deliver && followUps.length > 0 && getNotebookPath() === tickNotebook) {
       try {
-        deliver(buildResumePrompt(followUps));
+        const live = await readNotebookOrNull();
+        const selected = followUps.filter((run) => {
+          const block =
+            run.kind === "job"
+              ? findJobBlocks(live ?? "").find((b) => b.jobId === run.id && matchesGalaxyOrigin(b))
+              : findInvocationBlocks(live ?? "").find(
+                  (b) => b.invocationId === run.id && matchesGalaxyOrigin(b),
+                );
+          return !isSupersededAttempt(block?.attemptId);
+        });
+        const connection = currentGalaxyConnection();
+        if (selected.length)
+          deliver(
+            buildResumePrompt(
+              selected.map((run) => ({
+                ...run,
+                ...(connection ? { serverUrl: connection.url, connectionId: connection.id } : {}),
+              })),
+            ),
+          );
       } catch (err) {
         console.error("[galaxy-poller] auto-resume send failed:", err);
       }

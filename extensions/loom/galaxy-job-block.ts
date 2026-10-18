@@ -1,3 +1,4 @@
+import { matchesGalaxyOrigin } from "./galaxy-connections.js";
 /**
  * `loom-job` notebook blocks: the tool-run equivalent of `loom-invocation`.
  *
@@ -216,6 +217,9 @@ function parseJobBlock(blockLines: string[]): JobYaml | null {
 
 interface BlockRange {
   jobId: string;
+  galaxyServerUrl: string;
+  connectionId?: string;
+  accountId?: string;
   start: number;
   end: number;
 }
@@ -225,7 +229,15 @@ function findJobBlockRanges(content: string): BlockRange[] {
   const ranges: BlockRange[] = [];
   for (const range of scanFencedBlocks(lines, "job")) {
     const parsed = parseJobBlock(lines.slice(range.start + 1, range.end));
-    if (parsed) ranges.push({ jobId: parsed.jobId, start: range.start, end: range.end });
+    if (parsed)
+      ranges.push({
+        jobId: parsed.jobId,
+        galaxyServerUrl: parsed.galaxyServerUrl,
+        connectionId: parsed.connectionId,
+        accountId: parsed.accountId,
+        start: range.start,
+        end: range.end,
+      });
   }
   return ranges;
 }
@@ -249,9 +261,12 @@ export function findJobBlocks(content: string): JobYaml[] {
 export function locateJobBlock(
   content: string,
   jobId: string,
+  origin?: import("./galaxy-connections.js").GalaxyOrigin,
 ): { present: boolean; record: JobYaml | null } {
   const lines = content.split("\n");
-  const range = findJobBlockRanges(content).find((b) => b.jobId === jobId);
+  const range = findJobBlockRanges(content).find(
+    (b) => b.jobId === jobId && matchesGalaxyOrigin(b, origin),
+  );
   if (!range) return { present: false, record: null };
   return { present: true, record: parseJobBlock(lines.slice(range.start + 1, range.end)) };
 }
@@ -276,7 +291,14 @@ export function upsertJobBlock(
   // isUnambiguousRange. More than one can match when an older writer used the
   // other fence prefix; foldable duplicates collapse into the rewritten block.
   const matching = ranges.filter(
-    (b) => b.jobId === job.jobId && isUnambiguousRange(lines, b.start),
+    (b) =>
+      b.jobId === job.jobId &&
+      matchesGalaxyOrigin(b, {
+        ...job,
+        connectionId: harness?.connectionId ?? job.connectionId,
+        accountId: harness?.accountId ?? job.accountId,
+      }) &&
+      isUnambiguousRange(lines, b.start),
   );
   const existing = matching[0];
   // Read off the block this write replaces, not a second scan of the file --
@@ -311,6 +333,9 @@ export function upsertJobBlock(
  * edit made in the meantime -- the same hazard the invocation poller documents.
  */
 export interface JobPollUpdate {
+  galaxyServerUrl?: string;
+  connectionId?: string;
+  accountId?: string;
   jobId: string;
   /**
    * The outcome this poll decided, or omitted for an update that isn't about
@@ -333,7 +358,14 @@ export interface JobPollUpdate {
 
 /** Apply a poll result to whichever block carries that job id. No-op if absent. */
 export function applyJobPollUpdate(content: string, update: JobPollUpdate): string {
-  const current = findJobBlocks(content).find((j) => j.jobId === update.jobId);
+  const current = findJobBlocks(content).find(
+    (j) =>
+      j.jobId === update.jobId &&
+      matchesGalaxyOrigin(
+        j,
+        update.galaxyServerUrl ? { ...update, galaxyServerUrl: update.galaxyServerUrl } : undefined,
+      ),
+  );
   if (!current) return content;
   return upsertJobBlock(content, {
     ...current,

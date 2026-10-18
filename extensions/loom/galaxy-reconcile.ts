@@ -1,3 +1,10 @@
+import {
+  currentGalaxyConnection,
+  listGalaxyConnections,
+  verifyGalaxyAccount,
+  withGalaxyConnection,
+  matchesGalaxyOrigin,
+} from "./galaxy-connections.js";
 /**
  * Reconcile: ask Galaxy what is in the history, and make the notebook account
  * for all of it.
@@ -60,6 +67,7 @@ import { pollGalaxyNow, setCaptureTickHook } from "./galaxy-poller";
 import {
   UNKNOWN,
   ensureAttemptRecord,
+  recordMatchesOrigin,
   listAttemptRecords,
   readReconcileState,
   type AttemptRecord,
@@ -176,7 +184,7 @@ export function boundHistoryId(
   const submitted = records
     .filter((r) => r.origin === "submission" && !r.fixture)
     .filter((r) => r.history_id !== UNKNOWN && isGalaxyEncodedId(r.history_id))
-    .filter((r) => sameGalaxyServer(r.galaxy_server_url, serverUrl))
+    .filter((r) => sameGalaxyServer(r.galaxy_server_url, serverUrl) && recordMatchesOrigin(r))
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
     .pop();
   if (submitted) return { historyId: submitted.history_id, source: "submission" };
@@ -257,10 +265,11 @@ function claimedIds(
 ): { invocations: Set<string>; jobs: Set<string> } {
   const invocations = new Set<string>();
   const jobs = new Set<string>();
-  for (const block of findInvocationBlocks(content)) invocations.add(block.invocationId);
-  for (const block of findJobBlocks(content)) jobs.add(block.jobId);
+  for (const block of findInvocationBlocks(content))
+    if (matchesGalaxyOrigin(block)) invocations.add(block.invocationId);
+  for (const block of findJobBlocks(content)) if (matchesGalaxyOrigin(block)) jobs.add(block.jobId);
   for (const r of records) {
-    if (!sameGalaxyServer(r.galaxy_server_url, serverUrl)) continue;
+    if (!sameGalaxyServer(r.galaxy_server_url, serverUrl) || !recordMatchesOrigin(r)) continue;
     if (r.ids.invocation_id) invocations.add(r.ids.invocation_id);
     for (const id of r.ids.job_ids ?? []) jobs.add(id);
     for (const id of Object.keys(r.jobs)) jobs.add(id);
@@ -352,7 +361,7 @@ export async function surveyHistory(
     records.filter((r) => r.ids.invocation_id).map((r) => [r.ids.invocation_id!, r]),
   );
   const recordedInvocations = findInvocationBlocks(content).filter((b) => {
-    if (!sameGalaxyServer(b.galaxyServerUrl, serverUrl)) return false;
+    if (!sameGalaxyServer(b.galaxyServerUrl, serverUrl) || !matchesGalaxyOrigin(b)) return false;
     if (b.status === "in_progress") return true;
     // Its jobs are already claimed once its protected record lists them.
     const r = knownJobs.get(b.invocationId);
@@ -489,6 +498,8 @@ export async function reconcile(
       for (const item of pending) {
         const harness: HarnessBlockFields = {
           attemptId: item.attemptId,
+          connectionId: currentGalaxyConnection()?.id,
+          accountId: currentGalaxyConnection()?.accountId,
           historyId,
           submittedBy: "unknown",
           enrichment: "pending",
@@ -671,18 +682,18 @@ async function downgradeAbsent(
   const candidates: { kind: "invocation" | "job"; id: string }[] = [];
   for (const b of findInvocationBlocks(content)) {
     if (b.serverVerified === false || seen.invocations.has(b.invocationId)) continue;
-    if (!sameGalaxyServer(b.galaxyServerUrl, server)) continue;
+    if (!sameGalaxyServer(b.galaxyServerUrl, server) || !matchesGalaxyOrigin(b)) continue;
     candidates.push({ kind: "invocation", id: b.invocationId });
   }
   for (const b of findJobBlocks(content)) {
     if (b.serverVerified === false || seen.jobs.has(b.jobId)) continue;
-    if (!sameGalaxyServer(b.galaxyServerUrl, server)) continue;
+    if (!sameGalaxyServer(b.galaxyServerUrl, server) || !matchesGalaxyOrigin(b)) continue;
     candidates.push({ kind: "job", id: b.jobId });
   }
   const absent: { kind: "invocation" | "job"; id: string; detail: string }[] = [];
   let checked = 0;
   for (const c of candidates) {
-    const key = `${c.kind}:${c.id}`;
+    const key = `${currentGalaxyConnection()?.id ?? server}:${currentGalaxyConnection()?.accountId ?? ""}:${c.kind}:${c.id}`;
     if (verifiedThisSession.has(key)) continue;
     if (checked >= MAX_VERIFY_PER_RUN) break;
     checked++;
@@ -845,15 +856,20 @@ export async function runReconcile(
  * and write the same blocks, and because a `/reconcile` arriving while the
  * session-start run is still going must run after it, not race it.
  */
-let queue: Promise<unknown> = Promise.resolve();
+const queues = new Map<string, Promise<unknown>>();
 let queued = 0;
 
 function enqueue<T>(work: () => Promise<T>): Promise<T> {
   queued++;
+  const key = currentGalaxyConnection()?.id ?? "default";
+  const queue = queues.get(key) ?? Promise.resolve();
   const run = queue.then(work, work).finally(() => {
     queued--;
   });
-  queue = run.catch(() => undefined);
+  queues.set(
+    key,
+    run.catch(() => undefined),
+  );
   return run;
 }
 
@@ -862,6 +878,49 @@ export function followThrough(trigger: ReconcileTrigger | "enrich"): Promise<{
   enrichment: Awaited<ReturnType<typeof runEnrichmentPass>>;
   evaluation?: EvaluationPass;
 }> {
+  const connections = listGalaxyConnections();
+  if (!currentGalaxyConnection() && connections.length > 1) {
+    return Promise.all(
+      connections.map(async (c) => {
+        try {
+          return await withGalaxyConnection(await verifyGalaxyAccount(c), () =>
+            followThrough(trigger),
+          );
+        } catch (error) {
+          return {
+            enrichment: { completed: [], retried: [], unavailable: [], skipped: 0 },
+            reconcile: {
+              historyId: null,
+              since: null,
+              unattributed: [],
+              unverified: [],
+              terminalSeen: 0,
+              error: `${c.name}: ${(error as Error).message}`,
+            },
+          };
+        }
+      }),
+    ).then((results) => ({
+      reconcile: {
+        historyId: null,
+        since: null,
+        unattributed: results.flatMap((r) => r.reconcile?.unattributed ?? []),
+        unverified: results.flatMap((r) => r.reconcile?.unverified ?? []),
+        terminalSeen: results.reduce((n, r) => n + (r.reconcile?.terminalSeen ?? 0), 0),
+        error:
+          results
+            .map((r) => r.reconcile?.error)
+            .filter(Boolean)
+            .join("; ") || undefined,
+      },
+      enrichment: {
+        completed: results.flatMap((r) => r.enrichment.completed),
+        retried: results.flatMap((r) => r.enrichment.retried),
+        unavailable: results.flatMap((r) => r.enrichment.unavailable),
+        skipped: results.reduce((n, r) => n + r.enrichment.skipped, 0),
+      },
+    }));
+  }
   return enqueue(async () => {
     const reconciled = trigger === "enrich" ? undefined : await runReconcile(trigger);
     const enrichment = await runEnrichmentPass({ force: trigger === "command" });

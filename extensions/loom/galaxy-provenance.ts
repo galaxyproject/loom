@@ -23,6 +23,7 @@
  */
 
 import * as fs from "fs";
+import { currentGalaxyConnection, matchesGalaxyOrigin } from "./galaxy-connections.js";
 import * as fsp from "fs/promises";
 import * as path from "path";
 import { randomBytes } from "crypto";
@@ -88,6 +89,8 @@ export interface AttemptRecord {
   attempt_id: string;
   kind: AttemptKind;
   galaxy_server_url: string;
+  connection_id?: string;
+  account_id?: string;
   history_id: Maybe<string>;
   /** Who made the submission, as far as the harness knows. Mirrors the block. */
   submitted_by: "harness" | "agent" | "unknown" | "replay";
@@ -302,6 +305,12 @@ export async function ensureAttemptRecord(
       attempt_id: seed.attemptId,
       kind: seed.kind,
       galaxy_server_url: seed.galaxyServerUrl,
+      ...(currentGalaxyConnection()
+        ? {
+            connection_id: currentGalaxyConnection()!.id,
+            account_id: currentGalaxyConnection()!.accountId,
+          }
+        : {}),
       // A record made from notebook text takes nothing from that text it would
       // then vouch for: who submitted it and which history it ran in are left
       // unknown (enrichment fills the history from Galaxy's own answer).
@@ -439,7 +448,10 @@ async function ownedRecord(
   }
   // Ids are only unique per server, so a record is bound to the server it was
   // recorded on: another server's job with a colliding id is another job.
-  if (record.galaxy_server_url && !sameGalaxyServer(record.galaxy_server_url, who.serverUrl)) {
+  if (
+    !recordMatchesOrigin(record) ||
+    (record.galaxy_server_url && !sameGalaxyServer(record.galaxy_server_url, who.serverUrl))
+  ) {
     throw new ProvenanceRefusal(
       `attempt ${attemptId} was recorded on ${record.galaxy_server_url}, not ${who.serverUrl}`,
     );
@@ -526,7 +538,20 @@ export function readAttemptRecordSync(
  * what gets written as unattributed work, and the agent must not be able to
  * move it. Not a ULID name, so it can never collide with an attempt.
  */
-const RECONCILE_STATE_FILE = "reconcile-state.json";
+function reconcileStateFile(): string {
+  const connection = currentGalaxyConnection();
+  return connection
+    ? `reconcile-state-${connection.id}-${connection.accountId?.replace(/[^a-zA-Z0-9-]/g, "_") || "unknown"}.json`
+    : "reconcile-state.json";
+}
+
+export function recordMatchesOrigin(record: AttemptRecord): boolean {
+  return matchesGalaxyOrigin({
+    galaxyServerUrl: record.galaxy_server_url,
+    connectionId: record.connection_id,
+    accountId: record.account_id,
+  });
+}
 
 export interface ReconcileState {
   schema: number;
@@ -542,7 +567,7 @@ export interface ReconcileState {
 
 export async function readReconcileState(analysisDir: string): Promise<ReconcileState | null> {
   if (!(await ensureProvenanceDir(analysisDir, false))) return null;
-  const file = path.join(analysisDir, ...PROVENANCE_DIR_PARTS, RECONCILE_STATE_FILE);
+  const file = path.join(analysisDir, ...PROVENANCE_DIR_PARTS, reconcileStateFile());
   try {
     const stat = await fsp.lstat(file);
     if (!stat.isFile()) return null;
@@ -572,11 +597,11 @@ export async function writeReconcileState(
 ): Promise<void> {
   const dir = await ensureProvenanceDir(analysisDir);
   if (!dir) return;
-  const file = path.join(dir, RECONCILE_STATE_FILE);
+  const file = path.join(dir, reconcileStateFile());
   await withFileLock(file, async () => {
     const temp = path.join(
       dir,
-      `.${RECONCILE_STATE_FILE}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`,
+      `.${reconcileStateFile()}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`,
     );
     await fsp.writeFile(temp, JSON.stringify(state, null, 2) + "\n", {
       encoding: "utf-8",

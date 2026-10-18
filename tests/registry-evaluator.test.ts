@@ -124,6 +124,7 @@ function deps(over: Partial<EvaluatorDeps> = {}): Partial<EvaluatorDeps> {
     ],
     now: () => Date.parse("2026-09-25T12:10:00.000Z"),
     connected: () => true,
+    withinOrigin: (_origin, work) => work(),
     ...over,
   };
 }
