@@ -18,6 +18,10 @@ import {
 
 vi.mock("../extensions/loom/galaxy-pages-api");
 vi.mock("../extensions/loom/galaxy-api");
+// These unit tests use a mocked notebook at /work/notebook.md. Keep the
+// post-pull worker from doing real filesystem work after the test has ended.
+// Reconciliation and its Page pull/resume wiring have their own test suites.
+vi.mock("../extensions/loom/galaxy-reconcile", () => ({ followThrough: vi.fn(async () => ({})) }));
 vi.mock("../extensions/loom/notebook-writer", async (importOriginal) => {
   const actual = await importOriginal<typeof notebookWriter>();
   return {
