@@ -255,6 +255,28 @@ describe("verified cross-instance rerouting", () => {
     ).toBe("completed");
   });
 
+  it("refuses a notebook attempt ID pointing at another signed origin", async () => {
+    const source = findJobBlocks(fs.readFileSync(notebook, "utf8"))[0];
+    const euConnection = listGalaxyConnections()[1];
+    store.update((registry) => {
+      registry.attempts[source.attemptId!] = {
+        attempt_id: source.attemptId!,
+        kind: "tool",
+        binding: { step_anchor: "step-one", bound_at: new Date().toISOString() },
+        server_url: eu.url,
+        connection_id: euConnection.id,
+        account_id: "account-eu",
+        history_id: TARGET_HISTORY,
+        handoff_eligible: false,
+      };
+    });
+    await expect(rerouter.prepare("job", JOB, "us", "eu")).rejects.toThrow(
+      "recorded source attempt does not match",
+    );
+    expect(eu.state.submissions).toHaveLength(0);
+    expect(us.state.requests.concat(eu.state.requests).every((r) => r.method === "GET")).toBe(true);
+  });
+
   it("reroutes a complete workflow and cancels both invocation scheduling and active jobs", async () => {
     const source = listGalaxyConnections()[0];
     fs.writeFileSync(

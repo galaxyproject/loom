@@ -459,6 +459,34 @@ export class GalaxyRerouter {
     const original = record.attemptId
       ? this.store.snapshot().attempts[record.attemptId]
       : undefined;
+    if (original) {
+      const protectedSource = record.attemptId
+        ? await readAttemptRecord(path.dirname(this.notebook), record.attemptId)
+        : null;
+      const recordedId =
+        kind === "job" ? original.submission?.job_id : original.submission?.invocation_id;
+      const ownsRun =
+        recordedId === sourceId ||
+        !!(kind === "job"
+          ? protectedSource?.ids.job_ids?.includes(sourceId)
+          : protectedSource?.ids.invocation_id === sourceId);
+      if (
+        !matchesGalaxyOrigin(
+          {
+            galaxyServerUrl: original.server_url,
+            connectionId: original.connection_id,
+            accountId: original.account_id,
+          },
+          { galaxyServerUrl: source.url, connectionId: source.id, accountId: source.accountId },
+        ) ||
+        original.history_id !== detail.history_id ||
+        original.binding.step_anchor !== (record.notebookAnchor || "unattributed") ||
+        (original.submission && !ownsRun)
+      )
+        throw new Error(
+          "The recorded source attempt does not match this run, origin, history and binding. Reconcile the notebook before rerouting.",
+        );
+    }
     const plan: ReroutePlan = {
       kind,
       sourceId,
