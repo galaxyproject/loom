@@ -80,3 +80,33 @@ export function resolveGalaxyHistoryOpenUrl(
   if (parsed.origin !== expectedOrigin) return null;
   return parsed.toString();
 }
+
+/** Restrict activity links to the configured deployment and known read-only pages. */
+export function resolveGalaxyActivityOpenUrl(
+  requestedUrl: unknown,
+  serverUrl: string | null,
+): string | null {
+  if (typeof requestedUrl !== "string" || !serverUrl) return null;
+  try {
+    const target = new URL(requestedUrl);
+    const server = new URL(serverUrl);
+    if (
+      !["https:", "http:"].includes(server.protocol) ||
+      target.origin !== server.origin ||
+      target.username ||
+      target.password
+    )
+      return null;
+    const base = server.pathname.replace(/\/+$/, "");
+    const path = target.pathname.slice(base.length);
+    if (!target.pathname.startsWith(`${base}/`)) return null;
+    if (path === "/histories/view" && /^[a-f0-9]+$/i.test(target.searchParams.get("id") || ""))
+      return target.toString();
+    if (/^\/workflows\/invocations\/[a-f0-9]+$/i.test(path) && !target.search)
+      return target.toString();
+    if (path === "/" && !target.search) return target.toString();
+  } catch {
+    /* invalid URL */
+  }
+  return null;
+}

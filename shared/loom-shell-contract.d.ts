@@ -6,8 +6,41 @@ export const LoomWidgetKey: {
   readonly Notebook: "notebook";
   readonly PlanView: "plan-view";
   readonly Activity: "activity";
+  readonly GalaxyActivity: "galaxy-activity";
   readonly GalaxyLive: "galaxy-live";
 };
+
+export const GALAXY_ACTIVITY_COMMAND: "/galaxy-activity";
+
+export interface RecentGalaxyHistory {
+  id: string;
+  name: string;
+  count?: number;
+  updatedAt: string;
+  published: boolean;
+}
+
+export interface RecentGalaxyInvocation {
+  id: string;
+  name: string;
+  historyId: string;
+  historyName: string;
+  state: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Ephemeral account view, never a replacement for notebook invocation records. */
+export interface GalaxyActivitySnapshot {
+  server: string | null;
+  phase: "loading" | "ready" | "error" | "disconnected";
+  histories: RecentGalaxyHistory[];
+  invocations: RecentGalaxyInvocation[];
+  historiesError?: string;
+  invocationsError?: string;
+  historiesUpdatedAt?: string;
+  invocationsUpdatedAt?: string;
+}
 
 export interface ShellActivityEvent {
   timestamp: string;

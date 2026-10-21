@@ -70,6 +70,7 @@ Implemented and locally tested.
 ### What Orbit ships today
 
 - **Three-pane layout**: file tree on the left, chat in the center, tabbed artifact pane on the right (Notebook, Activity, File).
+- **Recent on Galaxy**: the desktop Activity tab lists your recent histories and workflow runs. Invocation requests are explicitly scoped to the authenticated account, including when its API key has admin access. Lists refresh every minute and on demand; a failed account lookup never falls back to a global invocation list.
 - **Notebook tab**: live `notebook.md` rendered as markdown with auto-refresh on file changes. Project log accumulates over time.
 - **Activity tab**: split horizontally — agent shell stream on top (live tool calls, status, stdout from `run_command`), proc-monitor on the bottom (live CPU / memory / runtime for every subprocess the agent spawns).
 - **File tab**: appears when you open a file from the left tree, dismissable via `×`. Previews text (Markdown, code, JSON/YAML, FASTA / FASTQ / VCF / BED / GFF / GTF / SAM / Newick / etc.), images, and PDFs.

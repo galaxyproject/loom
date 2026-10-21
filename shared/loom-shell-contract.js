@@ -6,9 +6,13 @@ export const LoomWidgetKey = {
   Notebook: "notebook",
   PlanView: "plan-view",
   Activity: "activity",
+  GalaxyActivity: "galaxy-activity",
   // JSON, not markdown: the live Galaxy history projection (shared/galaxy-live-contract).
   GalaxyLive: "galaxy-live",
 };
+
+// An extension command: refreshes a read-only widget without invoking the LLM.
+export const GALAXY_ACTIVITY_COMMAND = "/galaxy-activity";
 
 export function encodeMarkdownWidget(markdown) {
   return [markdown];

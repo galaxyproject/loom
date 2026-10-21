@@ -16,6 +16,7 @@ import { registerSkillsCommand } from "./skills-command";
 import { setupContextInjection, formatConnectionStatus } from "./context";
 import { setupUIBridge } from "./ui-bridge";
 import { registerSessionLifecycle } from "./session-lifecycle";
+import { refreshGalaxyActivity } from "./galaxy-activity";
 import { registerCommandsAsUserInput } from "./auto-resume";
 import { recordGalaxyConnected } from "./galaxy-cred-drift";
 import { registerActivityHooks } from "./activity-hooks";
@@ -142,6 +143,12 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
 
   setupUIBridge(pi);
   registerSessionLifecycle(pi);
+  pi.registerCommand("galaxy-activity", {
+    description: "Refresh recent Galaxy histories and workflow runs in Activity (no model call).",
+    handler: async () => {
+      await refreshGalaxyActivity();
+    },
+  });
   registerActivityHooks(pi);
   // Auto-registration of Galaxy submissions. Mode-independent on purpose: it
   // must not live inside the exec-guard, which is skipped entirely when
@@ -508,6 +515,9 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_execution_end", async (event, ctx) => {
+    if (/galaxy_(connect|create_history|update_history|invoke_workflow)$/.test(event.toolName)) {
+      void refreshGalaxyActivity();
+    }
     // Re-sync the Notebook panel after any tool. A bash write to notebook.md
     // can slip past the single-file watcher -- an atomic temp-and-rename save
     // (`sed -i`, editors) swaps the inode, and a plain truncate can race the
