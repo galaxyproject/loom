@@ -164,6 +164,13 @@ function userToolCatalog(root: unknown, args: OutputQuery): Recordish | undefine
   }
   if (more && items.length === 0)
     throw new Error("Catalog entry exceeds the preview budget; select its exact JSON Pointer.");
+  // Galaxy reports server-side pagination as {total_items, has_next, next_offset}
+  // (older shapes: {total, has_more}); without it, the response is the whole catalog.
+  const pagination = record(response.pagination);
+  const sourceTotal = [pagination?.total_items, pagination?.total, response.count].find(
+    (value) => typeof value === "number",
+  ) as number | undefined;
+  const sourceHasNext = pagination?.has_next === true || pagination?.has_more === true;
   return {
     outputId: args.outputId,
     pointer: "/data",
@@ -171,6 +178,9 @@ function userToolCatalog(root: unknown, args: OutputQuery): Recordish | undefine
     offset,
     totalItems,
     responseItems: tools.length,
+    sourceTotalItems: sourceTotal ?? tools.length,
+    sourceHasNext,
+    sourceNextOffset: typeof pagination?.next_offset === "number" ? pagination.next_offset : null,
     sourceCount: preview(response.count),
     sourcePagination: preview(response.pagination),
     items,
@@ -378,8 +388,13 @@ export function registerMcpOutputRecovery(pi: ExtensionAPI): void {
       });
       overview = JSON.stringify(page);
       if (page.type === "user_tool_catalog") {
-        if (!event.isError)
-          headline = `User-defined tools: showing ${(page.items as unknown[]).length} of ${page.responseItems} tools returned by Galaxy. Full definitions are available on demand.`;
+        if (!event.isError) {
+          // Lead with the server-side total: a bounded page must never read as
+          // the whole catalog, or the model stops here (galaxyproject/loom#610).
+          headline = `User-defined tools: showing ${(page.items as unknown[]).length} of ${page.sourceTotalItems} in the Galaxy account. Full definitions are available on demand.`;
+          if (page.sourceHasNext)
+            headline += ` This response holds only the first ${page.responseItems}; Galaxy has more pages — call the tool again${typeof page.sourceNextOffset === "number" ? ` with offset=${page.sourceNextOffset}` : " with a larger offset"} to continue.`;
+        }
         next =
           'Search tool names/IDs/descriptions with query, or page this catalog with pointer "/data" and nextOffset. Use a tool\'s definitionPointer to inspect its inputs, outputs or command only when needed. These are summaries of this response, not proof that Galaxy has no other pages.';
       }

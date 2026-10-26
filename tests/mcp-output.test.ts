@@ -186,9 +186,40 @@ describe("bounded MCP output recovery", () => {
     expect(page).toMatchObject({
       totalItems: 3,
       responseItems: 3,
+      sourceTotalItems: 200,
+      sourceHasNext: true,
       sourceCount: 200,
       sourcePagination: { fields: { offset: 20, limit: 3, total: 200, has_more: true } },
       nextOffset: null,
+    });
+  });
+
+  it("headlines the server-side total when Galaxy cut the page short (#610)", async () => {
+    // The live Galaxy shape: 5 of 234 tools returned, {total_items, has_next, next_offset}.
+    const payload = userTools(5);
+    payload.count = 5;
+    payload.pagination = {
+      total_items: 234,
+      returned_items: 5,
+      limit: 25,
+      offset: 0,
+      has_next: true,
+      has_previous: false,
+      next_offset: 5,
+      previous_offset: null,
+    };
+    const h = harness();
+    const recovered = await h.result(
+      event(artifact(JSON.stringify(payload)), { toolName: "mcp__galaxy__list_user_tools" }),
+    );
+    const text = recovered.content![0].type === "text" ? recovered.content![0].text : "";
+    expect(text).toMatch(/^User-defined tools: showing 5 of 234 in the Galaxy account/);
+    expect(text).toContain("Galaxy has more pages");
+    expect(text).toContain("offset=5");
+    expect(JSON.parse(text.split("\n")[1])).toMatchObject({
+      sourceTotalItems: 234,
+      sourceHasNext: true,
+      sourceNextOffset: 5,
     });
   });
 
