@@ -68,10 +68,7 @@ const upstreamParams = new Map(
 const upstreamSummary = new Map(orbitTools.map((tool) => [tool.name, tool.description]));
 
 /** Only the browser's fork says these; they wait for galaxy-ops to be upstreamed. */
-const FORK_ONLY: readonly { tool: string; param: string; in: "parameters" | "description" }[] = [
-  { tool: "get_job_details", param: "job_stderr", in: "description" },
-  { tool: "get_job_details", param: "tool_stderr", in: "description" },
-];
+const FORK_ONLY: readonly { tool: string; param: string; in: "parameters" | "description" }[] = [];
 
 function paramDifferences() {
   const out: Record<string, { browserOnly: string[]; upstreamOnly: string[] }> = {};

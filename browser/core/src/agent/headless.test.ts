@@ -192,13 +192,14 @@ describe("a turn", () => {
     expect(contentText(results(result.entries)[0].content)).toBe("all done");
   });
 
-  it("ends a run that spends its turns, as pi-durable's turn limit", async () => {
+  it("ends a run that spends its turns, on the round that reaches the cap", async () => {
     const replies = Array.from({ length: 5 }, () => ({
       calls: [{ name: "get_server_info", args: {} }],
     }));
     const { result } = await turn(replies, { max_steps: 3 });
-    expect(result).toMatchObject({ status: "unanswered", reason: "turn_limit" });
-    expect(results(result.entries)).toHaveLength(3);
+    const ends = results(result.entries);
+    expect(ends).toHaveLength(3);
+    expect((ends[2].details as { turnLimit?: boolean }).turnLimit).toBe(true);
   });
 
   it("refuses a tool the session does not grant, naming the capability", async () => {
@@ -515,12 +516,14 @@ describe("the record and the work the conversation watches", () => {
     );
     await session.turn("hi");
     await vi.waitFor(() =>
-      expect(page.content).toContain("- [ ] Galaxy job `j1` — submitted, awaiting completion"),
+      expect(page.content).toContain(
+        "- Galaxy job `j1`\n  - Status: submitted, awaiting completion",
+      ),
     );
     expect(pageContentProblem(page.content)).toBeUndefined();
   });
 
-  it("marks the step done when the work settles, and follows up in a run of its own", async () => {
+  it("records the settled state, leaving verification to the follow-up run of its own", async () => {
     const job = { state: "queued" };
     const { page, session } = await recorded(
       [{ calls: [runTool] }, { text: "ok" }, { text: "Checked." }],
@@ -531,8 +534,10 @@ describe("the record and the work the conversation watches", () => {
     job.state = "ok";
     const { settled, entries } = await session.settle(10);
     expect(settled.map((s) => s.outcome)).toEqual(["completed"]);
-    expect(page.content).toContain("- [x] Galaxy job `j1`");
-    expect(page.content).toContain("recorded automatically");
+    expect(page.content).toContain(
+      "- Galaxy job `j1`\n  - Status: finished (ok) — recorded automatically",
+    );
+    expect(page.content).not.toContain("- [x]");
     expect(asked(entries)[0].startsWith(FOLLOW_UP_MARK)).toBe(true);
     expect(answers(entries)).toEqual(["Checked."]);
   });

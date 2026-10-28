@@ -48,7 +48,7 @@ describe("the description Olit publishes about itself", () => {
     const tool = doc.tools.get_job_details as Record<string, unknown>;
     expect(tool.capability).toBe("read");
     expect(Object.keys(tool).sort()).toEqual(
-      ["capability", "runner", "signature", "params", "prose", "result"].sort(),
+      ["capability", "runner", "signature", "params", "prose"].sort(),
     );
   });
 

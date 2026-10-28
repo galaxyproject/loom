@@ -24,8 +24,8 @@ LLM_CONTEXT_WINDOW=64000 node olit/e2e/confirm-drive.cjs   # non-zero if a check
 ```
 
 `LLM_PROVIDER` skips the credentials modal and routes the agent through vite's `/llm` proxy.
-The dev page opens on `?dataset_id=` (default `__test__`, in the stub's `h1`); the history
-holding that dataset keys the conversation kept in the browser's files (OPFS).
+The dev page opens on `?dataset_id=`, or without one on the stub's current history `h1`; that history
+keys the conversation kept in the browser's files (OPFS).
 
 `LLM_KEEP_RECENT_TOKENS` must be small enough that the short transcript has something older
 than the kept tail, or the compaction checks fail. They are skipped unless

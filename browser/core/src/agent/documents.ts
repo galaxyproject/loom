@@ -1,4 +1,4 @@
-import { defineDoc } from "@earendil-works/pi-durable";
+import { defineDoc, type InboxItem } from "@earendil-works/pi-durable";
 
 /** What a conversation works in on Galaxy: its id there, history, record page, the dataset it opened on. */
 export const Binding = defineDoc<{
@@ -14,21 +14,38 @@ export const Binding = defineDoc<{
   history: "latest",
   fork: "current",
   initial: () => ({}),
+  checkpointWhen: () => false,
 });
 
 export const MAX_AUTO_FOLLOW_UPS = 3;
 
 /**
- * Whether settled Galaxy work may start a run of its own: `automatic` counts the runs it started
- * since the user last wrote; past the cap, or after a Stop, its follow-ups wait for the user.
+ * Input that waits for the user's next message: a Galaxy follow-up that settled while held, or
+ * input pi-durable had queued when the conversation was held. `id` names it once, as
+ * `watch:<kind>:<id>` or `inbox:<submission id>`, so it is delivered once.
  */
-export const FollowUps = defineDoc<{ automatic: number; paused: boolean }>({
+export type Pending = {
+  id: string;
+  content: Exclude<InboxItem, { mode: "write" }>["content"];
+  entry?: Exclude<InboxItem, { mode: "write" }>["entry"];
+};
+
+type Policy = { automatic: number; paused: boolean; pending: Pending[] };
+
+/**
+ * Whether settled Galaxy work may start a run of its own: `automatic` counts the runs it started
+ * since the user last wrote; past the cap, or after a Stop, its follow-ups wait in `pending` for
+ * the user's next message, which they run with.
+ */
+export const FollowUps = defineDoc<Policy>({
   kind: "olit.follow-ups",
-  version: 2,
+  version: 3,
   scope: "conversation",
   history: "latest",
   fork: "initial",
-  initial: () => ({ automatic: 0, paused: false }),
+  initial: () => ({ automatic: 0, paused: false, pending: [] }),
+  migrate: (value) => ({ automatic: 0, paused: false, pending: [], ...value }) as Policy,
+  checkpointWhen: () => false,
 });
 
 /** Why settled work waits for the user rather than starting a run, or undefined when it need not. */
@@ -50,4 +67,5 @@ export const Sessions = defineDoc<{
   version: 1,
   scope: "session",
   initial: () => ({ byHistory: {}, bySaved: {} }),
+  checkpointWhen: () => false,
 });

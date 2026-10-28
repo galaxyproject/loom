@@ -113,7 +113,7 @@ async function boot(options: { ui?: PiHostUi; extras?: (api: ExtensionAPI) => vo
   const reports: unknown[] = [];
   const harness = await Harness.open(
     new MemoryStorage(),
-    { models, registry, settings: { ...LOOP, maxTurns: 6 }, onReport: (e) => reports.push(e) },
+    { models, registry, settings: LOOP, onReport: (e) => reports.push(e) },
     ctx,
   );
   opened.push(harness);

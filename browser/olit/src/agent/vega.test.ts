@@ -143,10 +143,10 @@ describe("the data invariant", () => {
 });
 
 describe("which datasets can be referenced", () => {
-  it("refuses a file whose comments vega would read as data", () => {
-    const { refusal } = built(SCATTER, VCF);
-    expect(refusal).toContain("first 5 line(s) are comments");
-    expect(refusal).toContain("Galaxy tool");
+  it("charts a file with comments, leaving the rows Galaxy counts as comments out", () => {
+    const { ready, refusal } = built(SCATTER, VCF);
+    expect(refusal).toBeNull();
+    expect((ready!.transform as any[])[0].filter).toContain("!test(/^#/");
   });
 
   it("accepts a csv header row, which is not a comment galaxy cannot skip", () => {
@@ -255,6 +255,25 @@ describe("what reaches the page", () => {
     const broken = vega.compiled({ mark: "nonsense", encoding: {} });
     expect(broken.compiles).toBe(false);
     expect(broken.problems.length).toBeGreaterThan(0);
+  });
+
+  it("reports an expression the renderer cannot parse", () => {
+    const spec = (calculate: string) =>
+      built({ ...SCATTER, transform: [{ calculate, as: "p" }] }).ready!;
+    expect(vega.compiled(spec("-log(datum['col:3']) / LN10")).compiles).toBe(true);
+    expect(vega.compiled(spec("-log10(datum['col:3'])")).problems).toEqual([
+      "Unrecognized function: log10",
+    ]);
+  });
+
+  it("refuses the selection Vega-Lite 5 replaced with params", () => {
+    const zoom = { grid: { type: "interval", bind: "scales" } };
+    const { ready, refusal } = built({ ...SCATTER, selection: zoom });
+    expect(ready).toBeNull();
+    expect(refusal).toContain("`selection` at spec.selection");
+    expect(refusal).toContain("`params` with a `select`");
+    const params = [{ name: "zoom", select: "interval", bind: "scales" }];
+    expect(vega.compiled(built({ ...SCATTER, params }).ready!).compiles).toBe(true);
   });
 });
 

@@ -26,11 +26,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@earendil-works/chord": "^1.0.4",
-    "@earendil-works/pi-ai": "^1.0.4",
-    "@earendil-works/pi-durable": "https://github.com/guerler/pi/releases/download/durable-v1.0.4-olit.2/earendil-works-pi-durable-1.0.4-olit.2.tgz",
-    "@galaxyproject/galaxy-ops": "https://github.com/guerler/galaxy-mcp/releases/download/ops-v0.3.2-ops.3/galaxyproject-galaxy-ops-0.3.2-ops.3.tgz",
-    "@sqlite.org/sqlite-wasm": "^3.53.4-build2",
+    "@earendil-works/chord": "^1.4.0",
+    "@earendil-works/pi-ai": "^1.4.0",
+    "@earendil-works/pi-durable": "^1.4.0",
+    "@galaxyproject/galaxy-ops": "^0.5.0",
+    "@sqlite.org/sqlite-wasm": "^3.54.1-build1",
     "dompurify": "^3.4.1",
     "marked": "^18.0.0",
     "mermaid": "^11.16.1",

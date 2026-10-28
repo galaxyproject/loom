@@ -65,8 +65,8 @@ describe("a flavor with no session store", () => {
     expect(container.querySelector("#save-btn")).toBeNull();
     worker.say({ type: "ready", unkept: "no private file system" } as WorkerMessage);
     worker.say({ type: "recoverable", records: [] } as unknown as WorkerMessage);
-    expect(container.textContent).toContain("so it ends when the page closes.");
-    expect(container.textContent).toContain("Continue one of its records, or start new.");
+    expect(container.textContent).toContain("so this one ends when the page closes.");
+    expect(container.textContent).toContain("starts a fresh chat without its earlier transcript.");
     expect(container.textContent).not.toMatch(/\bSave\b/);
   });
 

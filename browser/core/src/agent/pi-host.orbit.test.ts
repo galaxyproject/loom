@@ -422,7 +422,7 @@ beforeAll(async () => {
     {
       models,
       registry,
-      settings: { ...LOOP, maxTurns: 6 },
+      settings: LOOP,
       onReport: (e) =>
         notes.push({ kind: "handler-error", event: "report", error: e, phase: ledger.phase }),
     },

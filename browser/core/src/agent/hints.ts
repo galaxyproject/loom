@@ -86,8 +86,8 @@ const ROLLUP_LIMIT = 20;
 const OUTCOME_NOTES: Record<string, string> = {
   failed:
     "A job in this invocation failed. Galaxy's `state` describes scheduling only. Report the " +
-    "failure rather than the state, and read the failing dataset's get_job_details before " +
-    "proposing a repair.",
+    "failure rather than the state, and read the failing job's details and logs " +
+    "(get_job_details, then get_job_logs) before proposing a repair.",
   failing:
     "A job in this invocation failed while others are still running. The run is not over, so do " +
     "not report it as finished, and do not repair it until it settles.",

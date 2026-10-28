@@ -1,21 +1,29 @@
 import type { Context as Chord } from "@earendil-works/chord";
+import type { UserMessage } from "@earendil-works/pi-ai";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
   createRegistry,
   DEFAULT_COMPACTION_POLICY,
   Harness,
+  InboxDoc,
+  SystemEntry,
   UsageDoc,
+  UserEntry,
+  type AgentEvent,
   type Conversation,
   type ConversationId,
   type Cursor,
+  type EntryDraft,
+  type EntryId,
   type EntryRecord,
   type Storage,
   type Submission,
+  type SubmissionId,
 } from "@earendil-works/pi-durable";
 
 import { artifactsOf, registerArtifactKinds, type Artifact } from "../artifacts/kinds";
 import type { AskFor } from "./destructive";
-import { Binding, FollowUps, Sessions } from "./documents";
+import { Binding, FollowUps, Sessions, type Pending } from "./documents";
 import { DEFAULT_BRAND, type Brand } from "./brand";
 import { DEFAULT_CAPABILITIES, MAX_STEPS, agentExtension } from "./extension";
 import { connectGalaxy, connectWeb, type Galaxy } from "./galaxy";
@@ -24,7 +32,14 @@ import { recordsOn, type RecordSummary } from "./notebook";
 import { GALAXY_READY, GALAXY_UNREACHABLE, systemText, type GalaxyStatus } from "./prompt";
 import { probeWindow, resolve, type LlmConfig, type Target } from "./providers";
 import { editRecord } from "./record-write";
-import { modelsOf, SCHEMA, thisBuild, usageTotals, type SessionDocument } from "./saved";
+import {
+  modelsOf,
+  SCHEMA,
+  thisBuild,
+  usageTotals,
+  type ExportedEntry,
+  type SessionDocument,
+} from "./saved";
 import { flavoredSkills } from "./skills";
 import type { Capability, Python } from "./tool";
 import { galaxyOps, agentTools, type AgentFlavor } from "./tools";
@@ -41,7 +56,6 @@ const ARTIFACT_LIMIT = 20;
 export const LOOP = {
   toolExecution: "sequential",
   followUpMode: "all",
-  promptPlacement: "lead",
 } as const;
 
 /**
@@ -61,6 +75,38 @@ export async function artifactsIn(
     cursor = page.next;
   } while (cursor && found.length < ARTIFACT_LIMIT);
   return found.slice(-ARTIFACT_LIMIT);
+}
+
+/**
+ * Events as the page draws them. A snapshot past a compaction holds only what the model is given,
+ * so it carries the conversation's whole history instead, through the snapshot's newest entry and
+ * in the order it was written, the summary where it landed.
+ */
+export async function drawnEvents(
+  conversation: Pick<Conversation, "entries">,
+  events: readonly AgentEvent[],
+  ctx: Chord,
+): Promise<AgentEvent[]> {
+  const drawn: AgentEvent[] = [];
+  for (const event of events) {
+    if (event.type !== "snapshot" || event.entries[0]?.head === undefined) {
+      drawn.push(event);
+      continue;
+    }
+    const maxEntryId = event.entries.reduce(
+      (newest, entry) => (entry.id > newest ? entry.id : newest),
+      event.entries[0].id,
+    );
+    const history: EntryRecord[] = [];
+    let cursor: Cursor | undefined;
+    do {
+      const page = await conversation.entries({ maxEntryId }, 500, cursor, ctx);
+      history.push(...page.items);
+      cursor = page.next;
+    } while (cursor !== undefined);
+    drawn.push({ ...event, entries: history.sort((a, b) => a.id - b.id) });
+  }
+  return drawn;
 }
 
 export interface RuntimeConfig extends LlmConfig {
@@ -173,6 +219,7 @@ export class Runtime {
     const extension = agentExtension({
       brand,
       galaxy,
+      maxTurns: config.max_steps || MAX_STEPS,
       clients: (signal) => ({
         galaxy: connectGalaxy({ ...galaxyOptions, signal }),
         web: connectWeb(signal),
@@ -218,7 +265,6 @@ export class Runtime {
         registry,
         settings: {
           ...LOOP,
-          maxTurns: config.max_steps || MAX_STEPS,
           get compaction() {
             const reserveTokens =
               current.config.ai_reserve_tokens ||
@@ -317,18 +363,48 @@ export class Runtime {
     return historyId ? recordsOn(this.galaxy, historyId, this.brand) : Promise.resolve([]);
   }
 
-  /** The user's own message, which lets settled work start runs again. */
+  /**
+   * The user's own message, which lets settled work start runs again. What waited for it goes
+   * first, each as the entry its input is placed as, so the run the message starts answers them
+   * together, as pi-durable's follow-up mode `all` would place them.
+   */
   async submit(conversation: Conversation, text: string): Promise<Submission> {
-    await conversation.commit(async (tx) => {
-      Object.assign(await tx.doc(FollowUps, conversation.id), { automatic: 0, paused: false });
+    const pending = await conversation.commit(async (tx) => {
+      const policy = await tx.doc(FollowUps, conversation.id);
+      Object.assign(policy, { automatic: 0, paused: false });
+      return policy.pending.map((p) => ({ ...p }));
     }, context);
+    if (pending.length) {
+      // A request id per input: after a crash before the commit below, delivering them again
+      // writes nothing twice.
+      for (const p of pending) {
+        if (await undelivered(this.harness, conversation, p)) {
+          await conversation.submit(
+            { type: "write", requestId: `held:${p.id}`, entry: placed(p) },
+            context,
+          );
+        }
+      }
+      await conversation.commit(async (tx) => {
+        const policy = await tx.doc(FollowUps, conversation.id);
+        policy.pending = policy.pending.filter((p) => !pending.some((d) => d.id === p.id));
+      }, context);
+    }
     return conversation.submit({ type: "input", content: text }, context);
   }
 
-  /** Every conversation with live work: a run, or Galaxy work it watches. */
+  /**
+   * Every conversation with live work: a run, Galaxy work it watches, or input pi-durable queued,
+   * which without a run is input an earlier build held in pi-durable's inbox.
+   */
   async active(): Promise<Conversation[]> {
-    const { tasks } = await this.harness.inspect(context);
-    const ids = new Set(tasks.map(({ record }) => record.conversationId).filter((id) => id));
+    const { tasks, submissions } = await this.harness.inspect(context);
+    const ids = new Set(
+      [
+        ...tasks.map(({ record }) => record.conversationId),
+        ...submissions.map((s) => s.conversationId),
+      ].filter((id) => id),
+    );
     const found = await Promise.all(
       [...ids].map((id) => this.harness.conversation(id as ConversationId, context)),
     );
@@ -336,13 +412,13 @@ export class Runtime {
   }
 
   hold(conversations: Conversation[]): Promise<void> {
-    return hold(conversations, this.brand);
+    return hold(this.harness, conversations, this.brand);
   }
 
   /** The conversation as a saved session: its context, and what binds it to Galaxy. */
   async export(conversation: Conversation, title = ""): Promise<SessionDocument> {
     const [exported, bound, usage] = await Promise.all([
-      conversation.export(context),
+      exportEntries(conversation),
       this.harness.snapshot(Binding, conversation.id, context),
       this.harness.snapshot(UsageDoc, conversation.id, context),
     ]);
@@ -358,13 +434,13 @@ export class Runtime {
         title,
         createdAt: bound?.startedAt ?? now,
         updatedAt: now,
-        turn: exported.entries.filter((e) => e.kind === "pi.user").length,
+        turn: exported.filter((e) => e.kind === "pi.user").length,
         ...(bound?.pageId ? { recordPageId: bound.pageId } : {}),
         ...(build ? { build } : {}),
-        models: modelsOf(exported.entries),
+        models: modelsOf(exported),
         usage: usageTotals(totals),
       },
-      entries: [...exported.entries],
+      entries: exported,
     };
   }
 
@@ -382,12 +458,19 @@ export class Runtime {
         return found;
       }
     }
-    const opened = await this.harness.importConversation(
-      { entries: document.entries },
+    const opened = await this.harness.createConversation(
       {
         ownership: { kind: "ownerless" },
         agent: { model: this.model },
         init: async (tx, id) => {
+          const ids: EntryId[] = [];
+          for (const { head, ...entry } of document.entries) {
+            const placed =
+              head === undefined
+                ? {}
+                : { head: head === "self" ? ("self" as const) : ids[head.entry] };
+            ids.push((await tx.appendEntry(id, { ...entry, ...placed })).id);
+          }
           Object.assign(await tx.doc(Binding, id), {
             sessionId: document.session.id,
             startedAt: document.session.createdAt,
@@ -435,22 +518,82 @@ export class Runtime {
  * Hold conversations nobody is looking at: each run ends and its follow-ups wait for the user's
  * next message, while its Galaxy work is still watched. Returns once the pauses are committed and
  * the aborts enqueued, without waiting for a running tool to end.
+ *
+ * Input pi-durable has queued is recorded in the conversation's own pending list in the commit that
+ * pauses it, then withdrawn through `Harness.abortSubmission()`. A boundary may place it in
+ * between; delivery then finds it placed and skips it, so it is delivered once either way.
  */
 export async function hold(
+  harness: Harness,
   conversations: Conversation[],
   brand: Brand = DEFAULT_BRAND,
 ): Promise<void> {
+  const queued: SubmissionId[][] = [];
   for (const conversation of conversations) {
-    await conversation.commit(async (tx) => {
-      (await tx.doc(FollowUps, conversation.id)).paused = true;
+    const ids = await conversation.commit(async (tx) => {
+      const policy = await tx.doc(FollowUps, conversation.id);
+      policy.paused = true;
+      // Read only: a queued input's content is kept in pi-durable's inbox and nowhere public.
+      // Queued writes stay, as an abort leaves them.
+      const inputs = (await tx.doc(InboxDoc, conversation.id)).items.filter(
+        (item) => item.mode !== "write",
+      );
+      for (const item of inputs) {
+        const id = `inbox:${item.id}`;
+        if (!policy.pending.some((p) => p.id === id)) {
+          policy.pending.push({
+            id,
+            content: item.content,
+            ...(item.entry ? { entry: item.entry } : {}),
+          });
+        }
+      }
+      return inputs.map((item) => item.id);
     }, context);
+    queued.push(ids);
   }
+  // Withdrawing schedules nothing, so when the store opens no run takes a step before the aborts.
+  await Promise.all(
+    conversations.flatMap((conversation, i) =>
+      queued[i].map((id) => harness.abortSubmission(id, context, conversation.id)),
+    ),
+  );
   // One synchronous pass: every abort mark is enqueued before scheduling can take a step.
   for (const conversation of conversations) {
     conversation
-      .abort(context, { keepQueued: true })
+      .abort(context)
       .catch((e) => console.warn(`[${brand.id}] a held conversation did not stop`, e));
   }
+}
+
+/**
+ * Whether a pending input is still the user's to deliver. Input pi-durable had queued is withdrawn
+ * first, in case a crash came before hold() withdrew it; once withdrawn nothing can place it, and
+ * input a boundary placed before then is in the transcript already.
+ */
+async function undelivered(
+  harness: Harness,
+  conversation: Conversation,
+  pending: Pending,
+): Promise<boolean> {
+  let free = true;
+  if (pending.id.startsWith("inbox:")) {
+    const id = Number(pending.id.slice("inbox:".length)) as SubmissionId;
+    await harness.abortSubmission(id, context, conversation.id);
+    const record = await (await harness.submission(id, context))?.status(context);
+    free = record === undefined || (record.status === "unanswered" && record.entry === undefined);
+  }
+  return free;
+}
+
+/** The entry a pending input is placed as: its own kind, or the user's message pi-durable writes. */
+function placed(pending: Pending): EntryDraft {
+  const message = { role: "user", content: pending.content, timestamp: Date.now() } as UserMessage;
+  return {
+    kind: pending.entry?.kind ?? UserEntry.kind,
+    ...(pending.entry?.data === undefined ? {} : { data: pending.entry.data }),
+    model: [message],
+  };
 }
 
 /** Galaxy work the conversation watches, with the state its watch last read. */
@@ -464,6 +607,36 @@ export async function watchedBy(
     if (record.kind !== WATCH_TASK || record.conversationId !== conversationId) return [];
     const state = (record.state as { checkpoint?: { state?: string } }).checkpoint?.state;
     return [{ ...(record.input as unknown as Watched), ...(state ? { state } : {}) }];
+  });
+}
+
+/**
+ * The conversation's whole history, oldest first and without system entries, as schema 5 saves it:
+ * a head marker names the entry the context starts at by its position, or the first saved one
+ * after it when that is a system entry.
+ */
+async function exportEntries(conversation: Conversation): Promise<ExportedEntry[]> {
+  const history: EntryRecord[] = [];
+  let cursor: Cursor | undefined;
+  do {
+    const page = await conversation.entries({}, 500, cursor, context);
+    history.push(...page.items);
+    cursor = page.next;
+  } while (cursor !== undefined);
+  const kept = history.filter((entry) => !SystemEntry.is(entry)).sort((a, b) => a.id - b.id);
+  const at = (id: EntryId) => kept.findIndex((entry) => entry.id >= id);
+  return kept.map((entry, position) => {
+    // A head on a system entry just before its carrier lands on the carrier itself; by position
+    // that names no earlier entry, and the document would not open again.
+    const head = entry.head === undefined ? undefined : at(entry.head);
+    return {
+      kind: entry.kind,
+      ...(entry.model === undefined ? {} : { model: [...entry.model] }),
+      ...(entry.data === undefined ? {} : { data: entry.data }),
+      ...(head === undefined
+        ? {}
+        : { head: head === position ? ("self" as const) : { entry: head } }),
+    };
   });
 }
 

@@ -1,7 +1,8 @@
 import {
   allOperations as forkOperations,
-  GALAXY_MCP_SURFACE,
+  describeOperation,
   malformedObjectIds as forkMalformedObjectIds,
+  spellParamNames,
   updatePageOp as forkUpdatePageOp,
   type AnyOperation,
   type GalaxyContext,
@@ -27,32 +28,19 @@ import { malformedObjectIds } from "../../../../shared/malformed-object-ids.js";
 const params = (tool: { parameters: Record<string, unknown> }) =>
   Object.keys((tool.parameters as { properties?: object }).properties ?? {}).sort();
 
-/** Tools Olit runs on the browser's in-memory filesystem, which galaxy-mcp runs on disk. */
-const LOCAL = new Set(["download_dataset", "upload_file"]);
-
-describe("the Galaxy tool surface against galaxy-mcp", () => {
-  // Olit's own tools keep galaxy-mcp's names and parameters, so a model told about galaxy-mcp's
-  // tools can call them: a parameter it documents and Olit drops is one the model cannot pass.
-  it("takes galaxy-mcp's parameters for every tool Olit runs itself", () => {
-    for (const tool of galaxyTools()) {
-      if (tool.name in GALAXY_MCP_SURFACE && !LOCAL.has(tool.name)) {
-        expect(params(tool), tool.name).toEqual(
-          Object.keys(GALAXY_MCP_SURFACE[tool.name]!.parameters).sort(),
-        );
-      }
-    }
-  });
-
-  it("describes each galaxy-ops operation as galaxy-mcp advertises it, parameters included", () => {
+describe("the Galaxy tool surface against galaxy-ops", () => {
+  it("describes each galaxy-ops operation in galaxy-ops' words, as Orbit does, parameters included", () => {
+    const forks = new Map(
+      ([...forkOperations] as unknown as AnyOperation[]).map((op) => [op.name, op]),
+    );
     for (const tool of opsTools()) {
-      const advertised = GALAXY_MCP_SURFACE[tool.name]!;
-      expect(tool.description, tool.name).toBe(advertised.description);
-      const properties = (
-        tool.parameters as { properties: Record<string, { description?: string }> }
-      ).properties;
-      for (const [name, said] of Object.entries(advertised.parameters)) {
-        if (said) expect(properties[name]?.description, `${tool.name}.${name}`).toBe(said);
-      }
+      const op = forks.get(tool.name)!;
+      expect(tool.description, tool.name).toBe(
+        spellParamNames(describeOperation(op), op.input, snake),
+      );
+      expect(tool.parameters, tool.name).toMatchObject({
+        properties: forkParameters(op).properties,
+      });
     }
   });
 
@@ -61,10 +49,11 @@ describe("the Galaxy tool surface against galaxy-mcp", () => {
     expect(names.filter((name, i) => names.indexOf(name) !== i)).toEqual([]);
   });
 
-  it("offers every galaxy-mcp tool except the connection, which Olit's session already has", () => {
+  it("offers every galaxy-ops operation", () => {
     const offered = new Set([...opsTools(), ...galaxyTools()].map((t) => t.name));
-    const missing = Object.keys(GALAXY_MCP_SURFACE).filter((name) => !offered.has(name));
-    expect(missing).toEqual(["connect"]);
+    expect([...forkOperations].map((op) => op.name).filter((name) => !offered.has(name))).toEqual(
+      [],
+    );
   });
 
   it("keys every rule Olit adds to an operation on a name the tool surface still offers", () => {
@@ -145,20 +134,36 @@ describe("Orbit's Galaxy tools against the browser's galaxy-ops fork", () => {
   // update_page is compared against Orbit's bridge below. get_history_contents' order is an enum
   // with its own wording in the fork and a plain string in root's galaxy-ops.
   const COMPARED_ELSEWHERE = new Set(["update_page", "get_history_contents"]);
+  // galaxy-ops 0.5.0-ops.0 runs ahead of root's: operations root does not have yet, and ones whose
+  // parameters the fork has extended. Each test below fails once root catches up.
+  const FORK_ONLY = ["get_job_logs", "list_jobs", "get_user_tool"];
+  const FORK_EXTENDED = [
+    "get_invocations",
+    "get_job_details",
+    "get_tool_details",
+    "get_workflow_input_template",
+  ];
+  const AHEAD = new Set([...FORK_ONLY, ...FORK_EXTENDED]);
 
-  it("covers the fork's 42 operations, every one of which root has", () => {
-    expect(forks).toHaveLength(42);
-    expect(forks.filter((op) => !roots.has(op.name)).map((op) => op.name)).toEqual([]);
+  it("covers the fork's 45 operations, which root has but for the fork's newest", () => {
+    expect(forks).toHaveLength(45);
+    expect(forks.filter((op) => !roots.has(op.name)).map((op) => op.name)).toEqual(FORK_ONLY);
   });
 
-  it.each(forks.filter((op) => !COMPARED_ELSEWHERE.has(op.name)).map((op) => [op.name, op]))(
-    "%s: Orbit renders the parameters the fork renders",
-    (name, op) => {
-      expect(renderOperation(roots.get(name as string)!).parameters).toEqual(
-        forkParameters(op as AnyOperation),
-      );
-    },
-  );
+  it.each(FORK_EXTENDED)("%s: the fork renders parameters root does not have yet", (name) => {
+    const fork = forks.find((op) => op.name === name)!;
+    expect(renderOperation(roots.get(name)!).parameters).not.toEqual(forkParameters(fork));
+  });
+
+  it.each(
+    forks
+      .filter((op) => !COMPARED_ELSEWHERE.has(op.name) && !AHEAD.has(op.name))
+      .map((op) => [op.name, op]),
+  )("%s: Orbit renders the parameters the fork renders", (name, op) => {
+    expect(renderOperation(roots.get(name as string)!).parameters).toEqual(
+      forkParameters(op as AnyOperation),
+    );
+  });
 
   it("get_history_contents differs from the fork only in order's schema", () => {
     const root = renderOperation(roots.get("get_history_contents")!).parameters as JsonSchema;
@@ -182,7 +187,15 @@ describe("Orbit's Galaxy tools against the browser's galaxy-ops fork", () => {
     const fork = forkParameters(forkUpdatePageOp as unknown as AnyOperation);
     expect(Object.keys(bridge.properties)).toEqual(Object.keys(fork.properties));
     expect(bridge.required).toEqual(fork.required);
-    expect(shapeOf(bridge)).toEqual(shapeOf(fork));
+    const { section_heading: bridgeHeading, ...bridgeRest } = bridge.properties;
+    const { section_heading: forkHeading, ...forkRest } = fork.properties;
+    expect(shapeOf(bridgeRest)).toEqual(shapeOf(forkRest));
+    // The fork takes "" for the text above the first heading; Orbit's bridge does not yet. When
+    // it does this fails, and section_heading joins the rest.
+    expect(shapeOf(forkHeading)).toEqual({ type: ["string", "null"] });
+    expect(shapeOf(bridgeHeading)).toEqual({
+      anyOf: [{ type: "string", minLength: 1 }, { type: "null" }],
+    });
   });
 
   const SECTION_CASES: [string, string, string, string][] = [

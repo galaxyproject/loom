@@ -54,12 +54,15 @@
   "browserOnly": [
     "ena_runs",
     "finish",
+    "get_job_logs",
+    "get_user_tool",
     "get_visualization",
     "get_visualization_details",
     "get_visualization_options",
     "gtn_fetch",
     "gtn_search",
     "lineage_report",
+    "list_jobs",
     "list_visualizations",
     "notebook_resume",
     "organize_datasets",
@@ -98,16 +101,23 @@
   ],
   "knownDifferences": {
     "parameters": {
-      "get_job_details": { "browserOnly": [], "upstreamOnly": ["job_id"] },
+      "get_invocations": {
+        "browserOnly": ["offset", "sort_by", "sort_desc", "include_terminal"],
+        "upstreamOnly": []
+      },
+      "get_tool_details": { "browserOnly": ["tool_version"], "upstreamOnly": [] },
+      "get_job_logs": { "browserOnly": ["log_bytes"], "upstreamOnly": [] },
+      "list_jobs": {
+        "browserOnly": ["state", "date_range_min", "date_range_max", "order_by", "view"],
+        "upstreamOnly": []
+      },
+      "get_workflow_input_template": { "browserOnly": ["version"], "upstreamOnly": [] },
       "download_dataset": {
         "browserOnly": [],
         "upstreamOnly": ["file_path", "use_default_filename", "require_ok_state"]
       },
       "upload_file": { "browserOnly": ["file_name", "file_type", "dbkey"], "upstreamOnly": [] }
     },
-    "forkOnly": [
-      { "tool": "get_job_details", "param": "job_stderr", "in": "description" },
-      { "tool": "get_job_details", "param": "tool_stderr", "in": "description" }
-    ]
+    "forkOnly": []
   }
 }

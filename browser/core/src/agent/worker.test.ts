@@ -28,6 +28,9 @@ const deleteHistory = () => toolCall("update_history", { history_id: "h1", delet
 const asked: string[] = [];
 /** The model's next answers, in turn; then it just says it is done. */
 const answers: Array<() => Response> = [];
+/** Job j1's state, once Galaxy is let to say it. */
+let settleJob: (state: string) => void = () => {};
+const job = new Promise<string>((resolve) => (settleJob = resolve));
 /** A local server that says nothing about its window until released. */
 let releaseProps: () => void = () => {};
 
@@ -44,6 +47,10 @@ beforeAll(async () => {
       return (answers.shift() ?? (() => stream({ content: "done" }, "stop")))();
     }
     if (request.url.endsWith("api/users/current")) return json({ id: "u1" });
+    if (request.method === "POST" && request.url.endsWith("api/tools")) {
+      return json({ jobs: [{ id: "j1", state: "queued" }] });
+    }
+    if (request.url.endsWith("api/jobs/j1")) return job.then((state) => json({ state }));
     if (request.url.endsWith("api/version")) return json({ version_major: "26.1" });
     if (request.url.includes("api/pages")) return json([]);
     return json({});
@@ -110,6 +117,35 @@ describe("the worker's order", () => {
     const confirmation = posted.find((m) => m.type === "confirm") as { id: number };
     expect(posted).toContainEqual({ type: "withdrawn", id: confirmation.id });
     releaseProps();
+  });
+});
+
+describe("follow-ups held after a Stop", () => {
+  it("says results are waiting once held work settles, and stops saying so once the user writes", async () => {
+    answers.push(() => toolCall("run_tool", { history_id: "h1", tool_id: "cat1", inputs: {} }));
+    answers.push(() => stream({ content: "Submitted." }, "stop"));
+    const before = asked.length;
+    send({ type: "submit", text: "run cat" });
+    await until(() => asked.length === before + 2);
+    await until(() =>
+      posted.some((m) => m.type === "events" && m.events.some((e) => e.type === "run_end")),
+    );
+    send({ type: "stop" });
+    const from = posted.length;
+    settleJob("ok");
+    await until(() => posted.slice(from).some((m) => m.type === "settled"));
+    await until(() => posted.slice(from).some((m) => m.type === "held" && m.held === "paused"));
+    expect(asked).toHaveLength(before + 2);
+
+    answers.push(() => stream({ content: "Checked." }, "stop"));
+    send({ type: "submit", text: "continue" });
+    await until(() => asked.length === before + 3);
+    const users = (JSON.parse(asked.at(-1)!).messages as Array<{ role: string; content: unknown }>)
+      .filter((m) => m.role === "user")
+      .map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)));
+    expect(users.slice(-2)[0]).toContain("automatic Galaxy follow-up");
+    expect(users.at(-1)).toBe("continue");
+    await until(() => posted.slice(from).some((m) => m.type === "held" && m.held === undefined));
   });
 });
 
