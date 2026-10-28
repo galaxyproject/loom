@@ -1,3 +1,4 @@
+import { currentGalaxyConnection } from "./galaxy-connections.js";
 /** Keep a model from spending a turn repeatedly reading an unfinished dataset. */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { galaxyCall } from "./mcp-recovery";
@@ -75,7 +76,9 @@ export function registerGalaxyPollGuard(pi: ExtensionAPI): void {
 
   pi.on("tool_call", async (event, ctx) => {
     const call = galaxyCall(event.toolName, event.input);
-    const key = call && resource(call.name, call.args);
+    const resourceKey = call && resource(call.name, call.args);
+    const c = currentGalaxyConnection();
+    const key = resourceKey && (c ? `${c.id}:${c.accountId ?? ""}:${resourceKey}` : resourceKey);
     if (!key) return;
     const observation = pending.get(key);
     if (!observation) return;
@@ -107,7 +110,9 @@ export function registerGalaxyPollGuard(pi: ExtensionAPI): void {
 
   pi.on("tool_result", (event) => {
     const call = galaxyCall(event.toolName, event.input);
-    const key = call && resource(call.name, call.args);
+    const resourceKey = call && resource(call.name, call.args);
+    const c = currentGalaxyConnection();
+    const key = resourceKey && (c ? `${c.id}:${c.accountId ?? ""}:${resourceKey}` : resourceKey);
     if (!key || event.isError || object(event.details)?.error) return;
     for (const item of event.content) {
       if (item.type !== "text") continue;

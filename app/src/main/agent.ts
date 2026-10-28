@@ -406,17 +406,31 @@ export class AgentManager {
       // key rotation in the settings UI takes effect on restart without
       // needing to plumb explicit invalidation.
       this.process = spawn(NODE_BIN, args, {
-        stdio: ["pipe", "pipe", "pipe"],
+        stdio: ["pipe", "pipe", "pipe", "pipe"],
         cwd: this.cwd,
         env: {
           ...buildBrainEnv(fresh),
           ...buildSecretEnv(),
+          LOOM_GALAXY_KEYS_FD: "3",
         },
       });
     } catch (err) {
       log("spawn failed:", err);
       this.setStatus("error", `Failed to spawn agent: ${err}`);
       return;
+    }
+
+    const credentialPipe = this.process.stdio?.at(3) as import("node:stream").Writable | undefined;
+    if (credentialPipe) {
+      const cfg = loadConfig();
+      const keys = Object.fromEntries(
+        Object.keys(cfg.galaxy?.profiles ?? {}).flatMap((name) => {
+          const key = resolveGalaxyApiKey({ ...cfg, galaxy: { ...cfg.galaxy!, active: name } });
+          return key ? [[name, key]] : [];
+        }),
+      );
+      credentialPipe.on("error", () => {});
+      credentialPipe.end(JSON.stringify(keys));
     }
 
     log("agent spawned, pid:", this.process.pid);

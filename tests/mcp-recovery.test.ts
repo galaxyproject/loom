@@ -1,3 +1,4 @@
+import { withGalaxyConnection } from "../extensions/loom/galaxy-connections";
 import { describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { galaxyCall, registerMcpRecovery } from "../extensions/loom/mcp-recovery";
@@ -169,5 +170,35 @@ describe("Galaxy MCP recovery", () => {
     // Loom's own galaxy_* tools are not galaxy-mcp calls.
     expect(h.result("galaxy_job_record")).toBeUndefined();
     expect(galaxyCall("galaxy_job_record", {})).toBeUndefined();
+  });
+});
+
+describe("per-origin retry budgets", () => {
+  it("does not block another Galaxy instance after a timeout on the same remote ID", () => {
+    const h = harness();
+    const us = {
+      id: "us",
+      name: "us",
+      url: "https://us.example",
+      apiKey: "us-key",
+      mcpServer: "galaxy",
+      accountId: "user-us",
+    };
+    const eu = {
+      id: "eu",
+      name: "eu",
+      url: "https://eu.example",
+      apiKey: "eu-key",
+      mcpServer: "galaxy_eu",
+      accountId: "user-eu",
+    };
+    const args = { dataset_id: "identical" };
+    withGalaxyConnection(us, () => h.result("mcp__galaxy__get_dataset_details", args));
+    expect(
+      withGalaxyConnection(us, () => h.check("mcp__galaxy__get_dataset_details", args)),
+    ).toMatchObject({ block: true });
+    expect(
+      withGalaxyConnection(eu, () => h.check("mcp__galaxy__get_dataset_details", args)),
+    ).toBeUndefined();
   });
 });

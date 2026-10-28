@@ -1,3 +1,10 @@
+import {
+  currentGalaxyConnection,
+  listGalaxyConnections,
+  matchesGalaxyOrigin,
+  type GalaxyOrigin,
+} from "./galaxy-connections.js";
+import { onRecordedGalaxy } from "./galaxy-api.js";
 /**
  * The evaluation writer: asks Galaxy about every registry attempt that has a
  * submission, evaluates it (`registry-evaluation.ts`), and writes the result
@@ -83,6 +90,7 @@ export interface EvaluatorDeps {
   registry: () => SessionRegistry | null;
   /** Whether there is a Galaxy to ask: credentials, or the Tier-1 fixture. */
   connected: () => boolean;
+  withinOrigin: <T>(origin: GalaxyOrigin, work: () => Promise<T>) => Promise<T>;
 }
 
 const defaultDeps: EvaluatorDeps = {
@@ -93,6 +101,7 @@ const defaultDeps: EvaluatorDeps = {
   now: () => Date.now(),
   registry: getSessionRegistry,
   connected: () => !!getGalaxyConfig() || isGalaxyFetchOverridden(),
+  withinOrigin: onRecordedGalaxy,
 };
 
 /** Galaxy calls per pass are bounded by this many attempts. */
@@ -207,7 +216,13 @@ export async function gatherRunFacts(
   analysisDir: string,
 ): Promise<RunFacts | null> {
   const source = isGalaxyFetchOverridden() ? "fixture" : "galaxy";
-  const records = await deps.records(analysisDir).catch(() => [] as AttemptRecord[]);
+  const records = (await deps.records(analysisDir).catch(() => [] as AttemptRecord[])).filter((r) =>
+    matchesGalaxyOrigin({
+      galaxyServerUrl: r.galaxy_server_url,
+      connectionId: r.connection_id,
+      accountId: r.account_id,
+    }),
+  );
   try {
     if (submission.invocation_id) {
       const id = submission.invocation_id;
@@ -316,7 +331,7 @@ export interface EvaluationPass {
   skipped?: string;
 }
 
-let running: Promise<EvaluationPass> | null = null;
+const running = new Map<string, Promise<EvaluationPass>>();
 
 /**
  * Evaluate this session's registry attempts that have a submission. One pass
@@ -326,11 +341,12 @@ export function evaluateRegistryAttempts(
   trigger: EvaluationTrigger,
   deps: Partial<EvaluatorDeps> = {},
 ): Promise<EvaluationPass> {
-  if (running) return running;
-  running = runPass(trigger, { ...defaultDeps, ...deps }).finally(() => {
-    running = null;
-  });
-  return running;
+  const key = currentGalaxyConnection()?.id ?? "default";
+  const pending = running.get(key);
+  if (pending) return pending;
+  const pass = runPass(trigger, { ...defaultDeps, ...deps }).finally(() => running.delete(key));
+  running.set(key, pass);
+  return pass;
 }
 
 async function runPass(trigger: EvaluationTrigger, deps: EvaluatorDeps): Promise<EvaluationPass> {
@@ -343,11 +359,34 @@ async function runPass(trigger: EvaluationTrigger, deps: EvaluatorDeps): Promise
   const everything = trigger !== "tick" && trigger !== "enrich";
   const due = Object.values(view.attempts)
     .filter((a) => a.submission && (a.submission.invocation_id || a.submission.job_id))
+    .filter((a) =>
+      matchesGalaxyOrigin({
+        galaxyServerUrl: a.server_url,
+        connectionId: a.connection_id,
+        accountId: a.account_id,
+      }),
+    )
     .filter((a) => everything || unsettled(a))
     .slice(0, MAX_ATTEMPTS_PER_PASS);
 
   for (const attempt of due) {
-    const facts = await gatherRunFacts(deps, attempt.submission!, session.analysisDir);
+    let facts: RunFacts | null = null;
+    try {
+      const work = () => gatherRunFacts(deps, attempt.submission!, session.analysisDir);
+      facts =
+        !attempt.connection_id && listGalaxyConnections().length === 0
+          ? await work()
+          : await deps.withinOrigin(
+              {
+                galaxyServerUrl: attempt.server_url,
+                connectionId: attempt.connection_id,
+                accountId: attempt.account_id,
+              },
+              work,
+            );
+    } catch {
+      /* Keep unavailable origins unverified; never substitute the default. */
+    }
     if (!facts) {
       out.unreachable.push(attempt.attempt_id);
       continue;
@@ -478,8 +517,16 @@ export async function renderRegistryProjection(
         if (!fields) continue;
         const sub = a.submission!;
         const located = sub.invocation_id
-          ? locateInvocationBlock(next, sub.invocation_id)
-          : locateJobBlock(next, sub.job_id!);
+          ? locateInvocationBlock(next, sub.invocation_id, {
+              galaxyServerUrl: a.server_url,
+              connectionId: a.connection_id,
+              accountId: a.account_id,
+            })
+          : locateJobBlock(next, sub.job_id!, {
+              galaxyServerUrl: a.server_url,
+              connectionId: a.connection_id,
+              accountId: a.account_id,
+            });
         const current = located.record;
         if (!current) continue;
         const rendered = sub.invocation_id
@@ -515,5 +562,5 @@ export async function renderRegistryProjection(
 
 /** Test reset. */
 export function resetRegistryEvaluator(): void {
-  running = null;
+  running.clear();
 }

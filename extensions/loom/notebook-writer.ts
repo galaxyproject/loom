@@ -1,3 +1,4 @@
+import { matchesGalaxyOrigin } from "./galaxy-connections.js";
 /**
  * Notebook file I/O.
  *
@@ -380,9 +381,12 @@ export function findInvocationBlocks(content: string): InvocationYaml[] {
 export function locateInvocationBlock(
   content: string,
   invocationId: string,
+  origin?: import("./galaxy-connections.js").GalaxyOrigin,
 ): { present: boolean; record: InvocationYaml | null } {
   const lines = content.split("\n");
-  const range = findInvocationBlockRanges(content).find((b) => b.invocationId === invocationId);
+  const range = findInvocationBlockRanges(content).find(
+    (b) => b.invocationId === invocationId && matchesGalaxyOrigin(b, origin),
+  );
   if (!range) return { present: false, record: null };
   return { present: true, record: parseInvocationBlock(lines.slice(range.start + 1, range.end)) };
 }
@@ -413,7 +417,14 @@ export function upsertInvocationBlock(
   // More than one can match when an older writer used the other fence prefix;
   // the first is rewritten and foldable duplicates collapse into it.
   const matching = blocks.filter(
-    (b) => b.invocationId === inv.invocationId && isUnambiguousRange(lines, b.start),
+    (b) =>
+      b.invocationId === inv.invocationId &&
+      matchesGalaxyOrigin(b, {
+        ...inv,
+        connectionId: harness?.connectionId ?? inv.connectionId,
+        accountId: harness?.accountId ?? inv.accountId,
+      }) &&
+      isUnambiguousRange(lines, b.start),
   );
   const existing = matching[0];
   // Provenance comes off the block this write is about to replace, read from
@@ -495,6 +506,9 @@ export function appendBlock(content: string, newBlock: string[]): string {
  * edit the agent made in the meantime — #391 again, one block down.
  */
 export interface InvocationPollUpdate {
+  galaxyServerUrl?: string;
+  connectionId?: string;
+  accountId?: string;
   invocationId: string;
   totalSteps: number;
   completedSteps: number;
@@ -552,7 +566,16 @@ export function applyInvocationUpdates(
   const applied: string[] = [];
   const transitioned: string[] = [];
   for (const update of updates) {
-    const current = findInvocationBlocks(next).find((b) => b.invocationId === update.invocationId);
+    const current = findInvocationBlocks(next).find(
+      (b) =>
+        b.invocationId === update.invocationId &&
+        matchesGalaxyOrigin(
+          b,
+          update.galaxyServerUrl
+            ? { ...update, galaxyServerUrl: update.galaxyServerUrl }
+            : undefined,
+        ),
+    );
     if (!current) continue;
     if (isNewerPoll(current.lastPolledAt, update.lastPolledAt)) continue;
     if (update.transition?.status === "in_progress" && current.status !== "in_progress") continue;
@@ -608,6 +631,9 @@ function isNewerPoll(onDisk: string | undefined, ours: string | undefined): bool
 
 interface InvocationBlockRange {
   invocationId: string;
+  galaxyServerUrl: string;
+  connectionId?: string;
+  accountId?: string;
   start: number;
   end: number;
 }
@@ -621,7 +647,16 @@ function findInvocationBlockRanges(content: string): InvocationBlockRange[] {
       const m = lines[i].match(/^invocation_id:\s*(.+)$/);
       if (m) invocationId = m[1].trim();
     }
-    if (invocationId) result.push({ invocationId, start: range.start, end: range.end });
+    if (invocationId) {
+      const fields = rawInvocationFields(lines.slice(range.start + 1, range.end));
+      result.push({
+        invocationId,
+        start: range.start,
+        end: range.end,
+        galaxyServerUrl: fields.galaxy_server_url ?? "",
+        ...parseHarnessFields((key) => fields[key]),
+      });
+    }
   }
   return result;
 }

@@ -1,3 +1,5 @@
+import { registerGalaxyRerouting } from "./galaxy-reroute-command.js";
+import { scopeGalaxyExtension } from "./galaxy-scope.js";
 /**
  * Loom — Galaxy co-scientist extension for Pi.dev.
  *
@@ -67,7 +69,7 @@ import {
 import { GALAXY_UVX_MISSING_NUDGE, isGalaxyLauncherError } from "./galaxy-launcher-error";
 import * as fs from "fs";
 import {
-  getState,
+  setGalaxyConnection,
   getNotebookPath,
   getNotebookWidgetMode,
   setNotebookWidgetMode,
@@ -89,6 +91,7 @@ function galaxyToolLabel(toolName: string | undefined): string | undefined {
 }
 
 export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
+  pi = scopeGalaxyExtension(pi);
   // Before anything registers a command, so every one of them counts as user
   // input for the automatic follow-up cap.
   registerCommandsAsUserInput(pi);
@@ -188,6 +191,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   // ── end capture, part two ─────────────────────────────────────────────────
 
   registerPlanTools(pi);
+  registerGalaxyRerouting(pi);
   registerGalaxyUploadTool(pi);
   registerNotebookSyncTools(pi);
   registerSyncCommand(pi);
@@ -547,8 +551,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
         const resultText =
           typeof event.result === "string" ? event.result : JSON.stringify(event.result);
         if (resultText.includes('"success": true') || resultText.includes("success")) {
-          const state = getState();
-          state.galaxyConnected = true;
+          setGalaxyConnection(true);
         }
       } catch {
         /* ignore */
@@ -561,8 +564,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
           typeof event.result === "string" ? event.result : JSON.stringify(event.result);
         const match = resultText.match(/"id":\s*"([^"]+)"/);
         if (match) {
-          const state = getState();
-          state.currentHistoryId = match[1];
+          setGalaxyConnection(true, match[1]);
         }
       } catch {
         /* ignore */
@@ -609,8 +611,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
         const firstContent = event.content?.[0];
         const resultText = firstContent && "text" in firstContent ? firstContent.text : undefined;
         if (resultText && resultText.includes('"success": true')) {
-          const state = getState();
-          state.galaxyConnected = true;
+          setGalaxyConnection(true);
         }
       } catch {
         /* ignore */
@@ -624,8 +625,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
         if (resultText) {
           const match = resultText.match(/"id":\s*"([^"]+)"/);
           if (match) {
-            const state = getState();
-            state.currentHistoryId = match[1];
+            setGalaxyConnection(true, match[1]);
           }
         }
       } catch {

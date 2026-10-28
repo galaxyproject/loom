@@ -17,6 +17,7 @@ export function computeHandoffEligible(
   attempt: Attempt,
   exceptions: readonly Exception[] = [],
 ): boolean {
+  if (attempt.superseded_by) return false;
   const ev = attempt.evaluation;
   const pv = attempt.provenance;
   if (!ev || !pv) return false;

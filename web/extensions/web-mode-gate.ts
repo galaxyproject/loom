@@ -1,3 +1,4 @@
+import { galaxyMcpToolName } from "../../shared/galaxy-mcp-tools.js";
 /**
  * Web-mode gate -- Pi extension loaded by web/server.ts when LOOM_MODE=remote.
  *
@@ -83,6 +84,7 @@ const DENIED_EXACT = new Set(["galaxy_upload_local_file"]);
  * for, and the exact galaxy-mcp pin in the GxIT image, come with enabling it.
  */
 export const TRUSTED_RECORD_ALLOWED: ReadonlySet<string> = new Set([
+  "galaxy_connections",
   // Loom-native, reviewed with the registry.
   "loom_propose",
   "loom_submit",
@@ -247,6 +249,8 @@ export function shouldBlockTool(
   cwd: string,
   profile: "default" | "trustedRecord" = "default",
 ): BlockDecision | undefined {
+  const galaxyTool = galaxyMcpToolName(toolName);
+  if (galaxyTool) toolName = `mcp__galaxy__${galaxyTool}`;
   // pi's file tools render with `file_path ?? path`; check both so the jail
   // can't be slipped by emitting file_path instead of path. With the brain's
   // local-exec guard disabled in remote, this gate is the only enforcement.

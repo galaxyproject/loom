@@ -1,3 +1,4 @@
+import { currentGalaxyConnection, matchesGalaxyOrigin } from "./galaxy-connections.js";
 /**
  * Enrichment: fill in what each recorded run actually was, from Galaxy.
  *
@@ -493,12 +494,14 @@ export function enrichmentCandidates(content: string, serverUrl: string): Candid
   const out: Candidate[] = [];
   for (const block of findInvocationBlocks(content)) {
     if (block.enrichment !== "pending" || !isTerminalBlock(block)) continue;
-    if (!sameGalaxyServer(block.galaxyServerUrl, serverUrl)) continue;
+    if (!sameGalaxyServer(block.galaxyServerUrl, serverUrl) || !matchesGalaxyOrigin(block))
+      continue;
     out.push({ kind: "invocation", id: block.invocationId, block });
   }
   for (const block of findJobBlocks(content)) {
     if (block.enrichment !== "pending" || !isTerminalBlock(block)) continue;
-    if (!sameGalaxyServer(block.galaxyServerUrl, serverUrl)) continue;
+    if (!sameGalaxyServer(block.galaxyServerUrl, serverUrl) || !matchesGalaxyOrigin(block))
+      continue;
     out.push({ kind: "job", id: block.jobId, block });
   }
   return out;
@@ -835,7 +838,7 @@ export interface EnrichmentPassResult {
   skipped: number;
 }
 
-let inFlightPass: Promise<EnrichmentPassResult> | null = null;
+const inFlightPasses = new Map<string, Promise<EnrichmentPassResult>>();
 
 /**
  * Enrich every pending block that is due. One pass at a time; a second caller
@@ -845,11 +848,12 @@ let inFlightPass: Promise<EnrichmentPassResult> | null = null;
 export function runEnrichmentPass(
   options: { force?: boolean; deps?: Partial<EnrichDeps> } = {},
 ): Promise<EnrichmentPassResult> {
-  if (inFlightPass) return inFlightPass;
-  inFlightPass = enrichOnce(options).finally(() => {
-    inFlightPass = null;
-  });
-  return inFlightPass;
+  const key = currentGalaxyConnection()?.id ?? "default";
+  const existing = inFlightPasses.get(key);
+  if (existing) return existing;
+  const work = enrichOnce(options).finally(() => inFlightPasses.delete(key));
+  inFlightPasses.set(key, work);
+  return work;
 }
 
 async function enrichOnce(options: {
@@ -871,7 +875,7 @@ async function enrichOnce(options: {
   }
 
   for (const candidate of enrichmentCandidates(content, server)) {
-    const key = `${candidate.kind}:${candidate.id}`;
+    const key = `${currentGalaxyConnection()?.id ?? server}:${candidate.kind}:${candidate.id}`;
     if (exhausted.has(key)) {
       result.skipped++;
       continue;
@@ -1008,7 +1012,9 @@ async function enrichOnce(options: {
     try {
       attemptRecord = await attemptRecordFor(dir, candidate, content);
       counted = attemptRecord;
-      attempts = (attemptRecord.enrichment.attempts_by_block?.[key] ?? 0) + 1;
+      attempts =
+        (attemptRecord.enrichment.attempts_by_block?.[`${candidate.kind}:${candidate.id}`] ?? 0) +
+        1;
     } catch (err) {
       if (err instanceof ProvenanceRefusal) {
         await giveUp("attribution", err.message);

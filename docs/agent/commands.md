@@ -142,3 +142,16 @@ Two rules, and they are not negotiable:
 `/dashboard` belongs to the user, not to you. It is deterministic, takes no
 model turn, and is allowed to discard panels the tools may not -- including
 `/dashboard undo`, which puts back whatever the last change replaced.
+
+## Multiple Galaxy instances
+
+`galaxy_connections` lists named profiles, verified accounts and MCP namespaces.
+Use the matching namespace or `server_id` on native `galaxy_*` tools. Preserve
+recorded connection/account identity on every resource reference.
+
+Human-only `/reroute {"kind":"job|invocation","id":"actual-id","source":"profile"}`
+preflights an existing notebook run, asks for a destination and source-cancellation
+policy, then asks for approval before transferring/submitting. `/reroute status ID`
+shows its durable phase; `/reroute cancel ID` stops staging. A lost receipt uses
+`/reroute reconcile ID DESTINATION_RUN_ID`, which verifies attribution and never
+resubmits. [Details and limitations](../multiple-galaxy-instances.md).

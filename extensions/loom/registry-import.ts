@@ -52,8 +52,13 @@ function downgradeException(x: Exception): Exception {
  * Downgrade `imported` for use by a session talking to `serverUrl`. The caller
  * owns revision, writer token and signature; this only touches content.
  */
-export function applyImportRule(imported: Registry, serverUrl: string): ImportResult {
+export function applyImportRule(
+  imported: Registry,
+  serverUrl: string,
+  serverUrls: readonly string[] = [serverUrl],
+): ImportResult {
   const ours = normalizeServerUrl(serverUrl);
+  const allowed = new Set(serverUrls.map(normalizeServerUrl));
   const attempts: Record<AttemptId, Attempt> = {};
   const quarantine: Record<AttemptId, Attempt> = {};
   const quarantined: AttemptId[] = [];
@@ -62,8 +67,9 @@ export function applyImportRule(imported: Registry, serverUrl: string): ImportRe
     const downgraded = downgradeAttempt(a);
     const specServer = a.approval?.spec_snapshot.server_url;
     const sameServer =
-      normalizeServerUrl(a.server_url) === ours &&
-      (specServer === undefined || normalizeServerUrl(specServer) === ours);
+      allowed.has(normalizeServerUrl(a.server_url)) &&
+      (specServer === undefined ||
+        normalizeServerUrl(specServer) === normalizeServerUrl(a.server_url));
     if (sameServer) {
       attempts[a.attempt_id] = downgraded;
     } else {

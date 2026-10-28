@@ -8,6 +8,11 @@
 
 import type { ExtensionAPI, McpServerConfig } from "@earendil-works/pi-coding-agent";
 import { GALAXY_MCP_SPEC } from "../../shared/galaxy-mcp-spec.js";
+import path from "node:path";
+import { writeEnv } from "../../shared/orbit-env.js";
+import { fileURLToPath } from "node:url";
+import { listGalaxyConnections } from "./galaxy-connections.js";
+import { startGalaxyCredentialBroker } from "./galaxy-credential-broker.js";
 
 export function loomMcpServers(
   env: NodeJS.ProcessEnv = process.env,
@@ -47,7 +52,36 @@ export function loomMcpServers(
 }
 
 export function registerLoomMcpServers(pi: ExtensionAPI): void {
-  for (const [name, config] of Object.entries(loomMcpServers())) {
+  const servers = loomMcpServers();
+  const connections = listGalaxyConnections();
+  if (connections.length > 1 || connections.some((c) => c.mcpServer !== "galaxy")) {
+    delete servers.galaxy;
+    const broker = startGalaxyCredentialBroker(connections);
+    writeEnv(process.env, "GALAXY_MCP_SOCKET", broker.socket);
+    pi.on("session_shutdown", () => broker.close());
+    for (const connection of connections) {
+      const variable = `ORBIT_GALAXY_MCP_${connection.id}_TOKEN`;
+      writeEnv(process.env, `GALAXY_MCP_${connection.id}_TOKEN`, broker.tokens[connection.id]);
+      servers[connection.mcpServer] = {
+        command: process.execPath,
+        args: [
+          path.resolve(
+            path.dirname(fileURLToPath(import.meta.url)),
+            "../../bin/galaxy-mcp-child.mjs",
+          ),
+          GALAXY_MCP_SPEC,
+        ],
+        exposure: "direct",
+        toolExposure: { upload_file: "hidden" },
+        timeout: 300,
+        env: {
+          LOOM_GALAXY_MCP_SOCKET: "${LOOM_GALAXY_MCP_SOCKET}",
+          LOOM_GALAXY_MCP_TOKEN: `\${${variable}}`,
+        },
+      };
+    }
+  }
+  for (const [name, config] of Object.entries(servers)) {
     pi.registerMcpServer(name, config);
   }
 }

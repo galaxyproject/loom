@@ -1,3 +1,4 @@
+import { listGalaxyConnections } from "./galaxy-connections.js";
 /**
  * The registry as the running brain holds it: one `RegistryStore` per
  * session, opened at session start under `<analysis>/.loom/state/` and closed
@@ -64,6 +65,7 @@ export function openSessionRegistry(opts: OpenOptions): {
   const store = new RegistryStore({
     analysisDir: opts.analysisDir,
     serverUrl: opts.serverUrl,
+    serverUrls: listGalaxyConnections().map((c) => c.url),
     sessionId: opts.sessionId,
     fs: opts.fs ?? fs,
     clock: opts.clock ?? Date.now,
@@ -219,4 +221,9 @@ export function sessionView(session: SessionRegistry): Registry {
     if (approval?.status === "live") approval.status = "revoked";
   }
   return view;
+}
+
+/** Supersession is a signed registry fact, never a notebook assertion. */
+export function isSupersededAttempt(id: string | undefined): boolean {
+  return !!id && !!getSessionRegistry()?.store.snapshot().attempts[id]?.superseded_by;
 }

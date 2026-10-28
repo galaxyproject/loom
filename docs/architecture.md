@@ -227,3 +227,18 @@ The shell must not:
 - Orbit is the richest shell; the CLI is intentionally thinner; the web shell is undecided.
 - Notebook persistence is local-directory-based, which is correct for local shells but must be reconsidered for any hosted deployment.
 - Skill repo allowlist is `galaxyproject/*` only -- third-party skill repos would need a more permissive `isAllowedSkillUrl` (and a story for prompt-injection risk).
+
+## Simultaneous Galaxy connections
+
+`galaxy-connections.ts` supplies scoped server/account contexts to HTTP helpers,
+MCP event handlers, capture, polling, enrichment and registry evaluation.
+`galaxy-scope.ts` maps per-profile MCP namespaces onto existing brain guards.
+Orbit supplies encrypted-profile keys over an inherited pipe; a private local
+broker supplies each MCP child with only its selected credential.
+
+`galaxy-reroute.ts` owns the human-approved preflight → transfer → cancellation
+→ reserved dispatch → receipt sequence. It extends the existing signed registry
+with reroute transactions and content-addressed preflight/dispatch templates.
+Typed notebook blocks retain connection/account identity and supersession links;
+notebook receipts include verified input mappings and checksums. There is no new
+execution database. See [the user guide](multiple-galaxy-instances.md).

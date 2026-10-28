@@ -1,3 +1,4 @@
+import { UNCHANGED_SECRET } from "../../../shared/config-secrets.js";
 import { ipcMain, dialog, BrowserWindow, shell, app, autoUpdater } from "electron";
 import { createIdempotentIpc } from "./ipc-registry.js";
 import type { AgentManager } from "./agent.js";
@@ -58,11 +59,7 @@ import { agentPromptPayload } from "../../../shared/agent-prompt.js";
 /** Where "report an issue" files go. One place to flip when the repo is renamed. */
 const ISSUE_REPO = "galaxyproject/loom";
 
-/**
- * Sentinel the renderer sends back in a secret field when the user did NOT
- * change it. Main preserves whatever is already on disk in that case.
- */
-export const UNCHANGED_SECRET = "__loom_unchanged_secret__";
+export { UNCHANGED_SECRET } from "../../../shared/config-secrets.js";
 
 /** Masked shape returned to the renderer — never carries plaintext secrets. */
 interface MaskedLoomConfig extends Omit<LoomConfig, "llm" | "galaxy"> {
@@ -205,6 +202,16 @@ function reconcileIncomingConfig(incoming: Record<string, unknown>): LoomConfig 
       if (url) {
         const v = validateGalaxyUrl(url);
         if (!v.ok) throw new Error(`Galaxy profile "${name}": ${v.reason}`);
+      }
+      if (
+        existing?.url &&
+        url &&
+        normalizeGalaxyUrl(existing.url).replace(/\/+$/, "") !== url.replace(/\/+$/, "") &&
+        (rawKey === UNCHANGED_SECRET || rawKey === undefined)
+      ) {
+        throw new Error(
+          `Galaxy profile "${name}": re-enter the API key when changing its server URL.`,
+        );
       }
       const profile: (typeof mergedProfiles)[string] = { url };
       if (rawKey === UNCHANGED_SECRET || rawKey === undefined) {

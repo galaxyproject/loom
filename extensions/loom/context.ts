@@ -1,3 +1,4 @@
+import { listGalaxyConnections } from "./galaxy-connections.js";
 /**
  * Context injection for the Loom session.
  *
@@ -288,6 +289,24 @@ once — don't badger.
 ## Galaxy connection: ${galaxyUrl}
 
 Galaxy is connected.
+
+${
+  listGalaxyConnections().length > 1
+    ? `### Multiple Galaxy connections
+
+Call galaxy_connections to list named profiles, verified accounts and MCP namespaces.
+Connection origins are explicit: a resource ID is meaningful only with its recorded
+server, connection ID and account. Use the matching MCP namespace, or server_id
+on Loom-native Galaxy tools. Changing the default selects new work; existing runs
+stay bound to their recorded origin. Never send another server's IDs or credentials
+to the default connection. For a queued/stuck run, explain Run elsewhere in Activity
+(or the human-only /reroute command). It preflights a replacement and asks the user
+before moving private data or cancelling the source. Never blindly retry an uncertain
+submission; use /reroute status and /reroute reconcile to inspect its recorded receipt.
+Superseded source attempts remain evidence but cannot advance downstream steps.
+`
+    : ""
+}
 
 ### If a Galaxy tool reports it's not connected
 
