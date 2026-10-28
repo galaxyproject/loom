@@ -3,6 +3,7 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 @import url("./assets/fonts/fonts.css");
+@import url("./galaxy-recent.css");
 
 :root {
   color-scheme: dark;
@@ -1854,11 +1855,11 @@ body.platform-darwin #files-title {
   height: 100%;
   padding: 0;
   background: var(--activity-bg);
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 #activity-shell-section {
-  flex: 0 0 60%;
+  flex: 1 0 150px;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1869,7 +1870,7 @@ body.platform-darwin #files-title {
 }
 
 #activity-proc-section {
-  flex: 1 1 40%;
+  flex: 0 0 150px;
   display: flex;
   flex-direction: column;
   min-height: 0;

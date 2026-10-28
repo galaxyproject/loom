@@ -12,6 +12,8 @@ import { FileViewer } from "./files/file-viewer.js";
 import { shouldRefreshOpenFile } from "./files/file-change-match.js";
 import { FeedbackConfirmation } from "./feedback-confirmation.js";
 import { refreshGalaxyInvocations } from "./galaxy-invocations.js";
+import { RecentGalaxyPanel } from "./galaxy-recent.js";
+import type { GalaxyActivitySnapshot } from "../../../shared/loom-shell-contract.js";
 import { refreshGalaxyHistory } from "./galaxy-history.js";
 import { formatGalaxyTooltip } from "./galaxy-tooltip.js";
 import { PromptQueue, queuedPreview } from "./prompt-queue.js";
@@ -36,7 +38,11 @@ import {
   type ModelOption,
 } from "./model-options.js";
 import { planModelDiscovery } from "./model-discovery-gate.js";
-import { LoomWidgetKey, decodeMarkdownWidget } from "../../../shared/loom-shell-contract.js";
+import {
+  LoomWidgetKey,
+  decodeMarkdownWidget,
+  decodeJsonWidget,
+} from "../../../shared/loom-shell-contract.js";
 import {
   ALLOWED_SKILLS_PREFIX,
   isAllowedSkillUrl,
@@ -684,6 +690,14 @@ document.addEventListener("mouseup", () => {
   const basis = filesPaneEl.style.flex.match(/(\d+(?:\.\d+)?)px/);
   if (basis) localStorage.setItem(FILES_WIDTH_KEY, String(Math.round(parseFloat(basis[1]))));
 });
+
+const recentGalaxyRoot = document.getElementById("activity-recent-galaxy")!;
+const { refreshGalaxyActivity, openGalaxyActivity } = window.orbit;
+const recentGalaxy =
+  refreshGalaxyActivity && openGalaxyActivity
+    ? new RecentGalaxyPanel(recentGalaxyRoot, { refreshGalaxyActivity, openGalaxyActivity })
+    : null;
+if (!recentGalaxy) recentGalaxyRoot.classList.add("hidden");
 
 // Initial tree population + live updates from the main-process watcher.
 void filesPanel.refresh();
@@ -3225,10 +3239,17 @@ window.orbit.onUiRequest((request) => {
     const key = request.widgetKey as string;
     const lines = request.widgetLines as string[] | undefined;
 
-    // Notebook is the only widget the right pane consumes. The Activity
-    // tab now mirrors the live shell + proc-monitor streams (see below);
-    // the brain-side activity.jsonl is still written for debug but no
-    // longer pushed as a widget.
+    if (key === LoomWidgetKey.GalaxyActivity && lines) {
+      try {
+        recentGalaxy?.update(decodeJsonWidget<GalaxyActivitySnapshot>(lines));
+      } catch {
+        /* malformed widget must not break the rest of the shell */
+      }
+      return;
+    }
+
+    // Notebook and Galaxy summaries arrive as widgets; shell and process
+    // activity use their own live streams below.
     if (key === LoomWidgetKey.Notebook && lines) {
       notebookLoadSeq++;
       const markdown = decodeMarkdownWidget(lines);
@@ -3335,6 +3356,8 @@ function tickHeartbeat(): void {
 
 window.orbit.onAgentStatus((status, msg) => {
   setStatusBadge(status, msg);
+  if (status === "running") void recentGalaxy?.refresh();
+  else recentGalaxy?.reset("Loom is not running. Restart the agent to load Galaxy activity.");
   dashboard?.setSession({ status });
 
   // Brain transitioned to stopped/error: clear the "we're streaming" UI
@@ -3364,6 +3387,7 @@ window.orbit.onAgentStatus((status, msg) => {
 void window.orbit.getAgentStatus().then(({ status, message }) => {
   if (status === "stopped") return;
   setStatusBadge(status, message);
+  if (status === "running") void recentGalaxy?.refresh();
   if (status === "running" && !hasShownStartupWelcome) {
     hasShownStartupWelcome = true;
     setArtifactCollapsed(false);

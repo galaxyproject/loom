@@ -210,6 +210,9 @@ export interface OrbitAPI {
   openReleasePage(url?: string): Promise<{ opened: boolean; url: string }>;
   openGalaxyHistory(url: string): Promise<{ opened: boolean }>;
   getGalaxyStatus(): Promise<{ connected: boolean; url: string | null }>;
+  /** Desktop-only account activity; the browser shell has no native feed. */
+  refreshGalaxyActivity?(): Promise<void>;
+  openGalaxyActivity?(url: string): Promise<{ opened: boolean }>;
   restartToUpdate(): Promise<{ restarting: boolean }>;
   onUpdateDownloaded(cb: (info: { version: string }) => void): void;
   onUpdateError(cb: (info: { message: string }) => void): void;
@@ -327,6 +330,8 @@ const api: OrbitAPI = {
   openReleasePage: (url) => ipcRenderer.invoke("version:open-release", url),
   openGalaxyHistory: (url) => ipcRenderer.invoke("galaxy:open-history", url),
   getGalaxyStatus: () => ipcRenderer.invoke("galaxy:status"),
+  refreshGalaxyActivity: () => ipcRenderer.invoke("galaxy:refresh-activity"),
+  openGalaxyActivity: (url) => ipcRenderer.invoke("galaxy:open-activity", url),
   restartToUpdate: () => ipcRenderer.invoke("update:restart"),
   onUpdateDownloaded: (cb) => {
     ipcRenderer.on("update:downloaded", (_e, info) => cb(info));

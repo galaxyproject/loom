@@ -18,7 +18,9 @@ import {
   resolveGalaxyStatus,
   resolveGalaxyServerUrl,
   resolveGalaxyHistoryOpenUrl,
+  resolveGalaxyActivityOpenUrl,
 } from "./galaxy-status.js";
+import { GALAXY_ACTIVITY_COMMAND } from "../../../shared/loom-shell-contract.js";
 import { fetchGalaxyCurrentUser, type GalaxyUserStatus } from "./galaxy-user.js";
 import { normalizeGalaxyUrl, validateGalaxyUrl } from "./galaxy-url.js";
 // pi 0.80 moved pi-ai's global API off the package root to /compat. pi's
@@ -371,6 +373,25 @@ export function registerIpcHandlers(agent: AgentManager): void {
   // masked config, so env-driven sessions read connected (#284).
   ipc.handle("galaxy:status", () => {
     return resolveGalaxyStatus(loadConfig(), process.env, resolveGalaxyApiKey);
+  });
+
+  ipc.handle("galaxy:refresh-activity", async () => {
+    if (agent.getStatus() !== "running")
+      throw new Error("Loom is not running. Restart the agent to refresh Galaxy activity.");
+    await agent.sendCommand({ type: "prompt", message: GALAXY_ACTIVITY_COMMAND });
+  });
+  ipc.handle("galaxy:open-activity", async (_e, url: unknown) => {
+    const target = resolveGalaxyActivityOpenUrl(
+      url,
+      resolveGalaxyServerUrl(loadConfig(), process.env),
+    );
+    if (!target) return { opened: false };
+    try {
+      await shell.openExternal(target);
+      return { opened: true };
+    } catch {
+      return { opened: false };
+    }
   });
 
   // Who does the active Galaxy key authenticate as? The renderer can't ask

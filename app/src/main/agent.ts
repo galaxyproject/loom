@@ -9,6 +9,7 @@ import { resolveLlmApiKey, resolveGalaxyApiKey } from "./secure-config.js";
 import { loadSessionHistory, newestSessionFile } from "./session-replay.js";
 import { collectDescendantsOf } from "./proc-monitor.js";
 import { buildBrainEnv as buildBaseBrainEnv } from "../../../shared/brain-env.js";
+import { GALAXY_ACTIVITY_COMMAND } from "../../../shared/loom-shell-contract.js";
 import {
   isConfigFailure,
   summarizeStartupFailure,
@@ -573,7 +574,7 @@ export class AgentManager {
     this.process.stdin.write(json + "\n");
     // A prompt (including streamed steer/followUp) starts a turn we must watch
     // for a silent stall. Other commands (abort, set_model, ...) don't.
-    if (obj.type === "prompt") {
+    if (obj.type === "prompt" && obj.message !== GALAXY_ACTIVITY_COMMAND) {
       this.watchdog.promptSent();
     }
   }

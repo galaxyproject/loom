@@ -6,6 +6,7 @@ import {
   stopWatchingNotebook,
 } from "./state.js";
 import { startGalaxyPoller, stopGalaxyPoller } from "./galaxy-poller.js";
+import { startGalaxyActivity, stopGalaxyActivity } from "./galaxy-activity.js";
 import { armGalaxyLivePanel, disarmGalaxyLivePanel } from "./galaxy-live-source.js";
 import {
   createFollowUpDelivery,
@@ -78,6 +79,7 @@ export function registerSessionLifecycle(pi: ExtensionAPI): void {
     ctx.ui.setToolsExpanded(false);
 
     resetState();
+    startGalaxyActivity(ctx);
 
     syncSessionJsonlSymlink(ctx);
 
@@ -168,6 +170,7 @@ export function registerSessionLifecycle(pi: ExtensionAPI): void {
   });
 
   pi.on("session_shutdown", async () => {
+    stopGalaxyActivity();
     // While the store still holds the lock: what this session last saw running.
     const orphaned = recordActiveAtShutdown();
     closeSessionRegistry();
