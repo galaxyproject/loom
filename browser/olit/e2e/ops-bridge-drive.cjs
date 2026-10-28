@@ -70,7 +70,7 @@ const waitFor = async (page, fn, ms) => {
   p.on("console", (m) => logs.push(`[${m.type()}] ${m.text()}`));
 
   await p.goto(APP, { waitUntil: "domcontentloaded" });
-  const ready = await waitFor(p, () => /olit ready/i.test(document.body.innerText), 300000);
+  const ready = await waitFor(p, () => /Ready\./.test(document.body.innerText), 300000);
   check("the agent boots with the galaxy-ops module loaded", ready);
   if (!ready) {
     console.log(logs.slice(-25).join("\n"));

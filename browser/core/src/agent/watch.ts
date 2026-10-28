@@ -244,26 +244,43 @@ export function galaxyWatch({
           ...(record ? { record } : {}),
         };
         const prompt = followUpPrompt([settled], brand);
+        const done = {
+          status: "terminal" as const,
+          outcome: { status: "completed" as const, result: settled },
+        };
         const policy = await runtime.snapshot(FollowUps, task.conversationId, context);
-        const held = heldBy(policy) !== undefined;
-        const conversation = prompt
-          ? await runtime.conversation(task.conversationId, context)
-          : undefined;
-        if (prompt && conversation) {
-          await conversation.submit(
-            {
-              type: "input",
-              content: prompt,
-              requestId: `watch:${watchKey(watched)}`,
-              ...(held ? { whenIdle: "queue" as const } : {}),
-            },
-            context,
-          );
+        // Held: the follow-up waits in the conversation's own document, in the commit that ends
+        // the watch, so it is kept exactly once and nothing pi-durable does can start it.
+        let kept = false;
+        if (prompt && heldBy(policy) !== undefined) {
+          await runtime.commit(async (tx) => {
+            const current = await tx.doc(FollowUps, task.conversationId);
+            kept = heldBy(current) !== undefined;
+            if (kept) {
+              const id = `watch:${watchKey(watched)}`;
+              if (!current.pending.some((p) => p.id === id))
+                current.pending.push({ id, content: prompt });
+              return done;
+            }
+            // The user wrote since: the follow-up starts a run after all.
+            return undefined;
+          }, context);
         }
-        await runtime.commit(async (tx) => {
-          if (prompt && !held) (await tx.doc(FollowUps, task.conversationId)).automatic += 1;
-          return { status: "terminal", outcome: { status: "completed", result: settled } };
-        }, context);
+        if (!kept) {
+          const conversation = prompt
+            ? await runtime.conversation(task.conversationId, context)
+            : undefined;
+          if (prompt && conversation) {
+            await conversation.submit(
+              { type: "input", content: prompt, requestId: `watch:${watchKey(watched)}` },
+              context,
+            );
+          }
+          await runtime.commit(async (tx) => {
+            if (prompt) (await tx.doc(FollowUps, task.conversationId)).automatic += 1;
+            return done;
+          }, context);
+        }
       },
     },
     abort: async (_task, runtime, context) => {

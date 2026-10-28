@@ -50,7 +50,7 @@ export interface ViewHooks {
 }
 
 /** Why pi-durable left a user's message unanswered, as the user should hear it. */
-function unanswered(reason: string | undefined, detail: unknown, name: string): string {
+function unanswered(reason: string | undefined, detail: unknown): string {
   const why = typeof detail === "string" && detail ? `: ${detail}` : "";
   switch (reason) {
     case "model_error":
@@ -58,7 +58,7 @@ function unanswered(reason: string | undefined, detail: unknown, name: string): 
     case "no_model":
       return "No model is configured for this conversation, so nothing could answer.";
     case "faulted":
-      return `${name} failed while answering${why}`;
+      return `Answering failed${why}`;
     default:
       return `This message was not answered (${reason ?? "unknown reason"}${why}).`;
   }
@@ -123,9 +123,9 @@ export class ChatView {
         if (reason === "aborted") this.run.aborted = true;
         else if (reason === "turn_limit") this.run.exhausted = true;
         // A model error already reached the chat as its own entry; anything else says it here.
-        else this.run.error ??= unanswered(reason, detail, this.brand.name);
+        else this.run.error ??= unanswered(reason, detail);
       } else if (event.type === "task_failed") {
-        this.hooks.failed(`${this.brand.name}'s ${event.kind} task failed: ${event.message}`);
+        this.hooks.failed(`The ${event.kind} task failed: ${event.message}`);
       } else if (event.type === "message_start" && event.message.role === "assistant") {
         this.stream(this.reply.start(event.message));
       } else if (event.type === "message_update") {

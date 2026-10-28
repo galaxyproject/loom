@@ -1,8 +1,9 @@
-# Olit: an AI co-scientist inside Galaxy
+# Orbit Lite (Olit): an AI co-scientist inside Galaxy
 
-Olit runs in the browser, inside Galaxy. It inspects histories and datasets, plans analyses, finds
-and runs Galaxy tools and workflows, follows their jobs, reads the results, and keeps a record of
-the analysis as a Galaxy page.
+Orbit Lite (Olit) runs the agent directly in the browser and uses Galaxy as its execution
+environment. It inspects histories and datasets, plans analyses, finds and runs Galaxy tools and
+workflows, follows their jobs, reads the results, and keeps a record of the analysis as a Galaxy
+page.
 
 **The browser runs the agent; Galaxy runs the science.** Analyses are ordinary Galaxy jobs and
 workflows with their usual provenance. Light Python runs in the browser through Pyodide. There is
@@ -59,12 +60,12 @@ browser: the agent, its providers, the chat and artifact panes and the Galaxy tr
 the plugin manifest, the visualization and chart tools and their artifacts, launching on a dataset
 and saving a conversation as a visualization. `LAYOUT.md` maps the tree and the seams between them.
 
-## Olit and Orbit
+## Orbit Lite and Orbit
 
 [Orbit](https://github.com/galaxyproject/loom) is Galaxy's AI environment and Olit's functional
 reference; Olit reuses Orbit's chat interface.
 
-| | Orbit | Olit |
+| | Orbit | Orbit Lite (Olit) |
 | --- | --- | --- |
 | Agent runtime | Local or server (pi) | Browser worker (pi-durable) |
 | Computation | Local environment and Galaxy | Galaxy, plus Pyodide |

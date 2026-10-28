@@ -2,9 +2,9 @@ import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
 import { MemoryStorage, type Storage } from "@earendil-works/pi-durable";
 import {
   SqliteStorage,
-  SyncSqliteDatabase,
-  type SyncSqliteConnection,
-  type SyncSqliteStatement,
+  type SqliteDatabase,
+  type SqliteExecutor,
+  type SqliteValue,
 } from "@earendil-works/pi-durable/storage/sqlite";
 import { DEFAULT_BRAND } from "./brand";
 
@@ -15,37 +15,115 @@ type OoStatement = ReturnType<OoDatabase["prepare"]>;
 let module: Promise<Sqlite3> | undefined;
 const sqlite3 = () => (module ??= sqlite3InitModule());
 
-function statement(prepared: OoStatement): SyncSqliteStatement {
-  const bound = (params: unknown[]) => {
-    prepared.reset(true);
-    if (params.length) prepared.bind(params as never);
-    return prepared;
-  };
-  return {
-    run: (...params) => {
-      bound(params).step();
-      prepared.reset(true);
-    },
-    get: (...params) => {
-      const row = bound(params).step() ? prepared.get({}) : undefined;
-      prepared.reset(true);
-      return row;
-    },
-    all: (...params) => {
-      const rows: unknown[] = [];
-      const s = bound(params);
-      while (s.step()) rows.push(s.get({}));
-      prepared.reset(true);
-      return rows;
-    },
-  };
-}
+/**
+ * pi-durable's `SqliteDatabase` over SQLite's WebAssembly build: one operation at a time, in call
+ * order, and a transaction's handle stops working once its callback settles.
+ */
+export class WasmSqliteDatabase implements SqliteDatabase {
+  private queue: Promise<unknown> = Promise.resolve();
+  private readonly statements = new Map<string, OoStatement>();
+  private readonly direct: SqliteExecutor;
 
-const connection = (database: OoDatabase): SyncSqliteConnection => ({
-  exec: (sql) => void database.exec(sql),
-  prepare: (sql) => statement(database.prepare(sql)),
-  close: () => database.close(),
-});
+  constructor(private readonly database: OoDatabase) {
+    this.direct = this.executor((operation) => this.inOrder(operation));
+  }
+
+  exec(sql: string): Promise<void> {
+    return this.direct.exec(sql);
+  }
+
+  run(sql: string, ...params: SqliteValue[]): Promise<void> {
+    return this.direct.run(sql, ...params);
+  }
+
+  get<T extends object>(sql: string, ...params: SqliteValue[]): Promise<T | undefined> {
+    return this.direct.get<T>(sql, ...params);
+  }
+
+  all<T extends object>(sql: string, ...params: SqliteValue[]): Promise<T[]> {
+    return this.direct.all<T>(sql, ...params);
+  }
+
+  transaction<T>(callback: (transaction: SqliteExecutor) => Promise<T>): Promise<T> {
+    return this.inOrder(async () => {
+      this.database.exec("BEGIN IMMEDIATE");
+      let active = true;
+      const handle = this.executor(async (operation) => {
+        if (!active) throw new Error("SQLite transaction handle is no longer active");
+        return operation();
+      });
+      try {
+        const result = await callback(handle);
+        active = false;
+        this.database.exec("COMMIT");
+        return result;
+      } catch (error) {
+        active = false;
+        try {
+          this.database.exec("ROLLBACK");
+        } catch (rollback) {
+          throw new AggregateError(
+            [error, rollback],
+            "SQLite transaction failed and rollback failed",
+          );
+        }
+        throw error;
+      }
+    });
+  }
+
+  close(): Promise<void> {
+    return this.inOrder(() => {
+      for (const prepared of this.statements.values()) prepared.finalize();
+      this.statements.clear();
+      this.database.close();
+    });
+  }
+
+  private inOrder<T>(operation: () => T | Promise<T>): Promise<T> {
+    const next = this.queue.then(operation);
+    this.queue = next.catch(() => {});
+    return next;
+  }
+
+  /** SQL through `guard`, on statements prepared once per SQL text. */
+  private executor(guard: <T>(operation: () => T) => Promise<T>): SqliteExecutor {
+    const step = (sql: string, params: SqliteValue[]) => {
+      let prepared = this.statements.get(sql);
+      if (!prepared) {
+        prepared = this.database.prepare(sql);
+        this.statements.set(sql, prepared);
+      }
+      prepared.reset(true);
+      if (params.length) prepared.bind(params as never);
+      return prepared;
+    };
+    return {
+      exec: (sql) => guard(() => void this.database.exec(sql)),
+      run: (sql, ...params) =>
+        guard(() => {
+          const prepared = step(sql, params);
+          prepared.step();
+          prepared.reset(true);
+        }),
+      get: <T extends object>(sql: string, ...params: SqliteValue[]) =>
+        guard(() => {
+          const prepared = step(sql, params);
+          const row = prepared.step() ? (prepared.get({}) as T) : undefined;
+          prepared.reset(true);
+          return row;
+        }),
+      all: <T extends object>(sql: string, ...params: SqliteValue[]) =>
+        guard(() => {
+          const prepared = step(sql, params);
+          const rows: T[] = [];
+          while (prepared.step()) rows.push(prepared.get({}) as T);
+          prepared.reset(true);
+          return rows;
+        }),
+    };
+  }
+}
 
 /**
  * Durable storage in the origin private file system, in a dedicated worker. `brand` names the
@@ -61,7 +139,7 @@ async function opfsStorage(name: string, brand: string): Promise<Storage> {
   };
   const pool = await s.installOpfsSAHPoolVfs(options);
   await pool.reserveMinimumCapacity(pool.getFileCount() + 2);
-  const database = new SyncSqliteDatabase(connection(new pool.OpfsSAHPoolDb(`/${name}.sqlite3`)));
+  const database = new WasmSqliteDatabase(new pool.OpfsSAHPoolDb(`/${name}.sqlite3`));
   await database.exec("PRAGMA journal_mode = TRUNCATE");
   return SqliteStorage.open(database);
 }

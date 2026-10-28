@@ -16,7 +16,7 @@ function check(name, ok, detail) {
 
 const boot = (page) =>
     page
-        .waitForFunction(() => /olit ready/i.test(document.body.innerText), null, { timeout: 120000 })
+        .waitForFunction(() => /Ready\./.test(document.body.innerText), null, { timeout: 120000 })
         .then(() => true)
         .catch(() => false);
 
@@ -33,7 +33,7 @@ const calls = async () => (await (await fetch(`${STUB}/__seen`)).json()).calls;
     await page.goto(APP, { waitUntil: "domcontentloaded" });
     check("the agent boots", await boot(page));
     check("the conversation is kept in the browser's files",
-        !/not keeping this conversation/i.test(await page.evaluate(() => document.body.innerText)));
+        !/can't keep conversations/i.test(await page.evaluate(() => document.body.innerText)));
 
     await fetch(`${STUB}/__script?name=slow-once`);
     await page.fill("#input", "answer slowly");

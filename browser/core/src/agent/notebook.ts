@@ -4,6 +4,7 @@ import { contentHash } from "@galaxyproject/galaxy-ops/browser";
 import { ELISION_MARKER, excerptHeadTail } from "../../../../shared/record-excerpt.js";
 import { DEFAULT_BRAND, type Brand } from "./brand";
 import { pageBody } from "./page-edit";
+import { galaxyArtifactUrl } from "../../../../shared/galaxy-artifact-links.js";
 import { remember } from "./record-write";
 import { fail, Outcome, type Capability, type Context, type AgentTool } from "./tool";
 
@@ -262,7 +263,8 @@ export function notebookTools(brand: Brand = DEFAULT_BRAND): AgentTool[] {
         }
         ctx.binding.pageId = opened.page_id;
         remember(ctx.binding.sessionId, opened.page_id, opened.content);
-        return new Outcome(JSON.stringify(opened));
+        const url = galaxyArtifactUrl(ctx.galaxy.root, "page", opened.page_id);
+        return new Outcome(JSON.stringify({ ...opened, ...(url ? { url } : {}) }));
       },
     },
   ];

@@ -53,7 +53,7 @@ function check(name, ok, detail) {
     };
     const idle = () => wait(() => !document.querySelector("#send-btn").classList.contains("hidden"), 60000);
 
-    check("booted inside the frame", await wait(() => /olit ready/i.test(document.body.innerText), 60000));
+    check("booted inside the frame", await wait(() => /Ready\./.test(document.body.innerText), 60000));
     check("a conversation with nothing in it reports nothing", (await reports()).length === 0);
     check(
         "an empty conversation offers nothing to save",

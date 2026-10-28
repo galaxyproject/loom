@@ -1,0 +1,1317 @@
+{
+  "tools": {
+    "document": {
+      "olit_session": 5,
+      "history_id": "h1",
+      "session": {
+        "id": "652cc3f0-986c-413e-8c4e-0ad7bfbf6a35",
+        "title": "tools",
+        "createdAt": "2026-10-21T10:13:46.483Z",
+        "updatedAt": "2026-10-21T10:13:46.535Z",
+        "turn": 2,
+        "build": {
+          "commit": "ae809576",
+          "built": "2026-10-21T10:13:46.049Z"
+        },
+        "models": [
+          {
+            "provider": "custom",
+            "model": "m"
+          }
+        ],
+        "usage": {
+          "input": 40,
+          "output": 20,
+          "cost": null
+        }
+      },
+      "entries": [
+        {
+          "kind": "pi.user",
+          "model": [
+            {
+              "role": "user",
+              "content": "compute it",
+              "timestamp": 1792577626485
+            }
+          ]
+        },
+        {
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolCall",
+                  "id": "call_a",
+                  "name": "run_python",
+                  "arguments": {
+                    "code": "print(6*7)"
+                  }
+                }
+              ],
+              "api": "openai-completions",
+              "provider": "custom",
+              "model": "m",
+              "usage": {
+                "input": 10,
+                "output": 5,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "reasoning": 0,
+                "totalTokens": 15,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "toolUse",
+              "timestamp": 1792577626514,
+              "rawStopReason": "tool_calls",
+              "durationMs": 5
+            }
+          ]
+        },
+        {
+          "kind": "pi.tool-result",
+          "model": [
+            {
+              "role": "toolResult",
+              "toolCallId": "call_a",
+              "toolName": "run_python",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "42"
+                }
+              ],
+              "isError": false,
+              "durationMs": 0,
+              "timestamp": 1792577626524
+            }
+          ],
+          "data": {
+            "diagnostics": []
+          }
+        },
+        {
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "it is 42"
+                }
+              ],
+              "api": "openai-completions",
+              "provider": "custom",
+              "model": "m",
+              "usage": {
+                "input": 10,
+                "output": 5,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "reasoning": 0,
+                "totalTokens": 15,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "stop",
+              "timestamp": 1792577626526,
+              "rawStopReason": "stop",
+              "durationMs": 1
+            }
+          ]
+        },
+        {
+          "kind": "pi.user",
+          "model": [
+            {
+              "role": "user",
+              "content": "and again",
+              "timestamp": 1792577626528
+            }
+          ]
+        },
+        {
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolCall",
+                  "id": "call_b",
+                  "name": "run_python",
+                  "arguments": {
+                    "code": "print(6*7)"
+                  }
+                }
+              ],
+              "api": "openai-completions",
+              "provider": "custom",
+              "model": "m",
+              "usage": {
+                "input": 10,
+                "output": 5,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "reasoning": 0,
+                "totalTokens": 15,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "toolUse",
+              "timestamp": 1792577626529,
+              "rawStopReason": "tool_calls",
+              "durationMs": 1
+            }
+          ]
+        },
+        {
+          "kind": "pi.tool-result",
+          "model": [
+            {
+              "role": "toolResult",
+              "toolCallId": "call_b",
+              "toolName": "run_python",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "42"
+                }
+              ],
+              "isError": false,
+              "durationMs": 1,
+              "timestamp": 1792577626532
+            }
+          ],
+          "data": {
+            "diagnostics": []
+          }
+        },
+        {
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "still 42"
+                }
+              ],
+              "api": "openai-completions",
+              "provider": "custom",
+              "model": "m",
+              "usage": {
+                "input": 10,
+                "output": 5,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "reasoning": 0,
+                "totalTokens": 15,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "stop",
+              "timestamp": 1792577626533,
+              "rawStopReason": "stop",
+              "durationMs": 1
+            }
+          ]
+        }
+      ]
+    },
+    "kinds": [
+      "pi.user",
+      "pi.system",
+      "pi.assistant",
+      "pi.tool-result",
+      "pi.assistant",
+      "pi.user",
+      "pi.assistant",
+      "pi.tool-result",
+      "pi.assistant"
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": "compute it",
+        "timestamp": 1792577626485
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "toolCall",
+            "id": "call_a",
+            "name": "run_python",
+            "arguments": {
+              "code": "print(6*7)"
+            }
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "custom",
+        "model": "m",
+        "usage": {
+          "input": 10,
+          "output": 5,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "reasoning": 0,
+          "totalTokens": 15,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "toolUse",
+        "timestamp": 1792577626514,
+        "rawStopReason": "tool_calls",
+        "durationMs": 5
+      },
+      {
+        "role": "toolResult",
+        "toolCallId": "call_a",
+        "toolName": "run_python",
+        "content": [
+          {
+            "type": "text",
+            "text": "42"
+          }
+        ],
+        "isError": false,
+        "durationMs": 0,
+        "timestamp": 1792577626524
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "it is 42"
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "custom",
+        "model": "m",
+        "usage": {
+          "input": 10,
+          "output": 5,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "reasoning": 0,
+          "totalTokens": 15,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1792577626526,
+        "rawStopReason": "stop",
+        "durationMs": 1
+      },
+      {
+        "role": "user",
+        "content": "and again",
+        "timestamp": 1792577626528
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "toolCall",
+            "id": "call_b",
+            "name": "run_python",
+            "arguments": {
+              "code": "print(6*7)"
+            }
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "custom",
+        "model": "m",
+        "usage": {
+          "input": 10,
+          "output": 5,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "reasoning": 0,
+          "totalTokens": 15,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "toolUse",
+        "timestamp": 1792577626529,
+        "rawStopReason": "tool_calls",
+        "durationMs": 1
+      },
+      {
+        "role": "toolResult",
+        "toolCallId": "call_b",
+        "toolName": "run_python",
+        "content": [
+          {
+            "type": "text",
+            "text": "42"
+          }
+        ],
+        "isError": false,
+        "durationMs": 1,
+        "timestamp": 1792577626532
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "still 42"
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "custom",
+        "model": "m",
+        "usage": {
+          "input": 10,
+          "output": 5,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "reasoning": 0,
+          "totalTokens": 15,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1792577626533,
+        "rawStopReason": "stop",
+        "durationMs": 1
+      }
+    ]
+  },
+  "compacted": {
+    "document": {
+      "olit_session": 5,
+      "history_id": "h2",
+      "session": {
+        "id": "060b46c4-7798-4e3f-8e21-8e50bf6a9e02",
+        "title": "compacted",
+        "createdAt": "2026-10-21T10:13:46.538Z",
+        "updatedAt": "2026-10-21T10:13:46.551Z",
+        "turn": 3,
+        "build": {
+          "commit": "ae809576",
+          "built": "2026-10-21T10:13:46.049Z"
+        },
+        "models": [
+          {
+            "provider": "custom",
+            "model": "m"
+          }
+        ],
+        "usage": {
+          "input": 50,
+          "output": 25,
+          "cost": null
+        }
+      },
+      "entries": [
+        {
+          "kind": "pi.user",
+          "model": [
+            {
+              "role": "user",
+              "content": "first",
+              "timestamp": 1792577626539
+            }
+          ]
+        },
+        {
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolCall",
+                  "id": "call_c",
+                  "name": "run_python",
+                  "arguments": {
+                    "code": "print(6*7)"
+                  }
+                }
+              ],
+              "api": "openai-completions",
+              "provider": "custom",
+              "model": "m",
+              "usage": {
+                "input": 10,
+                "output": 5,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "reasoning": 0,
+                "totalTokens": 15,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "toolUse",
+              "timestamp": 1792577626540,
+              "rawStopReason": "tool_calls",
+              "durationMs": 1
+            }
+          ]
+        },
+        {
+          "kind": "pi.tool-result",
+          "model": [
+            {
+              "role": "toolResult",
+              "toolCallId": "call_c",
+              "toolName": "run_python",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "42"
+                }
+              ],
+              "isError": false,
+              "durationMs": 0,
+              "timestamp": 1792577626542
+            }
+          ],
+          "data": {
+            "diagnostics": []
+          }
+        },
+        {
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ],
+              "api": "openai-completions",
+              "provider": "custom",
+              "model": "m",
+              "usage": {
+                "input": 10,
+                "output": 5,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "reasoning": 0,
+                "totalTokens": 15,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "stop",
+              "timestamp": 1792577626543,
+              "rawStopReason": "stop",
+              "durationMs": 1
+            }
+          ]
+        },
+        {
+          "kind": "pi.user",
+          "model": [
+            {
+              "role": "user",
+              "content": "second",
+              "timestamp": 1792577626544
+            }
+          ]
+        },
+        {
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ],
+              "api": "openai-completions",
+              "provider": "custom",
+              "model": "m",
+              "usage": {
+                "input": 10,
+                "output": 5,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "reasoning": 0,
+                "totalTokens": 15,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "stop",
+              "timestamp": 1792577626545,
+              "rawStopReason": "stop",
+              "durationMs": 1
+            }
+          ]
+        },
+        {
+          "kind": "pi.compaction",
+          "model": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The conversation history before this point was compacted into the following summary:\n\n<summary>\n<summary>first and second</summary>\n</summary>"
+                }
+              ],
+              "timestamp": 1792577626547
+            }
+          ],
+          "data": {
+            "reason": "manual"
+          },
+          "head": {
+            "entry": 5
+          }
+        },
+        {
+          "kind": "pi.user",
+          "model": [
+            {
+              "role": "user",
+              "content": "third",
+              "timestamp": 1792577626547
+            }
+          ]
+        },
+        {
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ],
+              "api": "openai-completions",
+              "provider": "custom",
+              "model": "m",
+              "usage": {
+                "input": 10,
+                "output": 5,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "reasoning": 0,
+                "totalTokens": 15,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "stop",
+              "timestamp": 1792577626549,
+              "rawStopReason": "stop",
+              "durationMs": 2
+            }
+          ]
+        }
+      ]
+    },
+    "kinds": ["pi.compaction", "pi.assistant", "pi.user", "pi.system", "pi.assistant"],
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "The conversation history before this point was compacted into the following summary:\n\n<summary>\n<summary>first and second</summary>\n</summary>"
+          }
+        ],
+        "timestamp": 1792577626547
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "two"
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "custom",
+        "model": "m",
+        "usage": {
+          "input": 10,
+          "output": 5,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "reasoning": 0,
+          "totalTokens": 15,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1792577626545,
+        "rawStopReason": "stop",
+        "durationMs": 1
+      },
+      {
+        "role": "user",
+        "content": "third",
+        "timestamp": 1792577626547
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "three"
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "custom",
+        "model": "m",
+        "usage": {
+          "input": 10,
+          "output": 5,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "reasoning": 0,
+          "totalTokens": 15,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1792577626549,
+        "rawStopReason": "stop",
+        "durationMs": 2
+      }
+    ]
+  },
+  "reset": {
+    "document": {
+      "olit_session": 5,
+      "history_id": "h3",
+      "session": {
+        "id": "d9ca9914-7f8f-44f7-8a48-439a7ceb5aaf",
+        "title": "reset",
+        "createdAt": "2026-10-21T10:13:46.555Z",
+        "updatedAt": "2026-10-21T10:13:46.561Z",
+        "turn": 2,
+        "build": {
+          "commit": "ae809576",
+          "built": "2026-10-21T10:13:46.049Z"
+        },
+        "models": [
+          {
+            "provider": "custom",
+            "model": "m"
+          }
+        ],
+        "usage": {
+          "input": 30,
+          "output": 15,
+          "cost": null
+        }
+      },
+      "entries": [
+        {
+          "kind": "pi.user",
+          "model": [
+            {
+              "role": "user",
+              "content": "before the reset",
+              "timestamp": 1792577626555
+            }
+          ]
+        },
+        {
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolCall",
+                  "id": "call_d",
+                  "name": "run_python",
+                  "arguments": {
+                    "code": "print(6*7)"
+                  }
+                }
+              ],
+              "api": "openai-completions",
+              "provider": "custom",
+              "model": "m",
+              "usage": {
+                "input": 10,
+                "output": 5,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "reasoning": 0,
+                "totalTokens": 15,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "toolUse",
+              "timestamp": 1792577626556,
+              "rawStopReason": "tool_calls",
+              "durationMs": 1
+            }
+          ]
+        },
+        {
+          "kind": "pi.tool-result",
+          "model": [
+            {
+              "role": "toolResult",
+              "toolCallId": "call_d",
+              "toolName": "run_python",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "42"
+                }
+              ],
+              "isError": false,
+              "durationMs": 0,
+              "timestamp": 1792577626558
+            }
+          ],
+          "data": {
+            "diagnostics": []
+          }
+        },
+        {
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "done before"
+                }
+              ],
+              "api": "openai-completions",
+              "provider": "custom",
+              "model": "m",
+              "usage": {
+                "input": 10,
+                "output": 5,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "reasoning": 0,
+                "totalTokens": 15,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "stop",
+              "timestamp": 1792577626559,
+              "rawStopReason": "stop",
+              "durationMs": 1
+            }
+          ]
+        },
+        {
+          "kind": "pi.reset",
+          "model": [
+            {
+              "role": "user",
+              "content": "Handoff: the answer was 42.",
+              "timestamp": 1792577626559
+            }
+          ],
+          "head": "self"
+        },
+        {
+          "kind": "pi.user",
+          "model": [
+            {
+              "role": "user",
+              "content": "after the reset",
+              "timestamp": 1792577626560
+            }
+          ]
+        },
+        {
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "done after"
+                }
+              ],
+              "api": "openai-completions",
+              "provider": "custom",
+              "model": "m",
+              "usage": {
+                "input": 10,
+                "output": 5,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "reasoning": 0,
+                "totalTokens": 15,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "stop",
+              "timestamp": 1792577626561,
+              "rawStopReason": "stop",
+              "durationMs": 0
+            }
+          ]
+        }
+      ]
+    },
+    "kinds": ["pi.reset", "pi.user", "pi.system", "pi.assistant"],
+    "messages": [
+      {
+        "role": "user",
+        "content": "Handoff: the answer was 42.",
+        "timestamp": 1792577626559
+      },
+      {
+        "role": "user",
+        "content": "after the reset",
+        "timestamp": 1792577626560
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "done after"
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "custom",
+        "model": "m",
+        "usage": {
+          "input": 10,
+          "output": 5,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "reasoning": 0,
+          "totalTokens": 15,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1792577626561,
+        "rawStopReason": "stop",
+        "durationMs": 0
+      }
+    ]
+  },
+  "fork": {
+    "document": {
+      "olit_session": 5,
+      "history_id": "h4",
+      "session": {
+        "id": "a41eb070-7499-4e09-a6c2-c4e991a44620",
+        "title": "fork",
+        "createdAt": "2026-10-21T10:13:46.564Z",
+        "updatedAt": "2026-10-21T10:13:46.571Z",
+        "turn": 2,
+        "build": {
+          "commit": "ae809576",
+          "built": "2026-10-21T10:13:46.049Z"
+        },
+        "models": [
+          {
+            "provider": "custom",
+            "model": "m"
+          }
+        ],
+        "usage": {
+          "input": 10,
+          "output": 5,
+          "cost": null
+        }
+      },
+      "entries": [
+        {
+          "kind": "pi.user",
+          "model": [
+            {
+              "role": "user",
+              "content": "shared start",
+              "timestamp": 1792577626564
+            }
+          ]
+        },
+        {
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolCall",
+                  "id": "call_e",
+                  "name": "run_python",
+                  "arguments": {
+                    "code": "print(6*7)"
+                  }
+                }
+              ],
+              "api": "openai-completions",
+              "provider": "custom",
+              "model": "m",
+              "usage": {
+                "input": 10,
+                "output": 5,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "reasoning": 0,
+                "totalTokens": 15,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "toolUse",
+              "timestamp": 1792577626565,
+              "rawStopReason": "tool_calls",
+              "durationMs": 1
+            }
+          ]
+        },
+        {
+          "kind": "pi.tool-result",
+          "model": [
+            {
+              "role": "toolResult",
+              "toolCallId": "call_e",
+              "toolName": "run_python",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "42"
+                }
+              ],
+              "isError": false,
+              "durationMs": 0,
+              "timestamp": 1792577626566
+            }
+          ],
+          "data": {
+            "diagnostics": []
+          }
+        },
+        {
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "shared reply"
+                }
+              ],
+              "api": "openai-completions",
+              "provider": "custom",
+              "model": "m",
+              "usage": {
+                "input": 10,
+                "output": 5,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "reasoning": 0,
+                "totalTokens": 15,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "stop",
+              "timestamp": 1792577626567,
+              "rawStopReason": "stop",
+              "durationMs": 0
+            }
+          ]
+        },
+        {
+          "kind": "pi.user",
+          "model": [
+            {
+              "role": "user",
+              "content": "fork only",
+              "timestamp": 1792577626570
+            }
+          ]
+        },
+        {
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "fork reply"
+                }
+              ],
+              "api": "openai-completions",
+              "provider": "custom",
+              "model": "m",
+              "usage": {
+                "input": 10,
+                "output": 5,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "reasoning": 0,
+                "totalTokens": 15,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "stop",
+              "timestamp": 1792577626571,
+              "rawStopReason": "stop",
+              "durationMs": 1
+            }
+          ]
+        }
+      ]
+    },
+    "kinds": [
+      "pi.user",
+      "pi.system",
+      "pi.assistant",
+      "pi.tool-result",
+      "pi.assistant",
+      "pi.user",
+      "pi.assistant"
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": "shared start",
+        "timestamp": 1792577626564
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "toolCall",
+            "id": "call_e",
+            "name": "run_python",
+            "arguments": {
+              "code": "print(6*7)"
+            }
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "custom",
+        "model": "m",
+        "usage": {
+          "input": 10,
+          "output": 5,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "reasoning": 0,
+          "totalTokens": 15,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "toolUse",
+        "timestamp": 1792577626565,
+        "rawStopReason": "tool_calls",
+        "durationMs": 1
+      },
+      {
+        "role": "toolResult",
+        "toolCallId": "call_e",
+        "toolName": "run_python",
+        "content": [
+          {
+            "type": "text",
+            "text": "42"
+          }
+        ],
+        "isError": false,
+        "durationMs": 0,
+        "timestamp": 1792577626566
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "shared reply"
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "custom",
+        "model": "m",
+        "usage": {
+          "input": 10,
+          "output": 5,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "reasoning": 0,
+          "totalTokens": 15,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1792577626567,
+        "rawStopReason": "stop",
+        "durationMs": 0
+      },
+      {
+        "role": "user",
+        "content": "fork only",
+        "timestamp": 1792577626570
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "fork reply"
+          }
+        ],
+        "api": "openai-completions",
+        "provider": "custom",
+        "model": "m",
+        "usage": {
+          "input": 10,
+          "output": 5,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "reasoning": 0,
+          "totalTokens": 15,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "total": 0
+          }
+        },
+        "stopReason": "stop",
+        "timestamp": 1792577626571,
+        "rawStopReason": "stop",
+        "durationMs": 1
+      }
+    ]
+  }
+}

@@ -2,7 +2,6 @@ import { z } from "zod";
 import {
   allOperations,
   describeOperation,
-  GALAXY_MCP_SURFACE,
   runWithEnvelope,
   spellParamNames,
   type AnyOperation,
@@ -42,8 +41,8 @@ export interface OpPolicy {
 }
 
 /**
- * galaxy-ops operations under galaxy-mcp's names, snake_case at the top level, described as
- * galaxy-mcp advertises them to an MCP client: Orbit's model is told the same.
+ * galaxy-ops operations under galaxy-mcp's names, snake_case at the top level, described in
+ * galaxy-ops' own words: Orbit's model is told the same.
  */
 export function opsTools(
   annotate?: Annotate,
@@ -62,11 +61,10 @@ function opsTool(op: AnyOperation, annotate: Annotate | undefined, policy: OpPol
     required?: string[];
   };
   const toInput = new Map(Object.keys(op.input).map((key) => [snake(key), key]));
-  const advertised = GALAXY_MCP_SURFACE[op.name];
   return {
     name: op.name,
-    // galaxy-ops' own line, in snake_case, for an operation galaxy-mcp does not advertise.
-    description: advertised?.description ?? spellParamNames(describeOperation(op), op.input, snake),
+    // galaxy-ops' own line, in snake_case.
+    description: spellParamNames(describeOperation(op), op.input, snake),
     capability: op.readOnly === false ? "write" : "read",
     destructive: op.destructive === true && !policy.destructiveWhen,
     destructiveWhen: policy.destructiveWhen,
@@ -75,10 +73,7 @@ function opsTool(op: AnyOperation, annotate: Annotate | undefined, policy: OpPol
     parameters: {
       ...schema,
       properties: Object.fromEntries(
-        Object.entries(schema.properties ?? {}).map(([k, v]) => {
-          const said = advertised?.parameters[snake(k)];
-          return [snake(k), said ? { ...(v as object), description: said } : v];
-        }),
+        Object.entries(schema.properties ?? {}).map(([k, v]) => [snake(k), v]),
       ),
       required: schema.required?.map(snake),
     },

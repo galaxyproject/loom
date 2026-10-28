@@ -25,7 +25,7 @@ function check(name, ok, detail) {
         }
         return false;
     };
-    if (!(await wait(() => /olit ready/i.test(document.body.innerText), 300000))) {
+    if (!(await wait(() => /Ready\./.test(document.body.innerText), 300000))) {
         check("booted", false);
         await b.close();
         process.exit(1);

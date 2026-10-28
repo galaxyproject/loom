@@ -850,7 +850,7 @@ export function createPiHost(options: PiHostOptions): PiHost {
         try {
           const r = await def.execute(api.callId, args, chord.abortSignal, onUpdate, toolCtx);
           return {
-            content: r.content ?? [],
+            output: r.content ?? [],
             details: json(r.details) ?? {},
             isError: r.isError === true,
           };
@@ -858,7 +858,7 @@ export function createPiHost(options: PiHostOptions): PiHost {
           if (chord.abortSignal?.aborted) throw error;
           // pi-agent-core turns a throw into an error result; a pi-durable throw would fault the task.
           return {
-            content: [{ type: "text", text: errorText(error) }],
+            output: [{ type: "text", text: errorText(error) }],
             details: {},
             isError: true,
           };
@@ -1221,7 +1221,7 @@ export function createPiHost(options: PiHostOptions): PiHost {
               if (code !== "blocked") return undefined;
               return {
                 ...result,
-                content,
+                output: content,
                 isError: true,
                 diagnostics: (result.diagnostics ?? []).filter((d) => d.severity !== "error"),
               };
@@ -1234,7 +1234,7 @@ export function createPiHost(options: PiHostOptions): PiHost {
                 // pi-durable hands afterTool the call as the model wrote it; pi's tool_result
                 // carries the validated arguments tool_call saw.
                 input: run.args.get(call.id) ?? (call.arguments as Record<string, unknown>),
-                content: result.content ?? [],
+                content: result.output ?? [],
                 details: result.details,
                 isError: result.isError === true,
                 usage: result.usage,
@@ -1244,7 +1244,7 @@ export function createPiHost(options: PiHostOptions): PiHost {
             let out: ToolExecutionResult = merged
               ? {
                   ...result,
-                  content: merged.content,
+                  output: merged.content,
                   details: json(merged.details) as JsonValue,
                   isError: merged.isError,
                   ...(merged.usage === undefined
@@ -1254,12 +1254,12 @@ export function createPiHost(options: PiHostOptions): PiHost {
               : result;
             const replaced = await executionEnd(
               call,
-              { content: out.content ?? [], details: out.details, isError: out.isError === true },
+              { content: out.output ?? [], details: out.details, isError: out.isError === true },
               durationMs,
               chord,
             );
             if (replaced) {
-              out = { ...out, content: replaced.content, isError: replaced.isError === true };
+              out = { ...out, output: replaced.content, isError: replaced.isError === true };
             }
             return out === result ? undefined : out;
           },
@@ -1463,7 +1463,7 @@ export function createPiHost(options: PiHostOptions): PiHost {
     // reads that event as the receipt.
     try {
       return await b.conversation.submit(
-        { type: "input", content: input.text, whenBusy: deliverAs ?? "reject", whenIdle: "start" },
+        { type: "input", content: input.text, whenBusy: deliverAs ?? "reject" },
         b.context,
       );
     } catch (error) {

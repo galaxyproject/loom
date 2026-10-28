@@ -1,7 +1,5 @@
 /** Orbit's layout chain, so Orbit's styles.css applies as-is. */
 
-import { DEFAULT_BRAND } from "./agent/brand";
-
 export const LAYOUT = `
       <div id="app-main">
         <div id="chat-pane" class="pane">
@@ -70,13 +68,10 @@ export interface Elements {
 }
 
 /** Write the layout into `container` and hand back the parts the shell drives. */
-export function mountLayout(
-  container: HTMLElement,
-  { save = true, name = DEFAULT_BRAND.name } = {},
-): Elements {
+export function mountLayout(container: HTMLElement, { save = true } = {}): Elements {
   container.innerHTML = LAYOUT;
   container.querySelector<HTMLTextAreaElement>("#input")!.placeholder =
-    `Ask ${name} to run something...`;
+    "Ask me to run something...";
   if (!save) container.querySelector("#save-btn")!.remove();
   const find = <T extends HTMLElement>(id: string) => container.querySelector<T>(id)!;
   return {

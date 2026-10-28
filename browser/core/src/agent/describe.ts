@@ -3,7 +3,6 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve as absolute } from "node:path";
 import * as galaxyOps from "@galaxyproject/galaxy-ops/browser";
-import { allOperations } from "@galaxyproject/galaxy-ops/browser";
 
 import { DEFAULT_COMPACTION_POLICY } from "@earendil-works/pi-durable";
 
@@ -149,8 +148,6 @@ function typeOf(spec: Record<string, any>): string {
 
 function tools(flavor: AgentFlavor, brand: Brand) {
   const delegated = new Set(opsTools().map((t) => t.name));
-  // The result shape galaxy-ops declares for each operation and reads back in its own tests.
-  const declared = new Map(allOperations.map((op) => [op.name, op.result ?? null]));
   const out: Record<string, unknown> = {};
   for (const tool of agentTools(flavoredSkills(flavor), flavor)) {
     const params = tool.parameters as { properties?: Record<string, any>; required?: string[] };
@@ -169,7 +166,6 @@ function tools(flavor: AgentFlavor, brand: Brand) {
           "\n",
         ),
       ),
-      result: declared.get(tool.name) ?? null,
     };
   }
   return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)));

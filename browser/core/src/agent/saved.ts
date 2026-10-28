@@ -7,7 +7,12 @@
  * store can read it without the conversation. The `olit_session` key predates the split and stays,
  * because documents already saved under it must keep opening.
  */
-import type { ExportedEntry } from "@earendil-works/pi-durable";
+import type { EntryDraft } from "@earendil-works/pi-durable";
+
+/** A saved entry: a head marker names the entry the context starts at by its position in the save. */
+export type ExportedEntry = Omit<EntryDraft, "head" | "edits"> & {
+  head?: "self" | { entry: number };
+};
 
 export const SCHEMA = 5;
 

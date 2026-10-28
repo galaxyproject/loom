@@ -72,7 +72,7 @@ const finish = defineTool({
     "state the result itself, not where you wrote it.",
   parameters: Type.Object({ summary: Type.String() }),
   execute: async (args) => ({
-    content: [{ type: "text", text: args.summary || "done" }],
+    output: [{ type: "text", text: args.summary || "done" }],
     control: { terminate: true },
   }),
 });
@@ -82,7 +82,7 @@ const codeOf = (result: ToolExecutionResult) =>
 
 const replaced = (result: ToolExecutionResult, text: string, guard?: Guard) => ({
   ...result,
-  content: [{ type: "text" as const, text }],
+  output: [{ type: "text" as const, text }],
   diagnostics: (result.diagnostics ?? []).filter((d) => d.severity !== "error"),
   ...(guard ? { details: { refused: true, guard } } : {}),
 });
@@ -151,10 +151,10 @@ export function agentExtension(host: AgentHost) {
     if (out.isError && (!guard || GUARD_COUNTS_AS_FAILURE[guard])) {
       run.guard.noteFailure(call.name, call.id);
     }
-    const screened = run.guard.screened(contentText(out.content ?? []));
+    const screened = run.guard.screened(contentText(out.output ?? []));
     return screened === undefined
       ? out
-      : { ...out, content: [{ type: "text" as const, text: screened }] };
+      : { ...out, output: [{ type: "text" as const, text: screened }] };
   }
 
   const extension = defineExtension({

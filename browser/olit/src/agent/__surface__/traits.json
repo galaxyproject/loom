@@ -189,6 +189,24 @@
     "destructiveWhen": false
   },
   {
+    "name": "get_job_logs",
+    "capability": "read",
+    "requires": null,
+    "settled": false,
+    "polls": null,
+    "destructive": false,
+    "destructiveWhen": false
+  },
+  {
+    "name": "list_jobs",
+    "capability": "read",
+    "requires": null,
+    "settled": false,
+    "polls": null,
+    "destructive": false,
+    "destructiveWhen": false
+  },
+  {
     "name": "update_history",
     "capability": "write",
     "requires": null,
@@ -253,6 +271,15 @@
   },
   {
     "name": "list_user_tools",
+    "capability": "read",
+    "requires": null,
+    "settled": false,
+    "polls": null,
+    "destructive": false,
+    "destructiveWhen": false
+  },
+  {
+    "name": "get_user_tool",
     "capability": "read",
     "requires": null,
     "settled": false,

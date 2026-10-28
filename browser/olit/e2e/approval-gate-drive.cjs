@@ -43,7 +43,7 @@ async function waitFor(page, fn, ms, arg) {
     page.on("console", (m) => logs.push(`[${m.type()}] ${m.text()}`));
 
     await page.goto(APP, { waitUntil: "domcontentloaded" });
-    check("booted", await waitFor(page, () => /olit ready/i.test(document.body.innerText), 240000));
+    check("booted", await waitFor(page, () => /Ready\./.test(document.body.innerText), 240000));
 
     await page.fill("#input", "Draft a plan to concatenate my two datasets.");
     await page.click("#send-btn");
@@ -104,7 +104,7 @@ async function waitFor(page, fn, ms, arg) {
     await page.goto(APP, { waitUntil: "domcontentloaded" });
     const beforeDown = await calls();
     check("an unreachable Galaxy stops Olit with an error",
-          await waitFor(page, () => /Olit\s+works in a history, so it cannot start/i.test(document.body.innerText), 120000));
+          await waitFor(page, () => /This\s+works in a history, so it cannot start/i.test(document.body.innerText), 120000));
     check("the input is disabled", await page.locator("#input").isDisabled());
     check("no turn was sent", (await calls()) === beforeDown);
     await fetch(`${STUB}/__galaxy?up=1`);

@@ -69,6 +69,7 @@
     "shared/custom-provider.js -> node:fs",
     "shared/dashboard-layout-store.js -> node:fs",
     "shared/dashboard-layout-store.js -> node:fs/promises",
+    "shared/known-provider.js -> node:fs",
     "shared/loom-config.js -> node:fs",
     "shared/state-dir.js -> node:fs"
   ],

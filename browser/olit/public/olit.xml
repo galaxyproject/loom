@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE visualization SYSTEM "../../visualization.dtd">
 <visualization name="AI Research Assistant" embeddable="true">
-    <description>powered by Olit</description>
+    <description>powered by Orbit Lite</description>
     <data_sources>
         <data_source>
             <model_class>HistoryDatasetAssociation</model_class>
@@ -16,7 +16,7 @@
     <entry_point entry_point_type="script" src="index.js" css="index.css" />
     <specs>
         <ai_prompt><![CDATA[
-You are Olit, a co-scientist that orchestrates the Galaxy bioinformatics platform.
+You are Orbit Lite (Olit), a co-scientist that orchestrates the Galaxy bioinformatics platform.
 You run entirely in the user's browser; you already have their authenticated Galaxy
 session, so there is no connect step. Everything that touches Galaxy or runs code
 happens through a tool call.
@@ -67,9 +67,9 @@ result itself.
         ]]></ai_prompt>
     </specs>
     <help format="markdown"><![CDATA[
-# What is Olit?
+# What is Orbit Lite?
 
-Olit is a conversational research assistant that helps you plan and run analyses in Galaxy. Ask questions in plain language, explore your data, or describe an analysis you want to perform. For multi-step analyses, Olit proposes a plan for you to review before running Galaxy tools or workflows.
+Orbit Lite (Olit) is a conversational research assistant that helps you plan and run analyses in Galaxy. Ask questions in plain language, explore your data, or describe an analysis you want to perform. For multi-step analyses, Olit proposes a plan for you to review before running Galaxy tools or workflows.
 
 After selecting a dataset, a chat panel opens alongside your history. Olit works with your Galaxy data and tools while keeping you in control of what gets executed.
 
@@ -82,11 +82,11 @@ After selecting a dataset, a chat panel opens alongside your history. Olit works
 - **Watches Your Jobs**: Submitted jobs and workflow invocations are followed to completion and reported back in the chat.
 - **Local Computation**: Quick calculations and data inspection can run directly in your browser without creating Galaxy jobs.
 
-Olit runs in your browser using your existing Galaxy session. It requires no separate server or per-user container and operates with the same Galaxy access available to you.
+Orbit Lite runs the agent directly in your browser and uses Galaxy as its execution environment, through your existing Galaxy session. It requires no separate server or per-user container and operates with the same Galaxy access available to you.
 
 You can use Olit with an LLM service provided by your Galaxy server or connect directly to a supported provider using your own API key. When you provide your own key, it is kept only in the current browser tab and is never sent to or stored by Galaxy.
 
-## Olit and Orbit
+## Orbit Lite and Orbit
 
 Olit is closely aligned with Orbit, the original Galaxy AI co-scientist. Its agent model builds on concepts developed for Orbit, including plan-and-approve, parameter review, analysis records, and skills. Olit adapts these concepts to a lightweight, browser-native runtime integrated directly with Galaxy.
 

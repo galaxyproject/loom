@@ -7,8 +7,6 @@
       "+17 last_polled_at: 2026-10-11T12:30:00Z"
     ],
     "browser": [
-      "-3 - [ ] 1. **Align to chrM reference** -- BWA-MEM, sorted BAM out",
-      "+3 - [x] 1. **Align to chrM reference** -- BWA-MEM, sorted BAM out",
       "+6   - Status: finished (ok) — recorded automatically",
       "-18 *Submitted jobs are currently running.*",
       "+19 *All submitted jobs have finished.*"
@@ -21,6 +19,10 @@
       "+16 galaxy_state: error",
       "+17 last_polled_at: 2026-10-11T12:30:00Z"
     ],
-    "browser": ["+6   - Status: failed (error) — recorded automatically"]
+    "browser": [
+      "+6   - Status: failed (error) — recorded automatically",
+      "-18 *Submitted jobs are currently running.*",
+      "+19 *All submitted jobs have finished.*"
+    ]
   }
 }
