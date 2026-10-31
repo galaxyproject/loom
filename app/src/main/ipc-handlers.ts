@@ -202,7 +202,8 @@ function reconcileIncomingConfig(incoming: Record<string, unknown>): OrbitConfig
       // main process is the trust boundary, so a compromised renderer that
       // reaches config:save still can't repoint the key at an http/attacker URL.
       const url = p.url ? normalizeGalaxyUrl(p.url) : p.url;
-      if (url) {
+      // Checks what was typed, so a URL that normalizes to nothing is refused, not saved blank.
+      if (p.url) {
         const v = validateGalaxyUrl(url);
         if (!v.ok) throw new Error(`Galaxy profile "${name}": ${v.reason}`);
       }

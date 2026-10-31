@@ -44,6 +44,19 @@ describe("resolveGalaxyStatus", () => {
     expect(status).toEqual({ connected: false, url: "https://main.example" });
   });
 
+  it("names the server root when the configured URL is the API root", () => {
+    expect(
+      resolveGalaxyStatus(profileConfig("main.example/api"), {} as NodeJS.ProcessEnv, () => "k"),
+    ).toEqual({ connected: true, url: "https://main.example" });
+    expect(
+      resolveGalaxyStatus(
+        {} as OrbitConfig,
+        { GALAXY_URL: "https://env.example/api/" } as NodeJS.ProcessEnv,
+        noConfigKey,
+      ),
+    ).toEqual({ connected: false, url: "https://env.example" });
+  });
+
   it("is disconnected with no profile and no env", () => {
     const status = resolveGalaxyStatus({} as OrbitConfig, {} as NodeJS.ProcessEnv, noConfigKey);
     expect(status).toEqual({ connected: false, url: null });

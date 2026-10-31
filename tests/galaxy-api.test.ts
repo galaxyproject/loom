@@ -31,6 +31,12 @@ describe("getGalaxyConfig", () => {
     expect(getGalaxyConfig()).toBeNull();
   });
 
+  it("returns null when the URL names no host", () => {
+    process.env.GALAXY_URL = "https://?x=1";
+    process.env.GALAXY_API_KEY = "key";
+    expect(getGalaxyConfig()).toBeNull();
+  });
+
   it("returns null when only URL is set", () => {
     process.env.GALAXY_URL = "https://usegalaxy.org";
     delete process.env.GALAXY_API_KEY;
@@ -115,6 +121,30 @@ describe("galaxyCredentials and the transport", () => {
     await galaxyGet("/whoami");
     expect(seen).toEqual([["https://worker.example/api/whoami", "wk"]]);
     expect(isGalaxyFetchOverridden()).toBe(false);
+  });
+
+  it("reaches /api once when the configured URL is the API root", async () => {
+    process.env.GALAXY_URL = "galaxy.example/api/";
+    process.env.GALAXY_API_KEY = "k";
+    const seen: string[] = [];
+    setGalaxyTransport({
+      fetch: async (url) => {
+        seen.push(url);
+        return new Response(JSON.stringify({ version_major: "26.1" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+    resetGalaxyOpsVersion();
+    expect(getGalaxyConfig()!.url).toBe("https://galaxy.example");
+    await galaxyGet("/whoami");
+    await galaxyOpsContext()!.galaxyVersion!();
+    resetGalaxyOpsVersion();
+    expect(seen).toEqual([
+      "https://galaxy.example/api/whoami",
+      "https://galaxy.example/api/version",
+    ]);
   });
 
   it("keeps setGalaxyFetchOverride a fixture", () => {

@@ -70,6 +70,12 @@ describe("fetchGalaxyCurrentUser", () => {
     expect(fetchImpl.mock.calls[0][0]).toBe(`${U}/api/users/current`);
   });
 
+  it("asks the server root when the configured URL is the API root", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(200, { username: "dannon" }));
+    await fetchGalaxyCurrentUser(`${U}/api/`, KEY, fetchImpl as unknown as typeof fetch);
+    expect(fetchImpl.mock.calls[0][0]).toBe(`${U}/api/users/current`);
+  });
+
   it("treats an empty username as no public identity", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse(200, { username: "", email: "" }));
     const result = await fetchGalaxyCurrentUser(U, KEY, fetchImpl as unknown as typeof fetch);

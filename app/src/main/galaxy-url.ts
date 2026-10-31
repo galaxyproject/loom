@@ -6,13 +6,7 @@
  * API key at an attacker URL or downgrade it to cleartext http.
  */
 
-/** Default a scheme-less URL to https:// (users type bare hostnames). */
-export function normalizeGalaxyUrl(url: string): string {
-  const trimmed = url.trim();
-  if (!trimmed) return trimmed;
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed)) return trimmed;
-  return `https://${trimmed}`;
-}
+export { normalizeGalaxyUrl } from "../../../shared/galaxy-url.js";
 
 /**
  * A Galaxy URL is safe to send the API key to only over https, or over http

@@ -15,22 +15,28 @@
  * `GALAXY_URL=... GALAXY_API_KEY=... orbit` reaches any server without editing
  * config. The desktop prefers the profile picked in its UI, then hands the
  * brain the result as an env pair, which the brain's CLI layer takes as is.
+ *
+ * The URL comes back normalized (shared/galaxy-url.js), so a pasted `/api` root
+ * or a bare host from either source reaches every client in one spelling.
  */
+
+import { normalizeGalaxyUrl } from "./galaxy-url.js";
 
 /**
  * @param {import("./galaxy-credentials.js").ResolveGalaxyCredentialsInput} input
  * @returns {import("./galaxy-credentials.js").GalaxyCredentials | null}
  */
 export function resolveGalaxyCredentials({ config, profileApiKey, env, prefer }) {
-  const envUrl = env?.GALAXY_URL?.trim();
+  const envUrl = normalizeGalaxyUrl(env?.GALAXY_URL ?? "");
   const envKey = env?.GALAXY_API_KEY?.trim();
   const fromEnv = envUrl && envKey ? { url: envUrl, apiKey: envKey, source: "env" } : null;
 
   const active = config?.galaxy?.active;
   const profile = active ? config?.galaxy?.profiles?.[active] : undefined;
   const key = profileApiKey === undefined ? profile?.apiKey : profileApiKey;
+  const profileUrl = normalizeGalaxyUrl(profile?.url ?? "");
   const fromProfile =
-    profile?.url && key ? { url: profile.url, apiKey: key, source: "profile" } : null;
+    profileUrl && key ? { url: profileUrl, apiKey: key, source: "profile" } : null;
 
   return prefer === "profile" ? (fromProfile ?? fromEnv) : (fromEnv ?? fromProfile);
 }

@@ -11,7 +11,7 @@
  *   - { ok: false, authFailed: true }  401/403 -- the key is wrong/expired
  *   - { ok: false, authFailed: false } offline / timeout / 5xx / no creds
  */
-import { validateGalaxyUrl } from "./galaxy-url.js";
+import { normalizeGalaxyUrl, validateGalaxyUrl } from "./galaxy-url.js";
 import { fetchSameOriginOnly, RedirectRefusedError } from "../../../shared/redirect-guard.js";
 
 export type GalaxyUserStatus =
@@ -28,7 +28,7 @@ export async function fetchGalaxyCurrentUser(
   fetchImpl: typeof fetch = fetch,
   timeoutMs = 6000,
 ): Promise<GalaxyUserStatus> {
-  const base = url.trim().replace(/\/+$/, "");
+  const base = normalizeGalaxyUrl(url);
   const key = apiKey.trim();
   if (!base || !key) return { ok: false, authFailed: false };
   // Never send the key to a non-https/non-loopback host, even if a legacy or

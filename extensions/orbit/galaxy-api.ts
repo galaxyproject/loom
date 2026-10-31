@@ -16,6 +16,7 @@ import {
   type InvocationDetail,
 } from "@galaxyproject/galaxy-ops";
 import { RedirectRefusedError, fetchSameOriginOnly } from "../../shared/redirect-guard.js";
+import { normalizeGalaxyUrl } from "../../shared/galaxy-url.js";
 import { transportCode } from "./galaxy-failure";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -110,12 +111,11 @@ export function galaxyCredentials(env?: NodeJS.ProcessEnv): GalaxyCredentials {
 export function getGalaxyConfig(): GalaxyConfig | null {
   const { url, apiKey } = galaxyCredentials();
   if (!url || !apiKey) return null;
-  // Galaxy URLs from the config profile / env often arrive scheme-less
-  // (e.g. "test.galaxyproject.org/"). The MCP layer tolerates that, but
-  // fetch() can't parse a schemeless URL, so default to https here.
-  const trimmed = url.trim().replace(/\/+$/, "");
-  const normalized = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-  return { url: normalized, apiKey };
+  // Every request goes through here, galaxy-ops' included, so this is where a
+  // scheme-less host or a pasted `/api` root has to be caught, whatever the
+  // shell or transport handed over.
+  const normalized = normalizeGalaxyUrl(url);
+  return normalized ? { url: normalized, apiKey } : null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

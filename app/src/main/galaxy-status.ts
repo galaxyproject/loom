@@ -1,5 +1,6 @@
 import type { OrbitConfig } from "./config.js";
 import { resolveGalaxyCredentials } from "../../../shared/galaxy-credentials.js";
+import { normalizeGalaxyUrl } from "../../../shared/galaxy-url.js";
 
 export interface GalaxyStatus {
   /** True when the brain has a usable Galaxy connection (a URL *and* a key). */
@@ -51,7 +52,8 @@ export function resolveGalaxyStatus(
   if (creds) return { connected: true, url: creds.url };
   const active = cfg.galaxy?.active;
   const profileUrl = active ? cfg.galaxy?.profiles?.[active]?.url : undefined;
-  return { connected: false, url: profileUrl || env.GALAXY_URL || null };
+  const url = profileUrl || env.GALAXY_URL;
+  return { connected: false, url: url ? normalizeGalaxyUrl(url) || null : null };
 }
 
 /**

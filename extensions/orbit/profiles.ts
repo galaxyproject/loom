@@ -9,6 +9,9 @@
 
 import { loadConfig, saveConfig } from "./config";
 import { galaxyCredentials } from "./galaxy-api";
+import { normalizeGalaxyUrl } from "../../shared/galaxy-url.js";
+
+export { normalizeGalaxyUrl };
 
 export interface GalaxyProfile {
   url: string;
@@ -98,20 +101,6 @@ export function profileNameFromUrl(url: string): string {
  * accepted but with a warning to the console — institutions run
  * private Galaxy mirrors, so an allowlist would be too narrow.
  */
-/**
- * Default a scheme-less Galaxy URL to https://. Users routinely type a bare
- * host ("test.galaxyproject.org") and expect it to resolve; without this
- * `new URL()` throws and they just see "Not a valid URL." https is the right
- * default -- it's the only scheme allowed for non-loopback hosts anyway.
- * Explicit schemes (including http:// for localhost) are preserved as typed.
- */
-export function normalizeGalaxyUrl(url: string): string {
-  const trimmed = url.trim();
-  if (!trimmed) return trimmed;
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed)) return trimmed;
-  return `https://${trimmed}`;
-}
-
 /**
  * True for an IPv4 loopback (127.0.0.0/8), localhost, or IPv6 ::1. A bare
  * `startsWith("127.")` would wrongly accept a resolvable hostname like
@@ -243,7 +232,9 @@ export function switchProfile(name: string): boolean {
   profiles.active = name;
   writeProfiles(profiles);
 
-  process.env.GALAXY_URL = profile.url;
+  // Saved before /api was stripped, or hand-edited -- either way the env is what
+  // every Galaxy client reads.
+  process.env.GALAXY_URL = normalizeGalaxyUrl(profile.url);
   if (profile.apiKey) {
     process.env.GALAXY_API_KEY = profile.apiKey;
   } else if (profile.apiKeyEncrypted) {

@@ -83,6 +83,12 @@ describe("switchProfile env handling", () => {
     expect(process.env.GALAXY_API_KEY).toBe("key-A");
   });
 
+  it("publishes a profile saved with an /api root as the server root", () => {
+    saveProfile("a", "https://a.galaxyproject.org/api/", "key-A");
+    expect(switchProfile("a")).toBe(true);
+    expect(process.env.GALAXY_URL).toBe("https://a.galaxyproject.org");
+  });
+
   it("returns false for an unknown profile", () => {
     expect(switchProfile("does-not-exist")).toBe(false);
   });
