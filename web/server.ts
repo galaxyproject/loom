@@ -22,6 +22,7 @@ import { summarizeStartupFailure, appendStderr } from "../shared/brain-exit.js";
 import { encodeEventPayload } from "./event-payload.js";
 import { evaluateBind, authorizeWsUpgrade } from "./auth.js";
 import { isForwardableUiResponse } from "./rpc-guard.js";
+import { PendingPrompts } from "./pending-prompts.js";
 import { ACTIVE_LLM_API_KEY_ENV, isCustomProvider } from "../shared/custom-provider.js";
 import { hasProviderKey, llmKeyEnvVar } from "./llm-key-routing.js";
 import { resolveShutdownGraceMs } from "./shutdown-grace.js";
@@ -140,6 +141,7 @@ function getCwd(): string {
 // ── Orbit subprocess ──────────────────────────────────────────────────────────
 
 let coreProcess: ChildProcess | null = null;
+const pendingPrompts = new PendingPrompts();
 let activeSocket: WebSocket | null = null;
 let cwd = getCwd();
 
@@ -247,11 +249,12 @@ function startCore(opts: { fresh?: boolean } = {}): void {
 
   log("starting orbit core subprocess", { bin: CORE_BIN, cwd, remote: IS_REMOTE_MODE });
 
-  coreProcess = spawn("node", args, {
+  const proc = spawn("node", args, {
     stdio: ["pipe", "pipe", "pipe"],
     cwd,
     env,
   });
+  coreProcess = proc;
 
   const rl = createInterface({ input: coreProcess.stdout!, terminal: false });
 
@@ -264,6 +267,10 @@ function startCore(opts: { fresh?: boolean } = {}): void {
     }
 
     const type = data.type as string;
+
+    // Still forwarded below: the renderer clears its thinking state on a
+    // handled command's response.
+    pendingPrompts.observe(data);
 
     // Route extension UI requests
     if (type === "extension_ui_request") {
@@ -300,9 +307,15 @@ function startCore(opts: { fresh?: boolean } = {}): void {
     sendEvent("agent:status", "stopped");
   });
 
+  // On close, not exit: exit can come before readline has handed over the
+  // brain's last lines, and a refusal among them would be lost. The exit
+  // handler has already sent the status that resets the turn UI.
+  proc.on("close", () => pendingPrompts.abandon(proc));
+
   coreProcess.on("error", (err) => {
     log("loom error:", err.message);
     coreProcess = null;
+    pendingPrompts.abandon(proc);
     sendEvent("agent:status", "error", err.message);
   });
 
@@ -316,6 +329,10 @@ function stopCore(): void {
     coreProcess.stdout?.removeAllListeners();
     coreProcess.stderr?.removeAllListeners();
     coreProcess.kill("SIGTERM");
+    // Its listeners are gone, so the exit handler won't settle these or send
+    // the "stopped" that takes a waiting prompt or a running turn off "thinking".
+    pendingPrompts.abandon(coreProcess);
+    sendEvent("agent:status", "stopped");
     coreProcess = null;
   }
 }
@@ -363,8 +380,12 @@ function sendToCore(obj: Record<string, unknown>): void {
     drainQueue.push(obj);
     return;
   }
-  if (!coreProcess?.stdin?.writable) return;
+  if (!coreProcess?.stdin?.writable) {
+    pendingPrompts.unsent(obj, "Agent is not running");
+    return;
+  }
   coreProcess.stdin.write(JSON.stringify(obj) + "\n");
+  pendingPrompts.sent(obj, coreProcess);
 }
 
 function flushDrainQueue(): void {
@@ -668,13 +689,19 @@ wss.on("connection", (socket) => {
 
     // Everything else forwards to loom subprocess
     if (channel === "agent:prompt") {
-      sendToCore(
-        agentPromptPayload(
+      // Answer only once the brain has: a refused prompt rejects the browser's
+      // call, which is how the renderer learns to show the refusal.
+      const promptId = pendingPrompts.track(
+        (error) => (error === null ? respond(id, null) : respondError(id, error)),
+        socket,
+      );
+      sendToCore({
+        ...agentPromptPayload(
           args[0] as string,
           args[1] as { streamingBehavior?: "steer" | "followUp" } | undefined,
         ),
-      );
-      if (id) respond(id, null);
+        id: promptId,
+      });
       return;
     }
     if (channel === "agent:abort") {
@@ -701,11 +728,19 @@ wss.on("connection", (socket) => {
   socket.on("close", () => {
     log("browser disconnected");
     activeSocket = null;
+    pendingPrompts.forget(socket);
   });
 
+  // A prompt can settle after its socket has gone; the shim already rejected
+  // everything in flight when it saw the close.
   function respond(id: string | undefined, result: unknown): void {
-    if (!id) return;
+    if (!id || socket.readyState !== WebSocket.OPEN) return;
     socket.send(JSON.stringify({ _response: true, _id: id, _result: result }));
+  }
+
+  function respondError(id: string | undefined, error: string): void {
+    if (!id || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({ _response: true, _id: id, _error: error }));
   }
 });
 
