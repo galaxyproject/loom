@@ -75,7 +75,7 @@ describe("sendStartupGreeting (dispatch)", () => {
 
   function fakes() {
     const pi = { sendUserMessage: vi.fn() };
-    const ctx = { ui: { notify: vi.fn() } };
+    const ctx = { hasUI: true, ui: { notify: vi.fn() } };
     return { pi, ctx };
   }
 
@@ -131,6 +131,16 @@ describe("sendStartupGreeting (dispatch)", () => {
     sendStartupGreeting(pi as never, ctx as never);
     expect(ctx.ui.notify).toHaveBeenCalledTimes(1);
     expect(ctx.ui.notify.mock.calls[0][1]).toBe("info");
+    expect(pi.sendUserMessage).not.toHaveBeenCalled();
+  });
+
+  // #424: print/json modes prompt the session right after session_start, so a
+  // greeting turn started here makes their prompt fail as "already processing".
+  it("usable but headless (no UI) -> no model turn", () => {
+    process.env.GALAXY_URL = "https://example-fake-galaxy.invalid";
+    process.env.GALAXY_API_KEY = "dummy-fake-key";
+    const { pi, ctx } = fakes();
+    sendStartupGreeting(pi as never, { ...ctx, hasUI: false } as never);
     expect(pi.sendUserMessage).not.toHaveBeenCalled();
   });
 });
