@@ -279,3 +279,25 @@ twin, `"chat"` for the chat one). Both use
 `activity.ordered` to fail a run whose `run_tool` call (its `tool.start` row)
 came before the `proposal.approved` row, since approval does not yet block
 submission.
+
+## Asserting the target history
+
+A run can pass every other check while its job lands in the wrong history:
+a model that trips the cross-history guard can satisfy it by moving the job
+to wherever its inputs live, and a live run once passed the slash twin with
+its job in "Orbit demo" rather than the `hist1` its prompt named. History ids
+differ per server, so a scenario can't pin one. `toolCalls.inHistory` names
+the history instead:
+
+```json
+"toolCalls": { "inHistory": [{ "name": "run_tool", "history": "hist1" }] }
+```
+
+At run start, before spawning anything, the runner looks each named history
+up on `GALAXY_URL` with `GALAXY_API_KEY`, and every call to `name` must then
+carry that id in its `history_id` (`arg` names a different argument). A name
+that matches no live history, or more than one, fails the run without
+spawning it, as does a failed lookup, and the failure says why. With no call
+at all the check passes; `mustInclude` is what requires one. The execution
+scenarios and `execution-unprompted-run-needs-proposal` use it, so the account
+they run on needs exactly one history named `hist1` with a dataset in it.

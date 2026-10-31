@@ -8,10 +8,24 @@ export interface ToolCallExpectation {
   argsContains?: Record<string, string>;
 }
 
+/**
+ * Every call to `name` must target the history the scenario's prompt named:
+ * its `arg` (default `history_id`) must equal the id `history` resolves to on
+ * the server the run used. The runner resolves the name at run start; a name
+ * that doesn't resolve to exactly one live history fails the run.
+ */
+export interface HistoryTargetExpectation {
+  name: string;
+  history: string;
+  arg?: string;
+}
+
 export interface Assertions {
   toolCalls?: {
     mustInclude?: ToolCallExpectation[];
     mustNotInclude?: string[];
+    /** Vacuous when the tool is never called; pair it with mustInclude for that. */
+    inHistory?: HistoryTargetExpectation[];
   };
   events?: {
     mustInclude?: string[];
@@ -300,6 +314,11 @@ export interface ScenarioRun {
   notebookContent: string | null;
   /** Parsed rows of the scenario's activity.jsonl, empty if it was never written. */
   activityEvents: ActivityEvent[];
+  /**
+   * History names from `toolCalls.inHistory`, resolved at run start: `ids` by
+   * name, and `errors` for any that didn't resolve (the run was not spawned).
+   */
+  histories?: { ids: Record<string, string>; errors: Record<string, string> };
   failures: ScenarioFailure[];
   durationMs: number;
 }

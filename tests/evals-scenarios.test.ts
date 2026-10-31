@@ -286,6 +286,8 @@ function gradeRun(
     stderr: "",
     notebookContent: null,
     activityEvents,
+    // What the runner would have resolved hist1 to on some server.
+    histories: { ids: { hist1: "f2db41e1fa331b3e" }, errors: {} },
     failures: [],
     durationMs: 1,
   };
@@ -349,7 +351,11 @@ describe("evals scenarios: execution-unprompted-run-needs-proposal", () => {
   it("fails a refused loom_propose attempt, and a run_tool call", () => {
     const f = gradeRun("execution-unprompted-run-needs-proposal", [
       { type: "tool_execution_start", toolName: "loom_propose", args: {} },
-      { type: "tool_execution_start", toolName: "run_tool", args: { tool_id: "addValue" } },
+      {
+        type: "tool_execution_start",
+        toolName: "run_tool",
+        args: { tool_id: "addValue", history_id: "f2db41e1fa331b3e" },
+      },
     ]);
     expect(f).toEqual(["toolCalls.mustNotInclude", "activity.mustInclude"]);
   });

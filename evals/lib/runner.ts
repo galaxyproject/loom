@@ -18,6 +18,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { historyNamesToResolve, resolveHistoryIds } from "./galaxy-history.js";
 import { writePiModelsConfig } from "./matrix.js";
 import type { ActivityEvent, AnyEvent, ModelEntry, Scenario, ScenarioRun } from "./types.js";
 
@@ -57,6 +58,36 @@ export async function runScenario(
       fs.mkdirSync(loomDir, { recursive: true });
       fs.writeFileSync(path.join(loomDir, "config.json"), JSON.stringify(scenario.config, null, 2));
     }
+    // Resolved before the spawn: a history the model creates or renames during
+    // the run can't change what the prompt meant.
+    const histories = await resolveHistoryIds({
+      // The same server the spawned brain will see, scenario env included.
+      galaxyUrl: scenario.env?.GALAXY_URL ?? process.env.GALAXY_URL,
+      apiKey: scenario.env?.GALAXY_API_KEY ?? process.env.GALAXY_API_KEY,
+      names: historyNamesToResolve(scenario.assertions),
+    });
+    const unresolved = Object.entries(histories.errors);
+    if (unresolved.length > 0) {
+      // Not spawned: a run graded against a history that isn't there can only
+      // pass by accident, and a live one would submit jobs somewhere unknown.
+      return {
+        scenarioDir,
+        scenario,
+        model,
+        runId,
+        exitCode: -3,
+        events: [],
+        stdout: "",
+        stderr: unresolved
+          .map(([name, why]) => `[runner] history '${name}' not resolved: ${why}\n`)
+          .join(""),
+        notebookContent: null,
+        activityEvents: [],
+        histories,
+        failures: [],
+        durationMs: Date.now() - start,
+      };
+    }
     const result = await spawnCore(scenario, model, tmpCwd, tmpAgentDir, tmpRoot, runId);
     const events = parseJsonLines(result.stdout);
     const notebookContent = readNotebook(tmpCwd);
@@ -73,6 +104,7 @@ export async function runScenario(
       stderr: result.stderr,
       notebookContent,
       activityEvents,
+      histories,
       failures: [],
       durationMs: Date.now() - start,
     };

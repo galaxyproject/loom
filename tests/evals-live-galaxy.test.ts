@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { allOperations } from "@galaxyproject/galaxy-ops";
 import { evaluate } from "../evals/lib/assertions";
 import { filterScenarioDirs } from "../evals/lib/select";
-import { makeRunId, substituteRunId } from "../evals/lib/runner";
+import { makeRunId, runScenario, substituteRunId } from "../evals/lib/runner";
+import { historyNamesToResolve, resolveHistoryIds } from "../evals/lib/galaxy-history";
 import {
   EVAL_HISTORY_PREFIX,
   purgeEvalHistories,
@@ -357,5 +359,183 @@ describe("evals live Galaxy scenarios", () => {
       GALAXY_URL: "",
       GALAXY_API_KEY: "",
     });
+  });
+});
+
+describe("evals target-history assertion", () => {
+  const call = (history_id: unknown): AnyEvent => ({
+    type: "tool_execution_start",
+    toolName: "run_tool",
+    args: { tool_id: "addValue", history_id },
+  });
+  const assertions: Assertions = {
+    toolCalls: { inHistory: [{ name: "run_tool", history: "hist1" }] },
+  };
+  const graded = (events: AnyEvent[], histories?: ScenarioRun["histories"]) => {
+    const r = run(events, assertions);
+    r.histories = histories;
+    return evaluate(r);
+  };
+  const resolved = { ids: { hist1: "aaaa1111" }, errors: {} };
+
+  it("passes when every run_tool call targets the named history", () => {
+    expect(graded([call("aaaa1111"), call("aaaa1111")], resolved)).toEqual([]);
+    // Vacuous with no call at all; mustInclude is what requires one.
+    expect(graded([], resolved)).toEqual([]);
+  });
+
+  it("fails a retry that moved the job to another history, or a name passed as the id", () => {
+    const f = graded(
+      [call("aaaa1111"), call("bbbb2222"), call("hist1"), call(undefined)],
+      resolved,
+    );
+    expect(f.map((x) => x.assertion)).toEqual(["toolCalls.inHistory"]);
+    expect(f[0].detail).toContain("3 'run_tool' call(s)");
+    expect(f[0].detail).toContain('"bbbb2222"');
+    expect(f[0].detail).toContain('"hist1"');
+  });
+
+  it("fails, with the reason, when the history never resolved", () => {
+    const f = graded([call("aaaa1111")], {
+      ids: {},
+      errors: { hist1: "no live history named 'hist1'" },
+    });
+    expect(f.map((x) => x.assertion)).toEqual(["toolCalls.inHistory"]);
+    expect(f[0].detail).toContain("no live history named 'hist1'");
+    expect(graded([call("aaaa1111")]).map((x) => x.assertion)).toEqual(["toolCalls.inHistory"]);
+  });
+
+  it("reads another argument when the tool names its history differently", () => {
+    const r = run(
+      [{ type: "tool_execution_start", toolName: "upload", args: { target: "aaaa1111" } }],
+      { toolCalls: { inHistory: [{ name: "upload", history: "hist1", arg: "target" }] } },
+    );
+    r.histories = resolved;
+    expect(evaluate(r)).toEqual([]);
+  });
+
+  it("is applied to every scenario whose prompt names hist1 and that grades run_tool", () => {
+    const dir = path.resolve(__dirname, "..", "evals", "scenarios");
+    for (const name of fs.readdirSync(dir)) {
+      const file = path.join(dir, name, "scenario.json");
+      if (!fs.existsSync(file)) continue;
+      const s = JSON.parse(fs.readFileSync(file, "utf-8")) as Scenario;
+      const namesHist1 = s.inputs.some((i) => /\bhist1\b/.test(i));
+      const gradesRunTool = JSON.stringify(s.assertions.toolCalls ?? {}).includes("run_tool");
+      if (!namesHist1 || !gradesRunTool) continue;
+      expect(s.assertions.toolCalls?.inHistory, name).toEqual([
+        { name: "run_tool", history: "hist1" },
+      ]);
+    }
+    const slash = JSON.parse(
+      fs.readFileSync(
+        path.join(dir, "execution-after-slash-approve-tools", "scenario.json"),
+        "utf-8",
+      ),
+    ) as Scenario;
+    expect(historyNamesToResolve(slash.assertions)).toEqual(["hist1"]);
+  });
+});
+
+describe("evals history resolution", () => {
+  const listing = (rows: object[], status = 200): FetchLike => {
+    return async () => ({ ok: status < 400, status, json: async () => rows });
+  };
+
+  it("resolves an exact, live name and sends the key", async () => {
+    const urls: string[] = [];
+    const headers: Record<string, string>[] = [];
+    const fetchImpl: FetchLike = async (url, init) => {
+      urls.push(url);
+      headers.push(init?.headers ?? {});
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [
+          { id: "x1", name: "hist10" },
+          { id: "x2", name: "hist1", deleted: true },
+          { id: "x3", name: "hist1" },
+        ],
+      };
+    };
+    const r = await resolveHistoryIds({
+      galaxyUrl: "https://galaxy.example/",
+      apiKey: "k",
+      names: ["hist1"],
+      fetchImpl,
+    });
+    expect(r).toEqual({ ids: { hist1: "x3" }, errors: {} });
+    expect(urls[0]).toMatch(/^https:\/\/galaxy\.example\/api\/histories\?/);
+    expect(urls[0]).toContain("qv=hist1");
+    expect(headers[0]["x-api-key"]).toBe("k");
+  });
+
+  it("errors on no match, an ambiguous name, an HTTP failure, a throw, or no credentials", async () => {
+    const base = { galaxyUrl: "https://g", apiKey: "k", names: ["hist1"] };
+    expect(
+      (await resolveHistoryIds({ ...base, fetchImpl: listing([{ id: "x1", name: "other" }]) }))
+        .errors.hist1,
+    ).toMatch(/no live history named 'hist1'/);
+    expect(
+      (
+        await resolveHistoryIds({
+          ...base,
+          fetchImpl: listing([
+            { id: "x1", name: "hist1" },
+            { id: "x2", name: "hist1" },
+          ]),
+        })
+      ).errors.hist1,
+    ).toMatch(/2 live histories/);
+    expect(
+      (await resolveHistoryIds({ ...base, fetchImpl: listing([], 403) })).errors.hist1,
+    ).toMatch(/HTTP 403/);
+    const boom: FetchLike = async () => {
+      throw new Error("ECONNREFUSED");
+    };
+    expect((await resolveHistoryIds({ ...base, fetchImpl: boom })).errors.hist1).toBe(
+      "ECONNREFUSED",
+    );
+    const r = await resolveHistoryIds({ ...base, apiKey: undefined, fetchImpl: boom });
+    expect(r).toEqual({ ids: {}, errors: { hist1: "GALAXY_URL/GALAXY_API_KEY unset" } });
+  });
+
+  it("makes no request when nothing needs resolving", async () => {
+    const boom: FetchLike = async () => {
+      throw new Error("should not be called");
+    };
+    expect(
+      await resolveHistoryIds({ galaxyUrl: "https://g", apiKey: "k", names: [], fetchImpl: boom }),
+    ).toEqual({ ids: {}, errors: {} });
+  });
+
+  it("fails the run without spawning when a history doesn't resolve", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "orbit-eval-test-"));
+    const saved = { url: process.env.GALAXY_URL, key: process.env.GALAXY_API_KEY };
+    try {
+      delete process.env.GALAXY_URL;
+      delete process.env.GALAXY_API_KEY;
+      const scenario: Scenario = {
+        name: "t",
+        tier: 2,
+        inputs: ["Run addValue in hist1"],
+        assertions: { toolCalls: { inHistory: [{ name: "run_tool", history: "hist1" }] } },
+      };
+      fs.writeFileSync(path.join(tmp, "scenario.json"), JSON.stringify(scenario));
+      const r = await runScenario(tmp, null);
+      expect(r.exitCode).toBe(-3);
+      expect(r.events).toEqual([]);
+      expect(r.stderr).toContain("history 'hist1' not resolved");
+      expect(evaluate(r).map((f) => f.assertion)).toEqual(["toolCalls.inHistory"]);
+      // A model cell too: no "check credentials/proxy" noise beside the real reason.
+      const modelRun = { ...r, model: { id: "m", provider: "p", model: "m" } };
+      expect(evaluate(modelRun).map((f) => f.assertion)).toEqual(["toolCalls.inHistory"]);
+    } finally {
+      if (saved.url === undefined) delete process.env.GALAXY_URL;
+      else process.env.GALAXY_URL = saved.url;
+      if (saved.key === undefined) delete process.env.GALAXY_API_KEY;
+      else process.env.GALAXY_API_KEY = saved.key;
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });

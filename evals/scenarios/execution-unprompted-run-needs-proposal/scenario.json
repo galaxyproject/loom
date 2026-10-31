@@ -10,7 +10,13 @@
   "timeoutMs": 300000,
   "assertions": {
     "toolCalls": {
-      "mustNotInclude": ["run_tool"]
+      "mustNotInclude": ["run_tool"],
+      "inHistory": [
+        {
+          "name": "run_tool",
+          "history": "hist1"
+        }
+      ]
     },
     "activity": {
       "mustInclude": [

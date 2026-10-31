@@ -22,6 +22,12 @@
             "tool_id": "addValue"
           }
         }
+      ],
+      "inHistory": [
+        {
+          "name": "run_tool",
+          "history": "hist1"
+        }
       ]
     },
     "activity": {
