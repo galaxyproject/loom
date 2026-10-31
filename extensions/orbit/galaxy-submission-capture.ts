@@ -40,6 +40,7 @@ import {
 } from "./galaxy-job-block";
 import { hasUdtBlock, upsertUdtBlock } from "./galaxy-udt-block";
 import {
+  UNATTRIBUTED,
   isSubmissionTool,
   parseGalaxyResultEnvelope,
   parseSubmission,
@@ -66,11 +67,11 @@ import {
   writeProvenanceSidecar,
 } from "./galaxy-provenance";
 import { getCurrentStepAnchor, getNotebookPath, setCurrentStepAnchor } from "./state";
+import { setDispatchPins, submissionLedger, type PinnedDispatch } from "./submission-ledger";
 import { ulid } from "./ulid";
 import type { GalaxyToolFamily } from "../../shared/galaxy-tool-family.js";
 
-/** What a block carries when nothing pointed the submission at a plan step. */
-export const UNATTRIBUTED = "unattributed";
+export { UNATTRIBUTED };
 
 /** Where per-attempt provenance lives, relative to the analysis directory. */
 export const PROVENANCE_DIR = path.join(".loom", "provenance");
@@ -94,6 +95,11 @@ interface WriteOutcome {
 interface Dispatch {
   attemptId: string;
   toolName: string;
+  /**
+   * The record the call was made in, read once when it started. Capture writes there however
+   * long the call takes, and the ledger takes its key from here, so the two never disagree.
+   */
+  recordKey: string | null;
   args: Record<string, unknown>;
   stepAnchor: string;
   submittedAt: string;
@@ -116,12 +122,31 @@ const inFlight = new Map<string, Dispatch>();
 /** Test seam: drop in-flight state between cases. */
 export function resetSubmissionCapture(): void {
   inFlight.clear();
+  claimed.clear();
+}
+
+/**
+ * Calls whose result capture has taken, by the end event or by recovery. Whichever comes first
+ * captures; the other finds the call here and leaves it. Bounded like the in-flight map.
+ */
+const MAX_CLAIMED = 1024;
+const claimed = new Set<string>();
+
+function claim(toolCallId: string): boolean {
+  if (claimed.has(toolCallId)) return false;
+  if (claimed.size >= MAX_CLAIMED) {
+    const oldest = claimed.values().next();
+    if (!oldest.done) claimed.delete(oldest.value);
+  }
+  claimed.add(toolCallId);
+  return true;
 }
 
 function rememberDispatch(toolCallId: string, toolName: string, args: unknown): Dispatch {
   const dispatch: Dispatch = {
     attemptId: ulid(),
     toolName,
+    recordKey: getNotebookPath(),
     args: (args && typeof args === "object" ? args : {}) as Record<string, unknown>,
     stepAnchor: getCurrentStepAnchor() ?? UNATTRIBUTED,
     submittedAt: new Date().toISOString(),
@@ -135,6 +160,18 @@ function rememberDispatch(toolCallId: string, toolName: string, args: unknown): 
   inFlight.set(toolCallId, dispatch);
   return dispatch;
 }
+
+/** What a call pinned when it started, for the ledger entry its execute writes. */
+export function pinnedDispatch(toolCallId: string): PinnedDispatch | undefined {
+  const found = inFlight.get(toolCallId);
+  if (!found) return undefined;
+  const { recordKey, attemptId, stepAnchor, submittedAt } = found;
+  return { recordKey, attemptId, stepAnchor, submittedAt };
+}
+
+// The ledger is written from inside the Galaxy tools' execute, which can't import this module
+// (it reaches Node); it reads the pins through this.
+setDispatchPins(pinnedDispatch, getNotebookPath);
 
 /** Supplied by a caller that knows the dispatch details but had no start event. */
 export interface DispatchOverride {
@@ -165,6 +202,7 @@ function takeDispatch(toolCallId: string, toolName: string, override?: DispatchO
   return {
     attemptId: ulid(),
     toolName,
+    recordKey: getNotebookPath(),
     args: override?.args ?? {},
     stepAnchor: override
       ? (override.stepAnchor ?? getCurrentStepAnchor() ?? UNATTRIBUTED)
@@ -174,13 +212,12 @@ function takeDispatch(toolCallId: string, toolName: string, override?: DispatchO
   };
 }
 
-function sessionDir(): string | null {
-  const nb = getNotebookPath();
-  return nb ? path.dirname(nb) : null;
-}
-
-function record(kind: string, payload: Record<string, unknown>): void {
-  const dir = sessionDir();
+function record(
+  kind: string,
+  payload: Record<string, unknown>,
+  notebookPath = getNotebookPath(),
+): void {
+  const dir = notebookPath ? path.dirname(notebookPath) : null;
   if (!dir) return;
   appendActivityEvent(dir, {
     timestamp: new Date().toISOString(),
@@ -502,11 +539,18 @@ export async function handleSubmissionResult(
   const dispatch = takeDispatch(toolCallId, toolName, dispatchOverride);
 
   // A failed submission is not a submission: the Galaxy tools mark a
-  // success=false envelope as an error, and nothing was created.
+  // success=false envelope as an error, and nothing was created. Execute has
+  // already told the ledger whether it was refused or merely unanswered, and
+  // an answer that arrives after the deadline is left for recovery to claim.
   if (isError) return;
+  // Recovery already captured it from the ledger.
+  if (!claim(toolCallId)) return;
 
-  const notebookPath = getNotebookPath();
-  if (!notebookPath) return;
+  const notebookPath = dispatch.recordKey;
+  if (!notebookPath) {
+    await closeEntry(toolCallId, "abandoned", "no record was open");
+    return;
+  }
 
   let resolved = resolveResultPayload(result);
   let outcome = parseSubmission(toolName, dispatch.args, resolved);
@@ -526,28 +570,104 @@ export async function handleSubmissionResult(
   }
 
   if (!outcome.ok) {
-    record("submission.unparsed", {
-      tool: toolName,
-      attempt_id: dispatch.attemptId,
-      step_anchor: dispatch.stepAnchor,
-      reason: outcome.reason,
-    });
+    record(
+      "submission.unparsed",
+      {
+        tool: toolName,
+        attempt_id: dispatch.attemptId,
+        step_anchor: dispatch.stepAnchor,
+        reason: outcome.reason,
+      },
+      notebookPath,
+    );
+    await closeEntry(toolCallId, "abandoned", outcome.reason);
     return;
   }
 
-  const submission = outcome.submission;
+  await captureSubmission(toolCallId, toolName, outcome.submission, dispatch, notebookPath);
+}
+
+/**
+ * A completion that arrived after its conversation was left: the same capture, into the record
+ * the call was made in, which `tool_execution_end` would have done had it fired.
+ */
+export function captureLateSubmission(
+  toolCallId: string,
+  toolName: string,
+  result: unknown,
+): Promise<void> {
+  const isError = !!result && typeof result === "object" && "isError" in result && !!result.isError;
+  return handleSubmissionResult(toolCallId, toolName, result, isError);
+}
+
+/**
+ * Capture every submission of this record that Galaxy answered but nothing wrote down -- its end
+ * event never came, or the process that would have handled it is gone -- from the answer the
+ * ledger kept. These are ordinary submission records: the call was ours, the ids are Galaxy's.
+ * Returns how many it captured.
+ */
+export async function recoverSubmissions(recordKey: string): Promise<number> {
+  const ledger = submissionLedger();
+  let recovered = 0;
+  for (const entry of await ledger.open(recordKey)) {
+    if (entry.state !== "responded" || !entry.submission) continue;
+    if (!claim(entry.callId)) continue;
+    const pinned = inFlight.get(entry.callId);
+    inFlight.delete(entry.callId);
+    const dispatch: Dispatch = pinned ?? {
+      attemptId: entry.attemptId,
+      toolName: entry.toolName,
+      recordKey: entry.recordKey,
+      args: {},
+      stepAnchor: entry.stepAnchor,
+      submittedAt: entry.dispatchedAt,
+      replayed: false,
+    };
+    await captureSubmission(entry.callId, entry.toolName, entry.submission, dispatch, recordKey);
+    recovered++;
+  }
+  await ledger.prune(recordKey);
+  return recovered;
+}
+
+/** Close a ledger entry, never failing capture over it: the blocks are what matter here. */
+async function closeEntry(
+  toolCallId: string,
+  how: "captured" | "abandoned",
+  reason?: string,
+): Promise<void> {
+  try {
+    const ledger = submissionLedger();
+    if (how === "captured") await ledger.captured(toolCallId);
+    else await ledger.abandoned(toolCallId, reason ?? "");
+  } catch (err) {
+    console.error("[submission-capture] ledger not updated:", err);
+  }
+}
+
+async function captureSubmission(
+  toolCallId: string,
+  toolName: string,
+  submission: ParsedSubmission,
+  dispatch: Dispatch,
+  notebookPath: string,
+): Promise<void> {
+  const note = (kind: string, payload: Record<string, unknown>) =>
+    record(kind, payload, notebookPath);
   let written: WriteOutcome;
   try {
     written = await writeBlocks(notebookPath, submission, dispatch);
   } catch (err) {
     // The run is real and running whether or not we managed to write it down;
     // say so rather than claiming a registration that did not land.
-    record("submission.unparsed", {
+    const reason = `could not write the record: ${err instanceof Error ? err.message : String(err)}`;
+    note("submission.unparsed", {
       tool: toolName,
       attempt_id: dispatch.attemptId,
       step_anchor: dispatch.stepAnchor,
-      reason: `could not write the record: ${err instanceof Error ? err.message : String(err)}`,
+      reason,
     });
+    await closeEntry(toolCallId, "abandoned", reason);
     return;
   }
 
@@ -556,17 +676,20 @@ export async function handleSubmissionResult(
   // the harness intercepts a UDT creation is to keep the definition. Say
   // unparsed instead of claiming a registration.
   if (written.udtPending && !written.udtDefinition) {
-    record("submission.unparsed", {
+    const reason = "could not store the tool definition, so the creation is unrecorded";
+    note("submission.unparsed", {
       tool: toolName,
       attempt_id: dispatch.attemptId,
       step_anchor: dispatch.stepAnchor,
-      reason: "could not store the tool definition, so the creation is unrecorded",
+      reason,
     });
+    await closeEntry(toolCallId, "abandoned", reason);
     return;
   }
+  await closeEntry(toolCallId, "captured");
 
   if (written.replayCollisions.length > 0) {
-    record("submission.replay_skipped", {
+    note("submission.replay_skipped", {
       tool: toolName,
       attempt_id: dispatch.attemptId,
       step_anchor: dispatch.stepAnchor,
@@ -599,7 +722,7 @@ export async function handleSubmissionResult(
   // registration: the block is already written.
   const provenance = await recordAttempt(notebookPath, submission, dispatch, written);
 
-  record("submission.registered", {
+  note("submission.registered", {
     tool: toolName,
     attempt_id: dispatch.attemptId,
     step_anchor: dispatch.stepAnchor,

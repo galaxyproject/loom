@@ -37,8 +37,10 @@ jobs:
               - "browser/**"
               - "app/src/renderer/**"
               - "shared/**"
-              # The conformance test (core/src/agent/pi-host.orbit.test.ts) boots Orbit's brain.
+              # The conformance test (core/src/agent/pi-host.orbit.test.ts) boots Orbit's brain,
+              # and the VITE_ORBIT_BRAIN=orbit build bundles it with what it imports.
               - "extensions/**"
+              - "lessons/**"
               # The browser resolves pi-coding-agent and pi-tui from the root install, so a pi bump
               # there changes what the browser runs.
               - "package.json"
@@ -50,6 +52,18 @@ jobs:
     if: needs.changes.outputs.browser == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    # One leg per brain the agent worker can boot. A leg per runner rather than a step: the e2e
+    # tiers take most of the 30 minutes and hold fixed ports (e2e/run-all.sh).
+    strategy:
+      fail-fast: false
+      matrix:
+        brain: [browser, orbit]
+    # Orbit's brain behind the flag reports without blocking until its e2e tiers have run green.
+    continue-on-error: ${{ matrix.brain == 'orbit' }}
+    env:
+      VITE_ORBIT_BRAIN: ${{ matrix.brain }}
+      # e2e/brain.cjs fails a drive that the other brain answered.
+      EXPECT_BRAIN: ${{ matrix.brain }}
     defaults:
       run:
         working-directory: browser
@@ -109,19 +123,32 @@ jobs:
       # The agents repo drives dist/session.mjs, and its build crosses into the core's package
       # exports; --describe loads the bundle and resolves the flavor and the core from it.
       - name: Build the Node session bundle
+        if: matrix.brain == 'browser'
         run: npm run build:session
 
       - name: Smoke the session bundle
+        if: matrix.brain == 'browser'
         run: node dist/session.mjs --describe --root . > /dev/null
 
+      # The default brain's leg runs everything; Orbit's leg runs what the flag changes: the
+      # bundle check and the e2e tiers, which grade each drive by the brain that answered it.
       - name: Test
+        if: matrix.brain == 'browser'
         run: npm test
+
+      - name: Preflight Orbit's brain in a worker
+        if: matrix.brain == 'orbit'
+        run: npm run preflight:orbit
+
+      - name: E2E under Orbit's brain
+        if: matrix.brain == 'orbit'
+        run: npm run test:e2e
 
       - name: Keep e2e logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-e2e-logs
+          name: browser-e2e-logs-${{ matrix.brain }}
           path: /tmp/olit-e2e-*.log
           retention-days: 7
           if-no-files-found: ignore

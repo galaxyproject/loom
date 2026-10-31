@@ -8,11 +8,12 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getState, getNotebookPath } from "./state";
+import { getState, getNotebookPath, getCurrentHistoryId, setCurrentHistoryId } from "./state";
 import { recordStore } from "./record-store";
 import { isTeamDispatchEnabled } from "./teams/is-enabled";
 import { isSessionIndexEnabled } from "./session-index/is-enabled";
 import { loadConfig } from "./config";
+import { buildReadOnlyGalaxyBlock } from "./galaxy-grant";
 import { listEnabledSkillRepos, type ConfiguredSkillRepo } from "./skills";
 import { isBundledRepo } from "./vendor-skills";
 import {
@@ -23,7 +24,8 @@ import {
 } from "./skills-discovery";
 import { findGalaxyPageBlocks } from "./galaxy-page-binding";
 import { isLocalExecDisabled, isLocalShellDisabled } from "./local-exec.js";
-import { galaxyCredentials } from "./galaxy-api.js";
+import { GalaxyApiError, galaxyCredentials, galaxyGet } from "./galaxy-api.js";
+import { capabilityProfile } from "../../shared/capability-profile.js";
 import { resolveWorkspaceStateDirName, type WorkspaceStateDirName } from "./workspace-state-dir";
 import { SRA_IMPORT_GUIDANCE } from "./sra-import-gate";
 import { galaxyRecoveryGuidance } from "./galaxy-recovery";
@@ -39,6 +41,11 @@ import {
 } from "./user-instructions.js";
 import { readEnv } from "../../shared/orbit-env.js";
 import { excerptHeadTail } from "../../shared/record-excerpt.js";
+import {
+  historyBindingBlock,
+  historyContentsPath,
+  historyManifestBlock,
+} from "../../shared/history-manifest.js";
 import { renderSkillsRouter } from "../../shared/skills-router.js";
 import { findingAWorkflow, invokingWorkflow } from "../../shared/galaxy-guidance.js";
 import {
@@ -158,15 +165,51 @@ ${galaxyPageMarkdownGuidance(galaxyToolFamily())}
 `;
 }
 
+/** How long a turn waits for the listing before it goes without one. */
+const HISTORY_LISTING_MS = 5_000;
+
 /**
- * The live, per-turn project context: the notebook excerpt plus the Galaxy
+ * The current history and its datasets, listed fresh each turn so the model names inputs by
+ * the ids Galaxy has now, not ones it remembers. Nothing until a history is current and Galaxy
+ * is connected; a history Galaxy no longer has stops being current.
+ */
+export async function buildHistoryBindingBlock(): Promise<string> {
+  const historyId = getCurrentHistoryId();
+  const { url, apiKey } = galaxyCredentials();
+  if (!historyId || !url || !apiKey) return "";
+  let manifest: string;
+  try {
+    manifest = historyManifestBlock({
+      items: await galaxyGet(
+        `/${historyContentsPath(historyId)}`,
+        AbortSignal.timeout(HISTORY_LISTING_MS),
+      ),
+    });
+  } catch (error) {
+    if (error instanceof GalaxyApiError && error.status === 404) {
+      setCurrentHistoryId(null);
+      return "";
+    }
+    manifest = historyManifestBlock({ error });
+  }
+  // Only the browser shell shows the history beside the chat; elsewhere it is the one the
+  // session last made or was given.
+  return historyBindingBlock(historyId, manifest, { shown: capabilityProfile().ui === "worker" });
+}
+
+/**
+ * The live, per-turn project context: the current history, the notebook excerpt and the Galaxy
  * page binding. Injected as a transient `context`-event message rather than
  * baked into the cached system prompt, so the agent's own notebook edits don't
  * re-tokenize the ~8K cached system prefix every turn. The data-not-instructions
  * security boundary lives inside buildNotebookExcerptBlock and travels with it.
  */
 async function buildLiveNotebookContext(): Promise<string> {
-  return [await buildNotebookExcerptBlock(), await buildGalaxyPageBindingBlock()]
+  return [
+    await buildHistoryBindingBlock(),
+    await buildNotebookExcerptBlock(),
+    await buildGalaxyPageBindingBlock(),
+  ]
     .filter(Boolean)
     .join("\n");
 }
@@ -831,6 +874,7 @@ export function setupContextInjection(pi: ExtensionAPI): void {
       buildChatFormattingBlock(),
       buildNotebookWriteBlock(),
       buildExecutionModeBlock(),
+      buildReadOnlyGalaxyBlock(),
       buildGalaxyContextBlock({ legacyTranscript }),
       galaxyRecoveryGuidance(galaxyToolFamily()),
       galaxyPollGuidance(galaxyToolFamily()),

@@ -16,12 +16,13 @@ import { initGalaxyPageSync, flushNotebookToGalaxy } from "./galaxy-page-sync.js
 import {
   upsertSessionSummaryBlock,
   readNotebook,
+  statNotebook,
   withNotebookLock,
   writeNotebook,
   type SessionSummaryYaml,
 } from "./notebook-writer.js";
 import { activeGalaxyStatus, type ActiveGalaxyStatus } from "./profiles.js";
-import { recordStore } from "./record-store.js";
+import { EMPTY_RECORD_VERSION, recordStore } from "./record-store.js";
 import * as fs from "fs";
 import * as path from "path";
 import { readEnv } from "../../shared/orbit-env.js";
@@ -149,6 +150,10 @@ export function registerSessionLifecycle(pi: ExtensionAPI): void {
       toast(registry.notice, registry.session.store.mode === "writer" ? "info" : "warning");
     }
 
+    // The worker starts a session on every panel open, conversation switch and reload, so a
+    // greeting there would be a model call each time and a turn nobody asked for.
+    if (capabilityProfile().ui === "worker") return;
+
     const freshSession = readEnv("FRESH_SESSION") === "1";
     const isResume = process.argv.includes("--continue");
 
@@ -224,6 +229,8 @@ async function writeSessionSummary(orphanedActiveSteps: number): Promise<void> {
   };
   try {
     await withNotebookLock(nbPath, async () => {
+      // A conversation that never wrote anything has no page, and its summary isn't worth one.
+      if ((await statNotebook(nbPath)) === EMPTY_RECORD_VERSION) return;
       const content = await readNotebook(nbPath);
       const updated = upsertSessionSummaryBlock(content, summary);
       await writeNotebook(nbPath, updated);

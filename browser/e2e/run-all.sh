@@ -20,6 +20,15 @@ failed() {
     tail -n 25 "$2" | sed 's/^/      /'
     fail=1
 }
+# A drive that passed against the wrong brain hasn't passed: brain.cjs reads the tools the
+# drive's requests declared from the stub, which keeps them until the next drive's reset.
+graded() {
+    if node e2e/brain.cjs >> "$2" 2>&1; then
+        echo "PASS  $1"
+    else
+        failed "$1" "$2"
+    fi
+}
 # Wait for a server, or stop: drivers run against a server that never came up only fail obscurely.
 await() {
     for _ in $(seq "$2"); do curl -sf -o /dev/null "$1" && return 0; sleep 1; done
@@ -49,7 +58,7 @@ for d in confirm session reload tabs unsaved-changes approval-gate ratelimit vis
     ran="$ran $d"
     curl -sf -o /dev/null http://127.0.0.1:8099/__reset
     if LLM_CONTEXT_WINDOW=64000 node "olit/e2e/$d-drive.cjs" > "/tmp/olit-e2e-$d.log" 2>&1; then
-        echo "PASS  $d"
+        graded "$d" "/tmp/olit-e2e-$d.log"
     else
         failed "$d" "/tmp/olit-e2e-$d.log"
     fi
@@ -65,7 +74,7 @@ await http://localhost:5174/ 120 /tmp/olit-e2e-bare-dev.log
 ran="$ran bare"
 curl -sf -o /dev/null http://127.0.0.1:8099/__reset
 if node e2e/bare-drive.cjs > /tmp/olit-e2e-bare.log 2>&1; then
-    echo "PASS  bare"
+    graded bare /tmp/olit-e2e-bare.log
 else
     failed bare /tmp/olit-e2e-bare.log
 fi
@@ -82,7 +91,7 @@ for d in credentials artifact-pane provider-switch galaxy-boot galaxy-frame save
     ran="$ran $d"
     curl -sf -o /dev/null http://127.0.0.1:8099/__reset
     if node "olit/e2e/$d-drive.cjs" > "/tmp/olit-e2e-$d.log" 2>&1; then
-        echo "PASS  $d"
+        graded "$d" "/tmp/olit-e2e-$d.log"
     else
         failed "$d" "/tmp/olit-e2e-$d.log"
     fi
@@ -93,7 +102,7 @@ done
 for browser in firefox webkit; do
     curl -sf -o /dev/null http://127.0.0.1:8099/__reset
     if BROWSER=$browser node olit/e2e/python-isolation-drive.cjs > "/tmp/olit-e2e-python-isolation-$browser.log" 2>&1; then
-        echo "PASS  python-isolation ($browser)"
+        graded "python-isolation ($browser)" "/tmp/olit-e2e-python-isolation-$browser.log"
     else
         failed "python-isolation ($browser)" "/tmp/olit-e2e-python-isolation-$browser.log"
     fi

@@ -75,11 +75,11 @@ describe("the poll tick hook", () => {
     setPollTickHook(async () => {
       throw new Error("rejected");
     });
-    await expect(pollGalaxyNow()).resolves.toBeUndefined();
+    await expect(pollGalaxyNow()).resolves.toMatchObject({ transitions: [] });
     setPollTickHook(() => {
       throw new Error("threw synchronously");
     });
-    await expect(pollGalaxyNow()).resolves.toBeUndefined();
+    await expect(pollGalaxyNow()).resolves.toMatchObject({ transitions: [] });
     // Let the rejection handler run before the spy is restored.
     await new Promise((r) => setTimeout(r, 0));
     expect(spy).toHaveBeenCalled();

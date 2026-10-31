@@ -11,9 +11,10 @@ It forwards `build`, `dev`, `preview`, `build:session`, `test:watch` and `test:u
 chains all of the checks.
 
 The brain in `core/src/agent/` is interim. It is the browser's own agent, and Orbit's brain
-(`extensions/orbit/` at the repo root) is replacing it: the worker is to boot that brain through
-`pi-host.ts`, and the duplicated brain modules here are then deleted, keeping the worker,
-`pi-host.ts`, storage and the other shell support. Until then, fix bugs here when you have to,
+(`extensions/orbit/` at the repo root) is replacing it: a `VITE_ORBIT_BRAIN=orbit` build already
+boots that brain through `pi-host.ts` (`core/src/agent/orbit/`), and once that is the default the
+duplicated brain modules here are deleted, keeping the worker, `pi-host.ts`, storage and the other
+shell support. Until then, fix bugs here when you have to,
 but put new brain behavior (prompt text, guards, Galaxy tool handling, notebook and record
 semantics) in `extensions/orbit/` and `shared/`, and keep what is browser-only layered on top of
 Orbit's. The repo's `CLAUDE.md` and
@@ -52,6 +53,14 @@ core/                     @galaxyproject/orbit-browser, TypeScript source behind
     saved.ts                  a conversation as a saved document
     tool.ts tools.ts          one tool as a durable tool; every tool, and the AgentFlavor seam
     watch.ts                  submitted Galaxy work, watched by a durable task
+    orbit/                    Orbit's brain in the worker, behind VITE_ORBIT_BRAIN=orbit:
+      boot.ts                   the seams and the brain on pi-host, once per worker
+      worker.ts                 the page protocol, with pi's session lifecycle per conversation
+      watch.ts                  one durable task per conversation, driving Orbit's poller
+      ledger.ts                 the submission ledger in a file beside the store
+      adapter.ts layers.ts      the browser's own tools and guards on top of Orbit's
+      grants.ts skills.ts       the page's grant as Orbit's profile; the vendored skills
+      env.ts shims/             the Node globals and modules Orbit imports, for a worker
     record-write.ts record-jobs.ts   the agent's own edits to the record page
     model.ts providers.ts     the model endpoint, its registry, its rate limit
     galaxy.ts ops.ts galaxy-tools.ts hints.ts   Galaxy REST and other hosts as a call's `web`,

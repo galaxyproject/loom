@@ -117,6 +117,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "./config";
 import { getNotebookPath } from "./state";
 import { isRecordMissing, recordStore } from "./record-store";
+import { galaxyMarkdownToOrbit } from "./galaxy-markdown-adapter";
 import { appendActivityEvent } from "./activity";
 import { findInvocationBlocks, type InvocationYaml } from "./notebook-writer";
 import { findJobBlocks, type JobYaml } from "./galaxy-job-block";
@@ -699,15 +700,18 @@ export function computeAfterContent(
  * The record page after an update_page call, as the page bridge would write it: whole content,
  * or one section rewritten. A title-only call, or a combination the bridge refuses (a repeated
  * heading among them), writes no body we can judge.
+ *
+ * The model writes the page as Galaxy holds it, typed blocks as carriers, while `before` comes
+ * from the record store already decoded; decoding the call's text keeps both in one form.
  */
 function pageAfterContent(before: string, input: Record<string, unknown>): string | null {
   const { content, section_heading: heading, section_content: section } = input;
   const sectioned = heading != null || section != null;
-  if (typeof content === "string") return sectioned ? null : content;
+  if (typeof content === "string") return sectioned ? null : galaxyMarkdownToOrbit(content);
   if (typeof heading === "string" && typeof section === "string") {
     return repeatedHeadingRefusal(before, heading)
       ? null
-      : applySectionEdit(before, heading, section);
+      : applySectionEdit(before, heading, galaxyMarkdownToOrbit(section));
   }
   return null;
 }

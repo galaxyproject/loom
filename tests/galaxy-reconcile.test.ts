@@ -27,6 +27,8 @@ import { setGalaxyFetchOverride } from "../extensions/orbit/galaxy-api";
 import { resetState, setNotebookPath } from "../extensions/orbit/state";
 import { isUlid, ulid } from "../extensions/orbit/ulid";
 import { profileFromEnv, setCapabilityProfile } from "../shared/capability-profile.js";
+import { setRecordStore } from "../extensions/orbit/record-store";
+import { createFileRecordStore } from "../extensions/orbit/record-store-file";
 
 const SERVER = "https://usegalaxy.org";
 const HISTORY = "0a248a1f62a0cc04";
@@ -340,6 +342,8 @@ describe("reconcile", () => {
   it("under a page notebook keeps the cursor in memory and touches no .loom directory", async () => {
     write("# Notebook\n");
     setCapabilityProfile({ ...profileFromEnv({}), notebook: "page" });
+    // Under a page notebook the record always comes from an installed store; a file one stands in.
+    setRecordStore(createFileRecordStore(nbPath));
     try {
       const result = await runReconcile("session_start", deps());
       expect(result.skipped).toBe("no history is bound to this analysis yet");
@@ -347,6 +351,7 @@ describe("reconcile", () => {
       expect(fs.existsSync(path.join(dir, ".loom"))).toBe(false);
     } finally {
       setCapabilityProfile(null);
+      setRecordStore(null);
     }
   });
 

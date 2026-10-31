@@ -322,12 +322,21 @@ export async function mountOrbitBrowser(
     };
   }
 
+  /** Settled work already shown: a watch tick replayed after a crash posts it again. */
+  const shown = new Set<string>();
+
   function settledOne({ watched: w, state, outcome, record }: Settled) {
+    const said = `${w.kind}:${w.id}:${state}`;
+    if (shown.has(said)) return;
+    shown.add(said);
     const what = WHAT[w.kind];
     if (record) {
       chat.addErrorMessage(`The record was not updated for ${what} ${w.id}: ${record}.`);
     }
-    if (outcome === "failed") {
+    if (state === "failing") {
+      // Orbit's mid-flight failure: some jobs failed and the invocation runs on.
+      chat.addErrorMessage(`${what} ${w.id} has failed jobs and is still running.`);
+    } else if (outcome === "failed") {
       chat.addErrorMessage(`${what} ${w.id} finished as ${state}.`);
     } else if (outcome === "paused") {
       chat.addErrorMessage(`${what} ${w.id} is paused: it waits on an input that failed.`);
@@ -383,6 +392,8 @@ export async function mountOrbitBrowser(
       } else if (message.type === "ready") {
         ready = true;
         galaxyStatus = message.galaxy;
+        // Which brain answers, where a drive can read it (e2e/brain.cjs).
+        document.documentElement.dataset.brain = message.brain ?? "browser";
         refreshControls();
         if (message.unkept) {
           chat.addErrorMessage(
@@ -422,6 +433,13 @@ export async function mountOrbitBrowser(
         if (launch.greeting) {
           info(launch.greeting);
         }
+      } else if (message.type === "quiet") {
+        chat.hideThinking();
+        setBusy(false);
+      } else if (message.type === "notice") {
+        // What the brain said outside a turn: a slash command's answer, a progress or Galaxy note.
+        if (message.level === "error") chat.addErrorMessage(message.text);
+        else info(message.text);
       } else if (message.type === "recoverable") {
         // The browser kept nothing of a session here; the user says which, if any, this is.
         const line = info(

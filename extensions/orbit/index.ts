@@ -9,6 +9,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerPlanTools } from "./tools";
+import { withholdingWriters } from "./galaxy-grant";
 import { registerGalaxyUploadTool } from "./galaxy-upload";
 import { registerNotebookSyncTools } from "./tools-sync";
 import { registerSyncCommand } from "./sync-command";
@@ -214,13 +215,19 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   }
   // ── end capture, part two ─────────────────────────────────────────────────
 
-  registerPlanTools(pi, family);
+  // A read-only launch writes neither Galaxy nor the record, so these registrars lose their
+  // writers there.
+  const writerPi = withholdingWriters(pi);
+  registerPlanTools(writerPi, family);
   // Uploads a LOCAL file; without a file surface there is nothing to upload.
   if (profile.files) {
-    registerGalaxyUploadTool(pi, family);
+    registerGalaxyUploadTool(writerPi, family);
   }
-  registerNotebookSyncTools(pi, family);
-  registerSyncCommand(pi);
+  // Sync copies a file record to and from a Galaxy page; a page record is already the page.
+  if (profile.notebook !== "page") {
+    registerNotebookSyncTools(writerPi, family);
+    registerSyncCommand(pi);
+  }
   registerSkillsCommand(pi);
   registerExecutionCommands(pi);
   // The terminal registers these because it writes the layout file for the
@@ -250,7 +257,7 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   // ── Approval registry (#476): the model proposes with loom_propose; the user
   // approves with /approve (or revokes, or lists with /pending). The registry
   // itself is opened and closed by the session lifecycle.
-  registerProposalCommands(pi);
+  registerProposalCommands(writerPi);
   // ── end approval registry
   if (isTeamDispatchEnabled()) {
     registerTeamTools(pi);
@@ -264,131 +271,9 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   // ─────────────────────────────────────────────────────────────────────────────
   // /connect — Galaxy connection with profile support
   // ─────────────────────────────────────────────────────────────────────────────
-  pi.registerCommand("connect", {
-    description:
-      "Connect to Galaxy server. Use /connect to pick a profile or add a new one, /connect <name> to switch.",
-    handler: async (args, ctx) => {
-      // In a curated remote shell (no local exec) the Galaxy connection is pinned
-      // to operator-injected env; the user must not repoint it or overwrite the
-      // injected key. Slash commands are dispatched from browser input before the
-      // model runs and bypass the tool_call gate, so guard here -- without it a
-      // remote client could /connect to an attacker host or a cloud-metadata URL
-      // (SSRF) and overwrite GALAXY_URL/GALAXY_API_KEY in-process.
-      if (isLocalExecDisabled()) {
-        ctx.ui.notify(
-          "Galaxy connection is managed by the host in remote mode and can't be changed here.",
-          "info",
-        );
-        return;
-      }
-      const { profiles, active } = loadProfiles();
-      const profileNames = Object.keys(profiles);
-      const current = galaxyCredentials();
-
-      // The Galaxy tools read the credentials on every call, so setting the env is the whole
-      // switch; the reload resets what this session holds about the old server, such as its
-      // current history. Every shell that reaches here has a reload: the only
-      // command ctx without one is the browser's, which has no files and returned above.
-      const reloadSession = () => ctx.reload();
-
-      const requestedName = args?.trim();
-      if (requestedName) {
-        if (switchProfile(requestedName)) {
-          ctx.ui.notify(`Switched to ${requestedName} (${profiles[requestedName].url})`, "info");
-          await reloadSession();
-        } else {
-          ctx.ui.notify(
-            `Unknown profile "${requestedName}". Use /profiles to see available profiles.`,
-            "warning",
-          );
-        }
-        return;
-      }
-
-      if (profileNames.length > 1) {
-        const choices = profileNames.map((name) => {
-          const marker = name === active ? "* " : "  ";
-          return `${marker}${name} (${profiles[name].url})`;
-        });
-        choices.push("  Add new server...");
-
-        const selection = await ctx.ui.select("Select Galaxy server", choices);
-        if (selection === undefined || selection === null) {
-          ctx.ui.notify("Connection cancelled", "warning");
-          return;
-        }
-
-        const selectedIndex =
-          typeof selection === "number" ? selection : choices.indexOf(selection);
-
-        if (selectedIndex >= 0 && selectedIndex < profileNames.length) {
-          const name = profileNames[selectedIndex];
-          switchProfile(name);
-          ctx.ui.notify(`Switched to ${name} (${profiles[name].url})`, "info");
-          await reloadSession();
-          return;
-        }
-      } else if (profileNames.length === 1 && active && current.url && current.apiKey) {
-        ctx.ui.notify(`Connecting to ${current.url}...`, "info");
-        await reloadSession();
-        return;
-      }
-
-      const galaxyUrlInput = await ctx.ui.input("Galaxy Server URL", "https://usegalaxy.org");
-      if (!galaxyUrlInput) {
-        ctx.ui.notify("Connection cancelled", "warning");
-        return;
-      }
-      // Accept a bare host ("test.galaxyproject.org") by defaulting to https://
-      // instead of rejecting it as an invalid URL.
-      const galaxyUrl = normalizeGalaxyUrl(galaxyUrlInput);
-
-      ctx.ui.notify(
-        "To get your API key: Log into Galaxy → User → Preferences → Manage API Key",
-        "info",
-      );
-      const apiKey = await ctx.ui.input("Galaxy API Key");
-      if (!apiKey) {
-        ctx.ui.notify("Connection cancelled - API key required", "warning");
-        return;
-      }
-
-      const name = profileNameFromUrl(galaxyUrl);
-      saveProfile(name, galaxyUrl, apiKey);
-
-      process.env.GALAXY_URL = galaxyUrl;
-      process.env.GALAXY_API_KEY = apiKey;
-
-      ctx.ui.notify(`Saved profile "${name}" and connecting to ${galaxyUrl}...`, "info");
-      await reloadSession();
-    },
-  });
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // /profiles — list saved Galaxy server profiles
-  // ─────────────────────────────────────────────────────────────────────────────
-  pi.registerCommand("profiles", {
-    description: "List saved Galaxy server profiles",
-    handler: async (_args, ctx) => {
-      const { profiles, active } = loadProfiles();
-      const names = Object.keys(profiles);
-
-      if (names.length === 0) {
-        ctx.ui.notify("No saved profiles. Use /connect to add one.", "info");
-        return;
-      }
-
-      const lines: string[] = ["Galaxy Server Profiles", ""];
-      for (const name of names) {
-        const marker = name === active ? "*" : " ";
-        lines.push(`  ${marker} ${name} (${profiles[name].url})`);
-      }
-      lines.push("");
-      lines.push("Use /connect <name> to switch, or /connect to add a new server.");
-
-      ctx.ui.notify(lines.join("\n"), "info");
-    },
-  });
+  // The worker is signed in by the Galaxy page it runs in; there are no profiles to switch or
+  // list.
+  if (profile.ui !== "worker") registerProfileCommands(pi);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // /status — Galaxy connection + notebook path
@@ -589,5 +474,131 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
         /* ignore */
       }
     }
+  });
+}
+
+/** /connect and /profiles: pick, add, switch or list Galaxy profiles. */
+function registerProfileCommands(pi: ExtensionAPI): void {
+  pi.registerCommand("connect", {
+    description:
+      "Connect to Galaxy server. Use /connect to pick a profile or add a new one, /connect <name> to switch.",
+    handler: async (args, ctx) => {
+      // In a curated remote shell (no local exec) the Galaxy connection is pinned
+      // to operator-injected env; the user must not repoint it or overwrite the
+      // injected key. Slash commands are dispatched from browser input before the
+      // model runs and bypass the tool_call gate, so guard here -- without it a
+      // remote client could /connect to an attacker host or a cloud-metadata URL
+      // (SSRF) and overwrite GALAXY_URL/GALAXY_API_KEY in-process.
+      if (isLocalExecDisabled()) {
+        ctx.ui.notify(
+          "Galaxy connection is managed by the host in remote mode and can't be changed here.",
+          "info",
+        );
+        return;
+      }
+      const { profiles, active } = loadProfiles();
+      const profileNames = Object.keys(profiles);
+      const current = galaxyCredentials();
+
+      // The Galaxy tools read the credentials on every call, so setting the env is the whole
+      // switch; the reload resets what this session holds about the old server, such as its
+      // current history. Every shell that reaches here has a reload: the only
+      // command ctx without one is the browser's, which has no files and returned above.
+      const reloadSession = () => ctx.reload();
+
+      const requestedName = args?.trim();
+      if (requestedName) {
+        if (switchProfile(requestedName)) {
+          ctx.ui.notify(`Switched to ${requestedName} (${profiles[requestedName].url})`, "info");
+          await reloadSession();
+        } else {
+          ctx.ui.notify(
+            `Unknown profile "${requestedName}". Use /profiles to see available profiles.`,
+            "warning",
+          );
+        }
+        return;
+      }
+
+      if (profileNames.length > 1) {
+        const choices = profileNames.map((name) => {
+          const marker = name === active ? "* " : "  ";
+          return `${marker}${name} (${profiles[name].url})`;
+        });
+        choices.push("  Add new server...");
+
+        const selection = await ctx.ui.select("Select Galaxy server", choices);
+        if (selection === undefined || selection === null) {
+          ctx.ui.notify("Connection cancelled", "warning");
+          return;
+        }
+
+        const selectedIndex =
+          typeof selection === "number" ? selection : choices.indexOf(selection);
+
+        if (selectedIndex >= 0 && selectedIndex < profileNames.length) {
+          const name = profileNames[selectedIndex];
+          switchProfile(name);
+          ctx.ui.notify(`Switched to ${name} (${profiles[name].url})`, "info");
+          await reloadSession();
+          return;
+        }
+      } else if (profileNames.length === 1 && active && current.url && current.apiKey) {
+        ctx.ui.notify(`Connecting to ${current.url}...`, "info");
+        await reloadSession();
+        return;
+      }
+
+      const galaxyUrlInput = await ctx.ui.input("Galaxy Server URL", "https://usegalaxy.org");
+      if (!galaxyUrlInput) {
+        ctx.ui.notify("Connection cancelled", "warning");
+        return;
+      }
+      // Accept a bare host ("test.galaxyproject.org") by defaulting to https://
+      // instead of rejecting it as an invalid URL.
+      const galaxyUrl = normalizeGalaxyUrl(galaxyUrlInput);
+
+      ctx.ui.notify(
+        "To get your API key: Log into Galaxy → User → Preferences → Manage API Key",
+        "info",
+      );
+      const apiKey = await ctx.ui.input("Galaxy API Key");
+      if (!apiKey) {
+        ctx.ui.notify("Connection cancelled - API key required", "warning");
+        return;
+      }
+
+      const name = profileNameFromUrl(galaxyUrl);
+      saveProfile(name, galaxyUrl, apiKey);
+
+      process.env.GALAXY_URL = galaxyUrl;
+      process.env.GALAXY_API_KEY = apiKey;
+
+      ctx.ui.notify(`Saved profile "${name}" and connecting to ${galaxyUrl}...`, "info");
+      await reloadSession();
+    },
+  });
+
+  pi.registerCommand("profiles", {
+    description: "List saved Galaxy server profiles",
+    handler: async (_args, ctx) => {
+      const { profiles, active } = loadProfiles();
+      const names = Object.keys(profiles);
+
+      if (names.length === 0) {
+        ctx.ui.notify("No saved profiles. Use /connect to add one.", "info");
+        return;
+      }
+
+      const lines: string[] = ["Galaxy Server Profiles", ""];
+      for (const name of names) {
+        const marker = name === active ? "*" : " ";
+        lines.push(`  ${marker} ${name} (${profiles[name].url})`);
+      }
+      lines.push("");
+      lines.push("Use /connect <name> to switch, or /connect to add a new server.");
+
+      ctx.ui.notify(lines.join("\n"), "info");
+    },
   });
 }

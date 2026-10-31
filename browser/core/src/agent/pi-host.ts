@@ -12,6 +12,7 @@ import type {
   AssistantMessage,
   Message,
   Model,
+  Models,
   ToolResultMessage,
   TSchema,
 } from "@earendil-works/pi-ai";
@@ -51,6 +52,7 @@ import {
   type PromptInput,
   type Submission,
   type SubmissionId,
+  type ToolExecutionApi,
   type ToolExecutionResult,
   type ToolRegistration,
 } from "@earendil-works/pi-durable";
@@ -147,6 +149,7 @@ export type AskRequest =
   | { kind: "editor"; title: string; prefill?: string };
 /** `undefined` means dismissed. */
 export type AskAnswer = boolean | string | undefined;
+export type AskKind = AskRequest["kind"];
 
 /** What a shell gives the brain to reach a person. `ask` present <=> ctx.hasUI. */
 export interface PiHostUi {
@@ -160,6 +163,11 @@ export interface PiHostUi {
     conversationId: ConversationId | undefined,
     signal?: AbortSignal,
   ): Promise<AskAnswer>;
+  /**
+   * The kinds `ask` can put in front of a person; every kind when absent. An ask of any other
+   * kind is noted and answered as dismissed, rather than going to a shell that can't show it.
+   */
+  supports?: readonly AskKind[];
   setStatus?(key: string, text: string | undefined): void;
   setWidget?(key: string, lines: string[] | undefined): void;
 }
@@ -179,14 +187,50 @@ export type HostNote =
   | { kind: "handler-error"; event: string; error: unknown; phase: HostPhase }
   | { kind: "busy"; member: "sendUserMessage"; phase: HostPhase };
 
+/** A tool call as the shell sees it once it has finished. */
+export interface FinishedCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
 export interface PiHostOptions {
   /** The extension's name, which is also its section key. */
   name: string;
   /** ctx.cwd; "/" by default. */
   cwd?: string;
   ui?: PiHostUi;
-  /** ctx.model. */
+  /** ctx.model, fixed. Without it ctx.model follows the bound conversation's own model. */
   model?: () => PiHostModel | undefined;
+  /** Where the bound conversation's model is looked up for its context window and cost. */
+  models?: Pick<Models, "getModel">;
+  /**
+   * Called by start() before session_start, with the conversation it starts: where a shell
+   * installs that conversation's record store, so session_start already reads it.
+   */
+  beforeStart?: (conversationId: ConversationId) => void | Promise<void>;
+  /**
+   * A tool call admitted while its conversation was bound that finished after it stopped being
+   * bound. Orbit's own hooks don't run for it (they'd act on the conversation bound now), so this
+   * is the shell's one chance to keep what it did.
+   */
+  onLateCompletion?: (
+    conversationId: ConversationId,
+    call: FinishedCall,
+    result: ToolExecutionResult,
+  ) => void | Promise<void>;
+  /**
+   * Runs inside a tool's execute once the tool returns, with pi-durable's execution api: the one
+   * place a shell can commit durable work (create a task, say) as part of the call itself. Not run
+   * for a tool that threw, nor for a call whose conversation is no longer bound, where the run's
+   * commits are refused anyway; the shell's attach-time recovery covers those.
+   */
+  afterExecute?: (
+    name: string,
+    result: { content: ToolResultMessage["content"]; details: unknown; isError: boolean },
+    api: ToolExecutionApi,
+    conversationId: ConversationId,
+  ) => void | Promise<void>;
   /** sessionManager.getSessionId(); the conversation id by default. */
   sessionId?: () => string;
   phase?: () => HostPhase;
@@ -209,8 +253,18 @@ export interface PiHost {
   ): Promise<Submission | undefined>;
   /** Run a registered command through its stored (possibly wrapped) handler. false when unknown. */
   command(name: string, args: string): Promise<boolean>;
-  /** session_shutdown, invalidate every issued ctx, stop the event stream. */
+  /** session_shutdown, invalidate every issued ctx, stop the event stream. attach() may follow. */
   shutdown(reason: ShutdownReason): Promise<void>;
+  /** Admit no new tool call for this conversation until it is attached again. */
+  quiesce(conversationId: ConversationId): void;
+  /**
+   * Wait until every tool call admitted for this conversation has finished its end events, or
+   * the timeout passes; `late` names the calls still running then, by call id.
+   */
+  settle(
+    conversationId: ConversationId,
+    timeoutMs: number,
+  ): Promise<{ settled: boolean; late: string[] }>;
   readonly handlers: ReadonlyMap<PiEventName, number>;
   /** Registration order; a later same-name registration replaces. */
   readonly tools: readonly string[];
@@ -330,8 +384,32 @@ const abortedAssistant = (ref: ModelRef | undefined): AssistantMessage =>
     timestamp: Date.now(),
   }) as AssistantMessage;
 
-const modelOf = (ref: ModelRef | undefined) =>
-  ref ? toPiModel({ provider: ref.provider, id: ref.modelId }) : undefined;
+/** The model a ref names, with what `models` knows of it. */
+function modelInfo(
+  ref: ModelRef | undefined,
+  models: Pick<Models, "getModel"> | undefined,
+): PiHostModel | undefined {
+  if (!ref) return undefined;
+  const known = models?.getModel(ref.provider, ref.modelId);
+  return {
+    provider: ref.provider,
+    id: ref.modelId,
+    ...(known
+      ? {
+          contextWindow: known.contextWindow,
+          maxTokens: known.maxTokens,
+          cost: { input: known.cost.input, output: known.cost.output },
+        }
+      : {}),
+  };
+}
+
+/** Why a tool call from a conversation the host isn't bound to doesn't run. */
+export const NOT_BOUND_REASON =
+  "Not run: this conversation isn't the one open right now. Nothing was sent; the user can run it again from there.";
+/** Why a tool call that arrives while its conversation is being switched away doesn't run. */
+export const SWITCHING_REASON =
+  "Not run: this conversation is being switched away from. Nothing was sent; the user can run it again when they come back to it.";
 
 /** How long a section render waits for the stream to report its run started. */
 const RUN_START_WAIT_MS = 5000;
@@ -342,8 +420,20 @@ export function createPiHost(options: PiHostOptions): PiHost {
   const commands = new Map<string, RegisteredCommand>();
   const notes: HostNote[] = [];
   let sealed = false;
-  let stale: string | undefined;
+  // Every issued ctx carries the generation it was issued in; a shutdown or a replacing attach
+  // moves it on, so those go stale while the ones issued for the next conversation work.
+  let generation = 0;
   let bound: Bound | undefined;
+  /** Conversations that admit no new tool call. */
+  const quiescing = new Set<ConversationId>();
+  /**
+   * Per conversation, the calls not yet through afterTool, by call id: admitted ones (they may
+   * run), and calls that never reached the tool but still run their end events.
+   */
+  const inFlight = new Map<ConversationId, Map<string, { name: string; admitted: boolean }>>();
+  /** Tracked calls whose execute has started: an abort no longer means afterTool won't come. */
+  const launched = new Set<string>();
+  const settleWaiters = new Map<ConversationId, Set<() => void>>();
   let run = freshRun(undefined);
   let lastPrompt = "";
   let lastSystemPrompt = "";
@@ -365,8 +455,12 @@ export function createPiHost(options: PiHostOptions): PiHost {
 
   // ── ctx ────────────────────────────────────────────────────────────────────────────────────
 
-  function assertActive() {
-    if (stale !== undefined) throw new Error(stale);
+  /** A staleness check for a ctx issued now. */
+  function activeCheck() {
+    const issued = generation;
+    return () => {
+      if (issued !== generation) throw new Error(STALE_CTX_MESSAGE);
+    };
   }
 
   const ask = async (request: AskRequest, member: string, signal?: AbortSignal) => {
@@ -374,30 +468,52 @@ export function createPiHost(options: PiHostOptions): PiHost {
       refused(member);
       return undefined;
     }
+    const supports = options.ui.supports;
+    if (supports && !supports.includes(request.kind)) {
+      refused(member, `this shell can't ask a ${request.kind}`);
+      return undefined;
+    }
     return options.ui.ask(request, conversationId(), signal);
   };
 
-  const ui = {
+  /** Both signals as one: a dialog is withdrawn when its caller gives up or its tool call stops. */
+  const either = (a: AbortSignal | undefined, b: AbortSignal | undefined) =>
+    a && b ? AbortSignal.any([a, b]) : (a ?? b);
+
+  /**
+   * The dialogs and status calls, for a ctx issued with `signal` (the run's, or the tool call's):
+   * a dialog opened under it is withdrawn when it aborts, even when the caller passed no signal
+   * of its own (the destructive gate passes `{}`).
+   */
+  const uiFor = (signal: AbortSignal | undefined) => ({
     notify: (message: string, level: "info" | "warning" | "error" = "info") => {
       if (options.ui?.notify) options.ui.notify(message, level, conversationId());
       else dropped("ctx.ui.notify");
     },
     confirm: async (title: string, message: string, opts?: { signal?: AbortSignal }) =>
-      (await ask({ kind: "confirm", title, message }, "ctx.ui.confirm", opts?.signal)) === true,
+      (await ask(
+        { kind: "confirm", title, message },
+        "ctx.ui.confirm",
+        either(opts?.signal, signal),
+      )) === true,
     select: async (title: string, choices: string[], opts?: { signal?: AbortSignal }) => {
       const answer = await ask(
         { kind: "select", title, options: choices },
         "ctx.ui.select",
-        opts?.signal,
+        either(opts?.signal, signal),
       );
       return typeof answer === "string" ? answer : undefined;
     },
     input: async (title: string, placeholder?: string, opts?: { signal?: AbortSignal }) => {
-      const answer = await ask({ kind: "input", title, placeholder }, "ctx.ui.input", opts?.signal);
+      const answer = await ask(
+        { kind: "input", title, placeholder },
+        "ctx.ui.input",
+        either(opts?.signal, signal),
+      );
       return typeof answer === "string" ? answer : undefined;
     },
     editor: async (title: string, prefill?: string) => {
-      const answer = await ask({ kind: "editor", title, prefill }, "ctx.ui.editor");
+      const answer = await ask({ kind: "editor", title, prefill }, "ctx.ui.editor", signal);
       return typeof answer === "string" ? answer : undefined;
     },
     setStatus: (key: string, text: string | undefined) => {
@@ -453,7 +569,7 @@ export function createPiHost(options: PiHostOptions): PiHost {
     onTerminalInput: () => {
       throw new NotInThisShell("ctx.ui.onTerminalInput");
     },
-  };
+  });
 
   const sessionManager = {
     getBranch: () => bound?.branch ?? [],
@@ -512,10 +628,15 @@ export function createPiHost(options: PiHostOptions): PiHost {
   } as unknown as ModelRegistry;
 
   /** A fresh ctx per emit, as pi makes one; every member checks for staleness first. */
-  function makeCtx(signal: AbortSignal | undefined): ExtensionContext {
+  function makeCtx(
+    signal: AbortSignal | undefined,
+    assertActive = activeCheck(),
+  ): ExtensionContext {
+    let ui: ReturnType<typeof uiFor> | undefined;
     const ctx: ExtensionContext = {
       get ui() {
         assertActive();
+        ui ??= uiFor(signal);
         return ui;
       },
       get mode() {
@@ -540,7 +661,7 @@ export function createPiHost(options: PiHostOptions): PiHost {
       },
       get model() {
         assertActive();
-        return toPiModel(options.model?.());
+        return toPiModel(options.model?.() ?? modelInfo(bound?.agentModel, options.models));
       },
       get scopedModels() {
         assertActive();
@@ -576,13 +697,13 @@ export function createPiHost(options: PiHostOptions): PiHost {
       },
       getContextUsage: () => {
         assertActive();
-        refused("ctx.getContextUsage");
+        refused("ctx.getContextUsage", "unsupported in this shell");
         return undefined;
       },
       compact: (opts?: { onError?: (error: Error) => void }) => {
         assertActive();
-        refused("ctx.compact");
-        opts?.onError?.(new NotInThisShell("ctx.compact"));
+        refused("ctx.compact", "unsupported in this shell");
+        opts?.onError?.(new NotInThisShell("ctx.compact", "unsupported in this shell"));
       },
       getSystemPrompt: () => {
         assertActive();
@@ -603,14 +724,16 @@ export function createPiHost(options: PiHostOptions): PiHost {
     }) as ExtensionToolContext;
   }
 
+  /** A command's ctx. Its signal is undefined: pi's is the stream's, and no Orbit command reads it. */
   function makeCommandCtx(): ExtensionCommandContext {
+    const assertActive = activeCheck();
     const throws = (member: string) => () => {
       assertActive();
       throw new NotInThisShell(member);
     };
     // Built without `reload`: this shell cannot do one, and /connect, the one command that asks
     // for it, returns before then in a shell with no files.
-    return Object.defineProperties(makeCtx(undefined), {
+    return Object.defineProperties(makeCtx(undefined, assertActive), {
       waitForIdle: {
         value: () => {
           assertActive();
@@ -737,7 +860,8 @@ export function createPiHost(options: PiHostOptions): PiHost {
 
   async function emitBeforeAgentStart(prompt: string, signal: AbortSignal | undefined) {
     const systemPrompt = () => run.systemPrompt ?? lastSystemPrompt;
-    const ctx = Object.defineProperties(makeCtx(signal), {
+    const assertActive = activeCheck();
+    const ctx = Object.defineProperties(makeCtx(signal, assertActive), {
       getSystemPrompt: {
         value: () => {
           assertActive();
@@ -831,16 +955,25 @@ export function createPiHost(options: PiHostOptions): PiHost {
 
   // ── registrations ──────────────────────────────────────────────────────────────────────────
 
+  /** The tools declared to the model: every registration but the hidden ones, which pi keeps unreachable. */
+  const declared = () => [...tools.values()].filter((t) => t.exposure !== "hidden");
+
   function wrap(def: AnyTool): ToolRegistration {
+    // A call a reload interrupts reruns on recovery only when its tool says it changes nothing:
+    // the Galaxy source's read operations. Orbit's own tools carry no annotations and stay unsafe,
+    // and a submission's recovery is the ledger's job, not a replay's.
+    const replay = def.annotations?.readOnlyHint === true ? "safe" : "unsafe";
     return defineTool({
       name: def.name,
       description: def.description,
+      replay,
       // Two pi-ai copies in the program: Orbit's TypeBox schema is passed through untouched so
       // pi-ai validates it as it does today (strict for @sinclair/typebox, see the orbit test).
       parameters: def.parameters as unknown as TSchema,
       ...(def.executionMode ? { executionMode: def.executionMode } : {}),
       ...(def.prepareArguments ? { prepareArguments: def.prepareArguments } : {}),
       execute: async (args, api, chord) => {
+        launched.add(api.callId);
         run.startedAt.set(api.callId, Date.now());
         const toolCtx = makeToolCtx(chord.abortSignal);
         const onUpdate = (partial: { details?: unknown } | undefined) => {
@@ -849,13 +982,25 @@ export function createPiHost(options: PiHostOptions): PiHost {
         };
         try {
           const r = await def.execute(api.callId, args, chord.abortSignal, onUpdate, toolCtx);
-          return {
+          const result = {
             content: r.content ?? [],
             details: json(r.details) ?? {},
             isError: r.isError === true,
           };
+          if (options.afterExecute && isBound(api.conversationId)) {
+            try {
+              await options.afterExecute(def.name, result, api, api.conversationId);
+            } catch (error) {
+              handlerError("after_execute", error);
+            }
+          }
+          return result;
         } catch (error) {
-          if (chord.abortSignal?.aborted) throw error;
+          if (chord.abortSignal?.aborted) {
+            // Rethrown under the abort, so pi-durable runs no afterTool for this call.
+            untrack(api.conversationId, api.callId);
+            throw error;
+          }
           // pi-agent-core turns a throw into an error result; a pi-durable throw would fault the task.
           return {
             content: [{ type: "text", text: errorText(error) }],
@@ -907,7 +1052,7 @@ export function createPiHost(options: PiHostOptions): PiHost {
     },
     sendMessage: (message: { customType: string }) => refused("sendMessage", message.customType),
     appendEntry: (customType: string) => refused("appendEntry", customType),
-    getActiveTools: () => lastOffered ?? [...tools.keys()],
+    getActiveTools: () => lastOffered ?? declared().map((t) => t.name),
     setModel: async (model: { provider: string; id: string }) => {
       if (!bound) {
         refused("setModel", `${model.provider}/${model.id}`);
@@ -924,7 +1069,9 @@ export function createPiHost(options: PiHostOptions): PiHost {
         name: t.name,
         description: t.description,
         parameters: t.parameters,
-        exposure: "direct" as const,
+        // Only "hidden" changes anything here; every other exposure is declared like "direct".
+        exposure: t.exposure === "hidden" ? ("hidden" as const) : ("direct" as const),
+        ...(t.annotations ? { annotations: t.annotations } : {}),
         sourceInfo: SOURCE,
       })),
     getCommands: () =>
@@ -992,13 +1139,43 @@ export function createPiHost(options: PiHostOptions): PiHost {
 
   // ── the pi-durable extension ───────────────────────────────────────────────────────────────
 
+  const isBound = (id: ConversationId) => bound !== undefined && bound.conversation.id === id;
+
+  function track(id: ConversationId, callId: string, name: string, admitted = true) {
+    const calls = inFlight.get(id) ?? new Map<string, { name: string; admitted: boolean }>();
+    calls.set(callId, { name, admitted });
+    inFlight.set(id, calls);
+  }
+
+  function untrack(id: ConversationId, callId: string) {
+    launched.delete(callId);
+    const calls = inFlight.get(id);
+    if (!calls?.delete(callId) || calls.size > 0) return;
+    inFlight.delete(id);
+    for (const wake of settleWaiters.get(id) ?? []) wake();
+    settleWaiters.delete(id);
+  }
+
+  async function lateCompletion(
+    id: ConversationId,
+    call: FinishedCall,
+    result: ToolExecutionResult,
+  ) {
+    try {
+      await options.onLateCompletion?.(id, call, result);
+    } catch (error) {
+      handlerError("late_completion", error);
+    }
+  }
+
+  /** Whether a hook is for a conversation other than the bound one; with nothing bound, every one is. */
   function otherConversation(api: HookApi) {
     if (bound && api.conversationId === bound.conversation.id) return false;
     if (bound && !otherConversationNoted) {
       otherConversationNoted = true;
       refused("hook for another conversation", String(api.conversationId));
     }
-    return bound !== undefined;
+    return true;
   }
 
   /**
@@ -1026,6 +1203,15 @@ export function createPiHost(options: PiHostOptions): PiHost {
   }
 
   async function render(input: PromptInput, chord: Chord) {
+    // Another conversation's turn: its run is not the one this shim tracks, and Orbit's prompt
+    // is built from the bound conversation's record. Its tool calls are blocked anyway.
+    if (!isBound(input.conversationId)) {
+      if (bound && !otherConversationNoted) {
+        otherConversationNoted = true;
+        refused("hook for another conversation", String(input.conversationId));
+      }
+      return undefined;
+    }
     lastOffered = input.agent.tools.map((t) => t.name);
     const id = (await input.read.snapshot(LiveDoc, input.conversationId, chord))?.run?.inputs[0];
     if (id !== run.id) {
@@ -1141,6 +1327,69 @@ export function createPiHost(options: PiHostOptions): PiHost {
     return replaced;
   }
 
+  /** afterTool for the bound conversation: tool_result, then pi's end events. */
+  async function afterBoundTool(
+    call: FinishedCall,
+    result: ToolExecutionResult,
+    chord: Chord,
+  ): Promise<ToolExecutionResult | undefined> {
+    const code = codeOf(result);
+    const startedAt = run.startedAt.get(call.id);
+    const durationMs = startedAt === undefined ? undefined : Date.now() - startedAt;
+    if (code === "blocked" || code === "tool_unavailable" || code === "invalid_arguments") {
+      const diagnostic = result.diagnostics?.find((d) => d.code === code)?.message ?? "";
+      const reason =
+        code === "tool_unavailable"
+          ? `Tool ${call.name} not found`
+          : (run.blocked.get(call.id) ?? diagnostic.replace(/^Tool call blocked: /, ""));
+      const content = [{ type: "text" as const, text: reason }];
+      await executionEnd(call, { content, details: {}, isError: true }, undefined, chord);
+      if (code !== "blocked") return undefined;
+      return {
+        ...result,
+        content,
+        isError: true,
+        diagnostics: (result.diagnostics ?? []).filter((d) => d.severity !== "error"),
+      };
+    }
+    const merged = await emitToolResult(
+      {
+        type: "tool_result",
+        toolName: call.name,
+        toolCallId: call.id,
+        // pi-durable hands afterTool the call as the model wrote it; pi's tool_result
+        // carries the validated arguments tool_call saw.
+        input: run.args.get(call.id) ?? (call.arguments as Record<string, unknown>),
+        content: result.content ?? [],
+        details: result.details,
+        isError: result.isError === true,
+        usage: result.usage,
+      },
+      chord.abortSignal,
+    );
+    let out: ToolExecutionResult = merged
+      ? {
+          ...result,
+          content: merged.content,
+          details: json(merged.details) as JsonValue,
+          isError: merged.isError,
+          ...(merged.usage === undefined
+            ? {}
+            : { usage: merged.usage as ToolExecutionResult["usage"] }),
+        }
+      : result;
+    const replaced = await executionEnd(
+      call,
+      { content: out.content ?? [], details: out.details, isError: out.isError === true },
+      durationMs,
+      chord,
+    );
+    if (replaced) {
+      out = { ...out, content: replaced.content, isError: replaced.isError === true };
+    }
+    return out === result ? undefined : out;
+  }
+
   function seal(): Extension {
     sealed = true;
     for (const [event, list] of handlers) {
@@ -1150,7 +1399,7 @@ export function createPiHost(options: PiHostOptions): PiHost {
     }
     return defineExtension({
       name: options.name,
-      tools: [...tools.values()].map(wrap),
+      tools: declared().map(wrap),
       sections: [section(options.name, render, { tag: false })],
       hooks: [
         hook(GenerationTask, {
@@ -1180,7 +1429,27 @@ export function createPiHost(options: PiHostOptions): PiHost {
         }),
         hook(ToolTask, {
           beforeTool: async (call, api, chord) => {
-            if (otherConversation(api)) return undefined;
+            // A call runs only for the conversation that is bound, and only while it admits
+            // calls: Orbit's hooks act on the bound conversation's record and state.
+            if (!isBound(api.conversationId)) {
+              otherConversation(api);
+              return { block: NOT_BOUND_REASON };
+            }
+            if (quiescing.has(api.conversationId)) return { block: SWITCHING_REASON };
+            // Tracked from here until afterTool has run Orbit's end events, so a settle covers
+            // the capture that tool_execution_end does, not just the execute.
+            const id = api.conversationId;
+            track(id, call.id, call.name);
+            // pi-durable runs no afterTool for a call its abort stops before the tool starts (the
+            // intent commit is refused) or while it runs (the execute rethrows), so those calls
+            // leave the tracking here and in wrap() rather than holding every settle to its timeout.
+            chord.abortSignal?.addEventListener(
+              "abort",
+              () => {
+                if (!launched.has(call.id)) untrack(id, call.id);
+              },
+              { once: true },
+            );
             run.started.add(call.id);
             await emit(
               "tool_execution_start",
@@ -1206,62 +1475,40 @@ export function createPiHost(options: PiHostOptions): PiHost {
             return undefined;
           },
           afterTool: async (call, result, api, chord) => {
-            if (otherConversation(api)) return undefined;
-            const code = codeOf(result);
-            const startedAt = run.startedAt.get(call.id);
-            const durationMs = startedAt === undefined ? undefined : Date.now() - startedAt;
-            if (code === "blocked" || code === "tool_unavailable" || code === "invalid_arguments") {
-              const diagnostic = result.diagnostics?.find((d) => d.code === code)?.message ?? "";
-              const reason =
-                code === "tool_unavailable"
-                  ? `Tool ${call.name} not found`
-                  : (run.blocked.get(call.id) ?? diagnostic.replace(/^Tool call blocked: /, ""));
-              const content = [{ type: "text" as const, text: reason }];
-              await executionEnd(call, { content, details: {}, isError: true }, undefined, chord);
-              if (code !== "blocked") return undefined;
-              return {
-                ...result,
-                content,
-                isError: true,
-                diagnostics: (result.diagnostics ?? []).filter((d) => d.severity !== "error"),
-              };
-            }
-            const merged = await emitToolResult(
-              {
-                type: "tool_result",
-                toolName: call.name,
-                toolCallId: call.id,
-                // pi-durable hands afterTool the call as the model wrote it; pi's tool_result
-                // carries the validated arguments tool_call saw.
-                input: run.args.get(call.id) ?? (call.arguments as Record<string, unknown>),
-                content: result.content ?? [],
-                details: result.details,
-                isError: result.isError === true,
-                usage: result.usage,
-              },
-              chord.abortSignal,
-            );
-            let out: ToolExecutionResult = merged
-              ? {
-                  ...result,
-                  content: merged.content,
-                  details: json(merged.details) as JsonValue,
-                  isError: merged.isError,
-                  ...(merged.usage === undefined
-                    ? {}
-                    : { usage: merged.usage as ToolExecutionResult["usage"] }),
+            const id = api.conversationId;
+            const admitted = inFlight.get(id)?.get(call.id)?.admitted === true;
+            try {
+              if (!isBound(id)) {
+                otherConversation(api);
+                // Admitted while bound, finished after: the shell keeps what it did.
+                if (admitted) {
+                  await lateCompletion(
+                    id,
+                    {
+                      id: call.id,
+                      name: call.name,
+                      arguments: call.arguments as Record<string, unknown>,
+                    },
+                    result,
+                  );
                 }
-              : result;
-            const replaced = await executionEnd(
-              call,
-              { content: out.content ?? [], details: out.details, isError: out.isError === true },
-              durationMs,
-              chord,
-            );
-            if (replaced) {
-              out = { ...out, content: replaced.content, isError: replaced.isError === true };
+                return undefined;
+              }
+              // A call that never ran still runs its end events here; settle waits for them, but
+              // it is never late.
+              if (!admitted) track(id, call.id, call.name, false);
+              return await afterBoundTool(
+                {
+                  id: call.id,
+                  name: call.name,
+                  arguments: call.arguments as Record<string, unknown>,
+                },
+                result,
+                chord,
+              );
+            } finally {
+              untrack(id, call.id);
             }
-            return out === result ? undefined : out;
           },
         }),
         hook(CompactionTask, {
@@ -1403,8 +1650,8 @@ export function createPiHost(options: PiHostOptions): PiHost {
           if (next?.provider !== prev?.provider || next?.modelId !== prev?.modelId) {
             b.agentModel = next;
             await emit("model_select", {
-              model: modelOf(next),
-              previousModel: modelOf(prev),
+              model: toPiModel(modelInfo(next, options.models)),
+              previousModel: toPiModel(modelInfo(prev, options.models)),
               source: "set",
             });
           }
@@ -1421,6 +1668,21 @@ export function createPiHost(options: PiHostOptions): PiHost {
   }
 
   async function attach(harness: Harness, conversation: Conversation, context: Chord) {
+    const previous = bound;
+    if (previous) {
+      // Attached over a live binding without a shutdown: the ctx issued for it go stale, as a
+      // shutdown would have made them.
+      generation += 1;
+      bound = undefined;
+      await previous.stream.stop();
+    }
+    // What the shim kept about the last conversation's run and prompt is not this one's.
+    run = freshRun(undefined);
+    lastPrompt = "";
+    lastSystemPrompt = "";
+    lastOffered = undefined;
+    otherConversationNoted = false;
+    quiescing.delete(conversation.id);
     const stream = await watchEvents(harness, conversation.id, context);
     const snapshot = stream.snapshot;
     const b: Bound = {
@@ -1443,8 +1705,10 @@ export function createPiHost(options: PiHostOptions): PiHost {
   }
 
   async function start(reason: SessionReason) {
-    if (!bound) throw new Error("pi-host: attach() before start()");
-    bound.branch = await branchOf(bound);
+    const b = bound;
+    if (!b) throw new Error("pi-host: attach() before start()");
+    await options.beforeStart?.(b.conversation.id);
+    b.branch = await branchOf(b);
     await emit("session_start", { reason });
   }
 
@@ -1455,6 +1719,17 @@ export function createPiHost(options: PiHostOptions): PiHost {
     const b = bound;
     if (!b) throw new Error("pi-host: attach() before submit()");
     const { source = "rpc", deliverAs } = opts;
+    // pi runs a registered /command before the input chain and never sends it to the model,
+    // splitting the name from its arguments at the first space (agent-session.js prompt()). Text
+    // the brain sends itself is not a command: pi's sendUserMessage skips this step.
+    if (source !== "extension" && text.startsWith("/")) {
+      const space = text.indexOf(" ");
+      const name = space === -1 ? text.slice(1) : text.slice(1, space);
+      if (commands.has(name)) {
+        await command(name, space === -1 ? "" : text.slice(space + 1));
+        return undefined;
+      }
+    }
     const input = await emitInput(text, source, deliverAs);
     if (input.handled) return undefined;
     lastPrompt = input.text;
@@ -1488,10 +1763,36 @@ export function createPiHost(options: PiHostOptions): PiHost {
 
   async function shutdown(reason: ShutdownReason) {
     await emit("session_shutdown", { reason });
-    stale = STALE_CTX_MESSAGE;
+    generation += 1;
     const b = bound;
     bound = undefined;
     if (b) await b.stream.stop();
+  }
+
+  function quiesce(id: ConversationId) {
+    quiescing.add(id);
+  }
+
+  async function settle(id: ConversationId, timeoutMs: number) {
+    if (!inFlight.get(id)?.size) return { settled: true, late: [] };
+    const settled = await new Promise<boolean>((resolve) => {
+      const waiters = settleWaiters.get(id) ?? new Set<() => void>();
+      settleWaiters.set(id, waiters);
+      const timer = setTimeout(() => {
+        waiters.delete(wake);
+        if (waiters.size === 0) settleWaiters.delete(id);
+        resolve(false);
+      }, timeoutMs);
+      const wake = () => {
+        clearTimeout(timer);
+        resolve(true);
+      };
+      waiters.add(wake);
+    });
+    const running = [...(inFlight.get(id) ?? [])]
+      .filter(([, c]) => c.admitted)
+      .map(([callId]) => callId);
+    return { settled, late: settled ? [] : running };
   }
 
   return {
@@ -1502,6 +1803,8 @@ export function createPiHost(options: PiHostOptions): PiHost {
     submit,
     command,
     shutdown,
+    quiesce,
+    settle,
     get handlers() {
       return new Map([...handlers].map(([event, list]) => [event, list.length]));
     },

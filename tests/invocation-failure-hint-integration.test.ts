@@ -73,14 +73,14 @@ describe("the paths the hint hands the agent actually resolve", () => {
   it.each([
     ["invocation-level", INVOCATION_FAILURE_REFERENCE],
     ["job-level", JOB_FAILURE_REFERENCE],
-  ])("%s reference is readable and non-trivial", (_label, target) => {
-    const res = readVendoredSkill(target);
+  ])("%s reference is readable and non-trivial", async (_label, target) => {
+    const res = await readVendoredSkill(target);
     expect(res.ok).toBe(true);
     if (res.ok) expect(res.text.length).toBeGreaterThan(1000);
   });
 
-  it("the invocation reference really carries the reason table the hint promises", () => {
-    const res = readVendoredSkill(INVOCATION_FAILURE_REFERENCE);
+  it("the invocation reference really carries the reason table the hint promises", async () => {
+    const res = await readVendoredSkill(INVOCATION_FAILURE_REFERENCE);
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     // The hint sells "what the invocation message reasons and states mean".
@@ -89,8 +89,8 @@ describe("the paths the hint hands the agent actually resolve", () => {
     }
   });
 
-  it("the job reference really carries the stream/exit-code distinctions the hint promises", () => {
-    const res = readVendoredSkill(JOB_FAILURE_REFERENCE);
+  it("the job reference really carries the stream/exit-code distinctions the hint promises", async () => {
+    const res = await readVendoredSkill(JOB_FAILURE_REFERENCE);
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     for (const field of ["job_messages", "exit_code", "tool_stderr", "job_stderr"]) {

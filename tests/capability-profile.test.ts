@@ -15,6 +15,8 @@ describe("profileFromEnv", () => {
       network: true,
       mcpServers: true,
       ui: "terminal",
+      python: false,
+      galaxy: "write",
     });
   });
 
@@ -61,6 +63,14 @@ describe("capabilityProfile", () => {
     expect(installedCapabilityProfile()).toBe(capabilityProfile());
     setCapabilityProfile(null);
     expect(installedCapabilityProfile()).toBeNull();
+  });
+
+  it("fills what an older profile leaves out with the Node shells' values, and keeps what it says", () => {
+    const { python: _p, galaxy: _g, ...older } = profileFromEnv({});
+    setCapabilityProfile(older);
+    expect(capabilityProfile()).toMatchObject({ python: false, galaxy: "write" });
+    setCapabilityProfile({ ...older, python: true, galaxy: "read" });
+    expect(capabilityProfile()).toMatchObject({ python: true, galaxy: "read" });
   });
 
   it("falls back to env once the profile is cleared", () => {

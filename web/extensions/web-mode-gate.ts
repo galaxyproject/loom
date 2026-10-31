@@ -5,7 +5,7 @@
  * only reach the curated remote surface:
  *   - the brain's in-process Galaxy tools, by their exact bare names, and its
  *     own galaxy_* tools; BRC-Analytics' MCP tools (mcp__brc_analytics__*)
- *   - the brain's HTTP helper tools (gtn_*, notebook_*, skills_fetch)
+ *   - the brain's HTTP helper tools (gtn_*, notebook_*, skills_fetch, ena_runs)
  *   - path-gated edit/write/read, confined to the session notebook.md
  * Everything else -- bash/grep/find/ls, the pi-web-access egress tools
  * (fetch_content/web_search/code_search/get_search_content), experiment-gated
@@ -111,7 +111,7 @@ function hasToolPrefix(toolName: string, prefix: string): boolean {
 // Allowed tool names that don't share one of the prefixes above.
 // The MCP output reader only inspects brc-analytics' spilled output from this session.
 // `loom_propose` is the model's one registry write, validated before it lands.
-const ALLOWED_EXACT = new Set(["skills_fetch", "mcp_read_output", "loom_propose"]);
+const ALLOWED_EXACT = new Set(["skills_fetch", "ena_runs", "mcp_read_output", "loom_propose"]);
 
 // Brain tools that share an allowed name but must not run remotely. The
 // local-file uploaders resolve whatever absolute path they are handed and send
@@ -155,6 +155,7 @@ export const TRUSTED_RECORD_ALLOWED: ReadonlySet<string> = new Set([
   "notebook_resume_from_galaxy",
   "gtn_search",
   "gtn_fetch",
+  "ena_runs",
   "skills_fetch",
   "mcp_read_output",
   "lessons_search",

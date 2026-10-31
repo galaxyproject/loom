@@ -5,6 +5,8 @@
 const playwright = require("playwright");
 const BROWSER = process.env.BROWSER || "chromium";
 const STUB = "http://127.0.0.1:8099";
+// Each brain heads the record it puts before the user's message in its own words (e2e/brain.cjs).
+const RECORD_HEADING = process.env.EXPECT_BRAIN === "orbit" ? "## Notebook (project log)" : "The record (current contents)";
 const LAUNCH = `${STUB}/plugins/visualizations/olit?dataset_id=drecover&frame=1`;
 
 const results = [];
@@ -62,7 +64,7 @@ const shown = (frame, pattern, ms = 120000) =>
     const { prompts } = await (await fetch(`${STUB}/__seen`)).json();
     const sent = prompts.at(-1)?.tail || "";
     check("the model reads the session's record through the record context",
-        sent.includes("The record (current contents)") && sent.includes(record?.id), sent.slice(-300));
+        sent.includes(RECORD_HEADING) && sent.includes(record?.id), sent.slice(-300));
 
     const failed = results.filter((r) => !r.ok);
     console.log(`\n${results.length - failed.length}/${results.length} checks passed`);

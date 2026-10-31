@@ -59,6 +59,7 @@ import {
   readBundledRepoFile,
 } from "./vendor-skills";
 import { GTN_API, gtnPageText, gtnTopics, gtnTutorials, gtnUrl } from "../../shared/gtn.js";
+import { enaRuns, RUNS_DEFAULT, RUNS_MAX } from "./ena";
 import type { GalaxyToolFamily } from "../../shared/galaxy-tool-family.js";
 
 /**
@@ -284,6 +285,43 @@ analyses in Galaxy.`,
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Tool: Look up an ENA/SRA accession's sequencing runs and FASTQ URLs
+  // ─────────────────────────────────────────────────────────────────────────────
+  pi.registerTool({
+    name: "ena_runs",
+    label: "ENA Runs",
+    description:
+      "Look up the sequencing runs ENA holds under an accession, with their exact " +
+      "FASTQ download URLs, checksums, sizes and whether each run is paired or single " +
+      "end. Takes a run (SRR/ERR/DRR), experiment (SRX/ERX/DRX), sample (SAM*/SRS), " +
+      "study (PRJ*/SRP) or submission accession. ENA's FASTQ paths cannot be derived " +
+      "from an accession - always read them here rather than constructing or guessing " +
+      "a URL, and never assume a run is paired without checking.",
+    parameters: Type.Object({
+      accession: Type.String({
+        description: "ENA or SRA accession, e.g. 'SRR390728' or 'PRJNA630239'",
+      }),
+      limit: Type.Optional(
+        Type.Integer({
+          description: `Runs to return; defaults to ${RUNS_DEFAULT}, at most ${RUNS_MAX}.`,
+        }),
+      ),
+    }),
+    async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
+      const answer = await enaRuns(params, signal);
+      return {
+        content: [{ type: "text", text: answer.text }],
+        details: answer.isError ? { error: true } : { count: answer.count },
+      };
+    },
+    renderResult: (result) => {
+      const d = result.details as { count?: number; error?: boolean } | undefined;
+      if (d?.error) return new Text("❌ ENA lookup failed");
+      return new Text(`🧬 ${d?.count || 0} ENA runs`);
+    },
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Tool: Fetch a SKILL.md or reference doc from a configured skills repo
   // ─────────────────────────────────────────────────────────────────────────────
   pi.registerTool({
@@ -334,7 +372,7 @@ relevant, and a wrong path answers with the entry points that do exist.`,
       // Checked before the read, not after a miss, because the bundled tree now
       // holds a whole skills mirror and would answer for paths that belong to it.
       if (params.repo === VENDOR_REPO_NAME && !findSkillRepo(VENDOR_REPO_NAME)) {
-        const res = readBundledRepoFile({ name: VENDOR_REPO_NAME }, cleanPath);
+        const res = await readBundledRepoFile({ name: VENDOR_REPO_NAME }, cleanPath);
         if (res.ok) {
           return {
             content: [{ type: "text", text: res.text }],
@@ -385,7 +423,7 @@ relevant, and a wrong path answers with the entry points that do exist.`,
       // -- a packaging regression, a half-finished install -- falling through to
       // the network is a worse day than usual, not a session with no skills.
       if (isBundledRepo(repo) && hasBundledContent(repo.name)) {
-        const res = readBundledRepoFile(repo, cleanPath);
+        const res = await readBundledRepoFile(repo, cleanPath);
         if (res.ok) {
           return {
             content: [{ type: "text", text: res.text }],
@@ -847,7 +885,7 @@ galaxy_invocation_check_all. Errors if the invocation isn't recorded in the note
 // Internal: shared poll loop for the two check tools
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface CheckResultEntry {
+export interface CheckResultEntry {
   invocationId: string;
   notebookAnchor: string;
   label: string;
@@ -943,6 +981,17 @@ export function isInvocationLive(inv: InvocationDetail): boolean {
   return rollUpInvocationJobs(inv).activeJobs > 0;
 }
 
+/**
+ * The poller's hold on the persist step: told what this check is about to write before it writes
+ * it, and what landed after. The model's own check tools pass none, so their transitions are
+ * never announced as follow-ups -- the model already saw them.
+ */
+export interface InvocationPersistHooks {
+  before(results: readonly CheckResultEntry[]): Promise<void>;
+  /** Not called when the write threw: what landed is unknown, and the next tick finds out. */
+  after(landed: { applied: ReadonlySet<string>; transitioned: ReadonlySet<string> }): Promise<void>;
+}
+
 interface CheckInvocationsResult {
   content: { type: "text"; text: string }[];
   details: Record<string, unknown>;
@@ -951,8 +1000,10 @@ interface CheckInvocationsResult {
 export async function checkInvocations(
   specificId: string | undefined,
   signal?: AbortSignal,
+  hooks?: InvocationPersistHooks,
+  /** The record to check; the poller pins its tick's, so a switch mid-check can't redirect it. */
+  notebookPath: string | null = getNotebookPath(),
 ): Promise<CheckInvocationsResult> {
-  const notebookPath = getNotebookPath();
   if (!notebookPath) {
     return {
       content: [
@@ -1187,9 +1238,11 @@ export async function checkInvocations(
   // rename fails the stamp check and is retried against fresh content rather
   // than silently overwriting it.
   if (updates.length > 0) {
+    await hooks?.before(results);
     const { applied, transitioned } = await withNotebookLock(notebookPath, () =>
       persistInvocationUpdates(notebookPath, updates),
     );
+    await hooks?.after({ applied, transitioned });
     // A transition we didn't actually record isn't news. The poller turns
     // "completed"/"failed" straight into a user-facing toast, so leaving the
     // flag on a block that was deleted mid-poll — or that another poller had

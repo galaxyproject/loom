@@ -30,6 +30,8 @@ import { GALAXY_OP_POLICY, type GalaxyOpArgs, type GalaxyOpPolicy } from "./gala
 import { inspectOutput, type OutputQuery } from "./galaxy-output";
 import { galaxyOutputStore } from "./galaxy-output-store";
 import { getPageBridge, updatePageBridge } from "./galaxy-page-ops";
+import { isSubmissionTool } from "./galaxy-submission";
+import { sendSubmission, type SubmissionAnswer } from "./submission-ledger";
 import type { GalaxyTool, GalaxyToolSource } from "./galaxy-tool-source";
 import {
   GALAXY_ENVELOPE_SCHEMA,
@@ -139,6 +141,27 @@ const NAMESPACE = Object.freeze({
     "Galaxy ids are the encoded strings Galaxy returns; pass them back exactly, never shortened or invented. Listing tools return one page at a time: pass pagination.next_offset as offset for the next page.",
 });
 
+/**
+ * Galaxy's refusals: it read the request and created nothing. Anything else -- a dropped
+ * connection, an unknown failure, the deadline -- may have landed, so its ledger entry stays open
+ * for reconcile.
+ */
+const REFUSALS: ReadonlySet<string> = new Set([
+  "auth",
+  "not_found",
+  "validation",
+  "version",
+  "tool_request_rejected",
+]);
+
+function envelopeAnswer(env: GalaxyEnvelope): SubmissionAnswer {
+  if (env.success !== false) return { kind: "answered", resolved: { value: env } };
+  if (env.errorKind && REFUSALS.has(env.errorKind)) {
+    return { kind: "refused", reason: String(env.message ?? env.errorKind) };
+  }
+  return { kind: "unknown" };
+}
+
 export interface ToolFromOperationOptions {
   policy?: GalaxyOpPolicy;
   /** Bridging ops replace the rendered schema, description or key mapping; nothing else does. */
@@ -173,7 +196,7 @@ export function toolFromOperation(
     exposure: op.name === "upload_file" ? "hidden" : "direct",
     namespace: NAMESPACE,
     outputSchema: GALAXY_ENVELOPE_SCHEMA as unknown as TSchema,
-    async execute(_toolCallId, params: GalaxyOpArgs, signal) {
+    async execute(toolCallId, params: GalaxyOpArgs, signal) {
       const upfront = parseInput(op, inputOf(params));
       if (!upfront.ok)
         return asToolResult(renderGalaxyResult(op.name, invalid(upfront.message), 0));
@@ -190,7 +213,11 @@ export function toolFromOperation(
             joined.throwIfAborted();
             const parsed = sent === undefined ? upfront : parseInput(op, inputOf(sent));
             if (!parsed.ok) return invalid(parsed.message);
-            return runWithEnvelope(op, parsed.input as never, ctx);
+            const send = () => runWithEnvelope(op, parsed.input as never, ctx);
+            if (!isSubmissionTool(op.name)) return send();
+            return sendSubmission(toolCallId, op.name, sent ?? params, send, envelopeAnswer, (m) =>
+              galaxyFailure(m),
+            );
           };
           const env = policy?.around
             ? await policy.around(run, params, { signal: joined })
@@ -291,9 +318,12 @@ function bridgeTool(bridge: GalaxyBridge, policy: GalaxyOpPolicy | undefined): G
   });
 }
 
+/** A shell's extra must say whether it writes, so a read-only launch can tell (galaxy-grant.ts). */
+export type GalaxyExtra = GalaxyTool & { annotations: { readOnlyHint: boolean } };
+
 export interface GalaxyOpsToolSourceOptions {
   /** Tools the shell supplies because its galaxy-ops entry lacks them; appended as given. */
-  extras?: readonly GalaxyTool[];
+  extras?: readonly GalaxyExtra[];
   policies?: Record<string, GalaxyOpPolicy>;
 }
 

@@ -47,7 +47,13 @@ export function recordGalaxy(
       if (path === "/api/version") return json({});
       // As a real fetch does: an aborted request never reaches the server.
       if (init.signal?.aborted) throw init.signal.reason;
-      const raw = init.body ? new TextDecoder().decode(init.body as ArrayBuffer) : undefined;
+      // galaxy-ops sends bytes; the brain's own galaxy-api calls (pages, for one) send a string.
+      const raw =
+        typeof init.body === "string"
+          ? init.body
+          : init.body
+            ? new TextDecoder().decode(init.body as ArrayBuffer)
+            : undefined;
       const req: SeenRequest = {
         method: init.method ?? "GET",
         path,

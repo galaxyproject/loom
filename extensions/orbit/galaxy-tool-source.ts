@@ -5,6 +5,7 @@
  */
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { bareFamily, type GalaxyToolFamily } from "../../shared/galaxy-tool-family.js";
+import { galaxyReadOnly } from "./galaxy-grant";
 import { createGalaxyOpsToolSource } from "./galaxy-ops-tools";
 
 /** pi's own tool shape; the shim registers exactly this. */
@@ -41,14 +42,22 @@ export function installedGalaxyToolSource(): GalaxyToolSource | null {
 }
 
 /**
+ * Whether a read-only launch may register the tool: only one that declares itself read-only, so
+ * an extra or bridge that says nothing is withheld rather than trusted.
+ */
+export const readsOnly = (tool: GalaxyTool): boolean => tool.annotations?.readOnlyHint === true;
+
+/**
  * Register the installed source's tools, or the default source's, then its
- * companions, and return the family over the tools' names. Called once, from
- * index.ts.
+ * companions, and return the family over the tools' names. Under a read-only
+ * launch only the tools that declare readOnlyHint are registered, and the family
+ * is theirs. Called once, from index.ts.
  */
 export function registerGalaxyTools(pi: ExtensionAPI): GalaxyToolFamily {
   const source = installed ?? createGalaxyOpsToolSource();
-  const tools = source.tools();
-  const companions = source.companions?.() ?? [];
+  const keep = galaxyReadOnly() ? readsOnly : () => true;
+  const tools = source.tools().filter(keep);
+  const companions = (source.companions?.() ?? []).filter(keep);
   // pi keeps the last definition under a name, so a second one would silently
   // replace the first (an extra the entry already has, say) and pass as one tool.
   const names = new Set<string>();

@@ -10,6 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { searchForWorkspaceRoot, type Plugin, type UserConfig } from "vite";
 
+import { readEnv as readOrbitEnv } from "../../shared/orbit-env.js";
 import { defaultEndpoint, PROVIDERS } from "./src/agent/providers";
 
 const DEFAULTS = {
@@ -73,6 +74,9 @@ async function llmTargets(): Promise<Record<string, { root: string; path: string
 
 /** The commit this bundle was built from; a deployed copy cannot be identified without it. */
 function buildCommit(): string {
+  // Pinned when two builds are compared byte for byte (scripts/compare-default-bundle.mjs).
+  const pinned = readOrbitEnv("BUILD_COMMIT");
+  if (pinned !== undefined) return pinned;
   try {
     return execFileSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim();
   } catch {
@@ -103,7 +107,9 @@ export function defines(settings: Partial<Env> = {}): Record<string, string> {
   return {
     "process.env.credentials": JSON.stringify(settings.GALAXY_KEY ? "omit" : "include"),
     "process.env.build_commit": JSON.stringify(buildCommit()),
-    "process.env.build_built": JSON.stringify(new Date().toISOString()),
+    "process.env.build_built": JSON.stringify(
+      readOrbitEnv("BUILD_TIME") ?? new Date().toISOString(),
+    ),
     // Dev only: route the agent through the /llm proxy above, which attaches the key.
     "process.env.llm_base_url": JSON.stringify(
       settings.LLM_PROVIDER || settings.LLM_ROOT ? "/llm" : "",
@@ -114,6 +120,97 @@ export function defines(settings: Partial<Env> = {}): Record<string, string> {
     "process.env.llm_keep_recent_tokens": JSON.stringify(settings.LLM_KEEP_RECENT_TOKENS ?? ""),
   };
 }
+
+export type Brain = "browser" | "orbit";
+
+/**
+ * Which brain the agent worker boots: the browser's own runtime, or Orbit's (extensions/orbit)
+ * behind pi-host. Read from the environment here rather than in defines(settings), because a
+ * build passes no settings and the flag has to reach the bundle Galaxy serves.
+ */
+export function orbitBrain(): Brain {
+  const value = process.env.VITE_ORBIT_BRAIN ?? "browser";
+  if (value !== "browser" && value !== "orbit") {
+    throw new Error(`VITE_ORBIT_BRAIN=${value} is not a brain (browser | orbit).`);
+  }
+  return value;
+}
+
+const shim = (name: string) =>
+  fileURLToPath(new URL(`./src/agent/orbit/shims/${name}`, import.meta.url));
+const ROOT_MODULES = fileURLToPath(new URL("../../node_modules", import.meta.url));
+
+/**
+ * What Orbit's brain imports that a worker doesn't have. extensions/orbit reaches Node only behind
+ * the capability profile, which the worker installs with no shell and no files, so these stand in
+ * for modules nothing should call: a call throws and names itself. Vite's worker block has no
+ * resolve of its own, so this set is global under the flag; the page imports no Node builtins.
+ */
+export function orbitAliases(): Array<{ find: RegExp; replacement: string }> {
+  const builtin = (name: string, file: string) => ({
+    find: new RegExp(`^(node:)?${name}$`),
+    replacement: shim(file),
+  });
+  return [
+    builtin("fs", "fs.ts"),
+    builtin("fs/promises", "fs-promises.ts"),
+    builtin("path", "path.ts"),
+    builtin("url", "url.ts"),
+    builtin("crypto", "crypto.ts"),
+    builtin("os", "os.ts"),
+    builtin("child_process", "child-process.ts"),
+    builtin("zlib", "zlib.ts"),
+    { find: /^@earendil-works\/pi-tui$/, replacement: shim("pi-tui.ts") },
+    { find: /^@earendil-works\/pi-coding-agent$/, replacement: shim("pi-coding-agent.ts") },
+    { find: /^better-sqlite3$/, replacement: shim("better-sqlite3.ts") },
+    { find: /^chokidar$/, replacement: shim("chokidar.ts") },
+    { find: /^@anthropic-ai\/sandbox-runtime$/, replacement: shim("sandbox-runtime.ts") },
+    { find: /^tus-js-client$/, replacement: shim("tus-js-client.ts") },
+  ];
+}
+
+/** Packages that must not reach the Orbit worker bundle except as the stubs above. */
+export const ORBIT_FORBIDDEN = [
+  "pi-tui",
+  "pi-coding-agent",
+  "better-sqlite3",
+  "chokidar",
+  "sandbox-runtime",
+  "tus-js-client",
+];
+
+/** Orbit's own sources, which reach Node only through the aliases above. */
+const ORBIT_SOURCE = /\/(extensions|shared|lessons)\/|\/agent\/orbit\//;
+const NODE_BUILTIN = /^(node:|(fs|path|url|crypto|os|child_process|zlib)(\/|$))/;
+
+/**
+ * Fails the build when a Node builtin slips past the aliases. Vite would otherwise swap in an
+ * empty `__vite-browser-external` module and the worker would die at load with "x is not a
+ * function", which the page reports only as "worker failed to start".
+ */
+const orbitGuard: Plugin = {
+  name: "orbit-browser-node-guard",
+  enforce: "pre",
+  resolveId(source, importer) {
+    if (importer && ORBIT_SOURCE.test(importer) && NODE_BUILTIN.test(source)) {
+      throw new Error(
+        `Node builtin "${source}" survived the Orbit aliases (imported by ${importer}).`,
+      );
+    }
+    return null;
+  },
+};
+
+/** The same failure, for a builtin a package Orbit pulls in imports: Vite only warns. */
+const orbitOnwarn = (
+  warning: { message: string },
+  warn: (warning: { message: string }) => void,
+): void => {
+  if (/externalized for browser compatibility/.test(warning.message)) {
+    throw new Error(`Orbit worker build: ${warning.message}`);
+  }
+  warn(warning);
+};
 
 // Pyodide wherever it was hoisted; the wheels in the core's own temp/, where its install script
 // (scripts/install_pyodide.js) puts them.
@@ -172,6 +269,8 @@ export function orbitBrowserVite({
   worker?: string;
 }): UserConfig {
   const { env, missing } = readEnv();
+  const brain = orbitBrain();
+  const orbit = brain === "orbit";
   // Only the dev server reads these; a build is compiled without them.
   const llm = command === "serve" ? llmProxy(env) : { root: "http://127.0.0.1:11434", path: "/v1" };
   if (command === "serve" && missing.length) {
@@ -184,6 +283,7 @@ export function orbitBrowserVite({
       outDir: path.resolve(flavorRoot, "static"),
       emptyOutDir: true,
       rollupOptions: {
+        ...(orbit ? { onwarn: orbitOnwarn } : {}),
         output: {
           manualChunks: () => "app.js",
           entryFileNames: "[name].js",
@@ -192,9 +292,16 @@ export function orbitBrowserVite({
         },
       },
     },
-    define: command === "build" ? defines() : defines(env),
-    plugins: command === "build" ? [copyPyodide] : [servePyodide(flavorRoot)],
+    define: {
+      ...(command === "build" ? defines() : defines(env)),
+      "process.env.orbit_brain": JSON.stringify(brain),
+    },
+    plugins: [
+      ...(command === "build" ? [copyPyodide] : [servePyodide(flavorRoot)]),
+      ...(orbit ? [orbitGuard] : []),
+    ],
     resolve: {
+      ...(orbit ? { alias: orbitAliases() } : {}),
       // Orbit's chat UI is imported from ../app/src/renderer, where a bare import would look for
       // app/'s or the repo root's node_modules. Those aren't installed when only browser/ is, and
       // chat-markdown.ts has to configure the same `marked` the chat UI renders with.
@@ -208,6 +315,14 @@ export function orbitBrowserVite({
           searchForWorkspaceRoot(flavorRoot),
           fileURLToPath(new URL("../../app/src/renderer", import.meta.url)),
           fileURLToPath(new URL("../../shared", import.meta.url)),
+          // Orbit's brain and what it imports, under the flag.
+          ...(orbit
+            ? [
+                fileURLToPath(new URL("../../extensions", import.meta.url)),
+                fileURLToPath(new URL("../../lessons", import.meta.url)),
+                ROOT_MODULES,
+              ]
+            : []),
         ],
       },
       proxy: {
@@ -233,9 +348,13 @@ export function orbitBrowserVite({
     },
     worker: {
       format: "es",
+      ...(orbit ? { plugins: () => [orbitGuard] } : {}),
       // One file: WebKit runs a worker's entry module again when a chunk imports from it, and
       // the second copy takes over the worker's messages without its state.
-      rollupOptions: { output: { inlineDynamicImports: true } },
+      rollupOptions: {
+        ...(orbit ? { onwarn: orbitOnwarn } : {}),
+        output: { inlineDynamicImports: true },
+      },
     },
     // The optimizer moves SQLite's module away from the .wasm it loads beside itself.
     optimizeDeps: {
@@ -245,6 +364,8 @@ export function orbitBrowserVite({
       // whatever is using it.
       entries: ["index.html", page, worker],
       exclude: ["@sqlite.org/sqlite-wasm"],
+      // Orbit's root-installed deps, named so the optimizer doesn't find them mid-drive and reload.
+      ...(orbit ? { include: ["@sinclair/typebox", "yaml", "openapi-fetch"] } : {}),
     },
   };
 }

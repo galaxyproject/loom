@@ -76,10 +76,20 @@
   "notes": [
     "command | dropped ctx.ui.setWidget notebook",
     "seal | silent session_tree (3)",
-    "session_start | dropped ctx.ui.setStatus galaxy-plan",
     "session_start | dropped ctx.ui.setToolsExpanded",
     "shutdown | refused appendEntry notebook_snapshot",
+    "switch | dropped ctx.ui.setToolsExpanded",
+    "switch | refused appendEntry notebook_snapshot",
     "turn | dropped ctx.ui.setStatus galaxy-plan",
     "turn | dropped ctx.ui.setStatus galaxy-tool"
+  ],
+  "notices": [
+    "info | No proposals in the notebook.",
+    "info | Progress: checking Galaxy data and job status.",
+    "info | Progress: executing an analysis tool.",
+    "info | Progress: inspecting available Galaxy tools.",
+    "info | Progress: working with Galaxy.",
+    "info | Reconcile: no history is bound to this analysis yet.",
+    "info | 🔬 Orbit Status\n\n🟢 Galaxy: http://galaxy.test\n\n📓 Notebook: <tmp>/notebook.md"
   ]
 }

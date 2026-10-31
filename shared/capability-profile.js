@@ -1,4 +1,12 @@
+import { installedCapabilityProfile } from "./capability-profile-installed.js";
 import { isDesktopShell, readEnv } from "./orbit-env.js";
+
+export {
+  authRemedy,
+  DEFAULT_AUTH_REMEDY,
+  installedCapabilityProfile,
+  setCapabilityProfile,
+} from "./capability-profile-installed.js";
 
 /**
  * What the shell running the brain can do, in one place, so the brain asks
@@ -26,6 +34,14 @@ import { isDesktopShell, readEnv } from "./orbit-env.js";
  * @property {boolean} mcpServers pi's MCP layer, for the servers Orbit brings
  *   (brc-analytics)
  * @property {"desktop" | "terminal" | "worker"} ui the surface a human answers prompts on
+ * @property {boolean} [python] an in-brain Python runtime (the browser's Pyodide), apart from
+ *   whatever the local shell offers; no Node shell has one
+ * @property {"read" | "write"} [galaxy] whether the brain may change Galaxy. Under "read" it
+ *   registers no tool that writes Galaxy or the analysis record. Every Node shell writes; a shell
+ *   with a local shell couldn't hold to "read" anyway, since bash can reach Galaxy itself.
+ * @property {string} [authRemedy] what the model should ask of the user when Galaxy refuses the
+ *   credentials, as an imperative with no closing period. The Node shells have /connect; the
+ *   browser worker rides the Galaxy page's own sign-in.
  */
 
 /**
@@ -40,26 +56,9 @@ export function profileFromEnv(env = process.env) {
     network: true,
     mcpServers: true,
     ui: isDesktopShell(env) ? "desktop" : "terminal",
+    python: false,
+    galaxy: "write",
   };
-}
-
-let installed = null;
-
-/**
- * The shell's own description of itself; null puts env back in charge.
- * @param {CapabilityProfile | null} profile
- */
-export function setCapabilityProfile(profile) {
-  installed = profile ? { ...profile } : null;
-}
-
-/**
- * The installed profile itself (the same object capabilityProfile() returns),
- * or null when env is in charge.
- * @returns {CapabilityProfile | null}
- */
-export function installedCapabilityProfile() {
-  return installed;
 }
 
 /**
@@ -70,6 +69,7 @@ export function installedCapabilityProfile() {
  * @returns {CapabilityProfile}
  */
 export function capabilityProfile(env) {
+  const installed = installedCapabilityProfile();
   if (!env && installed) return installed;
   return profileFromEnv(env);
 }
