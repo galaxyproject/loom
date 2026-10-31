@@ -2,7 +2,7 @@
  * The Tier-1 submission-capture scenarios, graded in-process: each scenario's recorded results go
  * through the real replay seam with the shell's Galaxy tools registered, and the scenario's own
  * activity and notebook assertions grade what lands. The runner does the same through a spawned
- * `loom --mode json`; this is the copy that runs with the suite, so a fixture spelled in names no
+ * `orbit --mode json`; this is the copy that runs with the suite, so a fixture spelled in names no
  * shell offers fails here rather than only in a manual eval run.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -27,7 +27,7 @@ const replayScenarios = fs
       fs.readFileSync(path.join(SCENARIOS, name, "scenario.json"), "utf-8"),
     ) as Scenario,
   }))
-  .filter(({ scenario }) => scenario.env?.LOOM_SUBMISSION_REPLAY);
+  .filter(({ scenario }) => scenario.env?.ORBIT_SUBMISSION_REPLAY);
 
 let tmp: string | undefined;
 
@@ -41,7 +41,7 @@ afterEach(() => {
 });
 
 async function replay(name: string, scenario: Scenario) {
-  tmp = fs.mkdtempSync(path.join(os.tmpdir(), "loom-tier1-"));
+  tmp = fs.mkdtempSync(path.join(os.tmpdir(), "orbit-tier1-"));
   fs.cpSync(path.join(SCENARIOS, name, "cwd"), tmp, { recursive: true });
   const nb = path.join(tmp, "notebook.md");
   if (!fs.existsSync(nb)) fs.writeFileSync(nb, "# Analysis\n", "utf-8");

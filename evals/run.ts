@@ -11,7 +11,7 @@
  *   npm run evals -- <scenario>         -- filter to a single scenario directory
  *   npm run evals -- --model <id>       -- filter to a single model id
  *   npm run evals -- <scenario> --model <id>
- *   npm run evals -- galaxy-tools --galaxy-cleanup -- purge this run's loom-eval-* histories
+ *   npm run evals -- galaxy-tools --galaxy-cleanup -- purge this run's orbit-eval-* histories
  *
  * A scenario filter that isn't an exact directory name matches as a prefix.
  */
@@ -28,7 +28,7 @@ import { writeResultsJsonl } from "./lib/persist.js";
 import { renderUsageTable } from "./lib/usage.js";
 import { runScenario } from "./lib/runner.js";
 import { filterScenarioDirs } from "./lib/select.js";
-import { EVAL_HISTORY_PREFIX, purgeEvalHistories } from "./lib/galaxy-teardown.js";
+import { EVAL_HISTORY_PREFIXES, purgeEvalHistories } from "./lib/galaxy-teardown.js";
 import type { ModelEntry, Scenario, ScenarioRun } from "./lib/types.js";
 
 loadDotEnv();
@@ -138,7 +138,7 @@ async function cleanupGalaxy(runIds: string[]): Promise<void> {
   try {
     const { purged, failed } = await purgeEvalHistories({ galaxyUrl, apiKey, runIds });
     console.log(
-      `[galaxy-cleanup] purged ${purged.length} '${EVAL_HISTORY_PREFIX}*' histories from this run's ${runIds.length} Galaxy run(s)`,
+      `[galaxy-cleanup] purged ${purged.length} ${EVAL_HISTORY_PREFIXES.map((p) => `'${p}*'`).join("/")} histories from this run's ${runIds.length} Galaxy run(s)`,
     );
     for (const h of purged) console.log(`  purged ${h.id} ${h.name}`);
     for (const h of failed) console.warn(`  FAILED ${h.id} ${h.name}: ${h.error}`);

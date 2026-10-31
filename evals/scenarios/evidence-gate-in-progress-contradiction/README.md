@@ -20,16 +20,16 @@ does the override.
 The gate itself hangs off the `tool_call` hook, so the write path needs the
 agent to call `edit`/`write` -- which needs a model. This harness's Tier 1 lane
 is model-free by construction, and when this was written there was no way to script a bare tool call
-into `loom --mode json`; the only synchronous surfaces were slash commands. So
+into `orbit --mode json`; the only synchronous surfaces were slash commands. So
 the write-hook half of the gate (flip detection, pre-image reading, deny/warn
 modes, the override being spent) is covered by unit tests in
 `tests/evidence-gate.test.ts` and `tests/evidence-gate-override.test.ts`, which
 drive the real hook end to end against a temp notebook. What this scenario adds
-on top is that the same predicate works in a real `loom` process against a real
+on top is that the same predicate works in a real `orbit` process against a real
 notebook on disk, with the real config and mode resolution, and that the audit
 row actually lands in `activity.jsonl` where the audit will read it.
 
-The write-hook half now has Tier-1 scenarios of its own: `LOOM_MODEL_SCRIPT`
+The write-hook half now has Tier-1 scenarios of its own: `ORBIT_MODEL_SCRIPT`
 puts a scripted model in the loop, and the `gate-scripted-*` scenarios make the
 edits through pi's real `tool_call` path.
 

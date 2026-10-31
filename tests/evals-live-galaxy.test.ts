@@ -9,6 +9,7 @@ import { makeRunId, runScenario, substituteRunId } from "../evals/lib/runner";
 import { historyNamesToResolve, resolveHistoryIds } from "../evals/lib/galaxy-history";
 import {
   EVAL_HISTORY_PREFIX,
+  EVAL_HISTORY_PREFIXES,
   purgeEvalHistories,
   selectEvalHistories,
   type FetchLike,
@@ -200,26 +201,30 @@ describe("evals run ids", () => {
   it("are timestamped, unique-ish, and substituted everywhere", () => {
     const id = makeRunId(new Date("2026-10-03T12:34:56.789Z"), () => 0.5);
     expect(id).toMatch(/^20261003123456-[0-9a-z]{4}$/);
-    expect(substituteRunId("loom-eval-x-{{RUN_ID}} and {{RUN_ID}}", id)).toBe(
-      `loom-eval-x-${id} and ${id}`,
+    expect(substituteRunId("orbit-eval-x-{{RUN_ID}} and {{RUN_ID}}", id)).toBe(
+      `orbit-eval-x-${id} and ${id}`,
     );
   });
 });
 
 describe("evals Galaxy teardown", () => {
   const histories = [
-    { id: "h1", name: "loom-eval-delete-RUN1" },
-    { id: "h2", name: "loom-eval-delete-RUN2" }, // another process's run
+    { id: "h1", name: "orbit-eval-delete-RUN1" },
+    { id: "h2", name: "orbit-eval-delete-RUN2" }, // another process's run
     { id: "h3", name: "my analysis RUN1" }, // has the run id, lacks the prefix
-    { id: "h4", name: "loom-eval-job-RUN1", purged: true },
-    { id: "h1", name: "loom-eval-delete-RUN1" }, // listed twice (deleted + live)
+    { id: "h4", name: "orbit-eval-job-RUN1", purged: true },
+    { id: "h1", name: "orbit-eval-delete-RUN1" }, // listed twice (deleted + live)
+    { id: "h5", name: "loom-eval-job-RUN1" }, // from before the rename
+    { id: "h6", name: "loom-eval-job-RUN2" },
   ];
 
   it("selects only prefixed, unpurged histories carrying one of this run's ids", () => {
-    expect(selectEvalHistories(histories, ["RUN1"]).map((h) => h.id)).toEqual(["h1"]);
+    expect(selectEvalHistories(histories, ["RUN1"]).map((h) => h.id)).toEqual(["h1", "h5"]);
     expect(selectEvalHistories(histories, []).map((h) => h.id)).toEqual([]);
-    expect(() => selectEvalHistories(histories, ["RUN1"], "")).toThrow();
-    expect(EVAL_HISTORY_PREFIX).toBe("loom-eval-");
+    expect(() => selectEvalHistories(histories, ["RUN1"], [""])).toThrow();
+    expect(() => selectEvalHistories(histories, ["RUN1"], [])).toThrow();
+    expect(EVAL_HISTORY_PREFIX).toBe("orbit-eval-");
+    expect(EVAL_HISTORY_PREFIXES).toEqual(["orbit-eval-", "loom-eval-"]);
   });
 
   it("lists live and deleted histories, then purges only the selected ones", async () => {
@@ -246,10 +251,11 @@ describe("evals Galaxy teardown", () => {
       runIds: ["RUN1"],
       fetchImpl,
     });
-    expect(result.purged.map((h) => h.id)).toEqual(["h1"]);
+    expect(result.purged.map((h) => h.id)).toEqual(["h1", "h5"]);
     expect(result.failed).toEqual([{ id: "h9", name: "loom-eval-sra-RUN1", error: "HTTP 403" }]);
     expect(calls.filter((c) => c.method === "DELETE").map((c) => c.url)).toEqual([
       "https://galaxy.example/api/histories/h1?purge=true",
+      "https://galaxy.example/api/histories/h5?purge=true",
       "https://galaxy.example/api/histories/h9?purge=true",
     ]);
   });

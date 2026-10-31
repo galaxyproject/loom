@@ -1,6 +1,6 @@
 {
   "name": "/execute hard-fails when a [remote] plan has no active connection",
-  "description": "init-gate (#104) refuses to send the agent prompt when the latest plan is tagged [remote] but no Galaxy credentials are configured. The slash command short-circuits before any LLM call, so this scenario exercises Loom's command path without needing model auth or a network call.",
+  "description": "init-gate (#104) refuses to send the agent prompt when the latest plan is tagged [remote] but no Galaxy credentials are configured. The slash command short-circuits before any LLM call, so this scenario exercises Orbit's command path without needing model auth or a network call.",
   "tier": 1,
   "inputs": ["/execute"],
   "env": {

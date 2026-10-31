@@ -1,16 +1,16 @@
 /**
- * Spawn `loom --mode json` against a fixture cwd, capture the JSON event
+ * Spawn `orbit --mode json` against a fixture cwd, capture the JSON event
  * stream, and return the parsed events for assertion.
  *
  * Each scenario gets its own temp directory containing both the agent dir
  * (PI_CODING_AGENT_DIR) and the working directory. This keeps runs isolated
- * from the user's real ~/.pi/agent and ~/.loom config.
+ * from the user's real ~/.pi/agent and ~/.orbit config.
  *
  * Tier 2 scenarios (`requiresModel: true`) are run once per available model
  * in evals/models.json. The runner synthesizes a Pi-shaped models.json into
  * the temp agent dir so OpenAI-compatible custom providers (TACC, litellm)
  * become first-class for that one spawn, then passes `--provider` and
- * `--model` to point loom at it.
+ * `--model` to point orbit at it.
  */
 
 import { spawn } from "child_process";
@@ -19,6 +19,7 @@ import * as os from "os";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import { historyNamesToResolve, resolveHistoryIds } from "./galaxy-history.js";
+import { readEnv } from "../../shared/orbit-env.js";
 import { writePiModelsConfig } from "./matrix.js";
 import type { ActivityEvent, AnyEvent, ModelEntry, Scenario, ScenarioRun } from "./types.js";
 
@@ -33,7 +34,7 @@ export async function runScenario(
   const scenarioPath = path.join(scenarioDir, "scenario.json");
   const scenario = JSON.parse(fs.readFileSync(scenarioPath, "utf-8")) as Scenario;
 
-  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "loom-eval-"));
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "orbit-eval-"));
   const tmpCwd = path.join(tmpRoot, "cwd");
   const tmpAgentDir = path.join(tmpRoot, ".pi", "agent");
   fs.mkdirSync(tmpCwd);
@@ -54,9 +55,12 @@ export async function runScenario(
     }
     if (scenario.config) {
       assertScenarioConfigIsSafe(scenario.config);
-      const loomDir = path.join(tmpRoot, ".loom");
-      fs.mkdirSync(loomDir, { recursive: true });
-      fs.writeFileSync(path.join(loomDir, "config.json"), JSON.stringify(scenario.config, null, 2));
+      const stateDir = path.join(tmpRoot, ".orbit");
+      fs.mkdirSync(stateDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(stateDir, "config.json"),
+        JSON.stringify(scenario.config, null, 2),
+      );
     }
     // Resolved before the spawn: a history the model creates or renames during
     // the run can't change what the prompt meant.
@@ -133,7 +137,7 @@ export function substituteRunId(input: string, runId: string): string {
 
 /**
  * Raw transcript of a run, for diagnosing a live failure after the temp dir
- * is gone. Off unless LOOM_EVAL_DUMP_DIR is set; point it somewhere outside
+ * is gone. Off unless ORBIT_EVAL_DUMP_DIR (or the older LOOM_EVAL_DUMP_DIR) is set; point it somewhere outside
  * the repo, since tool results land in it verbatim.
  */
 function dumpRun(
@@ -143,7 +147,7 @@ function dumpRun(
   cwd: string,
   result: SpawnResult,
 ): void {
-  const dir = process.env.LOOM_EVAL_DUMP_DIR;
+  const dir = readEnv("EVAL_DUMP_DIR");
   if (!dir) return;
   const base = path.join(
     dir,
@@ -232,7 +236,7 @@ function spawnCore(
     PI_SKIP_VERSION_CHECK: "1",
     PI_TELEMETRY: "0",
     ORBIT_FRESH_SESSION: "1",
-    HOME: fakeHome, // isolates ~/.loom/config.json reads
+    HOME: fakeHome, // isolates ~/.orbit/config.json reads
     USERPROFILE: fakeHome, // os.homedir() reads this one on Windows
   };
 

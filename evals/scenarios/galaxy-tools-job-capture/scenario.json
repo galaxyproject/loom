@@ -1,11 +1,11 @@
 {
   "name": "galaxy-tools: a real tool run lands as a loom-job block and the poller follows it",
-  "description": "The Galaxy tools are galaxy-ops operations registered in-process under bare names. Capture keys and records the run under that bare name, and it reads the job ids from the wrapper's envelope (structuredContent, or the text when a handler rewrote the content). A change in either shows up here as a run that went through with nothing recorded. The agent stages a small BED file by URL, runs wc_gnu on it and waits for the result, so the session stays alive across poller ticks: the scenario asserts that the run_tool result came from the in-process wrapper (details.galaxy.tool), the submission.registered row under the bare name, the loom-job block in notebook.md, and a poll.transition row for the wc_gnu job reaching a terminal state. upload_file is hidden. The history is loom-eval- prefixed for --galaxy-cleanup.",
+  "description": "The Galaxy tools are galaxy-ops operations registered in-process under bare names. Capture keys and records the run under that bare name, and it reads the job ids from the wrapper's envelope (structuredContent, or the text when a handler rewrote the content). A change in either shows up here as a run that went through with nothing recorded. The agent stages a small BED file by URL, runs wc_gnu on it and waits for the result, so the session stays alive across poller ticks: the scenario asserts that the run_tool result came from the in-process wrapper (details.galaxy.tool), the submission.registered row under the bare name, the loom-job block in notebook.md, and a poll.transition row for the wc_gnu job reaching a terminal state. upload_file is hidden. The history is orbit-eval- prefixed for --galaxy-cleanup.",
   "tier": 2,
   "requiresModel": true,
   "requiresGalaxy": true,
   "inputs": [
-    "Create a new Galaxy history named exactly `loom-eval-job-{{RUN_ID}}`. Upload this BED file into it by URL: https://raw.githubusercontent.com/galaxyproject/galaxy/release_24.0/test-data/1.bed . Then run the Galaxy tool `wc_gnu` (Line/Word/Character count) on that dataset with default settings. Wait until the wc_gnu job has finished -- check on it every so often -- and then tell me how many lines the BED file has according to the tool's output. Skip the formal plan; this is a quick check."
+    "Create a new Galaxy history named exactly `orbit-eval-job-{{RUN_ID}}`. Upload this BED file into it by URL: https://raw.githubusercontent.com/galaxyproject/galaxy/release_24.0/test-data/1.bed . Then run the Galaxy tool `wc_gnu` (Line/Word/Character count) on that dataset with default settings. Wait until the wc_gnu job has finished -- check on it every so often -- and then tell me how many lines the BED file has according to the tool's output. Skip the formal plan; this is a quick check."
   ],
   "env": {
     "ORBIT_EVAL_POLLER_DRAIN_MS": "120000"
@@ -17,7 +17,7 @@
         {
           "name": "create_history",
           "argsContains": {
-            "history_name": "loom-eval-job-"
+            "history_name": "orbit-eval-job-"
           }
         },
         {

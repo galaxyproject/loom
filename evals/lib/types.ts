@@ -54,7 +54,7 @@ export interface Assertions {
   chatPlan?: PlanAssertions;
   /**
    * Structural assertions on the post-run notebook.md. Reads the file from
-   * the scenario's temp cwd after loom exits (or times out -- the runner
+   * the scenario's temp cwd after orbit exits (or times out -- the runner
    * captures notebook state before cleanup). Content quality (right tools,
    * right reasoning) is intentionally out of scope here; that lives in
    * the galaxy/brc Python harnesses with LLMJudge.
@@ -217,7 +217,7 @@ export interface Scenario {
   inputs: string[];
   env?: Record<string, string>;
   /**
-   * Written to `<fake HOME>/.loom/config.json` before the run. The runner
+   * Written to `<fake HOME>/.orbit/config.json` before the run. The runner
    * points HOME at a throwaway dir, so this is the only way a scenario can
    * set a config key -- `lessons.enabled`, `observations.mode` -- that no env
    * value is allowed to turn on. `observations.mode: "auto"` and
@@ -225,13 +225,13 @@ export interface Scenario {
    */
   config?: Record<string, unknown>;
   /**
-   * Extra CLI flags forwarded verbatim to the loom invocation. Useful for
+   * Extra CLI flags forwarded verbatim to the orbit invocation. Useful for
    * `--no-tools`, `--tools read,bash`, etc. -- different scenarios want
    * different tool surfaces. Comes after `--mode json` and any
    * `--provider`/`--model` injected by the runner.
    */
   coreArgs?: string[];
-  /** Hard wall-clock cap for the loom invocation. Defaults to 15s. */
+  /** Hard wall-clock cap for the orbit invocation. Defaults to 15s. */
   timeoutMs?: number;
   assertions: Assertions;
 }

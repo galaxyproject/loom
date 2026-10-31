@@ -67,12 +67,13 @@ A scenario filter that isn't an exact directory name matches as a prefix,
 which is what selects the whole family.
 
 These scenarios create histories. Each one names them
-`loom-eval-<scenario>-{{RUN_ID}}`; the runner replaces `{{RUN_ID}}` in a
+`orbit-eval-<scenario>-{{RUN_ID}}`; the runner replaces `{{RUN_ID}}` in a
 scenario's inputs with a fresh per-run token. `--galaxy-cleanup` (opt-in)
-purges, after the run, every history whose name starts with `loom-eval-` AND
-contains one of the run ids this invocation handed out -- so it never touches
-a history without the prefix, nor one from a concurrent eval run on the same
-account. A run killed before it finishes skips cleanup; look for leftover
+purges, after the run, every history whose name starts with `orbit-eval-` (or
+`loom-eval-`, what runs from before the rename used) AND contains one of the
+run ids this invocation handed out -- so it never touches a history without
+the prefix, nor one from a concurrent eval run on the same account. A run
+killed before it finishes skips cleanup; look for leftover `orbit-eval-*` and
 `loom-eval-*` histories by hand.
 
 `toolResults` assertions look at what a tool _returned_ (`tool_execution_end`)
@@ -82,7 +83,9 @@ of a result with a regex and requires the chat to repeat it -- grading an
 answer against the live server without committing an account-specific value.
 Set `ORBIT_EVAL_DUMP_DIR` to keep each run's raw event stream, stderr,
 notebook and activity log for diagnosis (they include tool results verbatim,
-so point it outside the repo).
+so point it outside the repo), and `ORBIT_EVALS_VERBOSE` to print each failing
+run's notebook and the tail of its output. The older `LOOM_` spellings of both
+still work.
 
 ## Dimensions and the leaderboard
 

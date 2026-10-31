@@ -1,6 +1,6 @@
 # lesson-hostile-draft-rejected
 
-Tier 1, no model. Plants a lesson proposal through `LOOM_LESSON_PROPOSAL_REPLAY`
+Tier 1, no model. Plants a lesson proposal through `ORBIT_LESSON_PROPOSAL_REPLAY`
 and asserts the production path refuses it.
 
 The planted draft is what a model looks like when it has swallowed a prompt

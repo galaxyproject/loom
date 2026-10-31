@@ -6,7 +6,7 @@
   "config": { "lessons": { "enabled": true }, "observations": { "mode": "ask" } },
   "env": {
     "ANTHROPIC_API_KEY": "fake-eval-key",
-    "LOOM_OBSERVATION_REPLAY": "observations.jsonl",
+    "ORBIT_OBSERVATION_REPLAY": "observations.jsonl",
     "GALAXY_URL": "https://usegalaxy.org",
     "GALAXY_API_KEY": "fake-eval-galaxy-key"
   },

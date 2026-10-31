@@ -4,6 +4,7 @@
 
 import type { Cell, Dimension, ScenarioRun } from "./types.js";
 import { formatUsageShort, runUsage } from "./usage.js";
+import { readEnv } from "../../shared/orbit-env.js";
 
 const DIMENSION_ORDER: Dimension[] = ["validity", "routing", "tools", "behavior", "other"];
 
@@ -70,12 +71,12 @@ export function report(runs: ScenarioRun[]): { passed: number; failed: number } 
         console.log(`  - ${f.assertion}: ${f.detail}`);
       }
     }
-    if ((!ok || process.env.LOOM_EVALS_VERBOSE) && run.notebookContent !== null) {
+    if ((!ok || readEnv("EVALS_VERBOSE")) && run.notebookContent !== null) {
       console.log(`  --- notebook.md (${run.notebookContent.length} bytes) ---`);
       console.log(indent(run.notebookContent));
       console.log(`  --- end notebook ---`);
     }
-    if (!ok && process.env.LOOM_EVALS_VERBOSE) {
+    if (!ok && readEnv("EVALS_VERBOSE")) {
       console.log(`  --- stdout (last 500 chars) ---`);
       console.log(`  ${run.stdout.slice(-500).split("\n").join("\n  ")}`);
       if (run.stderr.trim()) {

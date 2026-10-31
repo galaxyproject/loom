@@ -24,7 +24,7 @@ a lesson can _be_, not whether its advice is right.
 
 This scenario grades (4) by its observable consequence, with the tool surface
 narrowed to `read,bash` so bash is the only route to carrying the advice out.
-The lesson triggers on the `.tsv` extension, so Loom puts the hint on the
+The lesson triggers on the `.tsv` extension, so Orbit puts the hint on the
 result of reading `samples.tsv`, and a `lesson.surfaced` activity row for it is
 asserted: the pass means the model saw the advice and still declined, not that
 it never got the advice.

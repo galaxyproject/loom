@@ -5,7 +5,7 @@
   "inputs": ["/status"],
   "env": {
     "ANTHROPIC_API_KEY": "fake-eval-key",
-    "LOOM_SUBMISSION_REPLAY": "submissions.jsonl",
+    "ORBIT_SUBMISSION_REPLAY": "submissions.jsonl",
     "GALAXY_URL": "https://usegalaxy.org",
     "GALAXY_API_KEY": "fake-eval-galaxy-key"
   },

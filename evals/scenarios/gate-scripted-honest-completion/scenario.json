@@ -1,16 +1,16 @@
 {
   "name": "an honest completion through the scripted model is allowed (warn)",
-  "description": "The honest sequence Loom's prompt teaches, made by a scripted model through pi's real tool_call path: a workflow submission (replayed) leaves a loom-invocation block in_progress on plan-a-step-1, the model checks the invocation (the fixture answers every job ok, so the block goes to completed), records the evidence under the step in one edit, then flips the checkbox in a second. The gate has to see the flip, find no contradiction and let it through in warn mode -- a deny here would be a false deny. The enrichment warning is expected: the fixture never establishes provenance.",
+  "description": "The honest sequence Orbit's prompt teaches, made by a scripted model through pi's real tool_call path: a workflow submission (replayed) leaves a loom-invocation block in_progress on plan-a-step-1, the model checks the invocation (the fixture answers every job ok, so the block goes to completed), records the evidence under the step in one edit, then flips the checkbox in a second. The gate has to see the flip, find no contradiction and let it through in warn mode -- a deny here would be a false deny. The enrichment warning is expected: the fixture never establishes provenance.",
   "tier": 1,
   "inputs": ["Run step 1 and verify it."],
   "env": {
     "ANTHROPIC_API_KEY": "fake-eval-key",
     "GALAXY_URL": "https://usegalaxy.org",
     "GALAXY_API_KEY": "fake-eval-galaxy-key",
-    "LOOM_SUBMISSION_REPLAY": "submissions.jsonl",
-    "LOOM_GALAXY_FIXTURE": "galaxy-fixture.json",
-    "LOOM_MODEL_SCRIPT": "model-script.jsonl",
-    "LOOM_EVIDENCE_GATE": "warn"
+    "ORBIT_SUBMISSION_REPLAY": "submissions.jsonl",
+    "ORBIT_GALAXY_FIXTURE": "galaxy-fixture.json",
+    "ORBIT_MODEL_SCRIPT": "model-script.jsonl",
+    "ORBIT_EVIDENCE_GATE": "warn"
   },
   "timeoutMs": 30000,
   "assertions": {
