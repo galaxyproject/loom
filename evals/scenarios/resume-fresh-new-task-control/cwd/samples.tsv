@@ -1,0 +1,6 @@
+sample	condition	reads
+S01	control	S01.fastq.gz
+S02	treated	S02.fastq.gz
+S03	control	S03.fastq.gz
+S04	treated	S04.fastq.gz
+S05	treated	S05.fastq.gz

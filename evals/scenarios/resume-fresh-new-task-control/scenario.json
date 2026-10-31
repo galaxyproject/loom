@@ -1,0 +1,27 @@
+{
+  "name": "resume control: the same new task with no prior session",
+  "description": "Control for resume-cross-provider-new-task: the same cwd and task, but a fresh session. Its pass rate is the baseline the resume scenario is compared against. Its assertions must stay identical to the resume scenario's.",
+  "tier": 2,
+  "requiresModel": true,
+  "inputs": [
+    "New task, unrelated to the assembly: read samples.tsv and tell me which sample IDs are in the treated condition. Answer with only those IDs, comma-separated."
+  ],
+  "timeoutMs": 180000,
+  "assertions": {
+    "toolCalls": {
+      "mustInclude": [
+        {
+          "name": "read",
+          "argsContains": {
+            "path": "samples.tsv"
+          }
+        }
+      ]
+    },
+    "chatText": {
+      "mustInclude": ["S02", "S04", "S05"],
+      "mustNotInclude": ["S01", "S03"],
+      "mustNotMatch": ["^\\s*What do you want to work on next\\?\\s*$"]
+    }
+  }
+}
