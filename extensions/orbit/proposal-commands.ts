@@ -857,7 +857,10 @@ element, on a multiple input it takes them all in one job.`,
       reply(ctx, r);
       // A slash command starts no turn, so without this the approved run waits
       // for the user's next message. Only the user's /approve reaches here.
-      if (r.approved) {
+      // Headless (print/json) runs its messages back to back and disposes the
+      // session after the last one, so a turn started here either collides with
+      // the next message or is cut off; there the next message has to say go.
+      if (r.approved && ctx.hasUI) {
         pi.sendUserMessage(approvedRunPrompt(r.approved), { deliverAs: "followUp" });
       }
     },
