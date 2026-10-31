@@ -103,8 +103,18 @@ const HISTORY_WRITERS: ReadonlySet<string> = new Set([
   "create_page",
 ]);
 
-/** Orbit's own upload tool; not a galaxy-ops operation, so not in the family. */
-const LOCAL_UPLOAD_TOOL = "galaxy_upload_local_file";
+/**
+ * Orbit's own tools that write into an explicit `history_id`; not galaxy-ops
+ * operations, so not in the family. Pushing an unbound notebook creates a page
+ * attached to that history, the same write as create_page.
+ */
+const ORBIT_WRITERS: ReadonlySet<string> = new Set([
+  "galaxy_upload_local_file",
+  "notebook_push_to_galaxy",
+]);
+
+/** How long the shared who-am-I lookup may take; no one caller's signal owns it. */
+const CURRENT_USER_TIMEOUT_MS = 15_000;
 
 /**
  * The signed-in user's id, remembered for the credentials it was asked with: a
@@ -122,11 +132,13 @@ function currentUserId(signal?: AbortSignal): Promise<string | null> {
   const config = getGalaxyConfig();
   if (!config) return Promise.resolve(null);
   if (currentUser?.url === config.url && currentUser.apiKey === config.apiKey) {
-    return currentUser.id;
+    return untilAborted(currentUser.id, signal);
   }
   const entry = {
     ...config,
-    id: galaxyGet<unknown>("/users/current", signal).then(
+    // Shared by every check until it settles, so it runs on its own timeout: one
+    // aborted tool call must not hand a null to another one waiting on it.
+    id: galaxyGet<unknown>("/users/current", AbortSignal.timeout(CURRENT_USER_TIMEOUT_MS)).then(
       (user) => (isRow(user) && typeof user.id === "string" && user.id ? user.id : null),
       () => null,
     ),
@@ -136,7 +148,21 @@ function currentUserId(signal?: AbortSignal): Promise<string | null> {
   void entry.id.then((id) => {
     if (id === null && currentUser === entry) currentUser = undefined;
   });
-  return entry.id;
+  return untilAborted(entry.id, signal);
+}
+
+/** `pending`, or null as soon as `signal` aborts. */
+function untilAborted<T>(pending: Promise<T | null>, signal?: AbortSignal): Promise<T | null> {
+  if (!signal) return pending;
+  if (signal.aborted) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const abort = () => resolve(null);
+    signal.addEventListener("abort", abort, { once: true });
+    void pending.then((value) => {
+      signal.removeEventListener("abort", abort);
+      resolve(value);
+    });
+  });
 }
 
 /**
@@ -155,7 +181,10 @@ async function ownedByAnother(historyId: string, signal?: AbortSignal): Promise<
   ]);
   if (!me || !isRow(history)) return false;
   // A 200 for some other resource is not an answer about this history.
-  if (history.id !== undefined && history.id !== historyId) return false;
+  // Galaxy decodes hex ids in either case and answers in lowercase.
+  if (history.id !== undefined && String(history.id).toLowerCase() !== historyId.toLowerCase()) {
+    return false;
+  }
   const owner = history.user_id;
   return typeof owner === "string" && owner !== "" && owner !== me;
 }
@@ -179,7 +208,7 @@ export function registerGalaxyHistoryGuard(pi: ExtensionAPI, family: GalaxyToolF
   pi.on("tool_call", async (event, ctx) => {
     const tool = family.toolName(event.toolName);
     const writes =
-      (tool !== undefined && HISTORY_WRITERS.has(tool)) || event.toolName === LOCAL_UPLOAD_TOOL;
+      (tool !== undefined && HISTORY_WRITERS.has(tool)) || ORBIT_WRITERS.has(event.toolName);
     if (!writes) return;
     const args = event.input as Row;
     if (typeof args.history_id !== "string" || !args.history_id) return;

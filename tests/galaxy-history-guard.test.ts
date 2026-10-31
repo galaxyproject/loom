@@ -119,6 +119,9 @@ describe("registerGalaxyHistoryGuard: history ownership", () => {
       const key = (init.headers as Record<string, string>)["x-api-key"];
       if (pathname === "/api/users/current") {
         seen.users++;
+        // Answers a tick later, as a real server would, so an abort can land first.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        if (init.signal?.aborted) throw init.signal.reason;
         return key in users ? json(users[key]) : json({ err_msg: "no" }, 401);
       }
       const history = pathname.match(/^\/api\/histories\/([^/]+)$/)?.[1];
@@ -168,10 +171,40 @@ describe("registerGalaxyHistoryGuard: history ownership", () => {
     ["update_history", { history_id: "theirs", name: "renamed" }],
     ["create_page", { slug: "p", title: "p", history_id: "theirs" }],
     ["galaxy_upload_local_file", { path: "x.txt", history_id: "theirs" }],
+    ["notebook_push_to_galaxy", { history_id: "theirs", title: "n" }],
   ])("refuses %s into another user's history", async (tool, input) => {
     owned({ theirs: "someone-else", mine: "me" });
     expect(await check(tool, input)).toEqual(refusal("theirs"));
     expect(await check(tool, { ...input, history_id: "mine" })).toBeUndefined();
+  });
+
+  it("refuses another user's history named in upper case", async () => {
+    // The stub answers in lower case for any spelling, as Galaxy's hex decoder does.
+    const fetch = vi.fn(async (url: string) => {
+      const { pathname } = new URL(url);
+      if (pathname === "/api/users/current") return json({ id: "me" });
+      if (pathname.toLowerCase() === "/api/histories/abc123") {
+        return json({ id: "abc123", user_id: "someone-else" });
+      }
+      return json({ err_msg: "no" }, 404);
+    });
+    setGalaxyFetchOverride(fetch);
+    expect(await check("update_history", { history_id: "ABC123", name: "x" })).toEqual(
+      refusal("ABC123"),
+    );
+  });
+
+  it("shares one user lookup between concurrent checks, and one aborting doesn't spoil the other", async () => {
+    const seen = owned({ theirs: "someone-else" });
+    const aborted = new AbortController();
+    const hook = guardHooks(registerGalaxyHistoryGuard, GALAXY);
+    const call = { toolName: "update_history", toolCallId: "c", input: { history_id: "theirs" } };
+    const first = hook("tool_call", call, { signal: aborted.signal });
+    const second = hook("tool_call", call, { signal: new AbortController().signal });
+    aborted.abort();
+    expect(await first).toBeUndefined();
+    expect(await second).toEqual(refusal("theirs"));
+    expect(seen.users).toBe(1);
   });
 
   it("names the shell's own tools in the refusal", async () => {
