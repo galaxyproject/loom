@@ -8,12 +8,16 @@
  * packaging change. That is deliberate: the guidance has to be available
  * offline, at a version we reviewed, with no runtime dependency on GitHub.
  *
- * Two kinds of content live here. The galaxy-skills mirror backs the configured
- * repo of the same name: its generated `_catalog.json` is what the system-prompt
- * router renders, and `skills_fetch` reads it from disk. The Foundry casts back
- * nothing configured and never enter the router -- nothing in them is ambient
- * guidance the model needs to know exists up front, so a hint names the exact
- * file at the moment it becomes relevant (see `invocation-failure-hint.ts`).
+ * Three kinds of content live here. The galaxy-skills mirror backs the
+ * configured repo of the same name: its generated `_catalog.json` is what the
+ * system-prompt router renders, and `skills_fetch` reads it from disk. The
+ * Foundry casts back nothing configured and never enter the router -- nothing in
+ * them is ambient guidance the model needs to know exists up front, so a hint
+ * names the exact file at the moment it becomes relevant (see
+ * `invocation-failure-hint.ts`). Orbit's staging skills come from `skills/` in
+ * this repo rather than from agentic-plugins: skills Orbit needs before they
+ * have a permanent home, each naming where it should move. They are routed
+ * under the reserved `orbit` repo.
  */
 
 import fs from "node:fs";
@@ -24,6 +28,20 @@ import type { SkillEntry } from "./skills-discovery";
 
 /** Reserved repo name for `skills_fetch({ repo: "foundry" })`. */
 export const VENDOR_REPO_NAME = "foundry";
+
+/** Reserved repo name for Orbit's staging skills, `skills_fetch({ repo: "orbit" })`. */
+export const STAGING_REPO_NAME = "orbit";
+
+/**
+ * Names `skills_fetch` answers from the package without any configured repo
+ * behind them. A configured repo of the same name still wins, so an explicitly
+ * chosen repo is never silently answered from the package.
+ */
+const RESERVED_REPOS: ReadonlySet<string> = new Set([VENDOR_REPO_NAME, STAGING_REPO_NAME]);
+
+export function isReservedRepo(name: unknown): name is string {
+  return typeof name === "string" && RESERVED_REPOS.has(name);
+}
 
 export interface VendorManifestEntry {
   target: string;
@@ -36,6 +54,10 @@ export interface VendorManifestEntry {
 
 export interface VendorManifestPlugin {
   plugin: string;
+  /** "local" for a plugin synced from this repo; absent for agentic-plugins. */
+  source?: "local";
+  /** The repo-relative source directory of a local plugin. */
+  dir?: string;
   as: string;
   repo?: string;
   /** "catalog" puts this plugin's skills in the prompt router; "never" keeps them out. */

@@ -54,5 +54,15 @@
         "loom"
       ]
     }
+  ],
+  "orbit": [
+    {
+      "path": "skills/galaxy-data-libraries/SKILL.md",
+      "name": "galaxy-data-libraries",
+      "description": "Use when data lives in a Galaxy data library rather than a history (a named library, or a folder id starting with F) -- walk folders, get dataset ids, run tools on library datasets in place, import only when needed.",
+      "surfaces": [
+        "loom"
+      ]
+    }
   ]
 }

@@ -53,9 +53,11 @@ import {
 import { listEnabledSkillRepos, findSkillRepo } from "./skills";
 import { fetchSkillFile, githubRawBase } from "./skills-discovery";
 import {
+  STAGING_REPO_NAME,
   VENDOR_REPO_NAME,
   hasBundledContent,
   isBundledRepo,
+  isReservedRepo,
   readBundledRepoFile,
 } from "./vendor-skills";
 import { GTN_API, gtnPageText, gtnTopics, gtnTutorials, gtnUrl } from "../../shared/gtn.js";
@@ -295,15 +297,18 @@ inside each; a repo marked bundled there is read from the package, and any other
 is fetched and cached locally for 24h. If \`repo\` is omitted, the first enabled
 repo is used (typically \`galaxy-skills\`).
 
-\`repo: "${VENDOR_REPO_NAME}"\` reads Galaxy workflow reference material bundled
-with Orbit, always offline. It is deliberately absent from the router, so its
+\`repo: "${STAGING_REPO_NAME}"\` reads Orbit's staging skills (ones that have not
+moved to a permanent repo yet), listed in the router under that name. \`repo: "${VENDOR_REPO_NAME}"\` reads Galaxy workflow
+reference material bundled with Orbit. Both are always offline. The
+${VENDOR_REPO_NAME} material is deliberately absent from the router, so its
 paths are not listed there: a hint names the exact file when it becomes
 relevant, and a wrong path answers with the entry points that do exist.`,
     parameters: Type.Object({
       repo: Type.Optional(
         Type.String({
           description:
-            "Name of the skills repo to fetch from (e.g. 'galaxy-skills'), or " +
+            "Name of the skills repo to fetch from (e.g. 'galaxy-skills'), " +
+            `'${STAGING_REPO_NAME}' for Orbit's staging skills, or ` +
             `'${VENDOR_REPO_NAME}' for bundled reference material. ` +
             "Omit to use the default (first enabled repo).",
         }),
@@ -328,18 +333,30 @@ relevant, and a wrong path answers with the entry points that do exist.`,
         };
       }
 
-      // The reserved name reads bundled reference material, but only when the
-      // user has not claimed it: configuring a repo called "foundry" has to win,
-      // or an explicitly chosen branch is silently answered from the package.
-      // Checked before the read, not after a miss, because the bundled tree now
+      // A reserved name reads from the package, but only when the user has not
+      // claimed it: configuring a repo called "foundry" or "orbit" has to win, or
+      // an explicitly chosen branch is silently answered from the package.
+      // Checked before the read, not after a miss, because the bundled tree
       // holds a whole skills mirror and would answer for paths that belong to it.
-      if (params.repo === VENDOR_REPO_NAME && !findSkillRepo(VENDOR_REPO_NAME)) {
-        const res = readBundledRepoFile({ name: VENDOR_REPO_NAME }, cleanPath);
+      const reserved = params.repo;
+      if (isReservedRepo(reserved) && !findSkillRepo(reserved)) {
+        if (!hasBundledContent(reserved)) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: this build of Orbit ships nothing under "${reserved}".`,
+              },
+            ],
+            details: { error: true, repo: reserved, path: cleanPath },
+          };
+        }
+        const res = readBundledRepoFile({ name: reserved }, cleanPath);
         if (res.ok) {
           return {
             content: [{ type: "text", text: res.text }],
             details: {
-              repo: VENDOR_REPO_NAME,
+              repo: reserved,
               path: cleanPath,
               length: res.text.length,
               bundled: true,
@@ -353,7 +370,7 @@ relevant, and a wrong path answers with the entry points that do exist.`,
               text: `Error: ${res.error}. Available: ${res.available.join(", ") || "(none)"}.`,
             },
           ],
-          details: { error: true, repo: VENDOR_REPO_NAME, path: cleanPath },
+          details: { error: true, repo: reserved, path: cleanPath },
         };
       }
 

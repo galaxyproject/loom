@@ -17,8 +17,11 @@ import {
   refreshCatalog,
   skillsCacheDir,
   refreshAllCatalogs,
+  catalogSummary,
+  resetStagingShadowWarning,
 } from "../extensions/orbit/skills-discovery";
 import { listEnabledSkillRepos } from "../extensions/orbit/skills";
+import { readBundledCatalog } from "../extensions/orbit/vendor-skills";
 
 describe("parseFrontmatter", () => {
   it("reads name, description, when_to_use, and a surfaces list", () => {
@@ -364,6 +367,17 @@ describe("catalog cache", () => {
   });
 });
 
+// Orbit's own skills ride along in every summary: they are not a configured repo,
+// but /skills status has to say they are there. The count comes from the real
+// catalog, so staging another skill doesn't break tests about something else.
+const STAGING_ROW = {
+  repo: "orbit",
+  count: readBundledCatalog()?.orbit?.length,
+  ok: true,
+  bundled: true,
+  staging: true,
+};
+
 describe("refreshAllCatalogs", () => {
   let tmp: string;
   beforeEach(() => {
@@ -399,7 +413,7 @@ describe("refreshAllCatalogs", () => {
       }),
     );
     const summary = await refreshAllCatalogs();
-    expect(summary).toEqual([{ repo: "galaxy-skills-wip", count: 1, ok: true }]);
+    expect(summary).toEqual([{ repo: "galaxy-skills-wip", count: 1, ok: true }, STAGING_ROW]);
   });
 
   it("reports a bundled repo as bundled instead of walking it", async () => {
@@ -417,8 +431,9 @@ describe("refreshAllCatalogs", () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
     const summary = await refreshAllCatalogs();
-    expect(summary).toHaveLength(1);
+    expect(summary).toHaveLength(2);
     expect(summary[0]).toMatchObject({ repo: "galaxy-skills", ok: true, bundled: true });
+    expect(summary[1]).toEqual(STAGING_ROW);
     expect(summary[0].count).toBeGreaterThan(0);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -429,10 +444,41 @@ describe("refreshAllCatalogs", () => {
       vi.fn().mockResolvedValue(new Response("rate limited", { status: 403 })),
     );
     const summary = await refreshAllCatalogs();
-    expect(summary).toHaveLength(1);
+    expect(summary).toHaveLength(2);
     expect(summary[0].repo).toBe("galaxy-skills-wip");
     expect(summary[0].ok).toBe(false);
     expect(summary[0].error).toMatch(/403/);
+    expect(summary[1]).toEqual(STAGING_ROW);
+  });
+
+  it("drops the staging row when a configured repo has taken the name", async () => {
+    fs.writeFileSync(
+      path.join(tmp, ".orbit", "config.json"),
+      JSON.stringify({
+        skills: {
+          repos: [
+            {
+              name: "orbit",
+              url: "https://github.com/galaxyproject/orbit",
+              branch: "wip",
+              enabled: true,
+            },
+          ],
+        },
+      }),
+      "utf-8",
+    );
+    resetStagingShadowWarning();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("nope", { status: 404 })));
+    const summary = await refreshAllCatalogs();
+    expect(summary.map((r) => r.repo)).toEqual(["orbit"]);
+    expect(summary[0].staging).toBeUndefined();
+    // It wins, but not quietly -- and only once per session, however many
+    // surfaces ask.
+    catalogSummary();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toMatch(/configured repo named "orbit" replaces/);
   });
 });
 

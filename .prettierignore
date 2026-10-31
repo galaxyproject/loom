@@ -23,6 +23,11 @@ browser/
 # break the drift gate and diverge the copy from what was reviewed.
 extensions/orbit/vendor/skills/
 
+# Orbit's staging skills are the source of a hash-gated vendored copy: a
+# formatter running on commit would make the source and the copy disagree after
+# the sync. They also move to agentic-plugins, which does not run prettier.
+skills/*/
+
 # The lesson corpus and the snapshot built from it. `npm run check:lessons` is
 # the gate for these, not prettier: its markdown printer rewrites the YAML
 # frontmatter, and reformatting the generated JSON would make the drift gate

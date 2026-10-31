@@ -13,6 +13,7 @@ new `## [<version>] - <date>` block with a `### Highlights` list at release time
 - What changes in notebooks: new typed blocks are written as `orbit-invocation`, `orbit-job` and friends. The `loom-*` blocks older releases wrote are read as before and converge to the new name when next updated, so a notebook shared between Orbit 0.8 and 0.9 does not grow duplicates
 - Linux: the desktop package and executable are `orbit-desktop`, so the app no longer shadows the `orbit` CLI on PATH. The 0.8 package was called `orbit`; remove it with `sudo apt remove orbit` (or `rpm -e orbit`) after installing the new one
 - The CLI's `/orbit` hand-off command is now `/desktop`; `/orbit` still works for now
+- Orbit can now ship staging skills -- skills it needs before they have a permanent home upstream -- alongside the galaxy-skills catalog, under `skills_fetch({ repo: "orbit" })`. The first, `galaxy-data-libraries`, teaches the agent to browse a Galaxy data library and run tools on its datasets in place instead of copying them into a history
 - `GALAXY_URL=... GALAXY_API_KEY=... orbit` now reaches that server even when a different Galaxy profile is saved; before, the saved profile's URL won. The URL and key always come from the same place now, which fixes a case where a key exported for one server was sent to the saved profile's server instead. Setting just one of the two is ignored, with a warning
 
 ## [0.8.0] - 2026-09-28

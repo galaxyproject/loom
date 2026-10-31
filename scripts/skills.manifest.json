@@ -1,5 +1,5 @@
 {
-  "$comment": "Skill content vendored into Orbit. The source is galaxyproject/agentic-plugins, which mirrors galaxy-skills and the Foundry casts at pins of its own; the pin recorded here is a commit because tags are mutable, and `tag` is a label that stays null while the pinned commit is ahead of the newest tag upstream. Regenerate with `npm run sync:skills`; verify with `npm run check:skills`. Do not hand-edit files under extensions/orbit/vendor/skills/. `as` is the prefix each plugin's content is written under, relative to its `skills/` root, chosen so a bundled path is the same string as the path a live fetch would use. `repo` names the configured skills repo a plugin backs, and `router: \"catalog\"` puts its SKILL.md frontmatter into _catalog.json; `never` keeps a plugin out of the system prompt entirely. An exclude is content Orbit has no use for, such as a cast's feedback ledger, which belongs to a review loop Orbit does not run.",
+  "$comment": "Skill content vendored into Orbit. The source is galaxyproject/agentic-plugins, which mirrors galaxy-skills and the Foundry casts at pins of its own; the pin recorded here is a commit because tags are mutable, and `tag` is a label that stays null while the pinned commit is ahead of the newest tag upstream. Regenerate with `npm run sync:skills`; verify with `npm run check:skills`. Do not hand-edit files under extensions/orbit/vendor/skills/. `as` is the prefix each plugin's content is written under, relative to its `skills/` root, chosen so a bundled path is the same string as the path a live fetch would use. `repo` names the configured skills repo a plugin backs, and `router: \"catalog\"` puts its SKILL.md frontmatter into _catalog.json; `never` keeps a plugin out of the system prompt entirely. A plugin with `\"source\": \"local\"` reads `dir` in this repo instead of agentic-plugins: Orbit's staging skills, temporary residents that each name a proposed_home and move there. An exclude is content Orbit has no use for, such as a cast's feedback ledger, which belongs to a review loop Orbit does not run.",
   "repo": "galaxyproject/agentic-plugins",
   "commit": "aa4da4bd68eb00e360dfd5aa6e998feb5de0ac49",
   "commitDate": "2026-09-17",
@@ -37,6 +37,18 @@
         "validate-galaxy-workflow/**"
       ],
       "exclude": ["**/_feedback.md"]
+    },
+    {
+      "plugin": "orbit-skills",
+      "source": "local",
+      "dir": "skills",
+      "repo": "orbit",
+      "as": "skills",
+      "router": "catalog",
+      "transforms": [],
+      "why": "Skills Orbit writes and tests itself before they move to agentic-plugins.",
+      "include": ["**"],
+      "exclude": ["README.md"]
     }
   ]
 }

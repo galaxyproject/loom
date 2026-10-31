@@ -2,13 +2,18 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
-import { listEnabledSkillRepos, type ConfiguredSkillRepo } from "./skills";
+import { findSkillRepo, listEnabledSkillRepos, type ConfiguredSkillRepo } from "./skills";
 import { resolveStateDir } from "../../shared/state-dir.js";
 import {
   SKILLS_SURFACE_ID,
   selectSkills as selectSurfaceSkills,
 } from "../../shared/skills-router.js";
-import { hasBundledContent, isBundledRepo, readBundledCatalog } from "./vendor-skills";
+import {
+  STAGING_REPO_NAME,
+  hasBundledContent,
+  isBundledRepo,
+  readBundledCatalog,
+} from "./vendor-skills";
 export type { ConfiguredSkillRepo };
 
 /** The product-surface id Orbit claims. A skill opts in with `surfaces: [loom]`. */
@@ -294,6 +299,45 @@ export interface CatalogRefreshResult {
   cached?: boolean;
   /** Ships in the package; there was nothing to fetch. */
   bundled?: boolean;
+  /** Orbit's staging skills, not a configured repo. */
+  staging?: boolean;
+}
+
+let warnedShadowedStaging = false;
+
+/** The shadowing warning fires once per process; tests that assert it reset it first. */
+export function resetStagingShadowWarning(): void {
+  warnedShadowedStaging = false;
+}
+
+/**
+ * Orbit's staging skills, when this session offers them: the package holds
+ * some and no configured repo has taken the name. A configured `orbit` repo
+ * wins -- an explicit choice beats the package -- but not quietly. It is not a
+ * clean branch preview yet: a live walk of the Orbit repo has no subtree
+ * filter, so it lists every loom-tagged SKILL.md in the tree, vendored copies
+ * included.
+ */
+export function stagingSkillEntries(): SkillEntry[] | null {
+  if (!hasBundledContent(STAGING_REPO_NAME)) return null;
+  if (findSkillRepo(STAGING_REPO_NAME)) {
+    if (!warnedShadowedStaging) {
+      warnedShadowedStaging = true;
+      console.warn(
+        `[skills] a configured repo named "${STAGING_REPO_NAME}" replaces Orbit's staging skills`,
+      );
+    }
+    return null;
+  }
+  return readBundledCatalog()?.[STAGING_REPO_NAME] ?? [];
+}
+
+function stagingSummary(): CatalogRefreshResult[] {
+  const entries = stagingSkillEntries();
+  if (!entries) return [];
+  return [
+    { repo: STAGING_REPO_NAME, count: entries.length, ok: true, bundled: true, staging: true },
+  ];
 }
 
 /** Force-refresh every enabled repo (the manual path). Per-repo errors are reported, not thrown. */
@@ -302,7 +346,7 @@ export async function refreshAllCatalogs(): Promise<CatalogRefreshResult[]> {
   // Per-repo try/catch so one failure doesn't sink the rest. A bundled repo has
   // nothing to refresh: walking it would report a count the router does not use,
   // and offline it would report a failure for a repo that works.
-  return Promise.all(
+  const results = await Promise.all(
     listEnabledSkillRepos().map(async (repo): Promise<CatalogRefreshResult> => {
       if (readsFromPackage(repo)) {
         const entries = readBundledCatalog()?.[repo.name];
@@ -321,6 +365,7 @@ export async function refreshAllCatalogs(): Promise<CatalogRefreshResult[]> {
       }
     }),
   );
+  return [...results, ...stagingSummary()];
 }
 
 /**
@@ -359,7 +404,7 @@ export function resolveCatalogEntries(repo: ConfiguredSkillRepo): SkillEntry[] {
 
 /** Current catalog counts without refreshing (the status path). */
 export function catalogSummary(): CatalogRefreshResult[] {
-  return listEnabledSkillRepos().map((repo) => {
+  const configured = listEnabledSkillRepos().map((repo): CatalogRefreshResult => {
     if (readsFromPackage(repo)) {
       const entries = readBundledCatalog()?.[repo.name];
       return { repo: repo.name, count: entries?.length ?? 0, ok: true, bundled: true };
@@ -367,6 +412,7 @@ export function catalogSummary(): CatalogRefreshResult[] {
     const cat = readCatalog(repo);
     return { repo: repo.name, count: cat?.skills.length ?? 0, ok: true, cached: cat !== null };
   });
+  return [...configured, ...stagingSummary()];
 }
 
 /**

@@ -18,6 +18,15 @@
  * `LOOM_AGENTIC_PLUGINS_DIR=/path/to/agentic-plugins` reads a local checkout
  * instead of fetching, for iterating on both repos at once. It does not check
  * that the checkout is at the pinned commit, so never commit the result of one.
+ * A checkout that is at the pin is also the way to re-sync offline.
+ *
+ * A plugin entry with `"source": "local"` is the exception to all of the above:
+ * its files come from `dir` in this repo (Orbit's staging skills under
+ * `skills/`, each naming its destination), not from agentic-plugins. They go through the same selection,
+ * transforms and catalog as everything else, so nothing downstream can tell
+ * them apart, but their provenance is this repo's own history -- so they record
+ * no upstream, and `--check` compares them against their source directly,
+ * which it can do offline.
  *
  * Transforms are declared per plugin and applied to markdown on the way in, so
  * the vendored copy is deliberately not byte-identical to upstream and `--check`
@@ -53,6 +62,8 @@ const GENERATED = new Set([VENDOR_MANIFEST_NAME, VENDOR_CATALOG_NAME]);
 
 /** The product-surface id Orbit claims. A skill opts in with `metadata.surfaces: [loom]`. */
 const SURFACE_ID = "loom";
+
+const LOCAL_SOURCE = "local";
 
 // agentic-plugins follows the plugin layout every harness reads: skill content
 // for a plugin lives under `plugins/<name>/skills/`. Include and exclude
@@ -401,20 +412,32 @@ function toSurfaces(v) {
 }
 
 /**
+ * The raw frontmatter object of a markdown file, or `data: null` when it has
+ * none. `error` is set when there is a frontmatter block that YAML refuses, so
+ * a caller that needs a field can say why it is missing.
+ */
+function readFrontmatterData(text) {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(String(text ?? ""));
+  if (!m) return { data: null };
+  let data;
+  try {
+    data = parseYaml(m[1]);
+  } catch (err) {
+    return { data: null, error: err instanceof Error ? err.message : String(err) };
+  }
+  return { data: data && typeof data === "object" ? data : null };
+}
+
+const isSkillFile = (target) => target === "SKILL.md" || target.endsWith("/SKILL.md");
+
+/**
  * A port of the runtime's `parseFrontmatter`. The sync runs under plain node and
  * cannot import the TypeScript one, so the two are kept honest by a test that
  * runs both over the same inputs, including every vendored SKILL.md.
  */
 export function parseFrontmatter(text) {
-  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
-  if (!m) return {};
-  let data;
-  try {
-    data = parseYaml(m[1]);
-  } catch {
-    return {};
-  }
-  if (!data || typeof data !== "object") return {};
+  const { data } = readFrontmatterData(text);
+  if (!data) return {};
   const fm = {};
   if (typeof data.name === "string") fm.name = data.name;
   if (typeof data.description === "string") fm.description = data.description;
@@ -437,7 +460,7 @@ export function parseFrontmatter(text) {
 export function buildCatalogEntries(plugin, files, readText) {
   const entries = [];
   for (const file of files) {
-    if (file.target !== "SKILL.md" && !file.target.endsWith("/SKILL.md")) continue;
+    if (!isSkillFile(file.target)) continue;
     const fm = parseFrontmatter(readText(file));
     if (!fm.name || !fm.description) {
       throw new Error(`${file.target}: SKILL.md has no name or description in its frontmatter`);
@@ -461,6 +484,26 @@ export function buildCatalogEntries(plugin, files, readText) {
     );
   }
   return entries;
+}
+
+/**
+ * Every skill in a local plugin has to say where it is meant to end up. The
+ * local tier is a staging ground, not a home, and a skill that names no
+ * destination is one nobody will ever move.
+ */
+export function assertProposedHome(plugin, files, readText) {
+  for (const file of files) {
+    if (!isSkillFile(file.target)) continue;
+    const { data, error } = readFrontmatterData(readText(file));
+    if (error) throw new Error(`${file.target}: frontmatter is not valid YAML (${error})`);
+    const home = data?.metadata?.proposed_home;
+    if (typeof home !== "string" || !home.trim()) {
+      throw new Error(
+        `${file.target}: a staging skill in "${plugin.plugin}" must name where it should move, ` +
+          `as metadata.proposed_home in its frontmatter (e.g. galaxy-skills)`,
+      );
+    }
+  }
 }
 
 function assertNoLocalCheckout(text, targetName) {
@@ -725,6 +768,103 @@ export function listFiles(dir) {
   return out.sort();
 }
 
+/**
+ * The text the sync writes for one selected file: read from `root`, refused if
+ * binary, transformed under its target name. The local drift check hashes this
+ * same text, so the two cannot disagree about what "unchanged" means.
+ *
+ * @param {string} root directory the file's `source` is relative to
+ * @param {{source: string, target: string}} file
+ * @param {string[]} transforms
+ * @param {string} from the source path to name in errors
+ */
+export function readTransformed(root, file, transforms, from) {
+  const bytes = fs.readFileSync(path.join(root, file.source));
+  // Everything vendored is prose or JSON. Reading a binary as UTF-8 would
+  // replace every invalid sequence, hash the damage as if it were the content,
+  // and sail through the gate.
+  if (bytes.includes(0)) {
+    throw new Error(`${from}: looks binary; the vendored set is text only`);
+  }
+  try {
+    return applyTransforms(bytes.toString("utf-8"), file.target, transforms);
+  } catch (err) {
+    throw new Error(`${from}: ${err.message}`, { cause: err });
+  }
+}
+
+/**
+ * The files of a local plugin, as slash-separated paths relative to its `dir`.
+ *
+ * A working-tree walk rather than `git ls-files`, because a skill being written
+ * has to sync before it is committed; `--check` on the committed result is the
+ * gate. Dotfiles are skipped, and anything that is not a regular file is
+ * refused for the same reason `listCommittedFiles` refuses a symlink.
+ */
+export function listLocalFiles(dir, { repoRoot = REPO_ROOT, vendorDir = VENDOR_DIR } = {}) {
+  const abs = path.resolve(repoRoot, dir);
+  if (abs === repoRoot || !abs.startsWith(repoRoot + path.sep)) {
+    throw new Error(`local skills dir "${dir}" is not inside the repository`);
+  }
+  if (
+    abs === vendorDir ||
+    abs.startsWith(vendorDir + path.sep) ||
+    vendorDir.startsWith(abs + path.sep)
+  ) {
+    throw new Error(`local skills dir "${dir}" overlaps the vendor tree`);
+  }
+  const top = lstatOrNull(abs);
+  if (!top?.isDirectory()) throw new Error(`local skills dir "${dir}" does not exist`);
+  const out = [];
+  const walk = (sub) => {
+    for (const entry of fs.readdirSync(path.join(abs, sub), { withFileTypes: true })) {
+      if (entry.name.startsWith(".")) continue;
+      const rel = sub ? `${sub}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(rel);
+      else if (entry.isFile()) out.push(rel);
+      else throw new Error(`${dir}/${rel}: not a regular file; refusing to vendor it`);
+    }
+  };
+  walk("");
+  return out.sort();
+}
+
+/**
+ * Whether the vendored copy of a local plugin still matches its source. The
+ * checks in `checkVendored` only see the vendor side, so without this an edit
+ * under `skills/` that was never re-synced would pass CI and never ship.
+ *
+ * @param {object} args
+ * @param {string} args.plugin the plugin name
+ * @param {string} args.dir its source dir, for messages
+ * @param {{source: string, target: string}[]} args.selected what the entry selects from the source now
+ * @param {{target: string, plugin: string, sha256: string}[]} args.recorded every entry in the vendored manifest
+ * @param {(file: {source: string, target: string}) => string | null} args.hashOfSource hash of a source file, transformed as the sync would
+ * @returns {{kind: string, message: string}[]}
+ */
+export function checkLocalPlugin({ plugin, dir, selected, recorded, hashOfSource }) {
+  const failures = [];
+  const mine = new Map(recorded.filter((f) => f.plugin === plugin).map((f) => [f.target, f]));
+  for (const file of selected) {
+    const entry = mine.get(file.target);
+    if (!entry) {
+      failures.push({ kind: "missing", message: `${dir}/${file.source}: not vendored yet` });
+      continue;
+    }
+    mine.delete(file.target);
+    if (hashOfSource(file) !== entry.sha256) {
+      failures.push({
+        kind: "hash-mismatch",
+        message: `${dir}/${file.source}: changed since the last sync`,
+      });
+    }
+  }
+  for (const target of mine.keys()) {
+    failures.push({ kind: "orphaned", message: `${target}: vendored but its source is gone` });
+  }
+  return failures;
+}
+
 function readManifestText() {
   return fs.readFileSync(MANIFEST_PATH, "utf-8");
 }
@@ -783,6 +923,88 @@ function materializeSource(manifest) {
   };
 }
 
+/**
+ * One plugin's share of a sync: its `_manifest.json` record, its catalog when
+ * routed, and the vendored entries (text included) for every file it selects.
+ * Pure apart from reading under `root`, so a local plugin can be exercised on a
+ * temp directory without fetching agentic-plugins.
+ *
+ * @param {object} plugin the manifest entry
+ * @param {object} args
+ * @param {string} args.root directory the selected sources are read from
+ * @param {string[]} args.available every file the entry may select, relative to root
+ * @param {string} args.prefix how a source is recorded (`plugins/<p>/skills` or the local dir)
+ * @param {object | null} args.upstream the plugin's UPSTREAM.json pin; null for a local plugin
+ */
+export function collectPlugin(plugin, { root, available, prefix, upstream }) {
+  const local = plugin.source === LOCAL_SOURCE;
+  const transforms = plugin.transforms ?? [];
+  const fromOf = (f) => `${prefix}/${f.source}`;
+  const record = {
+    plugin: plugin.plugin,
+    ...(local ? { source: LOCAL_SOURCE, dir: plugin.dir } : {}),
+    as: plugin.as ?? "",
+    repo: plugin.repo,
+    router: plugin.router ?? "never",
+    transforms,
+    why: plugin.why,
+    upstream,
+  };
+
+  const files = selectFiles(plugin, available);
+  const transformed = new Map(
+    files.map((f) => [f.target, readTransformed(root, f, transforms, fromOf(f))]),
+  );
+  const textOf = (f) => transformed.get(f.target);
+
+  if (local) assertProposedHome(plugin, files, textOf);
+  let catalog;
+  if (plugin.router === "catalog") {
+    if (!plugin.repo) {
+      throw new Error(`plugin "${plugin.plugin}" is in the router but names no repo`);
+    }
+    // Read the transformed text, not the upstream bytes: a description is
+    // copied straight into the cached system prompt, so it has to be the one
+    // that went past the transforms rather than around them.
+    catalog = buildCatalogEntries(plugin, files, textOf);
+  }
+
+  const entries = files.map((file) => {
+    const text = textOf(file);
+    return {
+      target: file.target,
+      plugin: plugin.plugin,
+      source: fromOf(file),
+      // Byte count of what the hash covers, so a CRLF checkout upstream does
+      // not make the generated manifest differ by platform.
+      bytes: Buffer.byteLength(text.replace(/\r\n/g, "\n"), "utf-8"),
+      sha256: sha256(text),
+      why: file.why,
+      text,
+    };
+  });
+  return { record, catalog, entries };
+}
+
+/**
+ * Two plugins may share a target prefix (the staging skills vendor under the
+ * same `skills/` as galaxy-skills) but never a file. This is also the guard
+ * that makes a skill moved upstream fail the sync until its local copy is
+ * deleted.
+ */
+export function assertNoTargetCollisions(collected) {
+  const byTarget = new Map();
+  for (const { record, entries } of collected) {
+    for (const { target } of entries) {
+      const owner = byTarget.get(target);
+      if (owner) {
+        throw new Error(`plugins "${owner}" and "${record.plugin}" both vendor ${target}`);
+      }
+      byTarget.set(target, record.plugin);
+    }
+  }
+}
+
 function localCheckoutCommit(dir) {
   try {
     const head = git(["rev-parse", "HEAD"], dir).trim();
@@ -813,53 +1035,30 @@ async function sync() {
     const plugins = [];
     const catalog = {};
     const claimedRepos = new Set();
-    const byTarget = new Map();
 
     // Read and transform everything before writing anything. A transform that
     // refuses a file is the normal way this fails, and half a tree on disk with
     // a stale manifest beside it reports as four hash mismatches rather than as
     // "the last sync did not finish".
+    const collected = [];
     for (const plugin of manifest.plugins) {
-      const prefix = `plugins/${plugin.plugin}/${PLUGIN_SKILLS_ROOT}`;
-      const root = path.join(source.dir, "plugins", plugin.plugin, PLUGIN_SKILLS_ROOT);
-      if (!fs.existsSync(root)) {
-        throw new Error(`plugin "${plugin.plugin}" has no ${PLUGIN_SKILLS_ROOT}/ directory`);
+      const local = plugin.source === LOCAL_SOURCE;
+      const prefix = local ? plugin.dir : `plugins/${plugin.plugin}/${PLUGIN_SKILLS_ROOT}`;
+      const root = local
+        ? path.resolve(REPO_ROOT, plugin.dir)
+        : path.join(source.dir, "plugins", plugin.plugin, PLUGIN_SKILLS_ROOT);
+      let available;
+      if (local) {
+        available = listLocalFiles(plugin.dir);
+      } else {
+        if (!fs.existsSync(root)) {
+          throw new Error(`plugin "${plugin.plugin}" has no ${PLUGIN_SKILLS_ROOT}/ directory`);
+        }
+        available = listCommittedFiles(source.dir, source.rev, prefix);
       }
-      const committed = listCommittedFiles(source.dir, source.rev, prefix);
-      if (committed.length === 0) {
-        throw new Error(`plugin "${plugin.plugin}" has no committed files under ${prefix}`);
+      if (available.length === 0) {
+        throw new Error(`plugin "${plugin.plugin}" has no files under ${prefix}`);
       }
-      plugins.push({
-        plugin: plugin.plugin,
-        as: plugin.as ?? "",
-        repo: plugin.repo,
-        router: plugin.router ?? "never",
-        transforms: plugin.transforms ?? [],
-        why: plugin.why,
-        upstream: readUpstreamPin(source.dir, plugin.plugin),
-      });
-
-      const pluginFiles = selectFiles(plugin, committed);
-      const transformed = new Map(
-        pluginFiles.map((f) => {
-          const from = `plugins/${plugin.plugin}/${PLUGIN_SKILLS_ROOT}/${f.source}`;
-          const bytes = fs.readFileSync(path.join(root, f.source));
-          // Everything vendored is prose or JSON. Reading a binary as UTF-8
-          // would replace every invalid sequence, hash the damage as if it were
-          // the content, and sail through the gate.
-          if (bytes.includes(0)) {
-            throw new Error(`${from}: looks binary; the vendored set is text only`);
-          }
-          try {
-            return [
-              f.target,
-              applyTransforms(bytes.toString("utf-8"), f.target, plugin.transforms),
-            ];
-          } catch (err) {
-            throw new Error(`${from}: ${err.message}`, { cause: err });
-          }
-        }),
-      );
 
       // Checked for every plugin, not only the routed ones: reads are scoped by
       // which plugin owns a repo name, and the lookup takes the first claimant.
@@ -869,39 +1068,21 @@ async function sync() {
         }
         claimedRepos.add(plugin.repo);
       }
-      if (plugin.router === "catalog") {
-        if (!plugin.repo) {
-          throw new Error(`plugin "${plugin.plugin}" is in the router but names no repo`);
-        }
-        // Read the transformed text, not the upstream bytes: a description is
-        // copied straight into the cached system prompt, so it has to be the
-        // one that went past the transforms rather than around them.
-        catalog[plugin.repo] = buildCatalogEntries(plugin, pluginFiles, (f) =>
-          transformed.get(f.target),
-        );
-      }
 
-      for (const file of pluginFiles) {
-        const owner = byTarget.get(file.target);
-        if (owner) {
-          throw new Error(`plugins "${owner}" and "${plugin.plugin}" both vendor ${file.target}`);
-        }
-        byTarget.set(file.target, plugin.plugin);
-
-        const from = `plugins/${plugin.plugin}/${PLUGIN_SKILLS_ROOT}/${file.source}`;
-        const text = transformed.get(file.target);
-        entries.push({
-          target: file.target,
-          plugin: plugin.plugin,
-          source: from,
-          // Byte count of what the hash covers, so a CRLF checkout upstream
-          // does not make the generated manifest differ by platform.
-          bytes: Buffer.byteLength(text.replace(/\r\n/g, "\n"), "utf-8"),
-          sha256: sha256(text),
-          why: file.why,
-          text,
-        });
-      }
+      collected.push(
+        collectPlugin(plugin, {
+          root,
+          available,
+          prefix,
+          upstream: local ? null : readUpstreamPin(source.dir, plugin.plugin),
+        }),
+      );
+    }
+    assertNoTargetCollisions(collected);
+    for (const c of collected) {
+      plugins.push(c.record);
+      if (c.catalog) catalog[c.record.repo] = c.catalog;
+      entries.push(...c.entries);
     }
 
     entries.sort((a, b) => byTargetName(a.target, b.target));
@@ -1073,6 +1254,47 @@ function pruneStale(keep) {
   walk("");
 }
 
+/**
+ * The drift check for every local plugin in the manifest: re-select from the
+ * working tree and compare against what the last sync recorded. A plugin whose
+ * directory is gone or selects nothing reports as missing.
+ */
+export function checkLocalPlugins(
+  manifest,
+  recorded,
+  { repoRoot = REPO_ROOT, vendorDir = VENDOR_DIR } = {},
+) {
+  const failures = [];
+  for (const plugin of manifest.plugins.filter((p) => p.source === LOCAL_SOURCE)) {
+    const root = path.resolve(repoRoot, plugin.dir);
+    let selected;
+    try {
+      selected = selectFiles(plugin, listLocalFiles(plugin.dir, { repoRoot, vendorDir }));
+    } catch (err) {
+      failures.push({ kind: "missing", message: err instanceof Error ? err.message : String(err) });
+      continue;
+    }
+    failures.push(
+      ...checkLocalPlugin({
+        plugin: plugin.plugin,
+        dir: plugin.dir,
+        selected,
+        recorded,
+        hashOfSource: (file) => {
+          try {
+            return sha256(
+              readTransformed(root, file, plugin.transforms ?? [], `${plugin.dir}/${file.source}`),
+            );
+          } catch {
+            return null;
+          }
+        },
+      }),
+    );
+  }
+  return failures;
+}
+
 function check() {
   if (!fs.existsSync(VENDOR_MANIFEST)) {
     console.error("check:skills -- no vendored manifest; run `npm run sync:skills`");
@@ -1106,6 +1328,8 @@ function check() {
       }
     },
   });
+
+  failures.push(...checkLocalPlugins(manifest, vendored.files));
 
   // The pin module is generated outside the vendor tree entirely, so the only
   // thing tying it to the manifest is this comparison.

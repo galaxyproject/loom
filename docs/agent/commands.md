@@ -4,16 +4,16 @@
 
 Orbit registers a small set of tools at the extension layer:
 
-| Category                     | Tools                                                                                            |
-| ---------------------------- | ------------------------------------------------------------------------------------------------ |
-| GTN tutorials                | `gtn_search`, `gtn_fetch`                                                                        |
-| Skills                       | `skills_fetch` (SKILL.md / reference docs; `repo: "foundry"` reads bundled Foundry casts)        |
-| Saved Galaxy output          | `galaxy_read_output` (search/page an oversized Galaxy response held for this session)            |
-| Saved MCP output             | `mcp_read_output` (search/page an oversized brc-analytics MCP response pi already saved)         |
-| Galaxy invocations           | `galaxy_invocation_record`, `galaxy_invocation_check_all`, `galaxy_invocation_check_one`         |
-| Dashboard                    | `dashboard_read`, `dashboard_update`                                                             |
-| Multi-agent (experimental)   | `team_dispatch` (gated by `ORBIT_TEAM_DISPATCH=1`)                                               |
-| Session index (experimental) | `chat_search`, `chat_session_context`, `chat_find_tool_calls` (gated by `ORBIT_SESSION_INDEX=1`) |
+| Category                     | Tools                                                                                                                                               |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GTN tutorials                | `gtn_search`, `gtn_fetch`                                                                                                                           |
+| Skills                       | `skills_fetch` (SKILL.md / reference docs; `repo: "orbit"` reads staging skills awaiting a permanent home, `repo: "foundry"` bundled Foundry casts) |
+| Saved Galaxy output          | `galaxy_read_output` (search/page an oversized Galaxy response held for this session)                                                               |
+| Saved MCP output             | `mcp_read_output` (search/page an oversized brc-analytics MCP response pi already saved)                                                            |
+| Galaxy invocations           | `galaxy_invocation_record`, `galaxy_invocation_check_all`, `galaxy_invocation_check_one`                                                            |
+| Dashboard                    | `dashboard_read`, `dashboard_update`                                                                                                                |
+| Multi-agent (experimental)   | `team_dispatch` (gated by `ORBIT_TEAM_DISPATCH=1`)                                                                                                  |
+| Session index (experimental) | `chat_search`, `chat_session_context`, `chat_find_tool_calls` (gated by `ORBIT_SESSION_INDEX=1`)                                                    |
 
 The Galaxy tools run in-process through galaxy-ops and are always registered,
 under the operations' own names: `search_tools_by_name`, `run_tool`,

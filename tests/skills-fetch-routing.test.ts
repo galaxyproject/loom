@@ -11,6 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { GALAXY } from "./galaxy-family-fixture";
+import { setVendorSkillsSource, vendorSkillsDir } from "../extensions/orbit/vendor-skills";
 
 interface ToolDef {
   name: string;
@@ -59,6 +60,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setVendorSkillsSource(null);
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   fs.rmSync(tmp, { recursive: true, force: true });
@@ -127,6 +129,78 @@ describe("skills_fetch source selection", () => {
     expect(res.content[0].text).toBe("LIVE CONTENT");
     expect(fetchSpy).toHaveBeenCalled();
     expect(String(fetchSpy.mock.calls[0][0])).toContain("galaxyproject/foundry");
+  });
+
+  it("serves Orbit's staging skills from the package when nobody has configured the name", async () => {
+    writeConfig([DEFAULT_REPO]);
+    const res = await call(await skillsFetch(), {
+      repo: "orbit",
+      path: "skills/galaxy-data-libraries/SKILL.md",
+    });
+    expect(res.content[0].text).toContain("name: galaxy-data-libraries");
+    expect(res.details).toMatchObject({ bundled: true, repo: "orbit" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not let the staging repo name reach the galaxy-skills mirror under the shared prefix", async () => {
+    writeConfig([DEFAULT_REPO]);
+    const res = await call(await skillsFetch(), {
+      repo: "orbit",
+      path: "skills/udt-authoring/SKILL.md",
+    });
+    expect(res.details?.error).toBe(true);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("lets a configured repo named orbit win over the package", async () => {
+    writeConfig([
+      DEFAULT_REPO,
+      {
+        name: "orbit",
+        url: "https://github.com/galaxyproject/orbit",
+        branch: "wip",
+        enabled: true,
+      },
+    ]);
+    const res = await call(await skillsFetch(), {
+      repo: "orbit",
+      path: "skills/galaxy-data-libraries/SKILL.md",
+    });
+    expect(res.content[0].text).toBe("LIVE CONTENT");
+    expect(String(fetchSpy.mock.calls[0][0])).toContain("galaxyproject/orbit/wip/");
+  });
+
+  it("says plainly when the build ships nothing under a reserved name", async () => {
+    // A package built before any staging skill existed, or one whose local
+    // plugin was dropped: the reserved name must not fall through to the network.
+    const read = (name: string) =>
+      JSON.parse(fs.readFileSync(path.join(vendorSkillsDir(), name), "utf-8"));
+    const manifest = read("_manifest.json");
+    const catalog = read("_catalog.json");
+    delete catalog.orbit;
+    setVendorSkillsSource({
+      catalog,
+      manifest: {
+        ...manifest,
+        plugins: manifest.plugins.filter((p: { repo?: string }) => p.repo !== "orbit"),
+        files: manifest.files.filter((f: { plugin: string }) => f.plugin !== "orbit-skills"),
+      },
+      read: (target) => {
+        try {
+          return fs.readFileSync(path.join(vendorSkillsDir(), target), "utf-8");
+        } catch {
+          return null;
+        }
+      },
+    });
+    writeConfig([DEFAULT_REPO]);
+    const res = await call(await skillsFetch(), {
+      repo: "orbit",
+      path: "skills/galaxy-data-libraries/SKILL.md",
+    });
+    expect(res.content[0].text).toContain('ships nothing under "orbit"');
+    expect(res.details?.error).toBe(true);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("does not let the reserved name reach the skills mirror", async () => {

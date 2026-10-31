@@ -14,8 +14,9 @@ import { isTeamDispatchEnabled } from "./teams/is-enabled";
 import { isSessionIndexEnabled } from "./session-index/is-enabled";
 import { loadConfig } from "./config";
 import { listEnabledSkillRepos, type ConfiguredSkillRepo } from "./skills";
-import { isBundledRepo } from "./vendor-skills";
+import { STAGING_REPO_NAME, isBundledRepo } from "./vendor-skills";
 import {
+  stagingSkillEntries,
   resolveCatalogEntries,
   selectSkills,
   backgroundRefreshSkills,
@@ -650,18 +651,24 @@ export function renderSkillsSection(
   repos: ConfiguredSkillRepo[],
   entriesByRepo: Map<string, SkillEntry[]>,
   bundled: ReadonlySet<string> = new Set(),
+  staging: ReadonlySet<string> = new Set(),
 ): string {
   // Only promise a refresh when something here is actually fetched. A bundled
   // repo is read from the package, so "refreshes each session" would be a
   // description of machinery that no longer runs for it.
-  const allBundled = repos.every((r) => bundled.has(r.name));
+  const allBundled = repos.every((r) => bundled.has(r.name) || staging.has(r.name));
+  // A repo-less fetch goes to the first *configured* repo, never a staging one,
+  // so when nothing is configured every fetch line has to name its repo.
+  const defaultRepo = repos.find((r) => !staging.has(r.name))?.name ?? null;
   const freshness = allBundled
     ? `The catalog below ships with Orbit and reads from disk, so it works offline.`
     : `The catalog below refreshes each session; deep reference docs cache for 24h.`;
   return renderSkillsRouter(
     repos.map((r) => ({
       name: r.name,
-      label: `${r.url} (${bundled.has(r.name) ? "bundled" : `branch: ${r.branch || "main"}`})`,
+      label: staging.has(r.name)
+        ? "staging in Orbit until it moves to a permanent home"
+        : `${r.url} (${bundled.has(r.name) ? "bundled" : `branch: ${r.branch || "main"}`})`,
     })),
     new Map(
       [...entriesByRepo].map(([name, entries]) => [
@@ -669,7 +676,7 @@ export function renderSkillsSection(
         entries.map((e) => ({ ...e, whenToUse: e.when_to_use })),
       ]),
     ),
-    { freshness, defaultRepoPhrase: "the first enabled repo" },
+    { freshness, defaultRepoPhrase: "the first enabled repo", defaultRepo },
   );
 }
 
@@ -682,13 +689,20 @@ export function buildSkillsContext(): string {
     if (isBundledRepo(r)) bundled.add(r.name);
     entriesByRepo.set(r.name, selectSkills(resolveCatalogEntries(r)));
   }
+  const staging = new Set<string>();
+  const stagingEntries = stagingSkillEntries();
+  if (stagingEntries) {
+    staging.add(STAGING_REPO_NAME);
+    repos.push({ name: STAGING_REPO_NAME, url: "", branch: "" });
+    entriesByRepo.set(STAGING_REPO_NAME, selectSkills(stagingEntries));
+  }
   // Don't emit a contentless skills section. If nothing resolved -- a user-added
   // repo whose catalog has not been fetched yet, and nothing of it in the
   // package -- stay silent until the background refresh populates it next
   // session.
   const hasAny = [...entriesByRepo.values()].some((e) => e.length > 0);
   if (!hasAny) return "";
-  return renderSkillsSection(repos, entriesByRepo, bundled);
+  return renderSkillsSection(repos, entriesByRepo, bundled, staging);
 }
 
 /**

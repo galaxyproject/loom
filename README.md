@@ -232,6 +232,8 @@ Point a repo at a different branch or URL and it goes back to being fetched from
 - **Galaxy tool development**
 - **Updating ToolShed tool revisions**
 
+Orbit also carries a few **staging skills** under `skills_fetch({ repo: "orbit" })`, listed in the system prompt beside galaxy-skills. They are temporary: each is a skill Orbit needed before it had a proper home, lives in [`skills/`](skills/) while it is tried with Orbit's users, and names in its frontmatter where it should move (usually galaxy-skills, via agentic-plugins). If you maintain that home, these are open invitations. The first is **galaxy-data-libraries**: browsing a Galaxy data library and running tools on its datasets in place instead of copying them into a history.
+
 Add your own repos in **Preferences → Skills**. Each entry is `{ name, url, branch?, enabled? }`. The URL allowlist is `https://github.com/galaxyproject/*` (the agent treats fetched SKILL.md content as authoritative instructions, so arbitrary repos are a prompt-injection vector). Example:
 
 ```json
@@ -700,13 +702,13 @@ Type `/` in the chat to open the autocomplete popup. Tab to accept; Enter still 
 
 Orbit registers a small set of extension tools. Plans, decisions, results, and interpretation all live as markdown sections in `notebook.md` — the agent maintains them via the standard `Edit`/`Write` tools.
 
-| Category                       | Tools                                                                                     |
-| ------------------------------ | ----------------------------------------------------------------------------------------- |
-| **GTN tutorials**              | `gtn_search`, `gtn_fetch`                                                                 |
-| **Galaxy invocations**         | `galaxy_invocation_record`, `galaxy_invocation_check_all`, `galaxy_invocation_check_one`  |
-| **Galaxy run proposals**       | `loom_propose` (you approve with `/approve`)                                              |
-| **Skills**                     | `skills_fetch` (SKILL.md / reference docs; `repo: "foundry"` reads bundled Foundry casts) |
-| **Multi-agent (experimental)** | `team_dispatch` (gated by `ORBIT_TEAM_DISPATCH=1`)                                        |
+| Category                       | Tools                                                                                                                                               |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **GTN tutorials**              | `gtn_search`, `gtn_fetch`                                                                                                                           |
+| **Galaxy invocations**         | `galaxy_invocation_record`, `galaxy_invocation_check_all`, `galaxy_invocation_check_one`                                                            |
+| **Galaxy run proposals**       | `loom_propose` (you approve with `/approve`)                                                                                                        |
+| **Skills**                     | `skills_fetch` (SKILL.md / reference docs; `repo: "orbit"` reads staging skills awaiting a permanent home, `repo: "foundry"` bundled Foundry casts) |
+| **Multi-agent (experimental)** | `team_dispatch` (gated by `ORBIT_TEAM_DISPATCH=1`)                                                                                                  |
 
 The Galaxy tools run in-process through [galaxy-ops](https://github.com/galaxyproject/galaxy-mcp) under the operations' own names: `search_tools_by_name`, `run_tool`, `invoke_workflow`, `search_iwc_workflows`, `recommend_iwc_workflows`, `import_workflow_from_iwc`, user-defined tool lifecycle (`create_user_tool`, `list_user_tools`, `run_user_tool`, `delete_user_tool`), history/dataset operations, and more. There is no connect step: `/connect` stores the credentials they use.
 

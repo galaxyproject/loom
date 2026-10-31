@@ -57,4 +57,37 @@ describe("renderSkillsSection", () => {
     expect(out).toContain('skills_fetch({ path: "a/SKILL.md" })');
     expect(out).toContain('skills_fetch({ repo: "extra", path: "b/SKILL.md" })');
   });
+
+  it("labels a staging repo and names it in every fetch line", () => {
+    const withStaging = [...repos, { name: "orbit", url: "", branch: "" }];
+    const map = new Map<string, SkillEntry[]>([
+      ["galaxy-skills", [{ path: "a/SKILL.md", name: "a", description: "d", surfaces: ["loom"] }]],
+      ["orbit", [{ path: "b/SKILL.md", name: "b", description: "d", surfaces: ["loom"] }]],
+    ]);
+    const out = renderSkillsSection(
+      withStaging,
+      map,
+      new Set(["galaxy-skills"]),
+      new Set(["orbit"]),
+    );
+    expect(out).toContain("- **orbit** — staging in Orbit until it moves to a permanent home");
+    expect(out).toContain('skills_fetch({ path: "a/SKILL.md" })');
+    expect(out).toContain('skills_fetch({ repo: "orbit", path: "b/SKILL.md" })');
+    expect(out).toContain("ships with Orbit and reads from disk");
+  });
+
+  it("never makes a staging repo the default, even when nothing is configured", () => {
+    // A repo-less skills_fetch goes to the first configured repo, and with none
+    // configured it errors -- so the staging repo's lines must still name it.
+    const map = new Map<string, SkillEntry[]>([
+      ["orbit", [{ path: "b/SKILL.md", name: "b", description: "d", surfaces: ["loom"] }]],
+    ]);
+    const out = renderSkillsSection(
+      [{ name: "orbit", url: "", branch: "" }],
+      map,
+      new Set(),
+      new Set(["orbit"]),
+    );
+    expect(out).toContain('skills_fetch({ repo: "orbit", path: "b/SKILL.md" })');
+  });
 });

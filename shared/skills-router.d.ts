@@ -13,5 +13,5 @@ export interface SkillsRouterEntry {
 export function renderSkillsRouter(
   repos: readonly SkillsRouterRepo[],
   entriesByRepo: ReadonlyMap<string, readonly SkillsRouterEntry[]>,
-  options: { freshness?: string; defaultRepoPhrase: string },
+  options: { freshness?: string; defaultRepoPhrase: string; defaultRepo?: string | null },
 ): string;

@@ -116,7 +116,19 @@ describe("the generated catalog", () => {
   });
 
   it("holds nothing from a repo that is kept out of the router", () => {
-    expect(Object.keys(readBundledCatalog()!)).toEqual([DEFAULT.name]);
+    // galaxy-skills and Orbit's own staging skills are routed; the Foundry casts are not.
+    expect(Object.keys(readBundledCatalog()!)).toEqual([DEFAULT.name, "orbit"]);
+  });
+
+  it("names staging paths that resolve under the orbit repo and nowhere else", () => {
+    const entries = readBundledCatalog()!.orbit;
+    expect(entries.length).toBeGreaterThan(0);
+    for (const entry of entries) {
+      expect(entry.path).toMatch(/^skills\/.+\/SKILL\.md$/);
+      expect(readBundledRepoFile({ name: "orbit" }, entry.path).ok).toBe(true);
+      // Same prefix as galaxy-skills, different owner: the mirror must not answer for it.
+      expect(readBundledRepoFile(DEFAULT, entry.path).ok).toBe(false);
+    }
   });
 });
 

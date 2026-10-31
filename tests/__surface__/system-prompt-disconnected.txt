@@ -5,4 +5,4 @@ No Galaxy credentials configured (`GALAXY_URL` / `GALAXY_API_KEY`).
 All execution is local. If the user asks for an analysis that would
 benefit from Galaxy-scale compute, suggest connecting via `/connect`
 once — don't badger.
-[last 187 lines shared with system-prompt-connected.txt]
+[last 192 lines shared with system-prompt-connected.txt]

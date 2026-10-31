@@ -715,6 +715,7 @@ Use the `skills_fetch({ repo, path })` tool to load a skill on demand. **Don't g
 ### Configured repos
 
 - **galaxy-skills** — https://github.com/galaxyproject/galaxy-skills (bundled)
+- **orbit** — staging in Orbit until it moves to a permanent home
 
 ### galaxy-skills skills
 
@@ -724,6 +725,10 @@ Use the `skills_fetch({ repo, path })` tool to load a skill on demand. **Don't g
 - **reproduciblify** — Use this skill to "reproduciblify" a Galaxy history — re-execute a real (often messy) analysis as a clean, fully on-graph, collection-structured history and author a Galaxy Notebook that extracts cleanly into a reusable, sample-agnostic workflow. Triggers on "reproduciblify this history", "make this history reproducible/extractable", "rebuild this analysis on-graph", "turn this history into a clean notebook/workflow". → `skills_fetch({ path: "skills/reproduciblify/SKILL.md" })`
 - **udt-authoring** — Use when authoring a Galaxy User-Defined Tool (UDT) -- a `class: GalaxyUserTool` YAML definition that wraps a container and command into a tool a non-admin user creates and runs (e.g. via Galaxy MCP create_user_tool / run_user_tool, or POST /api/unprivileged_tools). Not for classic XML/ToolShed tool wrappers. → `skills_fetch({ path: "skills/udt-authoring/SKILL.md" })`
 - **workflow-reports** — Use this skill when asked to create, draft, or write a Galaxy workflow report template for the Workflow Editor's Report tab. Triggers on requests like "create a report for this workflow", "draft a workflow report template", "write a Galaxy report for workflow <id/url>". → `skills_fetch({ path: "skills/workflow-reports/SKILL.md" })`
+
+### orbit skills
+
+- **galaxy-data-libraries** — Use when data lives in a Galaxy data library rather than a history (a named library, or a folder id starting with F) -- walk folders, get dataset ids, run tools on library datasets in place, import only when needed. → `skills_fetch({ repo: "orbit", path: "skills/galaxy-data-libraries/SKILL.md" })`
 
 Read the SKILL.md fully before acting on what it teaches.
 

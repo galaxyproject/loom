@@ -147,11 +147,15 @@ function upstreamRepo(url) {
   return m[1];
 }
 
-/** Copy the `as: "skills"` plugin out of Orbit's vendor tree, checked against its manifest. */
+/**
+ * Copy the galaxy-skills plugin out of Orbit's vendor tree, checked against its manifest. Found by
+ * repo rather than by its `skills/` prefix: Orbit's staging skills are vendored under the same
+ * prefix so that their paths survive the move upstream.
+ */
 async function vendorLocal(manifest) {
-  const plugin = (manifest.plugins || []).find((p) => p.as === "skills");
+  const plugin = (manifest.plugins || []).find((p) => p.repo === "galaxy-skills");
   if (!plugin?.upstream?.commit) {
-    throw new Error(`${VENDOR_MANIFEST} has no plugin vendored as "skills"`);
+    throw new Error(`${VENDOR_MANIFEST} has no galaxy-skills plugin`);
   }
   // A transform would make these bytes differ from the commit the stamp names.
   if (plugin.transforms?.length) {

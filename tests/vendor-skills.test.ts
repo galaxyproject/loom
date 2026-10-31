@@ -7,6 +7,7 @@ import {
   JOB_FAILURE_REFERENCE,
 } from "../extensions/orbit/invocation-failure-hint";
 import {
+  isReservedRepo,
   readBundledCatalog,
   readVendorManifest,
   readVendoredSkill,
@@ -214,5 +215,18 @@ describe("an installed vendor skills source", () => {
     expect(readVendorManifest()!.files).toEqual([]);
     setVendorSkillsSource(null);
     expect(readVendorManifest()!.files.length).toBeGreaterThan(0);
+  });
+});
+
+describe("isReservedRepo", () => {
+  it("names the bundled reference set and Orbit's staging skills", () => {
+    expect(isReservedRepo("foundry")).toBe(true);
+    expect(isReservedRepo("orbit")).toBe(true);
+  });
+
+  it("is not fooled by a configured repo name or an inherited property", () => {
+    expect(isReservedRepo("galaxy-skills")).toBe(false);
+    expect(isReservedRepo("constructor")).toBe(false);
+    expect(isReservedRepo(undefined)).toBe(false);
   });
 });

@@ -10,7 +10,7 @@ const read = (p: string) => JSON.parse(readFileSync(join(ROOT, p), "utf8"));
 describe("browser skills lock", () => {
   it("pins the galaxy-skills commit Orbit vendors as skills", () => {
     const manifest = read("extensions/orbit/vendor/skills/_manifest.json");
-    const plugin = manifest.plugins.find((p: { as?: string }) => p.as === "skills");
+    const plugin = manifest.plugins.find((p: { repo?: string }) => p.repo === "galaxy-skills");
     const repo = plugin.upstream.repository
       .replace(/^https:\/\/github\.com\//, "")
       .replace(/\/$/, "")

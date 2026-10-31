@@ -20,10 +20,16 @@ export function selectSkills(entries, surface = SKILLS_SURFACE_ID) {
 /**
  * @param {{ name: string, label?: string }[]} repos
  * @param {Map<string, { path: string, name: string, description: string, whenToUse?: string }[]>} entriesByRepo
- * @param {{ freshness?: string, defaultRepoPhrase: string }} options
+ * @param {{ freshness?: string, defaultRepoPhrase: string, defaultRepo?: string | null }} options
+ *   `defaultRepo` is the repo a `repo`-less fetch reaches, when that is not simply the first one
+ *   listed; null means none does, so every fetch line names its repo.
  * @returns {string}
  */
-export function renderSkillsRouter(repos, entriesByRepo, { freshness, defaultRepoPhrase }) {
+export function renderSkillsRouter(
+  repos,
+  entriesByRepo,
+  { freshness, defaultRepoPhrase, defaultRepo: defaultRepoOption },
+) {
   if (repos.length === 0) return "";
   const lines = [
     "## Skills repositories (operational know-how)",
@@ -38,7 +44,7 @@ export function renderSkillsRouter(repos, entriesByRepo, { freshness, defaultRep
     ...repos.map((r) => `- **${r.name}**${r.label ? ` — ${r.label}` : ""}`),
     "",
   ];
-  const defaultRepo = repos[0].name;
+  const defaultRepo = defaultRepoOption === undefined ? repos[0].name : defaultRepoOption;
   for (const r of repos) {
     const entries = entriesByRepo.get(r.name) ?? [];
     if (entries.length === 0) continue;

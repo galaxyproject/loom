@@ -19,13 +19,20 @@ import { readVendorManifest, vendorSkillsDir } from "../extensions/orbit/vendor-
 import {
   REPO_BLOB_BASE,
   applyTransforms,
+  assertProposedHome,
+  assertNoTargetCollisions,
+  checkLocalPlugin,
+  checkLocalPlugins,
+  collectPlugin,
   checkVendored,
   declaredTargets,
   buildCatalogEntries,
   findJsonStringSpans,
   listCommittedFiles,
+  listLocalFiles,
   matchesPattern,
   parseFrontmatter,
+  readTransformed,
   rewriteLocalPaths,
   safeVendorPath,
   selectFiles,
@@ -736,5 +743,257 @@ describe("applyJsonTransforms nesting", () => {
   it("leaves a nested body alone when it has no links to strip", () => {
     const nested = JSON.stringify({ command: { body: "ordinary prose" } });
     expect(applyTransforms(nested, "x.json", ["strip-wiki-links"])).toBe(nested);
+  });
+});
+
+describe("listLocalFiles", () => {
+  let root: string;
+  let vendor: string;
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "local-skills-"));
+    vendor = join(root, "extensions", "orbit", "vendor", "skills");
+    mkdirSync(vendor, { recursive: true });
+    mkdirSync(join(root, "skills", "one", "references"), { recursive: true });
+    writeFileSync(join(root, "skills", "README.md"), "rules");
+    writeFileSync(join(root, "skills", "one", "SKILL.md"), "skill");
+    writeFileSync(join(root, "skills", "one", "references", "notes.md"), "notes");
+    writeFileSync(join(root, "skills", ".DS_Store"), "junk");
+  });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+  const list = (dir: string) => listLocalFiles(dir, { repoRoot: root, vendorDir: vendor });
+
+  it("lists the working tree, uncommitted files included, and skips dotfiles", () => {
+    expect(list("skills")).toEqual(["README.md", "one/SKILL.md", "one/references/notes.md"]);
+  });
+
+  it("refuses a symlink rather than vendoring whatever it points at", () => {
+    symlinkSync(join(root, "skills", "one", "SKILL.md"), join(root, "skills", "one", "alias.md"));
+    expect(() => list("skills")).toThrow(/alias\.md: not a regular file/);
+  });
+
+  it("refuses a dir outside the repository, or the repository itself", () => {
+    expect(() => list("../elsewhere")).toThrow(/not inside the repository/);
+    expect(() => list(".")).toThrow(/not inside the repository/);
+  });
+
+  it("refuses a dir that overlaps the vendor tree in either direction", () => {
+    expect(() => list("extensions/orbit/vendor/skills/x")).toThrow(/overlaps the vendor tree/);
+    expect(() => list("extensions")).toThrow(/overlaps the vendor tree/);
+  });
+
+  it("refuses a dir that does not exist", () => {
+    expect(() => list("nope")).toThrow(/does not exist/);
+  });
+});
+
+describe("readTransformed", () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "read-transformed-"));
+  });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  it("transforms under the target name, which is what the sync writes", () => {
+    writeFileSync(join(root, "a.md"), "see [[other-note]]\n");
+    const file = { source: "a.md", target: "skills/a.md" };
+    expect(readTransformed(root, file, ["strip-wiki-links"], "skills/a.md")).toBe(
+      applyTransforms("see [[other-note]]\n", "skills/a.md", ["strip-wiki-links"]),
+    );
+  });
+
+  it("refuses a binary and names the source it came from", () => {
+    writeFileSync(join(root, "b.md"), Buffer.from([0x61, 0x00, 0x62]));
+    expect(() =>
+      readTransformed(root, { source: "b.md", target: "skills/b.md" }, [], "skills/b.md"),
+    ).toThrow(/skills\/b\.md: looks binary/);
+  });
+});
+
+describe("checkLocalPlugin", () => {
+  const selected = [{ source: "one/SKILL.md", target: "skills/one/SKILL.md" }];
+  const recorded = [
+    { target: "skills/one/SKILL.md", plugin: "orbit-skills", sha256: "aaa" },
+    // Another plugin's file at a neighbouring path is none of this check's business.
+    { target: "skills/udt-authoring/SKILL.md", plugin: "galaxy-skills", sha256: "zzz" },
+  ];
+  const check = (over: Partial<Parameters<typeof checkLocalPlugin>[0]> = {}) =>
+    checkLocalPlugin({
+      plugin: "orbit-skills",
+      dir: "skills",
+      selected,
+      recorded,
+      hashOfSource: () => "aaa",
+      ...over,
+    });
+
+  it("passes when every source matches what was vendored", () => {
+    expect(check()).toEqual([]);
+  });
+
+  it("catches a source edited without a re-sync", () => {
+    expect(check({ hashOfSource: () => "bbb" })).toEqual([
+      { kind: "hash-mismatch", message: "skills/one/SKILL.md: changed since the last sync" },
+    ]);
+  });
+
+  it("catches a new source file that was never synced", () => {
+    const more = [...selected, { source: "two/SKILL.md", target: "skills/two/SKILL.md" }];
+    expect(check({ selected: more })).toEqual([
+      { kind: "missing", message: "skills/two/SKILL.md: not vendored yet" },
+    ]);
+  });
+
+  it("catches a vendored file whose source was deleted", () => {
+    expect(check({ selected: [] })).toEqual([
+      { kind: "orphaned", message: "skills/one/SKILL.md: vendored but its source is gone" },
+    ]);
+  });
+});
+
+describe("assertProposedHome", () => {
+  const plugin = { plugin: "orbit-skills" };
+  const files = [{ target: "skills/one/SKILL.md" }, { target: "skills/one/notes.md" }];
+  const skill = (meta: string) =>
+    `---\nname: one\ndescription: d\nmetadata:\n  surfaces: [loom]\n${meta}---\nbody\n`;
+
+  it("passes a staging skill that names where it should move", () => {
+    expect(() =>
+      assertProposedHome(plugin, files, () => skill("  proposed_home: galaxy-skills\n")),
+    ).not.toThrow();
+  });
+
+  it("refuses one that names no destination, or an empty one", () => {
+    expect(() => assertProposedHome(plugin, files, () => skill(""))).toThrow(
+      /must name where it should move/,
+    );
+    expect(() => assertProposedHome(plugin, files, () => skill("  proposed_home: '  '\n"))).toThrow(
+      /proposed_home/,
+    );
+  });
+
+  it("refuses a non-string proposed_home", () => {
+    expect(() =>
+      assertProposedHome(plugin, files, () => skill("  proposed_home: [galaxy-skills]\n")),
+    ).toThrow(/proposed_home/);
+    expect(() => assertProposedHome(plugin, files, () => skill("  proposed_home: 3\n"))).toThrow(
+      /proposed_home/,
+    );
+  });
+
+  it("says so when the frontmatter is not valid YAML, rather than blaming proposed_home", () => {
+    expect(() =>
+      assertProposedHome(plugin, files, () => "---\nname: [unclosed\n---\nbody\n"),
+    ).toThrow(/skills\/one\/SKILL\.md: frontmatter is not valid YAML/);
+  });
+
+  it("only looks at SKILL.md files", () => {
+    const read = (f: { target: string }) =>
+      f.target.endsWith("SKILL.md") ? skill("  proposed_home: x\n") : "no frontmatter";
+    expect(() => assertProposedHome(plugin, files, read)).not.toThrow();
+  });
+});
+
+describe("local plugin wiring", () => {
+  // A temp repo root with one staging skill, vendored under the same `skills/`
+  // prefix galaxy-skills uses -- the shape the real manifest entry has.
+  let root: string;
+  let vendor: string;
+  const plugin = {
+    plugin: "orbit-skills",
+    source: "local",
+    dir: "skills",
+    repo: "orbit",
+    as: "skills",
+    router: "catalog",
+    transforms: [],
+    why: "staging",
+    include: ["**"],
+    exclude: ["README.md"],
+  };
+  const skillText = (meta = "  proposed_home: galaxy-skills\n") =>
+    `---\nname: one\ndescription: d\nmetadata:\n  surfaces: [loom]\n${meta}---\nbody\n`;
+  const write = (rel: string, text: string) => {
+    mkdirSync(join(root, rel, ".."), { recursive: true });
+    writeFileSync(join(root, rel), text);
+  };
+  const collect = () =>
+    collectPlugin(plugin, {
+      root: join(root, "skills"),
+      available: listLocalFiles("skills", { repoRoot: root, vendorDir: vendor }),
+      prefix: "skills",
+      upstream: null,
+    });
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "local-plugin-"));
+    vendor = join(root, "extensions", "orbit", "vendor", "skills");
+    mkdirSync(vendor, { recursive: true });
+    write("skills/README.md", "rules");
+    write("skills/one/SKILL.md", skillText());
+  });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  it("records a local plugin with its dir, no upstream, and repo-relative sources", () => {
+    const { record, catalog, entries } = collect();
+    expect(record).toMatchObject({ plugin: "orbit-skills", source: "local", dir: "skills" });
+    expect(record.upstream).toBeNull();
+    expect(catalog.map((e: { path: string }) => e.path)).toEqual(["skills/one/SKILL.md"]);
+    expect(entries.map((e: { target: string; source: string }) => [e.target, e.source])).toEqual([
+      ["skills/one/SKILL.md", "skills/one/SKILL.md"],
+    ]);
+    expect(entries[0].sha256).toBe(sha256(skillText()));
+  });
+
+  it("refuses a staging skill that names no proposed_home", () => {
+    write("skills/one/SKILL.md", skillText(""));
+    expect(() => collect()).toThrow(/must name where it should move/);
+  });
+
+  it("fails when a staged skill and its upstream copy both vendor the same file", () => {
+    const local = collect();
+    const upstream = {
+      record: { plugin: "galaxy-skills" },
+      entries: [{ target: "skills/one/SKILL.md" }],
+    };
+    expect(() => assertNoTargetCollisions([upstream, local])).toThrow(
+      /"galaxy-skills" and "orbit-skills" both vendor skills\/one\/SKILL\.md/,
+    );
+  });
+
+  describe("checkLocalPlugins", () => {
+    const manifest = { plugins: [{ plugin: "galaxy-skills" }, plugin] };
+    const recorded = () =>
+      collect().entries.map((e: { target: string; sha256: string }) => ({
+        target: e.target,
+        plugin: "orbit-skills",
+        sha256: e.sha256,
+      }));
+    const run = (rec: ReturnType<typeof recorded>) =>
+      checkLocalPlugins(manifest, rec, { repoRoot: root, vendorDir: vendor });
+
+    it("is clean right after a sync", () => {
+      expect(run(recorded())).toEqual([]);
+    });
+
+    it("catches an edit, a new file and a deleted one", () => {
+      const rec = recorded();
+      write("skills/one/SKILL.md", skillText() + "edited\n");
+      write("skills/two/SKILL.md", skillText());
+      expect(run(rec).map((f) => f.kind)).toEqual(["hash-mismatch", "missing"]);
+      rmSync(join(root, "skills", "one"), { recursive: true });
+      expect(run(rec).map((f) => f.kind)).toEqual(["missing", "orphaned"]);
+    });
+
+    it("reports a missing or emptied directory instead of throwing", () => {
+      const rec = recorded();
+      rmSync(join(root, "skills", "one"), { recursive: true });
+      expect(run(rec)).toEqual([
+        { kind: "missing", message: 'plugin "orbit-skills": include "**" matched nothing' },
+      ]);
+      rmSync(join(root, "skills"), { recursive: true });
+      expect(run(rec)).toEqual([
+        { kind: "missing", message: 'local skills dir "skills" does not exist' },
+      ]);
+    });
   });
 });
