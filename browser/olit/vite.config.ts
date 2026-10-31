@@ -3,9 +3,10 @@ import { fileURLToPath } from "node:url";
 import { orbitBrowserVite } from "@galaxyproject/orbit-browser/vite";
 import { defineConfig } from "vite";
 
-export default defineConfig(({ command }) => ({
+export default defineConfig(({ command, mode }) => ({
   ...orbitBrowserVite({
     command,
+    mode,
     flavorRoot: fileURLToPath(new URL(".", import.meta.url)),
     // Visualization plugins the artifact pane mounts, from where Galaxy serves them.
     galaxyPaths: ["/static/plugins/visualizations"],

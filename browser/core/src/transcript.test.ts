@@ -2,7 +2,6 @@ import type { AgentEvent, EntryRecord } from "@earendil-works/pi-durable";
 import { describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_BRAND, followUpMark } from "./agent/brand";
-import { EMPTY_REPLY } from "./agent/markers";
 
 const FOLLOW_UP_MARK = followUpMark(DEFAULT_BRAND);
 import { ChatView } from "./transcript";
@@ -76,28 +75,25 @@ describe("a restored conversation renders a step the way it ended", () => {
     v.apply([snapshot([result(false)])]);
     expect(chat.updateToolCard).toHaveBeenCalledWith("c1", "done", DISCARDED);
   });
-
-  it("says finish's summary as the closing reply", () => {
-    const { chat, view: v } = view();
-    v.apply([snapshot([result(false, "finish", "All done.")])]);
-    expect(chat.appendDelta).toHaveBeenCalledWith("All done.");
-    expect(v.outcome.done).toBe(true);
-  });
 });
 
 describe("what the user sees of messages written for the model", () => {
+  it.each(["Orbit", "Loom"])("shows Orbit's automatic follow-up as a line too (%s)", (name) => {
+    const { chat, hooks, view: v } = view();
+    v.apply([
+      snapshot([
+        user(`[${name} automatic Galaxy follow-up] The background poller observed these.`),
+      ]),
+    ]);
+    expect(chat.addUserMessage).not.toHaveBeenCalled();
+    expect(hooks.info).toHaveBeenCalledWith("Checking the Galaxy results that just landed.");
+  });
+
   it("shows an automatic follow-up as a line, not as something the user wrote", () => {
     const { chat, hooks, view: v } = view();
     v.apply([snapshot([user(`${FOLLOW_UP_MARK} These runs reached a terminal state.`)])]);
     expect(chat.addUserMessage).not.toHaveBeenCalled();
     expect(hooks.info).toHaveBeenCalledWith("Checking the Galaxy results that just landed.");
-  });
-
-  it("does not show the nudge after an empty reply", () => {
-    const { chat, view: v } = view();
-    v.apply([snapshot([user("hi"), user(EMPTY_REPLY)])]);
-    expect(chat.addUserMessage).toHaveBeenCalledTimes(1);
-    expect(chat.addUserMessage).toHaveBeenCalledWith("hi");
   });
 });
 

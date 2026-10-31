@@ -119,6 +119,44 @@ describe("galaxyFetch", () => {
   });
 });
 
+describe("galaxyFetch's retry budget", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  const limited = () => {
+    let asked = 0;
+    vi.stubGlobal("fetch", async () => {
+      asked++;
+      return new Response("slow down", { status: 429, headers: { "retry-after": "60" } });
+    });
+    return () => asked;
+  };
+
+  it("returns a rate limit at once when the wait it names is past the budget", async () => {
+    const asked = limited();
+    const started = Date.now();
+    const response = await galaxyFetch({ root: "http://galaxy.test/", maxRetryWaitMs: 5_000 })(
+      "http://galaxy.test/api/jobs/j1",
+    );
+    expect(response.status).toBe(429);
+    expect(asked()).toBe(1);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  it("still waits it out without a budget", async () => {
+    vi.useFakeTimers();
+    const asked = limited();
+    const pending = galaxyFetch({ root: "http://galaxy.test/" })("http://galaxy.test/api/jobs/j1");
+    await vi.advanceTimersByTimeAsync(59_000);
+    expect(asked()).toBe(1);
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(asked()).toBe(3);
+    expect((await pending).status).toBe(429);
+  });
+});
+
 describe("connectGalaxy", () => {
   afterEach(() => {
     vi.useRealTimers();

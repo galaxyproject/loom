@@ -2,7 +2,8 @@
  * Orbit <-> Galaxy-flavored-markdown content adapter. notebook.md is canonical.
  *
  * Push replaces each typed notebook fence Orbit keeps in the notebook body --
- * `loom-invocation`, `loom-job`, and `loom-session` -- with a hidden carrier
+ * `loom-invocation`, `loom-job`, `loom-session`, `loom-udt` and
+ * `loom-proposal` -- with a hidden carrier
  * holding the literal block, base64-encoded. Galaxy has no renderer for these
  * fence kinds, so a raw one shows up on the page as a "cell type is not
  * available" error. The carrier is a CommonMark link-reference definition
@@ -13,12 +14,12 @@
  * reference definition is pure markdown, so it stays invisible.) base64 keeps
  * the payload free of quotes and newlines, so the carrier is always one
  * well-formed line. `loom-galaxy-page` binding blocks never reach this adapter;
- * the sync helper strips them before push.
+ * the sync helper strips them before push, and pull never decodes one, so a
+ * page can't plant a binding.
  *
  * Invocation and job blocks also get a visible ` ```galaxy ` directive
  * (`invocation_outputs` / `job_parameters`) alongside the carrier when their id
- * validates against the connected server; session blocks are a local ledger
- * and get the carrier only. Pull strips the directives Orbit emitted (Orbit owns
+ * validates against the connected server; the other kinds get the carrier only. Pull strips the directives Orbit emitted (Orbit owns
  * the projection under the loom-canonical model and regenerates them each
  * push). A Orbit directive always sits immediately above a carrier with no blank
  * line between, so pull strips only ```galaxy blocks in that position -- a
@@ -36,8 +37,11 @@ import {
 const FENCE_CLOSE = "```";
 const GALAXY_FENCE_OPEN = "```galaxy";
 
-/** Notebook fence kinds that are carried through a Galaxy page push. */
-const CARRIED_KINDS = ["invocation", "job", "session"] as const;
+/**
+ * Notebook fence kinds that are carried through a Galaxy page push: every typed block the
+ * record holds but the binding, since Galaxy refuses a page with a fence it has no cell for.
+ */
+const CARRIED_KINDS = ["invocation", "job", "session", "udt", "proposal"] as const;
 type CarriedKind = (typeof CARRIED_KINDS)[number];
 
 // Anchored to a whole line (`m` flag): the carrier is always its own line, so
@@ -114,7 +118,10 @@ const CARRIER_LINE_RE = new RegExp(`^${CARRIER_BODY}$`);
  * block's carrier with no blank line between, so a ```galaxy block is Orbit's
  * iff the line right after its closing fence is a carrier. Every other
  * ```galaxy block was authored by a human and is preserved verbatim -- stripping
- * those unconditionally was silent data loss on pull.
+ * those unconditionally was silent data loss on pull. The one exception: a human
+ * ```galaxy block sitting directly above a typed block, with no blank line between,
+ * looks like Orbit's and is dropped on read. Under a page record that read follows
+ * every write, not just a pull.
  */
 function stripOrbitGalaxyDirectiveBlocks(body: string): string {
   const lines = body.split("\n");
@@ -219,7 +226,8 @@ export async function orbitToGalaxyMarkdownRich(
   while (i < lines.length) {
     const kind = carriedKindOf(lines[i]);
     if (kind) {
-      const directive = kind === "session" ? null : DIRECTIVES[kind];
+      const directed = kind === "invocation" || kind === "job" ? kind : null;
+      const directive = directed ? DIRECTIVES[directed] : null;
       let end = i + 1;
       let id: string | null = null;
       while (end < lines.length && lines[end].trim() !== FENCE_CLOSE) {
@@ -232,7 +240,7 @@ export async function orbitToGalaxyMarkdownRich(
       // Emit the directive immediately before the carrier with NO extra blank
       // line, so stripping the 3 fence lines on pull restores the carrier in
       // the block's exact original position -- keeping the round trip identical.
-      if (directive && kind !== "session" && id && (await validators[kind].isValid(id))) {
+      if (directed && directive && id && (await validators[directed].isValid(id))) {
         out.push(GALAXY_FENCE_OPEN);
         out.push(directive.render(id));
         out.push(FENCE_CLOSE);

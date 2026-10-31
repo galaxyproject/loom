@@ -12,21 +12,20 @@
   "scripts": {
     "build": "npm run build -w @galaxyproject/olit",
     "build:pyodide": "npm run build:pyodide -w @galaxyproject/orbit-browser",
-    "build:skills": "npm run build:skills -w @galaxyproject/orbit-browser",
     "dev": "npm run dev -w @galaxyproject/olit",
     "preview": "npm run preview -w @galaxyproject/olit",
     "lint:js": "prettier --config ./prettier.config.js --check './*.{js,ts,json}' '{core,olit,bare}/*.{js,ts,json}' '{core,olit,bare}/src/**/*.{js,ts,json,css}'",
     "lint:scripts": "python3 -m black --check --line-length 120 scripts && ruff check --line-length 120 scripts",
     "prettier": "prettier --config ./prettier.config.js --write './*.{js,ts,json}' '{core,olit,bare}/*.{js,ts,json}' '{core,olit,bare}/src/**/*.{js,ts,json,css}'",
     "stale": "node scripts/check_stale.js",
-    "test": "npm run test:unit && npm run test:scripts && npm run lint:scripts && npm run lint:js && npm run typecheck && npm run vendored && npm run test:e2e",
+    "preflight:orbit": "node scripts/preflight-orbit.mjs",
+    "test": "npm run test:unit && npm run test:scripts && npm run lint:scripts && npm run lint:js && npm run typecheck && npm run test:e2e",
     "test:e2e": "bash e2e/run-all.sh",
     "test:unit": "npm run test:unit --workspaces",
     "test:scripts": "node --test 'scripts/*.test.js'",
     "test:watch": "npm run test:watch -w @galaxyproject/olit",
     "test:ui": "npm run test:ui -w @galaxyproject/olit",
     "typecheck": "npm run typecheck --workspaces",
-    "vendored": "python3 scripts/check_vendored.py",
     "build:session": "npm run build:session -w @galaxyproject/olit && mkdir -p dist && cp -R olit/dist/. dist/"
   },
   "devDependencies": {

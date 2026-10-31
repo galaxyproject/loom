@@ -85,8 +85,8 @@ call.
 
 ```bash
 npm install        # the whole workspace, from browser/
-npm run dev        # builds (fetching Pyodide and the skills corpus on first run), then serves
-npm test           # unit tests, linting, type checks, vendored-file checks, browser tests
+npm run dev        # builds (fetching Pyodide on first run), then serves
+npm test           # unit tests, linting, type checks, browser tests
 npm run stale      # where the pinned upstreams stand
 ```
 
@@ -94,6 +94,13 @@ npm run stale      # where the pinned upstreams stand
 `@earendil-works/pi-coding-agent`, and `pi-host.orbit.test.ts` boots `extensions/orbit` on it, so
 `npm run typecheck` and `npm run test:unit` in `core/` also need the repo root installed (`npm ci`
 at the top level; CI does both). Neither package is a dependency of this workspace.
+
+The agent worker runs Orbit's brain (`extensions/orbit`), so every build needs the repo root
+installed too. `npm run preflight:orbit` builds a worker that boots the brain through the
+production config and loads it in a browser-worker realm; `e2e/orbit-preflight-drive.cjs` does the
+same in a real browser, built and dev. The worker keeps its conversation store and submission
+ledger in files of its own (`-orbit`), apart from what the browser's earlier brain kept, and the
+e2e tiers check that each drive was answered by Orbit's brain (`e2e/brain.cjs`).
 
 `npm run dev` against a local Galaxy and a model:
 

@@ -10,6 +10,7 @@ import {
   setGalaxyOutputStore,
 } from "../extensions/orbit/galaxy-output-store";
 import { bareFamily } from "../shared/galaxy-tool-family.js";
+import { profileFromEnv, setCapabilityProfile } from "../shared/capability-profile.js";
 import { GALAXY } from "./galaxy-family-fixture";
 import { guardHooks, SPELLED } from "./galaxy-test-helpers";
 
@@ -237,5 +238,59 @@ describe("invocation reads", () => {
     // A listing names no single invocation, so there is nothing to hold.
     h.result("ready");
     expect(await h.check({ history_id: "h1" })).toBeUndefined();
+  });
+});
+
+describe("under the browser worker", () => {
+  afterEach(() => setCapabilityProfile(null));
+  const worker = () => setCapabilityProfile({ ...profileFromEnv({}), ui: "worker" });
+
+  it("refuses a repeated read at once: no wait, no notice, and not the interrupted-wait text", async () => {
+    worker();
+    vi.useFakeTimers();
+    const h = harness();
+    h.result("running");
+    const started = Date.now();
+    const verdict = await h.check();
+    expect(Date.now()).toBe(started);
+    expect(verdict).toMatchObject({ block: true });
+    expect(verdict.reason).toContain("No Galaxy request was sent");
+    expect(verdict.reason).toContain("watching it in the background");
+    expect(verdict.reason).not.toContain("Status wait interrupted");
+    expect(h.notify).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("refuses a repeated read of a scheduling invocation the same way", async () => {
+    worker();
+    const h = harness();
+    h.fire("tool_result", {
+      toolName: "get_invocations",
+      input: { invocation_id: "inv1" },
+      isError: false,
+      content: [{ type: "text", text: JSON.stringify({ success: true, data: { state: "new" } }) }],
+    });
+    expect(await h.check("get_invocations", { invocation_id: "inv1" })).toMatchObject({
+      block: true,
+    });
+  });
+
+  it("lets the first read and finished resources through", async () => {
+    worker();
+    const h = harness();
+    expect(await h.check()).toBeUndefined();
+    h.result("ok");
+    expect(await h.check()).toBeUndefined();
+  });
+
+  it("words the guidance and the nudge without a cadence or a cooldown", () => {
+    worker();
+    const text = galaxyPollGuidance(SPELLED);
+    expect(text).not.toContain("15 seconds");
+    expect(text).not.toContain("two-minute cooldown");
+    expect(text).toContain("soon after the last one is refused");
+    const nudge = harness().result("running").content[1].text;
+    expect(nudge).not.toContain("15 seconds");
+    expect(nudge).toContain("the background monitor checks it without model calls");
   });
 });

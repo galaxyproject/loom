@@ -6,8 +6,10 @@ import {
   INVOCATION_FAILURE_REFERENCE,
   JOB_FAILURE_REFERENCE,
 } from "../extensions/orbit/invocation-failure-hint";
+import { DEFAULT_SKILLS } from "../shared/orbit-config.js";
 import {
   readBundledCatalog,
+  readBundledRepoFile,
   readVendorManifest,
   readVendoredSkill,
   resolveVendorPath,
@@ -33,13 +35,13 @@ describe("vendored skills", () => {
     expect(manifest.commit).toMatch(/^[0-9a-f]{40}$/);
   });
 
-  it("reads a vendored file at the path its cast uses upstream", () => {
-    const res = readVendoredSkill(INVOCATION_FAILURE_REFERENCE);
+  it("reads a vendored file at the path its cast uses upstream", async () => {
+    const res = await readVendoredSkill(INVOCATION_FAILURE_REFERENCE);
     expect(res.ok).toBe(true);
     if (res.ok) expect(res.text).toContain("Invocation Message Reasons");
   });
 
-  it("still resolves the bare names a resumed session may be holding", () => {
+  it("still resolves the bare names a resumed session may be holding", async () => {
     // The tree was flat before targets mirrored their upstream path. Two of
     // these were handed to the model by name in a failed-invocation hint; the
     // third was listed to it every time a fetch missed.
@@ -51,27 +53,27 @@ describe("vendored skills", () => {
         "debug-galaxy-workflow-output/references/notes/galaxy-collection-semantics.yml",
       ],
     ]) {
-      const viaLegacy = readVendoredSkill(legacy);
-      const viaCurrent = readVendoredSkill(current);
+      const viaLegacy = await readVendoredSkill(legacy);
+      const viaCurrent = await readVendoredSkill(current);
       expect(viaCurrent.ok).toBe(true);
       expect(viaLegacy.ok).toBe(true);
       if (viaLegacy.ok && viaCurrent.ok) expect(viaLegacy.text).toBe(viaCurrent.text);
     }
   });
 
-  it("answers a one-word path with the available list instead of throwing", () => {
+  it("answers a one-word path with the available list instead of throwing", async () => {
     // `path` comes from the model. A plain-object alias lookup answers
     // "constructor" with a function, and the structured miss the caller expects
     // turns into an exception out of the tool.
     for (const guess of ["toString", "constructor", "hasOwnProperty", "__proto__"]) {
-      const res = readVendoredSkill(guess);
+      const res = await readVendoredSkill(guess);
       expect(res.ok).toBe(false);
       if (!res.ok) expect(res.available.length).toBeGreaterThan(0);
     }
   });
 
-  it("lists what is available when a path misses", () => {
-    const res = readVendoredSkill("nope.md");
+  it("lists what is available when a path misses", async () => {
+    const res = await readVendoredSkill("nope.md");
     expect(res.ok).toBe(false);
     if (!res.ok) {
       expect(res.available).toContain(JOB_FAILURE_REFERENCE);
@@ -104,16 +106,16 @@ describe("vendored skills", () => {
     }
   });
 
-  it("rewrote Galaxy source citations to resolvable URLs", () => {
-    const res = readVendoredSkill(JOB_FAILURE_REFERENCE);
+  it("rewrote Galaxy source citations to resolvable URLs", async () => {
+    const res = await readVendoredSkill(JOB_FAILURE_REFERENCE);
     expect(res.ok).toBe(true);
     if (res.ok) {
       expect(res.text).toContain("https://github.com/galaxyproject/galaxy/blob/dev/lib/galaxy/");
     }
   });
 
-  it("rewrote Planemo source citations too", () => {
-    const res = readVendoredSkill(
+  it("rewrote Planemo source citations too", async () => {
+    const res = await readVendoredSkill(
       "debug-galaxy-workflow-output/references/notes/planemo-workflow-test-architecture.md",
     );
     expect(res.ok).toBe(true);
@@ -176,26 +178,40 @@ describe("an installed vendor skills source", () => {
     return { catalog: read("_catalog.json"), manifest, read: (t: string) => files.get(t) ?? null };
   }
 
-  it("answers the catalog, the manifest and every target exactly as the disk does", () => {
+  it("answers the catalog, the manifest and every target exactly as the disk does", async () => {
     const fromDisk = {
       catalog: readBundledCatalog(),
       manifest: readVendorManifest(),
-      files: readVendorManifest()!.files.map((f) => [f.target, readVendoredSkill(f.target)]),
+      files: await Promise.all(
+        readVendorManifest()!.files.map(async (f) => [f.target, await readVendoredSkill(f.target)]),
+      ),
     };
     expect(fromDisk.catalog).not.toBeNull();
     setVendorSkillsSource(sourceFromDisk());
     expect(readBundledCatalog()).toEqual(fromDisk.catalog);
     expect(readVendorManifest()).toEqual(fromDisk.manifest);
     for (const [target, expected] of fromDisk.files) {
-      expect(readVendoredSkill(target as string)).toEqual(expected);
+      expect(await readVendoredSkill(target as string)).toEqual(expected);
     }
   });
 
-  it("refuses the same paths with the same messages", () => {
+  // The browser worker fetches bodies on demand, so its read answers with a promise.
+  it("answers the same through a source whose read is async", async () => {
+    const sync = sourceFromDisk();
+    const targets = sync.manifest.files.map((f) => f.target);
+    setVendorSkillsSource(sync);
+    const fromSync = await Promise.all(targets.map((t) => readVendoredSkill(t)));
+    setVendorSkillsSource({ ...sync, read: async (t: string) => sync.read(t) });
+    expect(await Promise.all(targets.map((t) => readVendoredSkill(t)))).toEqual(fromSync);
+    const skill = await readBundledRepoFile(DEFAULT_SKILLS[0], "skills/udt-authoring/SKILL.md");
+    expect(skill.ok).toBe(true);
+  });
+
+  it("refuses the same paths with the same messages", async () => {
     const bad = ["../x", "", "nope/SKILL.md", "/../_manifest.json"];
-    const fromDisk = bad.map((p) => readVendoredSkill(p));
+    const fromDisk = await Promise.all(bad.map((p) => readVendoredSkill(p)));
     setVendorSkillsSource(sourceFromDisk());
-    expect(bad.map((p) => readVendoredSkill(p))).toEqual(fromDisk);
+    expect(await Promise.all(bad.map((p) => readVendoredSkill(p)))).toEqual(fromDisk);
     for (const res of fromDisk) expect(res.ok).toBe(false);
   });
 

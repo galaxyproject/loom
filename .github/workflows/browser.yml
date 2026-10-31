@@ -37,8 +37,9 @@ jobs:
               - "browser/**"
               - "app/src/renderer/**"
               - "shared/**"
-              # The conformance test (core/src/agent/pi-host.orbit.test.ts) boots Orbit's brain.
+              # The worker runs Orbit's brain, and the build bundles it with what it imports.
               - "extensions/**"
+              - "lessons/**"
               # The browser resolves pi-coding-agent and pi-tui from the root install, so a pi bump
               # there changes what the browser runs.
               - "package.json"
@@ -114,8 +115,12 @@ jobs:
       - name: Smoke the session bundle
         run: node dist/session.mjs --describe --root . > /dev/null
 
+      # Unit tests, lint, typecheck and the e2e tiers, which check each drive was Orbit's brain's.
       - name: Test
         run: npm test
+
+      - name: Preflight Orbit's brain in a worker
+        run: npm run preflight:orbit
 
       - name: Keep e2e logs
         if: failure()

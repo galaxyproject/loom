@@ -1,6 +1,7 @@
 /** Agent-facing recovery for failed Galaxy calls. */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { galaxyFailureKind, type GalaxyFailureKind } from "./galaxy-failure";
+import { authRemedy } from "../../shared/capability-profile-installed.js";
 import type { GalaxyToolFamily } from "../../shared/galaxy-tool-family.js";
 
 type Args = Record<string, unknown>;
@@ -43,8 +44,8 @@ concrete blocker and preserve work instead of looping.
 `;
 }
 
-const GALAXY_AUTH_HINT =
-  "Galaxy refused the request's credentials, or none are configured. Ask the user to run /connect; do not retry until they have.";
+const galaxyAuthHint = () =>
+  `Galaxy refused the request's credentials, or none are configured. ${authRemedy()}; do not retry until they have.`;
 
 const MUTATION_OUTCOME =
   "This operation may already have been accepted by Galaxy. Its result is UNKNOWN. Inspect the destination history, jobs/invocations or affected resource before considering any retry. Reuse accepted work, and if you find the accepted job or invocation, record it with galaxy_job_record or galaxy_invocation_record -- Orbit cannot capture a submission whose call failed. Do not blindly repeat a submission, upload, create, update or delete; do not invent IDs or claim success.";
@@ -60,7 +61,7 @@ export function galaxyRecoveryHint(
   // Galaxy refused the request outright, so nothing was accepted and no retry can help until the
   // credentials change.
   if (kind === "auth") {
-    return `${MARKER}\n${GALAXY_AUTH_HINT}\nRespect Stop/pause.`;
+    return `${MARKER}\n${galaxyAuthHint()}\nRespect Stop/pause.`;
   }
   const tool = family.toolName(name);
   const readOnly = isReadOnly(name, family);

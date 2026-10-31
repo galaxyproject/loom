@@ -24,10 +24,11 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { json, text, toolCall } from "./fake-model";
 import { sources, specifiers, withoutTypeImports } from "../flavor-boundary";
 import { agentModels } from "./model";
-import { createPiHost, type HostNote, type PiHost } from "./pi-host";
+import { createPiHost, type AskRequest, type HostNote, type PiHost } from "./pi-host";
 import { resolve as resolveTarget } from "./providers";
 import { LOOP } from "./runtime";
 import type { CapabilityProfile } from "../../../../shared/capability-profile.js";
+import { pageContentProblem } from "../../../../shared/galaxy-page-cells.js";
 
 // ── tripwire ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -260,9 +261,20 @@ const script: Array<() => Response | Promise<Response>> = [];
 const requests: Array<Record<string, any>> = [];
 const seen: Seen[] = [];
 const notices: Array<[string, string]> = [];
+/** What the brain asked the person, and the confirm answers the next asks get, in order. */
+const asked: AskRequest[] = [];
+const confirms: boolean[] = [];
 const notes: HostNote[] = [];
 /** Calls the page record store made for its page, so the run can prove the record came from it. */
 const pageCalls = { GET: 0, PUT: 0 };
+/** The record page as Galaxy holds it. */
+let page1 = "";
+/** The second conversation's record page, for the switch. */
+let page2 = "";
+/** Writes to history h1, which the destructive turn asks to delete. */
+let historyWrites = 0;
+/** GETs of the unfinished job behind d2, which the poll-guard turn reads twice. */
+let jobGets = 0;
 let host: PiHost;
 let harness: Harness;
 let conversation: Awaited<ReturnType<Harness["createConversation"]>>;
@@ -300,6 +312,7 @@ const stub = (name: string) => ({
   label: name,
   description: `stub ${name}`,
   parameters: Type.Object({}, { additionalProperties: true }),
+  annotations: { readOnlyHint: name !== "upload_file" },
   execute: async () => ({ content: [{ type: "text" as const, text: "{}" }], details: {} }),
 });
 
@@ -338,13 +351,78 @@ beforeAll(async () => {
   });
 
   ledger.phase = "import";
-  const loom = await import("../../../../extensions/orbit/index");
+  const { installOrbitSeams, registerOrbit, workerUi } = await import("./orbit/boot");
+  const { createMemoryLedger } = await import("../../../../extensions/orbit/submission-ledger");
+  const galaxyFetch = async (url: string, init: RequestInit): Promise<Response> => {
+    const method = init.method ?? "GET";
+    const path = new URL(url).pathname;
+    if (path === "/api/pages/p1") {
+      pageCalls[method === "PUT" ? "PUT" : "GET"]++;
+      if (method === "PUT") {
+        const body = JSON.parse(String(init.body)) as { content: string };
+        // Galaxy refuses a page with a fence it has no cell for, as the e2e stub does.
+        const problem = pageContentProblem(body.content);
+        if (problem) return json({ err_msg: problem }, 400);
+        page1 = body.content;
+      }
+      return json({ id: "p1", content: page1, content_editor: page1 });
+    }
+    if (path === "/api/pages/p2") {
+      if (method === "PUT") page2 = (JSON.parse(String(init.body)) as { content: string }).content;
+      return json({ id: "p2", content: page2, content_editor: page2 });
+    }
+    if (path === "/api/histories/h1" && method === "PUT") {
+      historyWrites++;
+      return json({ id: "h1", name: "one brain", deleted: true });
+    }
+    if (path === "/api/histories") {
+      return json(
+        method === "POST" ? { id: "h1", name: "one brain" } : [{ id: "h1", name: "one brain" }],
+      );
+    }
+    // The history guard's lookup: d1 lives in another history than the one a run names.
+    if (path === "/api/datasets/d1") {
+      return json({ id: "d1", name: "d1.txt", history_id: "elsewhere", state: "ok" });
+    }
+    if (path === "/api/histories/hbig/contents") return json(BIG_HISTORY);
+    // A dataset whose creating job is still running, for the poll guard.
+    if (path === "/api/datasets/d2") {
+      return json({
+        id: "d2",
+        name: "d2.txt",
+        history_id: "h1",
+        state: "running",
+        creating_job: "j2",
+      });
+    }
+    if (path === "/api/jobs/j2") {
+      jobGets++;
+      return json({ id: "j2", state: "running", tool_id: "cat1" });
+    }
+    // Everything else, /api/version included: an unknown version refuses nothing and costs no wait.
+    return json({});
+  };
+  // The worker's own seams, as orbit/boot.ts installs them, with a full grant.
+  installOrbitSeams({
+    capabilities: ["llm", "local", "read", "write"],
+    galaxy: { fetch: galaxyFetch as unknown as typeof fetch, url: "http://galaxy.test", key: "k" },
+    ledger: createMemoryLedger(),
+    secrets: () => [],
+    extras: EXTRAS.map(stub) as never,
+  });
   const { setCapabilityProfile } = await import("../../../../shared/capability-profile.js");
-  setCapabilityProfile(PROFILE);
   seams.push(() => setCapabilityProfile(null));
   const { setConfigSource } = await import("../../../../shared/config-source.js");
-  setConfigSource({ load: () => CONFIG });
   seams.push(() => setConfigSource(null));
+  const { setSubmissionLedger } = await import("../../../../extensions/orbit/submission-ledger");
+  seams.push(() => setSubmissionLedger(null));
+  const { setPollWake } = await import("../../../../extensions/orbit/galaxy-reconcile");
+  seams.push(() => setPollWake(null));
+  const { setGalaxyToolSource } = await import("../../../../extensions/orbit/galaxy-tool-source");
+  seams.push(() => setGalaxyToolSource(null));
+  // Two seams Node has to fill differently: the worker hands over no standing instructions yet
+  // (one here proves the seam carries it), and fetches skill bodies by URL, where this reads the
+  // vendored tree from disk.
   const { setInstructionSource } = await import("../../../../extensions/orbit/user-instructions");
   setInstructionSource({
     files: () => [
@@ -359,40 +437,11 @@ beforeAll(async () => {
     read: (target) => vendorFiles.get(target) ?? null,
   });
   seams.push(() => setVendorSkillsSource(null));
-  const { setGalaxyTransport } = await import("../../../../extensions/orbit/galaxy-api");
-  setGalaxyTransport({
-    fetch: async (url, init) => {
-      const method = init.method ?? "GET";
-      const path = new URL(url).pathname;
-      if (path === "/api/pages/p1") {
-        pageCalls[method === "PUT" ? "PUT" : "GET"]++;
-        return json({});
-      }
-      if (path === "/api/histories") {
-        return json(
-          method === "POST" ? { id: "h1", name: "one brain" } : [{ id: "h1", name: "one brain" }],
-        );
-      }
-      // The history guard's lookup: d1 lives in another history than the one a run names.
-      if (path === "/api/datasets/d1") {
-        return json({ id: "d1", name: "d1.txt", history_id: "elsewhere", state: "ok" });
-      }
-      if (path === "/api/histories/hbig/contents") return json(BIG_HISTORY);
-      // Everything else, /api/version included: an unknown version refuses nothing and costs no wait.
-      return json({});
-    },
-    credentials: () => ({ url: "http://galaxy.test", apiKey: "k" }),
-  });
   // The record is a Galaxy page, not a file. The key stays under the temp dir so the side stores
   // keyed by its dirname (activity log, template replay) land where they did.
   const { setRecordStore } = await import("../../../../extensions/orbit/record-store");
   const { createPageRecordStore } = await import("../../../../extensions/orbit/record-store-page");
   setRecordStore(createPageRecordStore({ key: join(tmp, "notebook.md"), pageId: "p1" }));
-  const { setGalaxyToolSource } = await import("../../../../extensions/orbit/galaxy-tool-source");
-  const { createGalaxyOpsToolSource } =
-    await import("../../../../extensions/orbit/galaxy-ops-tools");
-  setGalaxyToolSource(createGalaxyOpsToolSource({ extras: EXTRAS.map(stub) }));
-  seams.push(() => setGalaxyToolSource(null));
 
   ledger.phase = "register";
   host = createPiHost({
@@ -400,12 +449,18 @@ beforeAll(async () => {
     cwd: tmp,
     phase: () => ledger.phase,
     model: () => ({ provider: "custom", id: "m" }),
-    // No `ask`, so hasUI is false: the worker's confirm bridge is slice 3.
-    ui: { notify: (t, l) => void notices.push([l, t]) },
+    // The worker's confirm-only bridge, answered from `confirms`; hasUI is true, as in the worker.
+    ui: workerUi({
+      notify: (t, l) => void notices.push([l, t]),
+      ask: async (request) => {
+        asked.push(request);
+        return request.kind === "confirm" ? (confirms.shift() ?? false) : undefined;
+      },
+    }),
     onNote: (n) => void notes.push(n),
   });
   recorders(host.api);
-  loom.default(host.api);
+  registerOrbit(host, {});
   host.api.registerTool(probe as never);
 
   ledger.phase = "seal";
@@ -497,11 +552,39 @@ function noteKey(n: HostNote): string {
   }
 }
 
+/**
+ * What the model is offered under a profile: each declared tool's name, description, parameter
+ * names and annotations, and the system prompt's section headings. The recorded tool list slice 4
+ * compares the old brain against; a model-visible change shows up as a diff of it.
+ */
+function surface(api: ExtensionAPI, systemPrompt?: string) {
+  const tools = api
+    .getAllTools()
+    // The test's own probe tool isn't the brain's.
+    .filter((t) => t.exposure !== "hidden" && t.name !== "probe")
+    .map((t) => ({
+      name: t.name,
+      description: t.description,
+      parameters: Object.keys(
+        (t.parameters as { properties?: Record<string, unknown> } | undefined)?.properties ?? {},
+      ).sort(),
+      annotations: (t as { annotations?: unknown }).annotations ?? null,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const sections = systemPrompt
+    ? [...systemPrompt.matchAll(/^#{1,3} (.+)$/gm)].map((m) => m[1].trim())
+    : undefined;
+  return JSON.stringify({ tools, ...(sections ? { sections } : {}) }, null, 2) + "\n";
+}
+
 const golden = () => ({
   reaches: reaches(ASSERTED),
   informational: reaches(INFORMATIONAL),
   edges: edges(),
   notes: unique(notes.map(noteKey)),
+  // What the person saw outside a turn, now that the host has a UI.
+  // The temp directory is a different path every run.
+  notices: unique(notices.map(([level, text]) => `${level} | ${text.replaceAll(tmp, "<tmp>")}`)),
 });
 
 // ── assertions ───────────────────────────────────────────────────────────────────────────────────
@@ -517,12 +600,14 @@ describe("Orbit on pi-host", () => {
       // tool_result), which is where observations get the Galaxy version. The empty-completion
       // check adds three (session_start, input, agent_end).
       on: 71 + 7 + 1 + 2 + 3,
-      // Orbit's own tools; the Galaxy family (the browser entry's 42 operations, the shell's three
-      // extras, and Orbit's list_jobs and get_job_logs bridges); galaxy_read_output beside it; and
-      // the probe. mcp_read_output is MCP-only.
-      tools: 15 + 47 + 1 + 1,
-      // The real /reconcile, in the stub's place.
-      commands: 21,
+      // Orbit's own tools (ena_runs among them) less the five page-sync tools, which a page
+      // record has no use for; the Galaxy family (the browser entry's 42 operations, the shell's
+      // three extras, and Orbit's list_jobs and get_job_logs bridges); galaxy_read_output beside
+      // it; and the probe. mcp_read_output is MCP-only.
+      tools: 16 - 5 + 47 + 1 + 1,
+      // The real /reconcile, in the stub's place; /sync goes with the page-sync tools, and
+      // /connect and /profiles with the profiles a page-signed worker has none of.
+      commands: 21 - 3,
     });
     // No MCP server is registered under bare Galaxy tools, so nothing is refused.
     expect(notes.filter((n) => n.kind !== "silent" && n.phase === "register")).toEqual([]);
@@ -569,6 +654,12 @@ describe("Orbit on pi-host", () => {
     }
     expect(seen.size).toBeGreaterThan(1);
     expect([...named].sort()).toEqual(["openapi-fetch", "zod"]);
+    // Orbit's brain resolves the repo root's galaxy-ops, not the browser's fork: a bare import
+    // from extensions/orbit walks up from there, so nothing on that path may hold its own copy.
+    expect(fs.existsSync(join(REPO, "node_modules", "@galaxyproject", "galaxy-ops"))).toBe(true);
+    for (const dir of [join(LOOM, "node_modules"), join(REPO, "extensions", "node_modules")]) {
+      expect(fs.existsSync(dir), dir).toBe(false);
+    }
   });
 
   it("names the handlers no seam fires", () => {
@@ -579,40 +670,46 @@ describe("Orbit on pi-host", () => {
   });
 
   /**
-   * Orbit launches work at session_start that nothing awaits: the poller's first tick and
-   * reconcile's follow-through, which the tick's capture hook also queues. Run both to completion
-   * so their reaches land in the phase that started them, not in whichever one the test has moved
-   * on to: followThrough enqueues synchronously, so a trailing enrich pass resolves after
-   * everything queued before it.
+   * Under the worker nothing polls on its own: no interval, no tick at session_start, and no
+   * reconcile there either. Drive one tick the way the durable watch will, wait for its
+   * enrichment (and reconcile, when asked), then for anything still queued, so the reaches land
+   * in the phase that started them.
    */
-  async function drain() {
+  async function drain(options: { reconcile?: boolean } = {}) {
     const { pollGalaxyNow } = await import("../../../../extensions/orbit/galaxy-poller");
-    await pollGalaxyNow();
-    const { followThrough } = await import("../../../../extensions/orbit/galaxy-reconcile");
-    await followThrough("enrich");
+    const { galaxyBackgroundIdle } = await import("../../../../extensions/orbit/galaxy-reconcile");
+    const result = await pollGalaxyNow({ awaitEnrichment: true, ...options });
+    await galaxyBackgroundIdle();
+    // Nothing was submitted, so the tick has nothing to report or keep watching.
+    expect(result).toMatchObject({
+      transitions: [],
+      inProgress: 0,
+      pendingEnrichment: 0,
+      openSubmissions: 0,
+    });
+    return result;
   }
 
-  it("starts the session and lets the greeting run settle", async () => {
+  it("starts the session with no greeting run", async () => {
     ledger.phase = "session_start";
     // pi's session_start precedes any run; only then does the scheduler start.
     await host.start("startup");
     harness.resume();
-    // Galaxy credentials are configured, so the greeting is a model turn, sent fire-and-forget.
-    await until(() => runs.started >= 1);
+    // Galaxy credentials are configured, which on the desktop makes the greeting a model turn.
+    // The worker opens a session on every panel open and reload, so it sends none.
     await harness.waitForIdle(ctx);
-    await until(() => runs.settled >= 1 && idle());
-    expect(runs.started).toBe(1);
-    // The greeting under in-process Galaxy tools: no connect tool to ask for.
-    expect(JSON.stringify(requests[0].messages)).toContain("the Galaxy tools are ready to use");
-    expect(JSON.stringify(requests[0].messages)).not.toContain("mcp__galaxy__connect");
-    await drain();
+    expect(runs.started).toBe(0);
+    expect(requests).toHaveLength(0);
+    // No reconcile ran at session_start: the first tick after an attach is where it runs.
+    const { readReconcileState } = await import("../../../../extensions/orbit/galaxy-provenance");
+    expect(await readReconcileState(tmp)).toBeNull();
+    await drain({ reconcile: true });
     // The record was served by the page store, not by a file store that happened to resolve
     // from a different key: the absence of record-store-file.ts reaches in the golden is the
     // other half of this.
     expect(pageCalls.GET).toBeGreaterThan(0);
-    // The session-start reconcile ran over the memory provenance fs: it wrote its cursor beside
-    // the record key without a .loom directory appearing on disk.
-    const { readReconcileState } = await import("../../../../extensions/orbit/galaxy-provenance");
+    // That tick's reconcile ran over the memory provenance fs: it wrote its cursor beside the
+    // record key without a .loom directory appearing on disk.
     expect(await readReconcileState(tmp)).toMatchObject({ schema: 1 });
     expect(fs.existsSync(join(tmp, ".loom"))).toBe(false);
   });
@@ -630,7 +727,7 @@ describe("Orbit on pi-host", () => {
     );
     const s = await host.submit("fetch the collection skill");
     await s!.wait(ctx);
-    await until(() => runs.settled >= 2);
+    await until(() => runs.settled >= 1);
     const request = requests[before];
     expect(request.messages[0].role).toBe("system");
     // A sentence shared/prompt-blocks.js owns, so the section text is Orbit's whole prompt.
@@ -675,6 +772,13 @@ describe("Orbit on pi-host", () => {
     expect(fetched).toContain("collection");
   });
 
+  it("records the surface the model is offered under the worker profile", async () => {
+    // The tool turn above made the first request; its system prompt is Orbit's whole prompt.
+    const prompt = requests.find((r) => r.messages?.[0]?.role === "system")?.messages[0].content;
+    expect(typeof prompt).toBe("string");
+    await expect(surface(host.api, prompt)).toMatchFileSnapshot("./__surface__/orbit/tools.json");
+  });
+
   it("validates a @sinclair/typebox schema strictly, as Orbit does today", async () => {
     // Orbit's 0.34 schema carries Symbol.for("TypeBox.Kind"), so pi-ai skips its own JSON-schema
     // coercion: "2" stays a string and fails Type.Number(). Making the browser lenient here is a
@@ -685,7 +789,7 @@ describe("Orbit on pi-host", () => {
     );
     const s = await host.submit("probe it");
     await s!.wait(ctx);
-    await until(() => runs.settled >= 3);
+    await until(() => runs.settled >= 2);
     const results = (await conversation.context(ctx)).messages.filter(
       (m) => m.role === "toolResult",
     );
@@ -705,7 +809,7 @@ describe("Orbit on pi-host", () => {
     );
     const first = await host.submit("make a history and look around");
     await first!.wait(ctx);
-    await until(() => runs.settled >= 4);
+    await until(() => runs.settled >= 3);
     // index.ts captures the new history id off the real create_history's POST.
     const { getState } = await import("../../../../extensions/orbit/state");
     expect(getState().currentHistoryId).toBe("h1");
@@ -740,7 +844,7 @@ describe("Orbit on pi-host", () => {
     );
     const second = await host.submit("find fastp and run it");
     await second!.wait(ctx);
-    await until(() => runs.settled >= 5);
+    await until(() => runs.settled >= 4);
     last = await results();
     // galaxy-recovery's keywords refusal.
     const keywords = last.find((m) => m.toolName === "search_tools_by_keywords")!;
@@ -775,7 +879,7 @@ describe("Orbit on pi-host", () => {
     );
     const s = await host.submit("list my histories, then look inside the big one");
     await s!.wait(ctx);
-    await until(() => runs.settled >= 6);
+    await until(() => runs.settled >= 5);
     const last = await results();
     const histories = last.find((m) => m.toolName === "get_histories")!;
     expect(histories.isError, textOf(histories.content)).toBeFalsy();
@@ -791,6 +895,101 @@ describe("Orbit on pi-host", () => {
     // As in the guard turn: let the galaxy-tool status clear inside this phase.
     await new Promise((r) => setTimeout(r, 3_100));
   }, 15_000);
+
+  it("refuses a repeated status read of an unfinished job at once, with no Galaxy request", async () => {
+    const results = () =>
+      conversation.context(ctx).then((c) => c.messages.filter((m) => m.role === "toolResult"));
+    const noticesBefore = notices.length;
+    script.push(
+      () => toolCall("get_job_details", { dataset_id: "d2" }, "w1"),
+      () => toolCall("get_job_details", { dataset_id: "d2" }, "w2"),
+      () => text("done"),
+    );
+    const started = Date.now();
+    const s = await host.submit("is the cat job done yet?");
+    await s!.wait(ctx);
+    await until(() => runs.settled >= 6);
+    // No two-minute wait in the brain: the watch is the worker's only clock.
+    expect(Date.now() - started).toBeLessThan(1_000);
+    const last = await results();
+    const first = last.find((m) => m.toolCallId === "w1")!;
+    expect(first.isError, textOf(first.content)).toBeFalsy();
+    expect(textOf(first.content)).toContain("the background monitor checks it without model calls");
+    const repeat = last.find((m) => m.toolCallId === "w2")!;
+    expect(repeat.isError).toBe(true);
+    expect(textOf(repeat.content)).toContain("No Galaxy request was sent");
+    expect(textOf(repeat.content)).not.toContain("Status wait interrupted");
+    expect(jobGets).toBe(1);
+    // With a UI the turn's progress line still shows; the guard itself says nothing to the user.
+    expect(notices.slice(noticesBefore)).toEqual([
+      ["info", "Progress: checking Galaxy data and job status."],
+    ]);
+    // As in the guard turn: let the galaxy-tool status clear inside this phase.
+    await new Promise((r) => setTimeout(r, 3_100));
+  }, 15_000);
+
+  it("asks before a destructive Galaxy call, through the confirm bridge, and honours both answers", async () => {
+    ledger.phase = "turn";
+    const before = runs.settled;
+    const remove = () => toolCall("update_history", { history_id: "h1", deleted: true });
+    confirms.push(false, true);
+    script.push(
+      remove,
+      () => text("kept it"),
+      remove,
+      () => text("deleted it"),
+    );
+    await (await host.submit("delete the history"))!.wait(ctx);
+    await until(() => runs.settled >= before + 1);
+    expect(historyWrites).toBe(0);
+    await (await host.submit("yes, really delete it"))!.wait(ctx);
+    await until(() => runs.settled >= before + 2);
+    expect(historyWrites).toBe(1);
+    const confirmsAsked = asked.filter((a) => a.kind === "confirm");
+    expect(confirmsAsked).toHaveLength(2);
+    expect(confirmsAsked[0]).toMatchObject({ title: "Confirm destructive Galaxy operation" });
+    const results = (await conversation.context(ctx)).messages.filter(
+      (m) => m.role === "toolResult",
+    );
+    expect(textOf(results.at(-2)?.content)).toBe("Destructive Galaxy operation cancelled by user.");
+  });
+
+  it("switches to a second conversation with its own page and back, through quiesce and settle", async () => {
+    ledger.phase = "switch";
+    const { setRecordStore } = await import("../../../../extensions/orbit/record-store");
+    const { createPageRecordStore } =
+      await import("../../../../extensions/orbit/record-store-page");
+    const { galaxyBackgroundIdle } = await import("../../../../extensions/orbit/galaxy-reconcile");
+    const { getNotebookPath } = await import("../../../../extensions/orbit/state");
+    const first = conversation;
+    const leave = async () => {
+      host.quiesce(conversation.id);
+      expect(await host.settle(conversation.id, 5_000)).toEqual({ settled: true, late: [] });
+      await galaxyBackgroundIdle();
+      await host.shutdown("new");
+    };
+    await leave();
+    const secondKey = join(tmp, "second", "notebook.md");
+    fs.mkdirSync(dirname(secondKey), { recursive: true });
+    setRecordStore(createPageRecordStore({ key: secondKey, pageId: "p2" }));
+    const { models: _models, model } = await agentModels().connect(
+      resolveTarget({ ai_base_url: LLM, ai_model: "m", ai_api_key: "k" }),
+    );
+    conversation = await harness.createConversation(
+      { ownership: { kind: "ownerless" }, agent: { model } },
+      ctx,
+    );
+    await host.attach(harness, conversation, ctx);
+    await host.start("new");
+    expect(getNotebookPath()).toBe(secondKey);
+    // And back: the first conversation resumes on its own page.
+    await leave();
+    setRecordStore(createPageRecordStore({ key: join(tmp, "notebook.md"), pageId: "p1" }));
+    conversation = first;
+    await host.attach(harness, conversation, ctx);
+    await host.start("resume");
+    expect(getNotebookPath()).toBe(join(tmp, "notebook.md"));
+  });
 
   it("runs commands and shuts down", async () => {
     ledger.phase = "command";
@@ -812,6 +1011,11 @@ describe("Orbit on pi-host", () => {
     expect(host.commands.get("reconcile")?.description).toContain("record runs no block claims");
     ledger.phase = "shutdown";
     await host.shutdown("quit");
+    // The shutdown summary went up as a carrier Galaxy accepts, and reads back as the fence.
+    expect(page1).toMatch(/^\[orbit-session:v1\]: #orbit "/m);
+    const { galaxyMarkdownToOrbit } =
+      await import("../../../../extensions/orbit/galaxy-markdown-adapter");
+    expect(galaxyMarkdownToOrbit(page1)).toContain("```orbit-session");
   });
 
   it("ran every handler without a missing ctx member", () => {
@@ -822,5 +1026,44 @@ describe("Orbit on pi-host", () => {
     await expect(JSON.stringify(golden(), null, 2) + "\n").toMatchFileSnapshot(
       "./pi-host.orbit.golden.json",
     );
+  });
+});
+
+// Last, on its own host: it swaps the profile and the registered family, and puts both back.
+describe("Orbit on pi-host under a read-only grant", () => {
+  it("registers the 33 read-only Galaxy tools and none of Orbit's writers", async () => {
+    const loom = await import("../../../../extensions/orbit/index");
+    const { setCapabilityProfile } = await import("../../../../shared/capability-profile.js");
+    const source = await import("../../../../extensions/orbit/galaxy-tool-source");
+    const { createGalaxyOpsToolSource } =
+      await import("../../../../extensions/orbit/galaxy-ops-tools");
+    const { ORBIT_WRITING_TOOLS } = await import("../../../../extensions/orbit/galaxy-grant");
+    const install = () =>
+      source.setGalaxyToolSource(createGalaxyOpsToolSource({ extras: EXTRAS.map(stub) }));
+    setCapabilityProfile({ ...PROFILE, galaxy: "read" });
+    install();
+    try {
+      const readHost = createPiHost({ name: "orbit-read", cwd: tmp, ui: { notify: () => {} } });
+      loom.default(readHost.api);
+      const galaxy = source.registeredGalaxyTools();
+      for (const tool of galaxy) expect(tool.annotations?.readOnlyHint, tool.name).toBe(true);
+      // 29 read ops of the browser entry's 42, download_dataset and recommend_biocontainer
+      // (upload_file is a write extra), and the two job bridges; galaxy_read_output beside them.
+      expect(galaxy.map((t) => t.name).filter((n) => n !== "galaxy_read_output")).toHaveLength(33);
+      expect(galaxy.map((t) => t.name)).toContain("galaxy_read_output");
+      // Orbit's own 11 under write and a page record, less the record writers: the two
+      // invocation checks, both record tools and loom_propose.
+      const family = new Set(galaxy.map((t) => t.name));
+      const own = readHost.tools.filter((n) => !family.has(n));
+      expect(own).toHaveLength(16 - 5 - 5);
+      for (const name of ORBIT_WRITING_TOOLS) expect(own, name).not.toContain(name);
+      await expect(surface(readHost.api)).toMatchFileSnapshot(
+        "./__surface__/orbit/tools.read.json",
+      );
+    } finally {
+      setCapabilityProfile(PROFILE);
+      install();
+      source.registerGalaxyTools({ registerTool: () => undefined } as never);
+    }
   });
 });

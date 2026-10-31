@@ -14,6 +14,7 @@ import {
   resetEvidenceOverrides,
 } from "../extensions/orbit/evidence-gate";
 import { renderInvocationYaml } from "../extensions/orbit/notebook-writer";
+import { orbitToGalaxyMarkdown } from "../extensions/orbit/galaxy-markdown-adapter";
 import { setRecordStore, type RecordStore } from "../extensions/orbit/record-store";
 import { GalaxyApiError } from "../extensions/orbit/galaxy-api";
 import { bareFamily } from "../shared/galaxy-tool-family.js";
@@ -205,6 +206,11 @@ describe("computeAfterContent for update_page", () => {
       }),
     ).toContain(`- [x] ${STEP2}`);
     expect(computeAfterContent(BODY, "update_page", { title: "Renamed" })).toBeNull();
+    // The model writes typed blocks as the page holds them, carriers; the record reads them as
+    // fences, and the after-image is judged in that same form.
+    expect(computeAfterContent(BODY, "update_page", { content: orbitToGalaxyMarkdown(BODY) })).toBe(
+      BODY,
+    );
     // Combinations the bridge refuses write nothing.
     expect(
       computeAfterContent(BODY, "update_page", { content: "# New\n", section_heading: "## X" }),

@@ -7,6 +7,7 @@ import { orbitBrowserVite } from "./vite";
 export default defineConfig({
   ...orbitBrowserVite({
     command: "serve",
+    mode: "test",
     flavorRoot: fileURLToPath(new URL(".", import.meta.url)),
   }),
   test: {

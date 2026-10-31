@@ -34,6 +34,6 @@ describe("capture tick hook", () => {
     setCaptureTickHook(async () => {
       throw new Error("boom");
     });
-    await expect(pollGalaxyNow()).resolves.toBeUndefined();
+    await expect(pollGalaxyNow()).resolves.toMatchObject({ transitions: [] });
   });
 });

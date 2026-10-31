@@ -2,21 +2,22 @@ import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve as absolute } from "node:path";
-import * as galaxyOps from "@galaxyproject/galaxy-ops/browser";
+// The browser entry: the Node entry adds its Node-only operations to the array both share.
 import { allOperations } from "@galaxyproject/galaxy-ops/browser";
 
 import { DEFAULT_COMPACTION_POLICY } from "@earendil-works/pi-durable";
 
+import { registeredGalaxyTools } from "../../../../extensions/orbit/galaxy-tool-source";
 import { MAX_AUTO_FOLLOW_UPS } from "./documents";
-import { MAX_STEPS } from "./extension";
+import { galaxyTools } from "./galaxy-extras";
+import { Headless } from "./headless";
 import { connect, keyVariable } from "./model";
-import { starter } from "./notebook";
-import { LOOP } from "./runtime";
-import { opsTools } from "./ops";
+import { processTools } from "./processes";
+import { pythonTool } from "./python";
+import { LOOP, MAX_TURNS } from "./runtime";
 import { defaultEndpoint, PROVIDERS, resolve } from "./providers";
-import { GUARDS } from "./tool";
-import { agentTools, type AgentFlavor } from "./tools";
-import { flavoredSkills } from "./skills";
+import type { AgentTool, Capability, Python } from "./tool";
+import type { AgentFlavor } from "./tools";
 import { DEFAULT_BRAND, type Brand } from "./brand";
 
 const SCHEMA = 1;
@@ -24,8 +25,8 @@ const SOURCE = "src/agent";
 const SKIPPED = ["skills/"];
 
 /**
- * Where the flavor's pieces sit on disk. The core finds its own (its sources, prompt, skills
- * corpus and lock) through the flavor's dependency on it, so a flavor names only its own paths.
+ * Where the flavor's pieces sit on disk. The core finds its own sources through the flavor's
+ * dependency on it, and Orbit's skills beside the core, so a flavor names only its own paths.
  */
 export interface DescribeLayout {
   /** The flavor's package root; its `src/agent` modules are described beside the core's. */
@@ -64,9 +65,6 @@ function walk(dir: string): string[] {
   });
 }
 
-/** The galaxy-ops entry the agent imports, keyed as a module beside the agent's own. */
-const GALAXY_OPS = "@galaxyproject/galaxy-ops/browser";
-
 /** Every name a module exports, by module. */
 function symbols(sources: string[]): Record<string, string[]> {
   const found = new Map<string, Set<string>>();
@@ -97,37 +95,12 @@ function symbols(sources: string[]): Record<string, string[]> {
   for (const rel of [...found.keys()].sort()) {
     out[`${SOURCE}/${rel}`] = [...found.get(rel)!].sort();
   }
-  // What the agent links against in galaxy-ops, so a seam can name where moved behaviour lives now.
-  out[GALAXY_OPS] = Object.keys(galaxyOps).sort();
   return out;
 }
 
-/** The shared modules a prompt module imports, which hold blocks it builds its constants from. */
-function sharedPromptModules(prompt: string, text: string): string[] {
-  return [...text.matchAll(/^import [^;]*? from "(\.[^"]*\/shared\/[^"]+\.js)";$/gm)]
-    .map((m) => absolute(dirname(prompt), m[1]))
-    .filter(existsSync);
-}
-
-/** The blocks each package's `src/agent/prompt.ts` defines, so a flavor's sections are named too. */
-function promptBlocks(sources: string[]): string[] {
-  const prompts = sources
-    .map((source) => join(source, SOURCE, "prompt.ts"))
-    .filter(existsSync)
-    .map((prompt) => ({ prompt, text: readFileSync(prompt, "utf8") }));
-  const shared = new Set(prompts.flatMap(({ prompt, text }) => sharedPromptModules(prompt, text)));
-  const text = [
-    ...prompts.map((p) => p.text),
-    ...[...shared].map((m) => readFileSync(m, "utf8")),
-  ].join("\n");
-  const blocks = [...text.matchAll(/^export const ([A-Z][A-Z_0-9]{2,}) = (?:`|\w+\()/gm)].map(
-    (m) => m[1],
-  );
-  // A builder is the flavor's when its prompt module exports it; the shared modules' builders
-  // only show through the constants built from them.
-  const own = prompts.map((p) => p.text).join("\n");
-  const builders = [...own.matchAll(/^export function (\w+Block)\(/gm)].map((m) => m[1]);
-  return [...new Set([...blocks, ...builders])].sort();
+/** The sections of the system prompt Orbit's brain sends, by heading, in order. */
+function promptBlocks(system: string): string[] {
+  return [...new Set([...system.matchAll(/^## (.+)$/gm)].map((m) => m[1].trim()))];
 }
 
 function identityPrompt(text: string | undefined) {
@@ -147,19 +120,104 @@ function typeOf(spec: Record<string, any>): string {
   return kind + enumerated + fallback;
 }
 
-function tools(flavor: AgentFlavor, brand: Brand) {
-  const delegated = new Set(opsTools().map((t) => t.name));
-  // The result shape galaxy-ops declares for each operation and reads back in its own tests.
-  const declared = new Map(allOperations.map((op) => [op.name, op.result ?? null]));
+/** Where describe's boots send what they would send to Galaxy and the model: answered here. */
+const GALAXY = "http://describe.invalid/";
+const LLM = "http://describe.invalid/llm/v1";
+
+const inertPython: Python = {
+  run: async () => "",
+  write: async () => {},
+  read: async () => undefined,
+};
+
+interface RequestTool {
+  function: { name: string; description: string; parameters: Record<string, any> };
+}
+
+/**
+ * The first request a launch under `capabilities` sends, read off a boot of Orbit's brain against
+ * nothing real, and the tools the brain registered as Galaxy's.
+ */
+async function surface(flavor: AgentFlavor, capabilities?: Capability[]) {
+  const requests: Array<{
+    messages: Array<{ role: string; content: unknown }>;
+    tools?: RequestTool[];
+  }> = [];
+  let galaxy: string[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(String(input), init);
+    if (request.url.startsWith(LLM)) {
+      requests.push(await request.json());
+      const done = { choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }] };
+      return new Response(`data: ${JSON.stringify(done)}\n\ndata: [DONE]\n\n`, {
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
+    if (request.url.startsWith(GALAXY)) {
+      const version = new URL(request.url).pathname.endsWith("/api/version");
+      return new Response(JSON.stringify(version ? { version_major: "26.1" } : {}), {
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+  try {
+    const session = await Headless.open(
+      {
+        galaxy_root: GALAXY,
+        ai_base_url: LLM,
+        ai_model: "describe",
+        ai_api_key: "describe",
+        ...(capabilities ? { capabilities } : {}),
+      },
+      { python: inertPython, flavor },
+    );
+    try {
+      await session.turn("hi");
+      galaxy = registeredGalaxyTools().map((t) => t.name);
+    } finally {
+      await session.close();
+    }
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  const first = requests[0];
+  if (!first) throw new Error("describe: the brain sent the model nothing");
+  const system = first.messages.find((m) => m.role === "system")?.content;
+  return { tools: first.tools ?? [], system: typeof system === "string" ? system : "", galaxy };
+}
+
+async function tools(flavor: AgentFlavor, brand: Brand) {
+  // One after the other: a Headless session holds the process.
+  const full = await surface(flavor);
+  const read = await surface(flavor, ["llm", "read"]);
+  const readNames = new Set(read.tools.map((t) => t.function.name));
+  // The shell's own tools carry their capability; the brain's are read when a read-only grant
+  // still offers them.
+  const shell = new Map<string, AgentTool>(
+    [pythonTool(brand.name), ...processTools(), ...(flavor.tools?.() ?? [])].map((t) => [
+      t.name,
+      t,
+    ]),
+  );
+  const extras = new Set(galaxyTools().map((t) => t.name));
+  const galaxy = new Set(full.galaxy);
+  // Only an operation that declares one has it (galaxy-ops 0.3.1 declares none); the key stays.
+  const declared = new Map(
+    allOperations.map((op) => [op.name, (op as { result?: unknown }).result ?? null]),
+  );
   const out: Record<string, unknown> = {};
-  for (const tool of agentTools(flavoredSkills(flavor), flavor)) {
+  for (const { function: tool } of full.tools) {
     const params = tool.parameters as { properties?: Record<string, any>; required?: string[] };
     const properties = params.properties ?? {};
     const required = new Set(params.required ?? []);
     const names = Object.keys(properties).sort();
+    const own = shell.get(tool.name);
     out[tool.name] = {
-      capability: tool.capability ?? null,
-      runner: delegated.has(tool.name) ? "galaxy-ops" : brand.id,
+      capability: own ? (own.capability ?? null) : readNames.has(tool.name) ? "read" : "write",
+      runner:
+        own || extras.has(tool.name) ? brand.id : galaxy.has(tool.name) ? "galaxy-ops" : "orbit",
       signature: fingerprint(`${tool.description}|${names.join(",")}`),
       params: Object.fromEntries(
         names.map((n) => [n, typeOf(properties[n]) + (required.has(n) ? "!" : "")]),
@@ -172,7 +230,10 @@ function tools(flavor: AgentFlavor, brand: Brand) {
       result: declared.get(tool.name) ?? null,
     };
   }
-  return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)));
+  return {
+    tools: Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b))),
+    system: full.system,
+  };
 }
 
 /** What an unconfigured request carries, with and without tools, read off the real request. */
@@ -212,18 +273,19 @@ async function llmRequest() {
 function loop() {
   return {
     keep_recent_tokens: DEFAULT_COMPACTION_POLICY.keepRecentTokens,
-    max_steps: MAX_STEPS,
+    max_steps: MAX_TURNS,
     reserve_tokens: DEFAULT_COMPACTION_POLICY.reserveTokens,
     tool_execution: LOOP.toolExecution,
   };
 }
 
-/** The follow-up contract every driver shares: the runtime delivers them, up to a cap. */
+/** The follow-up contract every driver shares: the watch hands them over, up to a cap. */
 function followUps() {
-  return { max_auto_follow_ups: MAX_AUTO_FOLLOW_UPS, settled_by: "runtime" };
+  return { max_auto_follow_ups: MAX_AUTO_FOLLOW_UPS, settled_by: "watch" };
 }
 
-function skills(base: string, lockFile: string) {
+/** Orbit's vendored skills, as the repo pins them: hashed, with the commit they came from. */
+function skills(base: string, manifestFile: string) {
   const files = existsSync(base)
     ? Object.fromEntries(
         walk(base)
@@ -235,13 +297,19 @@ function skills(base: string, lockFile: string) {
           ]),
       )
     : {};
-  const lock = JSON.parse(readFileSync(lockFile, "utf8"));
+  const manifest = existsSync(manifestFile)
+    ? (JSON.parse(readFileSync(manifestFile, "utf8")) as {
+        repo?: string;
+        tag?: string | null;
+        commit?: string;
+      })
+    : {};
   return {
     vendored: Object.keys(files).length > 0,
     files,
-    repo: lock.repo,
-    ref: lock.ref,
-    sha: lock.sha,
+    repo: manifest.repo ?? null,
+    ref: manifest.tag ?? null,
+    sha: manifest.commit ?? null,
   };
 }
 
@@ -262,18 +330,24 @@ async function providers() {
 export async function describe(layout: DescribeLayout, flavor: AgentFlavor) {
   const brand = flavor.brand ?? DEFAULT_BRAND;
   const sources = agentSources(layout);
-  const core = sources[0];
+  const repo = join(sources[0], "..", "..");
+  const offered = await tools(flavor, brand);
   return {
     schema: SCHEMA,
     agent: brand.id,
     identity_prompt: identityPrompt(layout.identityPrompt),
     symbols: symbols(sources),
-    prompt_blocks: promptBlocks(sources),
-    tools: tools(flavor, brand),
-    policy: { llm_request: await llmRequest(), loop: loop(), guards: [...GUARDS] },
+    prompt_blocks: promptBlocks(offered.system),
+    tools: offered.tools,
+    // Orbit's brain keeps no inventory of the guards that refuse a call.
+    policy: { llm_request: await llmRequest(), loop: loop(), guards: [] as string[] },
     providers: await providers(),
     follow_ups: followUps(),
-    skills: skills(join(core, SOURCE, "skills", "galaxy-skills"), join(core, "skills.lock.json")),
-    record: { starter: starter(brand), resume_tool: "notebook_resume" },
+    skills: skills(
+      join(repo, "extensions", "orbit", "vendor", "skills"),
+      join(repo, "scripts", "skills.manifest.json"),
+    ),
+    // The record is a Galaxy page made on its first write; there is no tool to open it.
+    record: { starter: "", resume_tool: null },
   };
 }

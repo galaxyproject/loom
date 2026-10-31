@@ -66,6 +66,12 @@ export interface GalaxyOptions {
   credentials?: RequestCredentials;
   /** Ends every request, and any wait between retries, when it aborts. */
   signal?: AbortSignal;
+  /**
+   * The most the retries may wait in all; a retry that would go past it returns the refused
+   * response instead. Unbounded by default. A caller with its own backoff (the Orbit brain's
+   * durable watch) passes a small one, so a rate-limited request doesn't sit here for minutes.
+   */
+  maxRetryWaitMs?: number;
 }
 
 export interface Galaxy {
@@ -83,7 +89,12 @@ export interface Galaxy {
  * The one transport every Galaxy request takes, the agent's own and galaxy-ops' alike: the user's
  * session or key, never a cached answer, and a refused request resent while that is safe.
  */
-export function galaxyFetch({ key, credentials = "include", signal }: GalaxyOptions): typeof fetch {
+export function galaxyFetch({
+  key,
+  credentials = "include",
+  signal,
+  maxRetryWaitMs,
+}: GalaxyOptions): typeof fetch {
   return async (input, init) => {
     const request = new Request(input, { ...init, signal: init?.signal ?? signal });
     const headers = new Headers(request.headers);
@@ -97,6 +108,7 @@ export function galaxyFetch({ key, credentials = "include", signal }: GalaxyOpti
       key && method !== "GET" && method !== "HEAD"
         ? await request.clone().arrayBuffer()
         : undefined;
+    let waited = 0;
     for (let attempt = 0; ; attempt++) {
       // Node's fetch carries x-api-key along a redirect to any host, so a key only follows a
       // same-origin hop. Without one the page's session authenticates and the browser follows
@@ -122,7 +134,12 @@ export function galaxyFetch({ key, credentials = "include", signal }: GalaxyOpti
         return response;
       }
       // An absent header is not a stated zero: back off unless Galaxy named the wait.
-      await sleep((retryAfter(response.headers) ?? 2 ** attempt) * 1000, request.signal);
+      const wait = (retryAfter(response.headers) ?? 2 ** attempt) * 1000;
+      if (maxRetryWaitMs !== undefined && waited + wait > maxRetryWaitMs) {
+        return response;
+      }
+      waited += wait;
+      await sleep(wait, request.signal);
     }
   };
 }

@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import { Binding, FollowUps, Sessions } from "./agent/documents";
 import { isSessionDocument, SCHEMA } from "./agent/saved";
-import { WATCH_TASK } from "./agent/watch";
+import { ORBIT_WATCH as WATCH_TASK } from "./agent/orbit/watch";
 
 describe("durable names", () => {
   it("keeps the document kinds", () => {

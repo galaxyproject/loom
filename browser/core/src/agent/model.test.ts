@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { catalogued, connect, DEFAULT_CONTEXT_WINDOW, keyVariable, agentModels } from "./model";
-import { piProvider, providerById, PROVIDERS, resolve, type LlmConfig } from "./providers";
+import {
+  piProvider,
+  probeWindow,
+  providerById,
+  PROVIDERS,
+  resolve,
+  type LlmConfig,
+} from "./providers";
 
 /** The model a connection serves, as pi-ai resolves it. */
 async function modelOf(config: LlmConfig) {
@@ -236,5 +243,20 @@ describe("the rate limit", () => {
       await limited(connect, "k1", "other")
     )();
     expect(reached).toHaveLength(3);
+  });
+});
+
+describe("the window probe", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("gives up on a server that never answers", async () => {
+    vi.stubGlobal(
+      "fetch",
+      (_url: string, init?: RequestInit) =>
+        new Promise((_, reject) =>
+          init?.signal?.addEventListener("abort", () => reject(new Error("timeout"))),
+        ),
+    );
+    expect(await probeWindow("http://local.test/v1", 20)).toBeUndefined();
   });
 });

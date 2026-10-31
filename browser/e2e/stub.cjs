@@ -2,6 +2,8 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+// What Galaxy refuses on a page, in its own words; the brain and the conformance test check the same.
+const { pageContentProblem } = require("../../shared/galaxy-page-cells.js");
 
 // The plugin package: its manifest and the static/ Galaxy serves.
 const ROOT = path.join(__dirname, "..", "olit");
@@ -41,7 +43,7 @@ const TYPES = {
     ".md": "text/markdown",
 };
 
-let script = "confirm";
+let script = "confirm";     // confirm | slow | slow-once | compact | ratelimit | plan | plan-after-graph
 // Saved visualizations as Galaxy keeps them: each a type, a title and its latest revision's config.
 const visualizations = new Map();
 const visualizationWrites = [];
@@ -49,13 +51,6 @@ const visualizationWrites = [];
 let jobState = "queued";
 // Pages as Galaxy keeps them: a page may be attached to a history (a history notebook) and listed by it.
 const pages = new Map();
-// The cell types Galaxy's page parser renders; its server refuses any other ``` fence.
-const PAGE_CELLS = ["galaxy", "markdown", "vega", "visualization", "vitessce"];
-const badFence = (content) =>
-    String(content || "")
-        .split("\n")
-        .map((line) => line.trim())
-        .find((line) => line.startsWith("```") && line.length > 3 && !PAGE_CELLS.includes(line.slice(3)));     // confirm | slow | slow-once | compact | ratelimit | plan | plan-after-graph
 let bootDelay = 0;          // ms the agent's user lookup waits, so a drive can act while Olit boots
 let galaxyUp = true;        // /api/version answers, which is what the agent probes for reachability
 let rateLimited = 0;
@@ -391,6 +386,8 @@ const server = http.createServer(async (req, res) => {
         });
         prompts.push({
             hasTools: Array.isArray(body.tools) && body.tools.length > 0,
+            // The tools declared on this request, by name: which brain is answering (brain.cjs).
+            tools: (Array.isArray(body.tools) ? body.tools : []).map((t) => t?.function?.name ?? t?.name).filter(Boolean),
             roles: (body.messages || []).map((m) => m.role),
             toolResults: (body.messages || []).filter((m) => m.role === "tool").map((m) => String(m.content)),
             text: JSON.stringify(body.messages || []).slice(0, 4000),
@@ -480,7 +477,9 @@ const server = http.createServer(async (req, res) => {
         const messages = body.messages || [];
         const last = messages[messages.length - 1] || {};
         if (script === "two-artifacts") {
-            const turns = messages.filter((m) => m.role === "user").length;
+            // A turn is a run of user messages: Orbit's brain puts its notebook context just before
+            // the user's own message, and pi sends that as a user message too.
+            const turns = messages.filter((m, i) => m.role === "user" && messages[i + 1]?.role !== "user").length;
             return answer(last.role === "tool"
                 ? message(`Chart ${turns} is open.`)
                 : message("", showTitled(turns < 2 ? "First Chart" : "Second Chart")));
@@ -494,17 +493,21 @@ const server = http.createServer(async (req, res) => {
         if (script === "echo") return answer(message(String(last.role === "user" ? last.content : "")));
         if (script === "linked") return answer(message("Dataset 0123456789abcdef is ready."));
         if (script === "reset-watch") {
-            // Open the record, run a tool, then say so; anything asked after that is a follow-up.
+            // Run a tool, then say so; anything asked after that is a follow-up. There is no record
+            // to open first: the brain's capture writes the run into the record.
             const tools = (body.messages || []).filter((m) => m.role === "tool").length;
-            const call = (name, args) => [{ id: `call_${tools}`, type: "function", function: { name, arguments: JSON.stringify(args) } }];
-            if (tools === 0) return answer(message("", call("notebook_resume", {})));
-            if (tools === 1) return answer(message("", call("run_tool", { history_id: "h-dreset", tool_id: "cat1", inputs: {} })));
+            if (tools === 0) {
+                const args = { history_id: "h-dreset", tool_id: "cat1", inputs: {} };
+                return answer(message("", [{ id: "call_0", type: "function", function: { name: "run_tool", arguments: JSON.stringify(args) } }]));
+            }
             return answer(message("Submitted."));
         }
         if (script === "record") {
+            // The record is made on the first thing written there: a run's block.
+            const call = { name: "run_tool", arguments: JSON.stringify({ history_id: "h-drecover", tool_id: "cat1", inputs: {} }) };
             return answer(last.role === "tool"
                 ? message("Noted in the record.")
-                : message("", [{ id: "call_1", type: "function", function: { name: "notebook_resume", arguments: "{}" } }]));
+                : message("", [{ id: "call_1", type: "function", function: call }]));
         }
         return answer(last.role === "tool" ? message("Done.") : message("", deleteHistory));
     }
@@ -551,8 +554,8 @@ const server = http.createServer(async (req, res) => {
         }
         const body = await readJson(req);
         if (!body) return json(res, 400, { err_msg: "The request body is not JSON." });
-        const fence = badFence(body.content);
-        if (fence) return json(res, 400, { err_msg: `Unsupported fenced block type [${fence.slice(3)}].` });
+        const problem = pageContentProblem(String(body.content || ""));
+        if (problem) return json(res, 400, { err_msg: problem });
         const now = new Date().toISOString().replace("Z", ""); // Galaxy writes UTC without a zone
         if (req.method === "POST") {
             const created = `p${pages.size + 1}`;

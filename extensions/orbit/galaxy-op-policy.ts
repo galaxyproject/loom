@@ -9,6 +9,7 @@
  * Policies see the tool's arguments as the model sent them: snake_case, after pi's validation.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { pageContentProblem } from "../../shared/galaxy-page-cells.js";
 import { malformedObjectIds } from "../../shared/malformed-object-ids.js";
 import { sectionsHeaded } from "../../shared/markdown-sections.js";
 import { pageContentHash } from "../../shared/page-content-hash.js";
@@ -269,6 +270,35 @@ function headingless(args: GalaxyOpArgs): string | undefined {
   );
 }
 
+// One of the record's own typed blocks, as the decoded record the model is shown spells it.
+const TYPED_FENCE = /^\s*```(?:loom|orbit)-[\w-]+\s*$/m;
+
+/**
+ * A refusal for page text Galaxy would not take (a fence it has no cell for), before it is sent.
+ * On the record page a typed block copied from the record excerpt is the likely cause, and
+ * Galaxy's own advice (switch to ~~~) would leave a dead block in the record.
+ */
+function unrenderable(field: string, text: unknown, pageId?: unknown): string | undefined {
+  const problem = typeof text === "string" ? pageContentProblem(text) : undefined;
+  if (!problem) return undefined;
+  if (pageId !== undefined && recordPageStore(pageId) && TYPED_FENCE.test(String(text))) {
+    return (
+      `Refused: ${field} holds one of the record's typed blocks (a \`\`\`orbit-... fence). ` +
+      `Orbit writes those itself; leave them out of update_page, and record a run with ` +
+      `galaxy_job_record or galaxy_invocation_record instead.`
+    );
+  }
+  return `Refused: ${field} holds a block Galaxy won't accept. ${problem}`;
+}
+
+/** The record page's store when `pageId` names it, else null. */
+function recordPageStore(pageId: unknown) {
+  const store = installedRecordStore();
+  return store?.kind === "page" && store.pageId !== undefined && store.pageId === pageId
+    ? store
+    : null;
+}
+
 /**
  * Keyed by operation name. These are the brain's own checks; Galaxy's server validation stays
  * the backstop for anything they do not cover.
@@ -277,6 +307,8 @@ export const GALAXY_OP_POLICY: Record<string, GalaxyOpPolicy> = {
   run_tool: { check: unreadInputs },
   create_page: {
     check: async (args) => {
+      const unaccepted = unrenderable("content", args.content);
+      if (unaccepted) return unaccepted;
       const found = malformedObjectIds(typeof args.content === "string" ? args.content : null);
       return found.length > 0 ? malformedIdsRefusal(found) : undefined;
     },
@@ -306,7 +338,11 @@ export const GALAXY_OP_POLICY: Record<string, GalaxyOpPolicy> = {
           `left out. Read the page with get_page and rewrite the section from what it holds.`
         );
       }
-      return headingless(args);
+      return (
+        unrenderable("content", args.content, args.page_id) ??
+        unrenderable("section_content", args.section_content, args.page_id) ??
+        headingless(args)
+      );
     },
     around: async (call, args, { signal }) => {
       const run = async () => {
@@ -316,10 +352,15 @@ export const GALAXY_OP_POLICY: Record<string, GalaxyOpPolicy> = {
       // The bridge reads the page and then writes it. On the record page the poller writes
       // under this lock, so holding it closes that window; a file record has no page id. The
       // lock ends with the deadline, not with a request that may never come back.
-      const store = installedRecordStore();
-      return store?.kind === "page" && store.pageId !== undefined && store.pageId === args.page_id
-        ? withRecordLock(store.key, () => untilAborted(signal, run))
-        : run();
+      const store = recordPageStore(args.page_id);
+      return store ? withRecordLock(store.key, () => untilAborted(signal, run)) : run();
+    },
+  },
+  // A revert rewrites the record page too, so it waits its turn behind the record's writers.
+  revert_page_revision: {
+    around: async (call, args, { signal }) => {
+      const store = recordPageStore(args.page_id);
+      return store ? withRecordLock(store.key, () => untilAborted(signal, () => call())) : call();
     },
   },
 };

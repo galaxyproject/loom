@@ -224,10 +224,64 @@ describe("create_page and update_page checks", () => {
     expect(refusal).toMatch(/get_page/);
   });
 
+  it.each([
+    ["create_page", { title: "t", content: "# A\n```loom-job\njob_id: x\n```\n" }, "content"],
+    ["update_page", { page_id: PAGE_ID, content: "# A\n```python\nprint(1)\n```\n" }, "content"],
+    [
+      "update_page",
+      {
+        page_id: PAGE_ID,
+        section_heading: "## Results",
+        section_content: "## Results\n```loom-proposal\nid: p\n```\n",
+      },
+      "section_content",
+    ],
+  ])(
+    "%s refuses a fence Galaxy has no cell for, before anything is sent",
+    async (op, args, field) => {
+      const refusal = await check(op, args);
+      expect(refusal).toMatch(new RegExp(`^Refused: ${field} holds a block Galaxy won't accept`));
+      expect(refusal).toMatch(/use ~~~ fences/);
+    },
+  );
+
+  it("sends a typed block on the record page to the record tools, not to ~~~ fences", async () => {
+    setRecordStore(createPageRecordStore({ key: "/session/notebook.md", pageId: PAGE_ID }));
+    const typed = "## Runs\n```loom-job\njob_id: x\n```\n";
+    const onRecord = await check("update_page", {
+      page_id: PAGE_ID,
+      section_heading: "## Runs",
+      section_content: typed,
+    });
+    expect(onRecord).toMatch(/record's typed blocks/);
+    expect(onRecord).toMatch(/galaxy_job_record/);
+    expect(onRecord).not.toMatch(/~~~/);
+    // Another page gets Galaxy's own advice.
+    const elsewhere = await check("update_page", { page_id: OTHER_PAGE, content: typed });
+    expect(elsewhere).toMatch(/use ~~~ fences/);
+  });
+
+  it("lets Galaxy's own cells and the record's carriers through", async () => {
+    const content = [
+      "# A",
+      "```galaxy",
+      "history_link(history_id=0a248a1f62a0cc04)",
+      "```",
+      '[loom-job:v1]: #loom "YWJj"',
+      "~~~python",
+      "print(1)",
+      "~~~",
+      "",
+    ].join("\n");
+    expect(await check("create_page", { title: "t", content })).toBeUndefined();
+    expect(await check("update_page", { page_id: PAGE_ID, content })).toBeUndefined();
+  });
+
   it("has no refused hook, no settled trait and nothing for other ops", () => {
     expect(Object.keys(GALAXY_OP_POLICY).sort()).toEqual([
       "create_page",
       "get_page",
+      "revert_page_revision",
       "run_tool",
       "update_page",
     ]);
@@ -340,6 +394,27 @@ describe("update_page against the page as it is now", () => {
 
 describe("update_page on the record page waits behind the record's writers", () => {
   const KEY = "/session/notebook.md";
+
+  it("holds a revert of the record page behind the record lock, and no other page's", async () => {
+    setRecordStore(createPageRecordStore({ key: KEY, pageId: PAGE_ID }));
+    const around = GALAXY_OP_POLICY.revert_page_revision.around!;
+    let release!: () => void;
+    const poller = withRecordLock(KEY, () => new Promise<void>((r) => (release = r)));
+    const sent: string[] = [];
+    const revert = (page: string) =>
+      around(
+        async () => void sent.push(page),
+        { page_id: page, revision_id: "r1" },
+        { signal: signal() },
+      );
+    const record = revert(PAGE_ID);
+    await revert(OTHER_PAGE);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(sent).toEqual([OTHER_PAGE]);
+    release();
+    await Promise.all([poller, record]);
+    expect(sent).toEqual([OTHER_PAGE, PAGE_ID]);
+  });
 
   it("runs a record-page update under the record lock", async () => {
     const g = galaxy();

@@ -12,7 +12,17 @@ function check(name, ok, detail) {
 }
 
 const get = async (path) => (await fetch(`${STUB}${path}`)).json();
-const record = async () => (await get("/__pages")).pages.find((p) => p.history_id === "h-dreset");
+// The brain keeps its job blocks on the page as base64 carriers (galaxy-markdown-adapter.ts).
+const decoded = (content) =>
+    content.replace(/^\[[a-z]+-[a-z]+:v1\]: #[a-z]+ "([A-Za-z0-9+/=]+)"[ \t]*$/gm, (_, b64) =>
+        Buffer.from(b64, "base64").toString("utf8"));
+const record = async () => {
+    const page = (await get("/__pages")).pages.find((p) => p.history_id === "h-dreset");
+    return page && { ...page, content: decoded(page.content || "") };
+};
+// The job's block, just submitted and once it finished.
+const SUBMITTED = /job_id: jreset1\b[\s\S]*status: in_progress/;
+const FINISHED = /job_id: jreset1\b[\s\S]*status: completed/;
 const shown = (frame, pattern, ms = 120000) =>
     frame.locator(`text=${pattern}`).first().waitFor({ timeout: ms }).then(() => true, () => false);
 
@@ -34,7 +44,7 @@ const shown = (frame, pattern, ms = 120000) =>
     await frame.locator("#input").fill("run cat on it");
     await frame.locator("#send-btn").click();
     check("the tool run is submitted", await shown(frame, "Submitted.", 60000));
-    check("the record notes the job as submitted", /jreset1`? — submitted/.test((await record())?.content || ""));
+    check("the record notes the job as submitted", SUBMITTED.test((await record())?.content || ""));
 
     await frame.locator("#reset-btn").click();
     check("Reset starts a new conversation", await shown(frame, "Started a new conversation", 30000));
@@ -44,7 +54,7 @@ const shown = (frame, pattern, ms = 120000) =>
     let finished = false;
     for (let i = 0; i < 40 && !finished; i++) {
         await page.waitForTimeout(1000);
-        finished = /finished \(ok\)/.test((await record())?.content || "");
+        finished = FINISHED.test((await record())?.content || "");
     }
     check("the old conversation's record shows the job finished", finished);
     // Past the watch's next poll, so a follow-up would have been sent by now.

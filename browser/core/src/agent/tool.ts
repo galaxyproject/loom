@@ -1,57 +1,26 @@
-import { Type } from "@earendil-works/pi-ai";
-import type { Context as Chord, JsonValue } from "@earendil-works/chord";
-import {
-  defineTool,
-  type ConversationId,
-  type JsonObject,
-  type Task,
-  type ToolRegistration,
-} from "@earendil-works/pi-durable";
-import type { GalaxyContext } from "@galaxyproject/galaxy-ops/browser";
-
+/**
+ * A browser tool, as a flavor or the core writes one: its schema, what it needs, and how it runs
+ * against the conversation's Galaxy, the web and Python. The adapter (orbit/adapter.ts) registers
+ * each with Orbit's brain as a pi tool.
+ */
 import type { Artifact } from "../artifacts/kinds";
-import { Binding as Bound } from "./documents";
 import type { Galaxy, Web } from "./galaxy";
-import { isTerminal, watchedFrom, type Watched } from "./watch";
 
 export type { Artifact } from "../artifacts/kinds";
 
 export type Capability = "llm" | "local" | "read" | "write";
-
-/**
- * Every guard that can refuse a call or end a turn, and whether its refusal counts as a failure
- * of the call's arguments: one refused before the call ran, or declined by the user, says nothing
- * about them, so it must not bring on the repeated-failure guard.
- */
-export const GUARD_COUNTS_AS_FAILURE = {
-  capability: true,
-  "destructive-declined": false,
-  "galaxy-poll": false,
-  "malformed-object-id": true,
-  "process-refusal": true,
-  "repeated-failure": false,
-  "settled-question": false,
-  "sra-fan-out": false,
-} as const;
-
-export type Guard = keyof typeof GUARD_COUNTS_AS_FAILURE;
-
-export const GUARDS = Object.keys(GUARD_COUNTS_AS_FAILURE) as Guard[];
 
 /** What a tool reports when the plain result is not the whole story. */
 export class Outcome {
   constructor(
     readonly text: string,
     readonly isError = false,
-    readonly guard?: Guard,
-    /** The result `text` renders, which the work a call submitted is read from. */
+    /** What refused the call, when something did (a process's own refusal, say). */
+    readonly guard?: string,
+    /** The result `text` renders. */
     readonly data?: unknown,
   ) {}
 }
-
-/** The Galaxy work a call submitted, read from its result in whichever form it came back. */
-export const submittedBy = (name: string, value: unknown): Watched[] =>
-  watchedFrom(name, value instanceof Outcome ? value.data : value);
 
 export const fail = (text: string) => new Outcome(text, true);
 
@@ -73,7 +42,6 @@ export interface Context {
   galaxy: Galaxy;
   /** Hosts other than Galaxy, ended with the call or once its time is up. */
   web: Web;
-  ops: GalaxyContext;
   python: Python;
   /** What this session is bound to; the session owns it and reports its changes. */
   binding: Binding;
@@ -88,29 +56,10 @@ export interface AgentTool {
   capability?: Capability;
   /** Deletes or cancels something that cannot be brought back: the user is asked first. */
   destructive?: boolean;
-  /** Destroys for these arguments only, as galaxy-ops' destructiveWhen says. */
-  destructiveWhen?: (args: Record<string, unknown>) => boolean;
-  /** The argument naming something that moves on its own: reading it again soon says nothing new. */
-  polls?: string;
-  /** The same arguments answer the same for the rest of the session. */
-  settled?: boolean;
   /** Every capability the tool needs, when it is more than `capability` alone. */
   requires?: Capability[];
   run(args: any, ctx: Context): Promise<unknown>;
 }
-
-/** What the guards need to know of a tool, read off the tool rather than kept in lists. */
-export interface ToolTraits {
-  settled: boolean;
-  polls?: string;
-  destroys: (args: Record<string, unknown>) => boolean;
-}
-
-export const traitsOf = (tool: AgentTool): ToolTraits => ({
-  settled: tool.settled === true,
-  polls: tool.polls,
-  destroys: (args) => tool.destructive === true || tool.destructiveWhen?.(args) === true,
-});
 
 /** A Galaxy result as the model reads it: the envelope's non-empty payload fields. */
 export function rendered(envelope: Record<string, unknown>): string {
@@ -135,86 +84,4 @@ export function claim(value: unknown, ctx: Context, hint?: string): unknown {
     artifact: { kind: artifact.kind, title: artifact.title },
     ...(hint ? { hint } : {}),
   };
-}
-
-/** What a durable tool needs from its host besides the conversation's binding. */
-export interface ToolHost {
-  /** Galaxy clients and Python for one call, ended by its abort signal. */
-  clients(signal: AbortSignal | undefined): Pick<Context, "galaxy" | "web" | "ops" | "python">;
-  /** The artifacts earlier results carried, newest last. */
-  artifacts(conversationId: ConversationId, context: Chord): Promise<Artifact[]>;
-  watch: Task<Watched, any, JsonValue, object>;
-}
-
-/** What a result carries beside its text: the artifacts it made, the guard that refused it. */
-export interface Details {
-  artifacts?: Artifact[];
-  refused?: boolean;
-  guard?: Guard;
-}
-
-/**
- * An agent tool as a pi-durable tool. A read runs again after a reload; a write does not, so a
- * Galaxy effect is never repeated: the work it submitted is watched from the commit that records
- * the binding it changed. Artifacts travel in the result's details.
- */
-export function durableTool(tool: AgentTool, host: ToolHost): ToolRegistration {
-  return defineTool({
-    name: tool.name,
-    description: tool.description,
-    parameters: Type.Unsafe(tool.parameters),
-    ...(tool.capability === "write" ? {} : { replay: "safe" as const }),
-    execute: async (args, api, context) => {
-      const id = api.conversationId;
-      const [bound, prior] = await Promise.all([
-        api.snapshot(Bound, id, context),
-        host.artifacts(id, context),
-      ]);
-      const before = JSON.stringify(bound ?? {});
-      const ctx: Context = {
-        ...host.clients(context.abortSignal),
-        binding: { ...(bound ?? {}) },
-        artifacts: { prior, produced: [] },
-      };
-      let value: unknown;
-      try {
-        value = await tool.run(args, ctx);
-      } catch (err) {
-        value = fail(`Tool '${tool.name}' raised: ${(err as Error)?.message ?? err}`);
-      }
-      const submitted = submittedBy(tool.name, value);
-      const text =
-        value instanceof Outcome
-          ? value.text
-          : typeof value === "string"
-            ? value
-            : rendered({ data: claim(value, ctx) });
-      const rebound = JSON.stringify(ctx.binding) !== before;
-      const watched = submitted.filter((w) => !isTerminal(w.kind, w.state));
-      if (rebound || watched.length) {
-        await api.commit(async (tx) => {
-          if (rebound) {
-            Object.assign(await tx.doc(Bound, id), ctx.binding);
-          }
-          for (const w of watched) {
-            await tx.createTask(host.watch, w, {
-              ownership: { kind: "conversation" },
-              conversationId: id,
-              background: true,
-            });
-          }
-        }, context);
-      }
-      const guard = value instanceof Outcome ? value.guard : undefined;
-      const details: Details = {
-        ...(ctx.artifacts.produced.length ? { artifacts: ctx.artifacts.produced } : {}),
-        ...(guard ? { refused: true, guard } : {}),
-      };
-      return {
-        content: [{ type: "text", text }],
-        isError: value instanceof Outcome && value.isError,
-        ...(Object.keys(details).length ? { details: details as JsonObject } : {}),
-      };
-    },
-  });
 }

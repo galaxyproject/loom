@@ -62,8 +62,12 @@ export interface VendorSkillsSource {
   catalog: unknown;
   /** Parsed `_manifest.json`; checked here exactly as the file is. */
   manifest: unknown;
-  /** Text of one manifest target, or null when the tree has no such file. */
-  read(target: string): string | null;
+  /**
+   * Text of one manifest target, or null when the tree has no such file. A shell that fetches
+   * bodies on demand (the browser worker keeps 2.3 MB of skills out of its bundle) answers with a
+   * promise.
+   */
+  read(target: string): string | null | Promise<string | null>;
 }
 
 let installedSource: VendorSkillsSource | null = null;
@@ -113,7 +117,10 @@ function ownedTargets(repoName: string): string[] {
  * Read one file for a bundled repo. Never touches the network, so a miss lists
  * that repo's own skills rather than every file in the package.
  */
-export function readBundledRepoFile(repo: { name: string }, rawPath: string): VendorReadResult {
+export async function readBundledRepoFile(
+  repo: { name: string },
+  rawPath: string,
+): Promise<VendorReadResult> {
   const owned = ownedTargets(repo.name);
   // What to offer on a miss. A repo in the router has a catalog and its skills
   // are the useful answer; a repo that is deliberately out of the router has
@@ -128,7 +135,7 @@ export function readBundledRepoFile(repo: { name: string }, rawPath: string): Ve
   if (!owned.includes(target)) {
     return { ok: false, error: `No file "${rawPath}" in ${repo.name}`, available };
   }
-  const res = readVendoredSkill(target);
+  const res = await readVendoredSkill(target);
   return res.ok ? res : { ...res, available };
 }
 
@@ -221,8 +228,8 @@ const LEGACY_FLAT_PATHS: Record<string, string> = Object.assign(Object.create(nu
 export type VendorReadResult =
   { ok: true; text: string } | { ok: false; error: string; available: string[] };
 
-/** Read one vendored file. Never touches the network. */
-export function readVendoredSkill(rawPath: string): VendorReadResult {
+/** Read one vendored file. Never touches the network; the package read stays synchronous inside. */
+export async function readVendoredSkill(rawPath: string): Promise<VendorReadResult> {
   const available = () => (readVendorManifest()?.files ?? []).map((f) => f.target);
   if (typeof rawPath !== "string") {
     return { ok: false, error: `Invalid vendored skill path`, available: available() };
@@ -238,7 +245,7 @@ export function readVendoredSkill(rawPath: string): VendorReadResult {
         available: available(),
       };
     }
-    const text = installedSource.read(clean);
+    const text = await installedSource.read(clean);
     return text === null
       ? { ok: false, error: `No vendored file "${rawPath}"`, available: available() }
       : { ok: true, text };

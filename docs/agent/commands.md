@@ -7,6 +7,7 @@ Orbit registers a small set of tools at the extension layer:
 | Category                     | Tools                                                                                            |
 | ---------------------------- | ------------------------------------------------------------------------------------------------ |
 | GTN tutorials                | `gtn_search`, `gtn_fetch`                                                                        |
+| Sequencing runs              | `ena_runs` (exact FASTQ URLs, checksums and layout for an ENA/SRA accession)                     |
 | Skills                       | `skills_fetch` (SKILL.md / reference docs; `repo: "foundry"` reads bundled Foundry casts)        |
 | Saved Galaxy output          | `galaxy_read_output` (search/page an oversized Galaxy response held for this session)            |
 | Saved MCP output             | `mcp_read_output` (search/page an oversized brc-analytics MCP response pi already saved)         |

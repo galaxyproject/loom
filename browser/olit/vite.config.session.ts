@@ -23,6 +23,9 @@ export default defineConfig({
     rollupOptions: { output: { entryFileNames: "session.mjs", inlineDynamicImports: true } },
   },
   define: {
+    // Inlined here, a CLI script's `if (import.meta.main)` (lessons/validate.mjs) would see the
+    // bundle's own entry and run: nothing bundled is ever the entry.
+    "import.meta.main": "false",
     "process.env.build_commit": JSON.stringify(buildCommit()),
     "process.env.build_built": JSON.stringify(new Date().toISOString()),
   },

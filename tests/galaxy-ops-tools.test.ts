@@ -18,6 +18,7 @@ import {
   renderOperation,
   snake,
   toolFromOperation,
+  type GalaxyExtra,
 } from "../extensions/orbit/galaxy-ops-tools";
 import { resetGalaxyOpsVersion, setGalaxyTransport } from "../extensions/orbit/galaxy-api";
 import {
@@ -30,7 +31,6 @@ import {
   registerGalaxyTools,
   registeredGalaxyTools,
   setGalaxyToolSource,
-  type GalaxyTool,
 } from "../extensions/orbit/galaxy-tool-source";
 import { profileFromEnv, setCapabilityProfile } from "../shared/capability-profile.js";
 import { CREDENTIALS, json, recordGalaxy } from "./galaxy-test-helpers";
@@ -349,11 +349,12 @@ describe("running an operation", () => {
 
 describe("the default source", () => {
   const bare = () => setCapabilityProfile(profileFromEnv({}));
-  const stub = (name: string): GalaxyTool => ({
+  const stub = (name: string): GalaxyExtra => ({
     name,
     label: name,
     description: `stub ${name}`,
     parameters: Type.Object({}),
+    annotations: { readOnlyHint: true },
     execute: async () => ({ content: [{ type: "text", text: "{}" }], details: {} }),
   });
 
@@ -382,6 +383,14 @@ describe("the default source", () => {
     expect(tools).toHaveLength(48);
   });
 
+  it("puts a shell's extra in place of the entry's operation of the same name", () => {
+    const upload = stub("upload_file");
+    const tools = createGalaxyOpsToolSource({ extras: [upload] }).tools();
+    const named = tools.filter((t) => t.name === "upload_file");
+    expect(named).toEqual([upload]);
+    expect(tools).toHaveLength(createGalaxyOpsToolSource().tools().length);
+  });
+
   // Every tool starts with galaxy-ops' own line for its operation; the three a bridge widens say
   // what the bridge adds after it.
   it("describes each tool in galaxy-ops' words, a widened one with its bridge's sentence after", () => {
@@ -408,11 +417,34 @@ describe("the default source", () => {
     }
   });
 
-  it("refuses an extra the entry already has", () => {
+  it("registers an extra named like an entry operation once, as the shell's", () => {
     bare();
-    setGalaxyToolSource(createGalaxyOpsToolSource({ extras: [stub("upload_file")] }));
+    const upload = stub("upload_file");
+    setGalaxyToolSource(createGalaxyOpsToolSource({ extras: [upload] }));
+    const registerTool = vi.fn();
+    registerGalaxyTools({ registerTool } as unknown as ExtensionAPI);
+    const named = registerTool.mock.calls.filter(([tool]) => tool.name === "upload_file");
+    expect(named).toHaveLength(1);
+  });
+
+  it("refuses an extra in place of an operation with a policy or a destructive gate", () => {
+    bare();
+    expect(() => createGalaxyOpsToolSource({ extras: [stub("update_page")] }).tools()).toThrow(
+      /can't stand in for update_page/,
+    );
+    const destructive = OPS.find((o) => o.destructive)!;
+    expect(() => createGalaxyOpsToolSource({ extras: [stub(destructive.name)] }).tools()).toThrow(
+      /can't stand in for/,
+    );
+  });
+
+  it("still refuses two extras of one name", () => {
+    bare();
+    setGalaxyToolSource(
+      createGalaxyOpsToolSource({ extras: [stub("lineage_probe"), stub("lineage_probe")] }),
+    );
     expect(() => registerGalaxyTools({ registerTool: vi.fn() } as unknown as ExtensionAPI)).toThrow(
-      "[galaxy-tools] two Galaxy tools are named upload_file",
+      "[galaxy-tools] two Galaxy tools are named lineage_probe",
     );
   });
 });

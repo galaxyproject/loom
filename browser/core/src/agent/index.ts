@@ -6,7 +6,7 @@
 export type { Artifact, ArtifactOf } from "../artifacts/kinds";
 export { DEFAULT_BRAND, type Brand } from "./brand";
 export { query, segment, type Galaxy, type Web } from "./galaxy";
-export type { Annotate } from "./ops";
+export type { Annotate } from "./tools";
 export { quote } from "./quote";
 export { isSessionDocument, SCHEMA, type SessionDocument } from "./saved";
 export * as tables from "./tables";

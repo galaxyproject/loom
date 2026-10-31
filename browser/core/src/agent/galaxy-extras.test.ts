@@ -1,0 +1,279 @@
+import { describe, expect, it } from "vitest";
+
+import { connectWeb, type Galaxy } from "./galaxy";
+import { galaxyTools, MAX_DOWNLOAD_BYTES, PREVIEW_LINES } from "./galaxy-extras";
+import { Outcome, type Context, type Python } from "./tool";
+
+type Fake = Partial<
+  Record<"get" | "post" | "put" | "bytes", (path: string, body?: any) => Promise<any>>
+>;
+
+function files(): Python & { fs: Map<string, Uint8Array> } {
+  const fs = new Map<string, Uint8Array>();
+  return {
+    fs,
+    run: async () => "",
+    write: async (path, data) => void fs.set(path, data),
+    read: async (path) => fs.get(path),
+  };
+}
+
+function context(galaxy: Fake, extra: Partial<Context> = {}): Context {
+  return {
+    galaxy: galaxy as unknown as Galaxy,
+    web: connectWeb(),
+    python: files(),
+    binding: {},
+    artifacts: { prior: [], produced: [] },
+    ...extra,
+  } as Context;
+}
+
+const tool = (name: string) => galaxyTools().find((t) => t.name === name)!;
+
+const run = (name: string, args: Record<string, unknown>, ctx: Context) =>
+  tool(name).run(args, ctx) as Promise<any>;
+
+/** The text of a refusal, asserting it was recorded as a failure. */
+function refused(out: unknown): string {
+  expect(out).toBeInstanceOf(Outcome);
+  expect((out as Outcome).isError).toBe(true);
+  return (out as Outcome).text;
+}
+
+describe("dataset filesystem", () => {
+  const TABLE =
+    "Latitude\tLongitude\n" +
+    Array.from({ length: 119 }, (_, i) => `${i + 1}.5\t-${i + 1}.25`).join("\n");
+  const BINARY = new Uint8Array([
+    0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xde, 0xad, 0xbe, 0xef, 0x00, 0x80,
+    0x81,
+  ]);
+  const encode = (text: string) => new TextEncoder().encode(text);
+
+  function dataset(
+    content: string | Uint8Array,
+    {
+      state = "ok" as string | null,
+      size,
+      details,
+      chunkable = true,
+    }: {
+      state?: string | null;
+      size?: number;
+      details?: Record<string, unknown>;
+      chunkable?: boolean;
+    } = {},
+  ) {
+    const fetched: string[] = [];
+    const posted: [string, any][] = [];
+    const python = files();
+    const ctx = context(
+      {
+        get: async (path) => {
+          fetched.push(path);
+          if (path.includes("ck_size=")) {
+            if (!chunkable) {
+              throw new Error("Dataset appears to contain binary data");
+            }
+            const text = typeof content === "string" ? content : "";
+            const cut = text.slice(0, Number(path.split("ck_size=")[1]));
+            const aligned = cut.slice(0, cut.lastIndexOf("\n") + 1) || cut;
+            return { ck_data: aligned, offset: aligned.length };
+          }
+          return {
+            id: "d",
+            state,
+            // Galaxy's tabular datatypes, and only they, carry column metadata.
+            ...(chunkable ? { metadata_column_types: ["str", "int"] } : {}),
+            ...(details ?? {}),
+            ...(size === undefined ? {} : { file_size: size }),
+          };
+        },
+        bytes: async (path) => {
+          fetched.push(path);
+          return typeof content === "string" ? encode(content) : content;
+        },
+        post: async (path, body) => {
+          posted.push([path, body]);
+          return { ok: true };
+        },
+      },
+      { python },
+    );
+    const download = (id: string) => run("download_dataset", { dataset_id: id }, ctx);
+    const upload = (args: Record<string, unknown>) => run("upload_file", args, ctx);
+    return { fetched, posted, fs: python.fs, download, upload };
+  }
+
+  it("writes a dataset to the filesystem rather than returning it inline", async () => {
+    const d = dataset(TABLE);
+    const out = await d.download("abc123");
+    expect(out.path).toBe("/data/abc123.dat");
+    expect(new TextDecoder().decode(d.fs.get(out.path))).toBe(TABLE);
+    expect(out).not.toHaveProperty("content");
+  });
+
+  it("reads the whole file, however much the preview shows", async () => {
+    // A sum over the preview is quietly wrong; run_python has to see every row.
+    const d = dataset(TABLE, { size: encode(TABLE).length });
+    const out = await d.download("whole");
+    expect(new TextDecoder().decode(d.fs.get(out.path))).toBe(TABLE);
+    expect(out.partial).toBeFalsy();
+  });
+
+  it("caps the preview and says so", async () => {
+    const out = await dataset(TABLE).download("capped");
+    expect(out.preview.split("\n")).toHaveLength(PREVIEW_LINES);
+    expect(out.truncated).toBe(true);
+    expect(out.lines).toBe(TABLE.split("\n").length);
+    expect(out.bytes).toBe(encode(TABLE).length);
+  });
+
+  it("does not mark a short dataset truncated", async () => {
+    const out = await dataset("a\tb\n1\t2").download("short");
+    expect(out.truncated).toBe(false);
+    expect(out.preview).toBe("a\tb\n1\t2");
+  });
+
+  it("uploads a locally written file back", async () => {
+    const d = dataset(TABLE);
+    const downloaded = await d.download("roundtrip");
+    const result = await d.upload({ path: downloaded.path, history_id: "h1" });
+    expect(result).toEqual({ ok: true });
+    const [path, payload] = d.posted[0];
+    expect(path).toBe("api/tools/fetch");
+    const element = payload.targets[0].elements[0];
+    expect(element.src).toBe("pasted");
+    expect(element.paste_content).toBe(TABLE);
+    expect(element.name).toBe("roundtrip.dat");
+    expect(payload.history_id).toBe("h1");
+  });
+
+  it("reports a missing path as an error, not a crash", async () => {
+    const d = dataset("");
+    expect(refused(await d.upload({ path: "/data/does-not-exist.dat" }))).toContain("No such file");
+    expect(d.posted).toEqual([]);
+  });
+
+  it("keeps binary content byte-identical on disk", async () => {
+    const d = dataset(BINARY);
+    const out = await d.download("bam1");
+    expect(out.binary).toBe(true);
+    expect(out.preview).toBeNull();
+    expect(out.lines).toBeNull();
+    expect(out.bytes).toBe(BINARY.length);
+    expect(d.fs.get(out.path)).toEqual(BINARY);
+  });
+
+  it("still reports a text dataset as text", async () => {
+    const out = await dataset(TABLE).download("txt1");
+    expect(out.binary).toBe(false);
+    expect(out.preview.startsWith("Latitude\tLongitude")).toBe(true);
+  });
+
+  it("refuses to upload binary rather than corrupting it", async () => {
+    const d = dataset(BINARY);
+    const downloaded = await d.download("bam2");
+    expect(refused(await d.upload({ path: downloaded.path })).toLowerCase()).toContain("binary");
+    expect(d.posted).toEqual([]);
+  });
+
+  it("returns an oversized dataset as a flagged prefix", async () => {
+    const d = dataset(TABLE, { size: MAX_DOWNLOAD_BYTES + 1 });
+    const out = await d.download("huge");
+    expect(out.partial).toBe(true);
+    expect(out.bytes_total).toBe(MAX_DOWNLOAD_BYTES + 1);
+    expect(out.bytes).toBeLessThan(out.bytes_total);
+    expect(d.fetched.some((path) => path.endsWith("/display"))).toBe(false);
+  });
+
+  it("aligns a prefix on lines", async () => {
+    const d = dataset(TABLE, { size: MAX_DOWNLOAD_BYTES + 1 });
+    const out = await d.download("aligned");
+    const body = new TextDecoder().decode(d.fs.get(out.path));
+    expect(body.endsWith("\n")).toBe(true);
+    for (const row of body.split("\n").slice(1).filter(Boolean)) {
+      expect(row.split("\t")).toHaveLength(2);
+    }
+  });
+
+  it("refuses an oversized dataset Galaxy cannot serve in parts, before fetching any of it", async () => {
+    const d = dataset(BINARY, {
+      size: MAX_DOWNLOAD_BYTES + 1,
+      chunkable: false,
+      details: { extension: "bam" },
+    });
+    expect(refused(await d.download("bigbam"))).toContain('cannot serve "bam" data in parts');
+    expect(d.fetched.some((path) => path.includes("display"))).toBe(false);
+  });
+
+  it("still downloads a dataset at the limit", async () => {
+    const out = await dataset(TABLE, { size: MAX_DOWNLOAD_BYTES }).download("atlimit");
+    expect(out.path).toBeTruthy();
+    expect(out).not.toHaveProperty("partial");
+  });
+
+  it("states the format Galaxy parsed", async () => {
+    const out = await dataset(TABLE, {
+      details: { extension: "tabular", metadata_delimiter: "\t" },
+    }).download("abc123");
+    expect(out.extension).toBe("tabular");
+    expect(out.delimiter).toBe("\t");
+  });
+
+  it("states a comma delimiter", async () => {
+    const out = await dataset("a,b\n1,2\n", {
+      details: { extension: "csv", metadata_delimiter: "," },
+    }).download("abc123");
+    expect(out.delimiter).toBe(",");
+  });
+
+  it("reports no delimiter for a format without one", async () => {
+    const out = await dataset(">seq\nACGT\n", { details: { extension: "fasta" } }).download(
+      "abc123",
+    );
+    expect(out.extension).toBe("fasta");
+    expect(out).not.toHaveProperty("delimiter");
+  });
+
+  it("downloads a record without metadata", async () => {
+    const out = await dataset(TABLE).download("abc123");
+    expect(out).not.toHaveProperty("extension");
+    expect(out).not.toHaveProperty("delimiter");
+  });
+
+  it("refuses a dataset still running rather than reading it", async () => {
+    const d = dataset(TABLE, { state: "running" });
+    const out = refused(await d.download("abc123"));
+    expect(out).toContain('not "ok"');
+    expect(out).toContain("running");
+    expect(d.fs.size).toBe(0);
+  });
+
+  it("refuses an errored dataset", async () => {
+    expect(refused(await dataset(TABLE, { state: "error" }).download("abc123"))).toContain(
+      'not "ok"',
+    );
+  });
+
+  it("refuses a dataset that states no state", async () => {
+    expect(refused(await dataset(TABLE, { state: null }).download("abc123"))).toContain(
+      "state null",
+    );
+  });
+
+  it("downloads an ok dataset", async () => {
+    const out = await dataset(TABLE).download("abc123");
+    expect(out.path).toBe("/data/abc123.dat");
+    expect(out.lines).toBe(120);
+  });
+});
+
+describe("recommend_biocontainer", () => {
+  it("refuses an invalid package list in prose", async () => {
+    expect(refused(await run("recommend_biocontainer", { packages: [] }, context({})))).toContain(
+      "at least one",
+    );
+  });
+});

@@ -5,9 +5,7 @@
 // carries its own "### Steps" would leave the old one behind, and a fenced shell comment would
 // cut a section mid-fence. section_content with no subsection headings of its own rewrites only
 // the section's lead, the text above its first subsection, so an intro edit under a page's "#"
-// title cannot wipe every plan beneath it. The browser's galaxy-ops fork still cuts flat at
-// every heading, so the browser's update_page hands it a whole-page write of this cut instead;
-// browser/core/src/agent/parity.test.ts pins where the two differ until the fork is deleted.
+// title cannot wipe every plan beneath it. tests/page-markdown-fixtures.test.ts pins the cuts.
 
 const HEADING = /^(#{1,6})\s/;
 // A backtick fence's info string holds no backtick (CommonMark), so "```x``` is code" is prose.

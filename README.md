@@ -703,6 +703,7 @@ Orbit registers a small set of extension tools. Plans, decisions, results, and i
 | Category                       | Tools                                                                                     |
 | ------------------------------ | ----------------------------------------------------------------------------------------- |
 | **GTN tutorials**              | `gtn_search`, `gtn_fetch`                                                                 |
+| **Sequencing runs**            | `ena_runs` (exact FASTQ URLs, checksums and layout for an ENA/SRA accession)              |
 | **Galaxy invocations**         | `galaxy_invocation_record`, `galaxy_invocation_check_all`, `galaxy_invocation_check_one`  |
 | **Galaxy run proposals**       | `loom_propose` (you approve with `/approve`)                                              |
 | **Skills**                     | `skills_fetch` (SKILL.md / reference docs; `repo: "foundry"` reads bundled Foundry casts) |

@@ -12,10 +12,11 @@ import { Binding, json, text } from "@galaxyproject/orbit-browser/testing";
 import { visualizationStore } from "./fake-visualizations";
 import { olitFlavor } from "./flavor";
 import { connectGalaxy } from "@galaxyproject/orbit-browser/testing";
-import { artifactsOf } from "@galaxyproject/orbit-browser/artifacts";
+import { artifactsOf, registerArtifactKinds } from "@galaxyproject/orbit-browser/artifacts";
 import { artifactsIn, context, Runtime } from "@galaxyproject/orbit-browser/testing";
 import type { SessionDocument } from "@galaxyproject/orbit-browser/agent";
 import { usageTotals } from "@galaxyproject/orbit-browser/testing";
+import { Headless } from "@galaxyproject/orbit-browser/node";
 import { title } from "../saved-session";
 import type { Python } from "@galaxyproject/orbit-browser/agent";
 
@@ -56,19 +57,53 @@ const chart: Message = {
 const python: Python = { run: async () => "", write: async () => {}, read: async () => undefined };
 const opened: Runtime[] = [];
 
+const CONFIG = { galaxy_root: ROOT, ai_base_url: LLM, ai_model: "m", ai_api_key: KEY };
+
+// The worker registers the flavor's artifact kinds; here, the test does.
+registerArtifactKinds(olitFlavor.artifactKinds ?? []);
+
+/** A browser's storage and conversations, without a brain: what a save keeps is all in them. */
 async function machine(storage: Storage = new MemoryStorage()) {
   const runtime = await Runtime.open({
     storage,
-    config: { galaxy_root: ROOT, ai_base_url: LLM, ai_model: "m", ai_api_key: KEY },
-    python,
-    flavor: olitFlavor,
+    config: CONFIG,
+    brand: olitFlavor.brand,
+    extensions: [],
   });
   opened.push(runtime);
   return runtime;
 }
 
-async function say(runtime: Runtime, conversation: Conversation, text: string) {
-  await (await runtime.submit(conversation, text)).wait(context);
+/** A turn as the log keeps it: the user's message and the agent's answer. */
+async function say(_runtime: Runtime, conversation: Conversation, text: string) {
+  await conversation.commit(async (tx) => {
+    await tx.appendEntry(conversation.id, {
+      kind: "pi.user",
+      model: [{ role: "user", content: text, timestamp: 0 }],
+    });
+    await tx.appendEntry(conversation.id, {
+      kind: "pi.assistant",
+      model: [
+        {
+          role: "assistant",
+          content: [{ type: "text", text: `answer to ${text}` }],
+          provider: "openai",
+          model: "m",
+          stopReason: "stop",
+          timestamp: 0,
+        } as unknown as Message,
+      ],
+    });
+  }, context);
+}
+
+const sessions: Headless[] = [];
+
+/** A machine running Orbit's brain, for what only a real turn shows: usage and the prompt sent. */
+async function running(saved?: { id: string; document: SessionDocument }) {
+  const session = await Headless.open(CONFIG, { python, flavor: olitFlavor, saved });
+  sessions.push(session);
+  return session;
 }
 
 const said = (document: SessionDocument) =>
@@ -80,10 +115,11 @@ const said = (document: SessionDocument) =>
 
 afterEach(async () => {
   for (const runtime of opened.splice(0)) await runtime.close();
+  for (const session of sessions.splice(0)) await session.close();
   vi.unstubAllGlobals();
 });
 
-describe("a saved Olit visualization is a restorable conversation", () => {
+describe("a saved Olit visualization is a restorable conversation", { timeout: 30_000 }, () => {
   it("comes back whole on another machine", async () => {
     const { saved } = world();
     const one = await machine();
@@ -144,15 +180,17 @@ describe("a saved Olit visualization is a restorable conversation", () => {
 
   it("keeps the usage it was saved with when it continues on another machine", async () => {
     const { saved } = world();
-    const one = await machine();
-    const conversation = await one.create({ historyId: "h1" });
-    await say(one, conversation, "first");
-    const id = await saved.save(await one.export(conversation));
+    const one = await running();
+    await one.turn("first");
+    const id = await saved.save(await one.export());
+    await sessions.pop()!.close();
 
-    const two = await machine();
-    const reopened = await two.open((await saved.load(id))!, id);
-    await say(two, reopened, "second");
-    expect((await two.export(reopened)).session.usage).toEqual({
+    const two = await running({ id, document: (await saved.load(id))! });
+    await two.turn("second");
+    const exported = await two.export();
+    // Two real turns, one on each machine.
+    expect(exported.session.turn).toBe(2);
+    expect(exported.session.usage).toEqual({
       input: 20,
       output: 10,
       cost: null,
@@ -179,15 +217,15 @@ describe("a saved Olit visualization is a restorable conversation", () => {
 
   it("restores under the prompt the plugin ships today, not the one it started on", async () => {
     const { requests, saved } = world();
-    const one = await machine();
-    const first = await one.create({});
-    await say(one, first, "hello");
-    const document = await one.export(first);
+    const one = await running();
+    await one.turn("hello");
+    const document = await one.export();
     expect(document.entries.some((e) => e.kind === "pi.system")).toBe(false);
+    await sessions.pop()!.close();
 
-    const two = await machine();
-    const reopened = await two.open((await saved.load(await saved.save(document)))!, "v1");
-    await say(two, reopened, "again");
+    const id = await saved.save(document);
+    const two = await running({ id, document: (await saved.load(id))! });
+    await two.turn("again");
     const sent = requests.at(-1)!.messages;
     expect(sent[0].role).toBe("system");
     expect(sent[0].content).toContain("You are Olit.");

@@ -141,15 +141,8 @@ describe("the core", () => {
     // chat panel, which a walk that stopped at the core's own imports would miss.
     expect(reached).toEqual(
       expect.arrayContaining([
-        join(SHARED, "confusables.js"),
-        join(SHARED, "sra-import.js"),
-        join(SHARED, "record-excerpt.js"),
-        join(SHARED, "galaxy-page-cells.js"),
         join(SHARED, "redirect-guard.js"),
         join(SHARED, "skills-router.js"),
-        join(SHARED, "galaxy-guidance.js"),
-        join(SHARED, "gtn.js"),
-        join(SHARED, "prompt-blocks.js"),
         join(SHARED, "team-dispatch-contract.js"),
         join(SHARED, "orbit-shell-contract.js"),
       ]),

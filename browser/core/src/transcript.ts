@@ -5,7 +5,12 @@ import type { AgentEvent, EntryRecord } from "@earendil-works/pi-durable";
 import { artifactsOf, type Artifact } from "./artifacts/kinds";
 
 import { DEFAULT_BRAND, followUpMark, type Brand } from "./agent/brand";
-import { EMPTY_REPLY } from "./agent/markers";
+
+/**
+ * Orbit's brain marks its follow-ups with its own product name, not the flavor's; a conversation
+ * saved before the rename carries the old one.
+ */
+const ORBIT_FOLLOW_UP = /^\[(?:Orbit|Loom) automatic Galaxy follow-up\]/;
 import { usageTotals } from "./agent/saved";
 import type { ChatPanel } from "../../../app/src/renderer/chat/chat-panel";
 import { StreamedReply } from "./streamed-reply";
@@ -26,7 +31,6 @@ type Chat = Pick<
 /** How the run that just ended went, for the one line that explains a quiet ending. */
 export interface RunOutcome {
   spoke: boolean;
-  done: boolean;
   aborted: boolean;
   /** The run spent its turns before it answered. */
   exhausted: boolean;
@@ -77,7 +81,7 @@ export class ChatView {
   private speaking = false;
   private reply = new StreamedReply();
   private cards = new Set<string>();
-  private run: RunOutcome = { spoke: false, done: false, aborted: false, exhausted: false };
+  private run: RunOutcome = { spoke: false, aborted: false, exhausted: false };
   private restoring = false;
   /** What the user has written in the conversation shown. */
   turns = 0;
@@ -110,7 +114,7 @@ export class ChatView {
         const totals = Object.values(event.usage.models ?? {});
         this.hooks.usage(usageTotals(totals));
       } else if (event.type === "run_start") {
-        this.run = { spoke: false, done: false, aborted: false, exhausted: false };
+        this.run = { spoke: false, aborted: false, exhausted: false };
         this.hooks.busy(true);
         this.chat.showThinking();
       } else if (event.type === "run_end") {
@@ -188,9 +192,9 @@ export class ChatView {
       this.hooks.info("Summarized the earlier conversation to make room.");
     } else if (message.role === "user") {
       const text = textOf(message);
-      if (text.startsWith(followUpMark(this.brand))) {
+      if (text.startsWith(followUpMark(this.brand)) || ORBIT_FOLLOW_UP.test(text)) {
         this.hooks.info("Checking the Galaxy results that just landed.");
-      } else if (text !== EMPTY_REPLY) {
+      } else {
         this.turns += 1;
         this.hooks.wrote();
         this.chat.addUserMessage(text);
@@ -213,14 +217,8 @@ export class ChatView {
       }
     } else if (message.role === "toolResult") {
       const text = textOf(message);
-      // `finish` puts the model's closing words in a tool argument, not in content.
-      if (message.toolName === "finish" && !message.isError && text) {
-        this.run.done = true;
-        this.say(text);
-      } else {
-        this.card(message.toolCallId, message.toolName);
-        this.chat.updateToolCard(message.toolCallId, message.isError ? "error" : "done", text);
-      }
+      this.card(message.toolCallId, message.toolName);
+      this.chat.updateToolCard(message.toolCallId, message.isError ? "error" : "done", text);
       const made = artifactsOf([entry]);
       if (made.length && !this.restoring) this.hooks.artifacts(made, false);
     }

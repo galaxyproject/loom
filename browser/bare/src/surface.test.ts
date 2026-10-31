@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 
 import type { Python } from "@galaxyproject/orbit-browser/agent";
 import { Headless, type HeadlessConfig } from "@galaxyproject/orbit-browser/node";
-import { flavoredSkills, json, agentTools, text } from "@galaxyproject/orbit-browser/testing";
+import { json, text } from "@galaxyproject/orbit-browser/testing";
 
 const ROOT = "http://galaxy.test/";
 const LLM = "http://llm.test/v1";
@@ -15,7 +15,9 @@ const SNAPSHOTS = "./__surface__";
 const BARE = {};
 
 const python: Python = { run: async () => "", write: async () => {}, read: async () => undefined };
-const pretty = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
+/** As written, with the session's own directory (it varies per run) named for what it is. */
+const pretty = (value: unknown) =>
+  `${JSON.stringify(value, null, 2)}\n`.replaceAll(opened[0]?.root ?? "\0", "<session>");
 const opened: Headless[] = [];
 
 async function firstRequest(over: Partial<HeadlessConfig>) {
@@ -29,8 +31,15 @@ async function firstRequest(over: Partial<HeadlessConfig>) {
     return json(new URL(request.url).pathname === "/api/version" ? { version_major: "26.1" } : {});
   });
   const session = await Headless.open(
-    { galaxy_root: ROOT, ai_base_url: LLM, ai_model: "test-model", ai_api_key: "sk-x", ...over },
-    { python, pollMs: 10, flavor: BARE },
+    {
+      galaxy_root: ROOT,
+      ai_base_url: LLM,
+      ai_model: "test-model",
+      ai_api_key: "sk-x",
+      poll_ms: 10,
+      ...over,
+    },
+    { python, flavor: BARE },
   );
   opened.push(session);
   await session.turn("hi");
@@ -64,17 +73,4 @@ describe("the first request from the core alone", () => {
       );
     });
   }
-});
-
-describe("what the core offers on its own", () => {
-  it("routes to the core's skills", async () => {
-    await expect(pretty({ router: flavoredSkills(BARE).routerText() })).toMatchFileSnapshot(
-      `${SNAPSHOTS}/skills.json`,
-    );
-  });
-
-  it("composes the core's tools", async () => {
-    const tools = agentTools(flavoredSkills(BARE), BARE).map((t) => t.name);
-    await expect(pretty(tools)).toMatchFileSnapshot(`${SNAPSHOTS}/tools.json`);
-  });
 });

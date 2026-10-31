@@ -1,8 +1,8 @@
 // Galaxy directive arguments that name an object by something other than its encoded id. Galaxy
 // resolves a directive's id when the page renders, so `history_dataset_id=3` (a hid) or
 // `history_id=my-history` is saved without complaint and then embeds nothing. Catching it before
-// the write is the only point where the model can still be told. Kept in step with the browser's
-// galaxy-ops fork by browser/core/src/agent/parity.test.ts, so both shells refuse the same pages.
+// the write is the only point where the model can still be told. Every shell refuses the same
+// pages through it; tests/page-markdown-fixtures.test.ts pins what it finds.
 
 const ID_ARGUMENTS = [
   "history_id",

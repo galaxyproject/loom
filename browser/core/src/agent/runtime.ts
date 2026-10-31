@@ -9,28 +9,27 @@ import {
   type ConversationId,
   type Cursor,
   type EntryRecord,
+  type Extension,
   type Storage,
-  type Submission,
 } from "@earendil-works/pi-durable";
 
-import { artifactsOf, registerArtifactKinds, type Artifact } from "../artifacts/kinds";
-import type { AskFor } from "./destructive";
+import { artifactsOf, type Artifact } from "../artifacts/kinds";
 import { Binding, FollowUps, Sessions } from "./documents";
 import { DEFAULT_BRAND, type Brand } from "./brand";
-import { DEFAULT_CAPABILITIES, MAX_STEPS, agentExtension } from "./extension";
-import { connectGalaxy, connectWeb, type Galaxy } from "./galaxy";
+import { connectGalaxy, type Galaxy } from "./galaxy";
 import { agentModels } from "./model";
-import { recordsOn, type RecordSummary } from "./notebook";
-import { GALAXY_READY, GALAXY_UNREACHABLE, systemText, type GalaxyStatus } from "./prompt";
+import type { RecordSummary } from "./records";
 import { probeWindow, resolve, type LlmConfig, type Target } from "./providers";
-import { editRecord } from "./record-write";
 import { modelsOf, SCHEMA, thisBuild, usageTotals, type SessionDocument } from "./saved";
-import { flavoredSkills } from "./skills";
-import type { Capability, Python } from "./tool";
-import { galaxyOps, agentTools, type AgentFlavor } from "./tools";
-import { galaxyWatch, WATCH_TASK, type Watched } from "./watch";
+import type { Capability } from "./tool";
 
 export const context = BACKGROUND_CONTEXT;
+
+export { GALAXY_READY, GALAXY_UNREACHABLE, type GalaxyStatus } from "./galaxy-status";
+import { GALAXY_READY, GALAXY_UNREACHABLE, type GalaxyStatus } from "./galaxy-status";
+
+/** The model calls one run may make before it stops, unless the config says otherwise. */
+export const MAX_TURNS = 100;
 
 /** Earlier artifacts a tool can place; a spec carries its rows, so few are offered. */
 const ARTIFACT_LIMIT = 20;
@@ -73,20 +72,22 @@ export interface RuntimeConfig extends LlmConfig {
   ai_compaction?: boolean;
   capabilities?: Capability[];
   max_steps?: number;
+  /** How often the Orbit brain's watch polls Galaxy at first; tests and drives shorten it. */
+  poll_ms?: number;
 }
 
 export interface RuntimeOptions {
   storage: Storage;
   config: RuntimeConfig;
-  python: Python;
   /** Where a headless run reads provider keys; a browser has none. */
   env?: Record<string, string | undefined>;
-  /** Present when a user can approve a destructive operation. */
-  ask?: AskFor;
-  /** Galaxy work is polled this often. */
-  pollMs?: number;
-  /** What a flavor adds: tools, skills, result notes, prompt sections and artifact kinds. */
-  flavor?: AgentFlavor;
+  /** Whose runtime: the tag its warnings carry. */
+  brand?: Brand;
+  /**
+   * The brain the conversations run on (Orbit's sealed extension and the shell's tasks). The model,
+   * compaction, storage and the conversations are the runtime's.
+   */
+  extensions: Extension[];
 }
 
 /** Where a new conversation works, as the page or the harness knows it. */
@@ -120,13 +121,15 @@ interface Current {
 }
 
 /**
- * The agent on pi-durable: one Harness over one storage with the agent's extension installed,
+ * The agent on pi-durable: one Harness over one storage with the brain's extensions installed,
  * and what a host decides around it: which conversation a history continues, the model in use,
  * and how a Stop holds back follow-ups.
  */
 export class Runtime {
   /** Why Galaxy did not answer when the session opened, when it did not. */
   galaxyProblem?: string;
+  /** The models the runtime connects through, for a brain that looks one up. */
+  models?: Pick<ReturnType<typeof agentModels>["models"], "getModel">;
   private constructor(
     readonly harness: Harness,
     readonly galaxy: Galaxy,
@@ -137,15 +140,18 @@ export class Runtime {
     readonly brand: Brand,
   ) {}
 
-  static async open({ storage, config, python, env = {}, ask, pollMs, flavor }: RuntimeOptions) {
-    registerArtifactKinds(flavor?.artifactKinds ?? []);
-    const brand = flavor?.brand ?? DEFAULT_BRAND;
-    const galaxyOptions = {
+  static async open({
+    storage,
+    config,
+    env = {},
+    brand = DEFAULT_BRAND,
+    extensions,
+  }: RuntimeOptions) {
+    const galaxy = connectGalaxy({
       root: config.galaxy_root,
       key: config.galaxy_key,
       credentials: config.credentials,
-    };
-    const galaxy = connectGalaxy(galaxyOptions);
+    });
     const { models, connect } = agentModels(env);
     const resolved = await target(config, env);
     const connected = await connect(resolved);
@@ -158,67 +164,16 @@ export class Runtime {
         galaxyProblem = String((e as Error)?.message ?? e);
         return GALAXY_UNREACHABLE;
       });
-    const skills = flavoredSkills(flavor);
-    const capabilities = config.capabilities ?? DEFAULT_CAPABILITIES;
-    let harness: Harness | undefined;
-    const watch = galaxyWatch({
-      galaxy,
-      pollMs,
-      brand,
-      editRecord: async (id, edit) => {
-        const bound = await harness?.snapshot(Binding, id, context);
-        return editRecord({ galaxy, pageId: bound?.pageId }, edit);
-      },
-    });
-    const extension = agentExtension({
-      brand,
-      galaxy,
-      clients: (signal) => ({
-        galaxy: connectGalaxy({ ...galaxyOptions, signal }),
-        web: connectWeb(signal),
-        ops: galaxyOps({ ...galaxyOptions, root: galaxy.root, signal }),
-        python: { ...python, run: (code) => python.run(code, signal) },
-      }),
-      artifacts: async (id, ctx) => {
-        const conversation = await harness!.conversation(id, ctx);
-        return conversation ? artifactsIn(conversation, ctx) : [];
-      },
-      watched: (id, ctx) => watchedBy(harness!, id, ctx),
-      tools: agentTools(skills, flavor),
-      capabilities,
-      secrets: () =>
-        [current.apiKey, config.galaxy_key].filter((s): s is string => typeof s === "string"),
-      prompt: ({ model, provider, datasetId }) => {
-        const sections = flavor?.promptSections?.({ model, provider, datasetId }) ?? {};
-        return [
-          systemText({
-            name: brand.name,
-            model,
-            provider,
-            galaxyStatus,
-            afterIdentity: sections.afterIdentity,
-            terminology: sections.terminology,
-            galaxyRoot: galaxy.root,
-          }),
-          skills.routerText(),
-          ...(sections.afterRouter ?? []),
-        ]
-          .filter(Boolean)
-          .join("\n\n");
-      },
-      ask,
-      watch,
-    });
     const registry = createRegistry();
-    registry.install(extension);
-    harness = await Harness.open(
+    for (const installed of extensions) registry.install(installed);
+    const harness = await Harness.open(
       storage,
       {
         models,
         registry,
         settings: {
           ...LOOP,
-          maxTurns: config.max_steps || MAX_STEPS,
+          maxTurns: config.max_steps || MAX_TURNS,
           get compaction() {
             const reserveTokens =
               current.config.ai_reserve_tokens ||
@@ -241,6 +196,7 @@ export class Runtime {
     );
     const runtime = new Runtime(harness, galaxy, galaxyStatus, current, connect, env, brand);
     runtime.galaxyProblem = galaxyProblem;
+    runtime.models = models;
     // Before scheduling starts, so no run the store holds takes another step unasked.
     await runtime.hold(await runtime.active());
     harness.resume();
@@ -250,6 +206,11 @@ export class Runtime {
   /** The model new requests use. */
   get model() {
     return this.current.model;
+  }
+
+  /** The key the model is reached with, for a brain that scrubs it from what it shows. */
+  get apiKey(): string | undefined {
+    return this.current.apiKey;
   }
 
   /** Switch provider or model for `conversation`, and for every conversation opened after. */
@@ -286,6 +247,16 @@ export class Runtime {
     );
   }
 
+  /** Make `conversation` the one its history continues again, as it was before another took over. */
+  async continues(conversation: Conversation): Promise<void> {
+    const bound = await this.harness.snapshot(Binding, conversation.id, context);
+    if (!bound?.historyId) return;
+    const historyId = bound.historyId;
+    await this.harness.commit(async (tx) => {
+      (await tx.doc(Sessions)).byHistory[historyId] = conversation.id;
+    }, context);
+  }
+
   /** The conversation this browser keeps for the history, now on the dataset it was launched on. */
   async kept(placement: Placement): Promise<Conversation | undefined> {
     const index = await this.harness.snapshot(Sessions, context);
@@ -308,21 +279,6 @@ export class Runtime {
   /** The conversation this history continues, or a new one. */
   async continuing(placement: Placement): Promise<Conversation> {
     return (await this.kept(placement)) ?? this.create(placement);
-  }
-
-  /**
-   * The brand's records attached to the launch history, for a session this browser no longer keeps.
-   */
-  records(historyId: string | undefined): Promise<RecordSummary[]> {
-    return historyId ? recordsOn(this.galaxy, historyId, this.brand) : Promise.resolve([]);
-  }
-
-  /** The user's own message, which lets settled work start runs again. */
-  async submit(conversation: Conversation, text: string): Promise<Submission> {
-    await conversation.commit(async (tx) => {
-      Object.assign(await tx.doc(FollowUps, conversation.id), { automatic: 0, paused: false });
-    }, context);
-    return conversation.submit({ type: "input", content: text }, context);
   }
 
   /** Every conversation with live work: a run, or Galaxy work it watches. */
@@ -451,20 +407,6 @@ export async function hold(
       .abort(context, { keepQueued: true })
       .catch((e) => console.warn(`[${brand.id}] a held conversation did not stop`, e));
   }
-}
-
-/** Galaxy work the conversation watches, with the state its watch last read. */
-export async function watchedBy(
-  harness: Harness,
-  conversationId: ConversationId,
-  ctx: Chord,
-): Promise<Watched[]> {
-  const { tasks } = await harness.inspect(ctx);
-  return tasks.flatMap(({ record }) => {
-    if (record.kind !== WATCH_TASK || record.conversationId !== conversationId) return [];
-    const state = (record.state as { checkpoint?: { state?: string } }).checkpoint?.state;
-    return [{ ...(record.input as unknown as Watched), ...(state ? { state } : {}) }];
-  });
 }
 
 /** The id of the newest entry of the conversation's active context. */

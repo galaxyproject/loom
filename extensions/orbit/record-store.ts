@@ -14,15 +14,29 @@
 
 import { GalaxyApiError } from "./galaxy-api";
 import { createFileRecordStore } from "./record-store-file";
-import { installedRecordStore } from "./record-store-seam";
+import { capabilityProfile } from "../../shared/capability-profile.js";
+import { installedRecordStore, installedRecordStoreFor } from "./record-store-seam";
 
-export { installedRecordStore, setRecordStore, withRecordLock } from "./record-store-seam";
+export {
+  addRecordStore,
+  installedRecordStore,
+  installedRecordStoreFor,
+  setRecordStore,
+  withRecordLock,
+} from "./record-store-seam";
 
 /**
  * Opaque, never empty; equal strings mean the record did not change between two
  * looks. File: `dev:ino:size:mtimeMs:ctimeMs`. Page: the content hash.
  */
 export type RecordVersion = string;
+
+/**
+ * The version of a record that has nothing behind it yet: a page store before the
+ * conversation's page exists. A page version is eight hex digits and a file version is
+ * colon-separated, so no real record can have it.
+ */
+export const EMPTY_RECORD_VERSION: RecordVersion = "empty";
 
 export interface RecordSnapshot {
   content: string;
@@ -86,10 +100,19 @@ export class NotebookChangedError extends Error {
  * a file store for that path. Resolving by key rather than by "is a store
  * installed" keeps every test that points getNotebookPath at a real tmp file
  * on the file backend.
+ *
+ * Under a page record there is no file to fall back to (the worker's fs is a
+ * stub that throws), so the key must name a store installed in this process,
+ * bound or not, and an unknown one is an error.
  */
 export function recordStore(key: string): RecordStore {
   const installed = installedRecordStore();
   if (installed && installed.key === key) return installed;
+  if (capabilityProfile().notebook === "page") {
+    const store = installedRecordStoreFor(key);
+    if (!store) throw new Error(`No record store is installed for ${key}`);
+    return store;
+  }
   return createFileRecordStore(key);
 }
 

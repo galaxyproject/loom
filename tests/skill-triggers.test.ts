@@ -11,6 +11,8 @@ import {
   type SkillTrigger,
 } from "../extensions/orbit/skill-triggers";
 import { INVOCATION_FAILED_HINT } from "../extensions/orbit/invocation-failure-hint";
+import { INVOCATION_STATE_HINT } from "../extensions/orbit/skill-triggers";
+import { plainToolName, withoutControlTokens } from "../extensions/orbit/control-tokens";
 import { resetState, setNotebookPath } from "../extensions/orbit/state";
 import { resetActivity } from "../extensions/orbit/activity";
 import { GALAXY } from "./galaxy-family-fixture";
@@ -264,5 +266,68 @@ describe("registerSkillTriggers", () => {
       content: [text(FAILED_CHECK)],
     });
     expect(res.message.content[0].text).toContain(INVOCATION_FAILED_HINT);
+  });
+});
+
+describe("harmony control tokens", () => {
+  it("cuts a tool name at the first token and scrubs tokens from text", () => {
+    expect(plainToolName("run_tool<|call|>")).toBe("run_tool");
+    expect(withoutControlTokens("a<|call|>b<|end|>c")).toBe("abc");
+    expect(withoutControlTokens("no tokens")).toBe("no tokens");
+  });
+
+  it("points a not-found name with a token in it at the tool meant", () => {
+    const out = applySkillTriggers(
+      {
+        toolName: "run_tool<|call|>",
+        isError: true,
+        content: [text("Tool run_tool<|call|> not found")],
+      },
+      () => TOOLS,
+      TRIGGERS,
+    )!;
+    expect(out.fired.map((f) => f.id)).toEqual(["tool-name-confusables"]);
+    expect(out.content[0].text).toContain("Did you mean `run_tool`?");
+  });
+
+  it("scrubs tokens from a tool result before it is replayed, with no hint to add", () => {
+    resetState();
+    const on = vi.fn();
+    registerSkillTriggers({ on, getActiveTools: () => TOOLS } as unknown as ExtensionAPI, GALAXY);
+    const handler = on.mock.calls.find(([n]) => n === "message_end")![1];
+    const out = handler({
+      message: {
+        role: "toolResult",
+        toolName: "run_tool",
+        toolCallId: "c1",
+        isError: false,
+        content: [text("ok<|call|>")],
+      },
+    });
+    expect(out.message.content).toEqual([text("ok")]);
+  });
+});
+
+describe("the invocation-state row", () => {
+  it("says a listed invocation's scheduled state says nothing of its jobs", () => {
+    const listing = JSON.stringify({ success: true, data: [{ id: "i1", state: "scheduled" }] });
+    const out = applySkillTriggers(
+      { toolName: "get_invocations", isError: false, content: [text(listing)] },
+      () => TOOLS,
+      TRIGGERS,
+    )!;
+    expect(out.fired.map((f) => f.id)).toEqual(["invocation-state"]);
+    expect(out.content[0].text).toContain(INVOCATION_STATE_HINT);
+  });
+
+  it("says nothing of a listing with nothing scheduled", () => {
+    const listing = JSON.stringify({ success: true, data: [{ id: "i1", state: "cancelled" }] });
+    expect(
+      applySkillTriggers(
+        { toolName: "get_invocations", isError: false, content: [text(listing)] },
+        () => TOOLS,
+        TRIGGERS,
+      ),
+    ).toBeNull();
   });
 });

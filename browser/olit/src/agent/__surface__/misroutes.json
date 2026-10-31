@@ -1,6 +1,0 @@
-[
-  "'lineage_report' is an Olit tool, not a Galaxy tool. Call lineage_report directly.",
-  "'vega_dataset' is an Olit tool, not a Galaxy tool. Call vega_dataset directly.",
-  "'vega_dataset' is an Olit tool rather than a Galaxy tool, so the tool catalog does not hold it. It is already in your tool list if you need it.",
-  "'lineage_report' is an Olit tool rather than a Galaxy tool, so the tool catalog does not hold it. It is already in your tool list if you need it."
-]

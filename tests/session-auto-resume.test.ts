@@ -32,7 +32,7 @@ import { profileFromEnv, setCapabilityProfile } from "../shared/capability-profi
 
 type SessionHandler = (event: unknown, ctx: ExtensionContext) => void | Promise<void>;
 
-async function start(hasUI = true) {
+async function start(hasUI = true, event: unknown = {}) {
   const handlers = new Map<string, SessionHandler>();
   const sendUserMessage = vi.fn();
   const notify = vi.fn();
@@ -51,7 +51,7 @@ async function start(hasUI = true) {
     sessionManager: { getSessionFile: () => undefined, getSessionId: () => "test-session" },
   } as unknown as ExtensionContext;
   registerSessionLifecycle(pi);
-  await handlers.get("session_start")!({}, ctx);
+  await handlers.get("session_start")!(event, ctx);
   const emit = (name: string, event: unknown) => handlers.get(name)!(event, ctx);
   return { sendUserMessage, notify, emit, commands };
 }
@@ -188,5 +188,25 @@ describe("session Galaxy follow-up wiring", () => {
     const { emit } = await start();
     await emit("input", { type: "input", text: "continue", source: "rpc" });
     expect(vi.mocked(startGalaxyPoller).mock.calls[0][1]).toBeUndefined();
+  });
+});
+
+describe("the startup greeting", () => {
+  const greeted = ({ sendUserMessage, notify }: Awaited<ReturnType<typeof start>>) =>
+    sendUserMessage.mock.calls.length + notify.mock.calls.length > 0;
+
+  beforeEach(() => vi.stubEnv("ORBIT_FRESH_SESSION", undefined));
+
+  it("is sent on the desktop, including on a /resume, which carries no --continue", async () => {
+    expect(greeted(await start(true, { type: "session_start", reason: "startup" }))).toBe(true);
+    vi.clearAllMocks();
+    expect(greeted(await start(true, { type: "session_start", reason: "resume" }))).toBe(true);
+  });
+
+  it("is never sent under the worker, whatever started the session", async () => {
+    setCapabilityProfile({ ...profileFromEnv({}), ui: "worker" });
+    for (const reason of ["startup", "reload", "new", "resume"]) {
+      expect(greeted(await start(true, { type: "session_start", reason }))).toBe(false);
+    }
   });
 });

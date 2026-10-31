@@ -33,7 +33,8 @@
  *    are the shapes pi's MCP layer produced.
  */
 
-import * as path from "path";
+/** What a block carries when nothing pointed the submission at a plan step. */
+export const UNATTRIBUTED = "unattributed";
 
 /** What a submission tool produces, and therefore which block it writes. */
 export type SubmissionKind = "invocation" | "jobs" | "udt";
@@ -231,6 +232,15 @@ export function parseGalaxyResultEnvelope(
 // Per-tool parsers
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * The last segment of a path, either separator. Not node's path: the Galaxy tools that send a
+ * submission run in the browser worker too, and they reach this module.
+ */
+function baseName(p: string): string {
+  const trimmed = p.replace(/[\\/]+$/, "");
+  return trimmed.slice(Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\")) + 1);
+}
+
 function str(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
@@ -426,7 +436,7 @@ function parseLocalUpload(
   if (details.state === "ok") for (const job of jobs) job.state = "ok";
   if (jobs.length === 0) return fail("upload details.jobs is empty");
 
-  const fileName = str(args.file_name) ?? (str(args.path) ? path.basename(String(args.path)) : "");
+  const fileName = str(args.file_name) ?? (str(args.path) ? baseName(String(args.path)) : "");
   return {
     ok: true,
     submission: {
@@ -492,7 +502,7 @@ export function parseSubmission(
     case "upload_file":
       return parseToolRun(data, args, () => {
         const p = str(args.path);
-        return p ? `Upload ${path.basename(p)}` : "Upload to Galaxy";
+        return p ? `Upload ${baseName(p)}` : "Upload to Galaxy";
       });
     case "create_user_tool":
       return parseCreateUserTool(data, args);
