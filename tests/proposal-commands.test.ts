@@ -404,13 +404,31 @@ describe("edit after approve revokes, on the next read", () => {
     } as never;
     registerProposalCommands(pi, deps());
     const id = await proposed();
-    const ctx = { hasUI: false, ui: { notify: () => {} } };
+    const ctx = { hasUI: true, ui: { notify: () => {}, confirm: async () => true } };
     await handler!(`${id} --yes`, ctx);
     expect(sent).toEqual([approvedRunPrompt(id)]);
     expect(sent[0]).toContain(`proposalId: "${id}"`);
     await handler!(`${id} --yes`, ctx); // already approved: nothing new to submit
     await handler!("prop-nope --yes", ctx);
     expect(sent).toHaveLength(1);
+  });
+
+  it("starts no turn headless, where it would collide with the next message", async () => {
+    const sent: string[] = [];
+    let handler: ((args: string, ctx: unknown) => Promise<void>) | undefined;
+    const pi = {
+      registerTool: () => {},
+      registerCommand: (name: string, c: { handler: typeof handler }) => {
+        if (name === "approve") handler = c.handler;
+      },
+      on: () => {},
+      sendUserMessage: (text: string) => sent.push(text),
+    } as never;
+    registerProposalCommands(pi, deps());
+    const id = await proposed();
+    await handler!(`${id} --yes`, { hasUI: false, ui: { notify: () => {} } });
+    expect(liveApproval(session!.store.snapshot(), id)).toBeDefined();
+    expect(sent).toEqual([]);
   });
 
   it("an edit to the label alone leaves the approval live", async () => {
