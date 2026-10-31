@@ -1,6 +1,6 @@
 import { ipcMain, dialog, BrowserWindow, shell, app, autoUpdater } from "electron";
 import { createIdempotentIpc } from "./ipc-registry.js";
-import type { AgentManager } from "./agent.js";
+import { AgentStoppedError, type AgentManager } from "./agent.js";
 import { startFilesWatcher, resolveWithin } from "./files-handler.js";
 import { loadSessionHistory } from "./session-replay.js";
 import fs from "node:fs";
@@ -267,7 +267,14 @@ export function registerIpcHandlers(agent: AgentManager): void {
     log("prompt:", message.slice(0, 80));
     // Wait for Pi's preflight response. A rejected prompt must reach the
     // renderer rather than leaving a user message stuck on "thinking".
-    await agent.sendCommand(agentPromptPayload(message, options));
+    try {
+      await agent.sendCommand(agentPromptPayload(message, options));
+    } catch (err) {
+      // A stop is not a failure (#564). stop() already sent the "stopped"
+      // status, which is what resets the renderer's turn UI.
+      if (err instanceof AgentStoppedError) return;
+      throw err;
+    }
   });
 
   ipc.handle("agent:abort", async () => {

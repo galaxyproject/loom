@@ -120,6 +120,17 @@ const NODE_BIN = resolveNodeBin();
 
 export type AgentStatus = "running" | "stopped" | "error";
 
+/**
+ * Rejection for commands still in flight when stop() kills the brain. Typed so
+ * callers can tell a stop they (or a restart) asked for apart from a failure.
+ */
+export class AgentStoppedError extends Error {
+  constructor() {
+    super("Agent stopped");
+    this.name = "AgentStoppedError";
+  }
+}
+
 interface PendingResponse {
   resolve: (data: unknown) => void;
   reject: (err: Error) => void;
@@ -572,7 +583,7 @@ export class AgentManager {
     this.setStatus("stopped");
     for (const [id, pending] of this.pendingResponses) {
       log("rejecting pending response:", id);
-      pending.reject(new Error("Agent stopped"));
+      pending.reject(new AgentStoppedError());
     }
     this.pendingResponses.clear();
   }
