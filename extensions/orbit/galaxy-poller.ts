@@ -69,6 +69,15 @@ let timer: ReturnType<typeof setInterval> | null = null;
  * rather than a boolean lets a caller wait for the one already in flight.
  */
 let inFlightTick: Promise<void> | null = null;
+/**
+ * Bumped when a shutdown drain gives up on a stalled tick. That tick's requests are aborted, but
+ * a transport may ignore the signal, so a tick that answers after that checks this before every
+ * request, write, log row and toast it would start, and before capture. A plain stop leaves it
+ * alone: a tick a replacement session inherits still lands its transitions.
+ */
+let generation = 0;
+/** Aborts the running tick's Galaxy requests when a drain gives up on it. */
+let tickAbort: AbortController | null = null;
 
 /** Surface a toast to the shell when a background invocation finishes. */
 type PollerNotify = (text: string, level: "info" | "warning" | "error") => void;
@@ -392,6 +401,27 @@ async function readNotebookOrNull(): Promise<string | null> {
   }
 }
 
+/**
+ * Whether the notebook still holds a job or invocation in flight. A notebook that is gone holds
+ * none; one that is there but could not be read (a page GET that failed) might, so it counts.
+ */
+async function stillInFlight(): Promise<boolean> {
+  const nbPath = getNotebookPath();
+  if (!nbPath) return false;
+  let content: string;
+  try {
+    content = await readNotebook(nbPath);
+  } catch (err) {
+    // The record store throws its backend's own "missing": ENOENT for a file, 404 for a page.
+    const { code, status } = (err ?? {}) as { code?: unknown; status?: unknown };
+    return code !== "ENOENT" && status !== 404;
+  }
+  return (
+    findJobBlocks(content).some((j) => j.status === "in_progress") ||
+    hasInProgressInvocations(content)
+  );
+}
+
 function hasInProgressInvocations(content: string): boolean {
   return findInvocationBlocks(content).some((b) => b.status === "in_progress");
 }
@@ -402,7 +432,12 @@ function hasInProgressInvocations(content: string): boolean {
  * still running, so an idle notebook costs nothing beyond the scan the
  * invocation path already does.
  */
-async function tickJobs(content: string, followUps: GalaxyFollowUp[]): Promise<void> {
+async function tickJobs(
+  content: string,
+  followUps: GalaxyFollowUp[],
+  live: () => boolean,
+  signal: AbortSignal,
+): Promise<void> {
   const nbPath = getNotebookPath();
   if (!nbPath) return;
 
@@ -412,9 +447,10 @@ async function tickJobs(content: string, followUps: GalaxyFollowUp[]): Promise<v
   if (!currentServer) return;
 
   for (const job of pending) {
+    if (!live()) return;
     let state: string | undefined;
     try {
-      state = (await galaxyGetJobDetails(job.jobId)).state;
+      state = (await galaxyGetJobDetails(job.jobId, signal)).state;
     } catch (err) {
       // One unreachable job must not stop the others, or kill the timer.
       console.error(`[galaxy-poller] job ${job.jobId} poll failed:`, err);
@@ -427,16 +463,17 @@ async function tickJobs(content: string, followUps: GalaxyFollowUp[]): Promise<v
       // sit false for the whole run and only clear when the job ends.
       if (job.serverVerified === false && sameGalaxyServer(job.galaxyServerUrl, currentServer)) {
         try {
-          await withNotebookLock(nbPath, () =>
+          await withNotebookLock(nbPath, async () => {
+            if (!live()) return;
             // Only the flag and the timestamp: this write knows nothing about
             // the outcome, and the snapshot's status is already older than
             // whatever the fresh read inside persistJobUpdate will see.
-            persistJobUpdate(nbPath, {
+            await persistJobUpdate(nbPath, {
               jobId: job.jobId,
               lastPolledAt: new Date().toISOString(),
               serverVerified: true,
-            }),
-          );
+            });
+          });
         } catch (err) {
           // Nothing was announced, so a lost write costs only a retry next tick.
           console.error(`[galaxy-poller] job ${job.jobId} verification update failed:`, err);
@@ -449,15 +486,17 @@ async function tickJobs(content: string, followUps: GalaxyFollowUp[]): Promise<v
     const polledAt = new Date().toISOString();
     let persisted: { written: boolean; priorStatus?: JobYaml["status"] };
     try {
-      persisted = await withNotebookLock(nbPath, () =>
-        persistJobUpdate(nbPath, {
-          jobId: job.jobId,
-          status,
-          galaxyState: state,
-          lastPolledAt: polledAt,
-          // Only the server the block names can confirm the block's id.
-          serverVerified: sameGalaxyServer(job.galaxyServerUrl, currentServer),
-        }),
+      persisted = await withNotebookLock(nbPath, async () =>
+        live()
+          ? persistJobUpdate(nbPath, {
+              jobId: job.jobId,
+              status,
+              galaxyState: state,
+              lastPolledAt: polledAt,
+              // Only the server the block names can confirm the block's id.
+              serverVerified: sameGalaxyServer(job.galaxyServerUrl, currentServer),
+            })
+          : { written: false },
       );
     } catch (err) {
       // Lost the write. Say nothing and let the next tick re-poll: the block is
@@ -500,10 +539,12 @@ async function tickJobs(content: string, followUps: GalaxyFollowUp[]): Promise<v
 /** Run a poll tick now, or hand back the one already running. */
 function tick(): Promise<void> {
   if (inFlightTick) return inFlightTick;
-  inFlightTick = runTick().finally(() => {
-    inFlightTick = null;
+  const running: Promise<void> = runTick().finally(() => {
+    // A drain that gave up on this tick has already let the next one start.
+    if (inFlightTick === running) inFlightTick = null;
   });
-  return inFlightTick;
+  inFlightTick = running;
+  return running;
 }
 
 /**
@@ -516,6 +557,10 @@ export function pollGalaxyNow(): Promise<void> {
 
 async function runTick(): Promise<void> {
   const tickNotebook = getNotebookPath();
+  const started = generation;
+  const live = () => started === generation;
+  const abort = new AbortController();
+  tickAbort = abort;
   const followUps: GalaxyFollowUp[] = [];
   try {
     // One read per tick, shared by everything below: what the notebook says is
@@ -552,7 +597,7 @@ async function runTick(): Promise<void> {
 
     // Tool runs are tracked separately from workflow invocations and are the
     // only thing advancing in a session that never invoked a workflow (#413).
-    await tickJobs(content, followUps);
+    await tickJobs(content, followUps, live, abort.signal);
 
     // Cheap path when nothing's in-flight: scan and return.
     if (!hasInProgressInvocations(content)) return;
@@ -561,7 +606,9 @@ async function runTick(): Promise<void> {
       // this tick; if creds come back the next tick picks up.
       return;
     }
-    const result = await checkInvocations(undefined);
+    if (!live()) return;
+    const result = await checkInvocations(undefined, abort.signal);
+    if (!live()) return;
     // Fire a completion toast for any invocation that JUST reached a terminal
     // state this tick. The poller only checks blocks that were in_progress, so
     // an autoAction of completed/failed is a fresh transition that won't recur
@@ -656,8 +703,9 @@ async function runTick(): Promise<void> {
         console.error("[galaxy-poller] auto-resume send failed:", err);
       }
     }
+    if (tickAbort === abort) tickAbort = null;
     tickCount++;
-    if (captureHook) {
+    if (captureHook && live()) {
       try {
         void captureHook(tickCount).catch((err) => {
           console.error("[galaxy-poller] capture hook failed:", err);
@@ -695,6 +743,46 @@ export function startGalaxyPoller(notifyFn?: PollerNotify, resumeFn?: PollerResu
   // them nothing.
   interval.unref?.();
   timer = interval;
+}
+
+/**
+ * Tick until no job or invocation block is in flight, or the deadline passes; true when nothing
+ * was left. Stops the interval and drops auto-resume first: this runs while a session is
+ * shutting down, and a follow-up sent into it would go nowhere.
+ */
+export async function drainGalaxyPoller({
+  timeoutMs,
+  intervalMs = 5_000,
+}: {
+  timeoutMs: number;
+  intervalMs?: number;
+}): Promise<boolean> {
+  stopGalaxyPoller();
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    // Poll requests carry no deadline of their own, and a stalled Galaxy must not hold shutdown.
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<"expired">((r) => {
+      timeout = setTimeout(() => r("expired"), Math.max(0, deadline - Date.now()));
+    });
+    const outcome = await Promise.race([
+      tick().then(() => Promise.race([stillInFlight(), expired])),
+      expired,
+    ]).finally(() => clearTimeout(timeout));
+    if (outcome === "expired") {
+      // Shutdown goes on without the stalled tick: its requests are aborted, whatever answers
+      // late writes nothing, and a later poller starts a tick of its own instead of waiting on it.
+      generation++;
+      tickAbort?.abort();
+      tickAbort = null;
+      inFlightTick = null;
+      return false;
+    }
+    if (!outcome) return true;
+    const left = deadline - Date.now();
+    if (left <= 0) return false;
+    await new Promise((r) => setTimeout(r, Math.min(intervalMs, left)));
+  }
 }
 
 export function stopGalaxyPoller(): void {

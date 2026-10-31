@@ -295,6 +295,14 @@ export function parseOverrides(v: unknown, errors: string[]): ProposalOverride[]
 
 export function parsePredicate(v: unknown, errors: string[]): Predicate | null {
   if (v === undefined) return null;
+  // loom_propose's predicate is schema-free, so a model's JSON text reaches here unparsed.
+  if (typeof v === "string" && v.trim().startsWith("{")) {
+    try {
+      v = JSON.parse(v);
+    } catch {
+      // Not JSON: refused below like any other non-object.
+    }
+  }
   if (!isRecord(v)) {
     errors.push("predicate must be an object");
     return null;

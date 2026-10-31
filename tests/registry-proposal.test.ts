@@ -15,6 +15,7 @@ import {
   mappedOverSlots,
   newProposalId,
   parseProposalFields,
+  parsePredicate,
   pendingProposals,
   PROPOSAL_ID_RE,
   renderProposalTable,
@@ -639,6 +640,25 @@ describe("parsing the block's fields", () => {
       expect.stringMatching(/target.tool_id is required/),
       expect.stringMatching(/needs a rationale/),
     ]);
+  });
+});
+
+describe("parsePredicate", () => {
+  it("reads a predicate a model sent as JSON text", () => {
+    const errors: string[] = [];
+    expect(parsePredicate('{"kind":"exists_with_ext","ext":"tabular"}', errors)).toEqual({
+      kind: "exists_with_ext",
+      ext: "tabular",
+    });
+    expect(errors).toEqual([]);
+  });
+
+  it("still refuses text that is not an object", () => {
+    for (const text of ['"manual"', "manual", "[1]", "null", "{bad"]) {
+      const errors: string[] = [];
+      expect(parsePredicate(text, errors), text).toBeNull();
+      expect(errors, text).toEqual(["predicate must be an object"]);
+    }
   });
 });
 
