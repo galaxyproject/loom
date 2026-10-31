@@ -297,4 +297,20 @@ describe("checkInvocations concurrency (#391)", () => {
 
     expect(lockFreeDuringPoll).toBe(true);
   });
+  it("writes nothing for a caller that gave up while Galaxy was answering", async () => {
+    writeFileSync(nbPath, `# Notes\n\n${renderInvocationYaml(invocation())}`, "utf-8");
+    const before = readFileSync(nbPath, "utf-8");
+    const controller = new AbortController();
+    vi.spyOn(galaxyApi, "galaxyGetInvocation").mockImplementation(async () => {
+      // A transport that ignores its signal answers anyway, after the caller has gone.
+      controller.abort();
+      return galaxyResponse("inv-1", ["ok", "ok"]) as never;
+    });
+
+    const result = await checkInvocations(undefined, controller.signal);
+
+    expect(readFileSync(nbPath, "utf-8")).toBe(before);
+    const results = (result.details as { results: { autoAction?: string }[] }).results;
+    expect(results.map((r) => r.autoAction)).toEqual([undefined]);
+  });
 });

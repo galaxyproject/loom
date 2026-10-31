@@ -10,6 +10,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerPlanTools } from "./tools";
 import { registerGalaxyUploadTool } from "./galaxy-upload";
+import { withJsonStringArgs } from "./tool-args-json";
 import { registerNotebookSyncTools } from "./tools-sync";
 import { registerSyncCommand } from "./sync-command";
 import { registerSkillsCommand } from "./skills-command";
@@ -96,6 +97,9 @@ export default function galaxyAnalystExtension(pi: ExtensionAPI): void {
   // Before anything registers a command, so every one of them counts as user
   // input for the automatic follow-up cap.
   registerCommandsAsUserInput(pi);
+  // Likewise before any tool: weaker models send object and array arguments as JSON text, and
+  // pi's schema check would refuse every such call.
+  withJsonStringArgs(pi);
   const profile = capabilityProfile();
   // The shell's Galaxy tools go in first, so every guard below is handed their names.
   const family = registerGalaxyTools(pi);

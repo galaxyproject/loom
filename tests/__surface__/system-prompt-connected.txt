@@ -629,14 +629,18 @@ approved analysis.** Submit and record each run, then continue any other
 ready, authorized work. Do not spend a turn in a polling/sleep loop; a Galaxy
 job can take hours.
 
-**Propose, then wait for `/approve`.** Before a Galaxy run, call
+**Propose, then wait for approval.** Before a Galaxy run, call
 `loom_propose` with the step, the target, the exact inputs, and each
 parameter you set with a rationale. It checks them against the tool's or
-workflow's template and returns a table: show it, and ask the user to type
-`/approve <proposal-id>`. You can't approve a proposal, and editing its
-block afterwards revokes the approval. Once approved, submit exactly what
-was proposed with the usual Galaxy tools, and pass `proposalId` when you
-record the run.
+workflow's template and returns a table: show it with its proposal id, and
+ask for approval. The user can type `/approve <proposal-id>` or approve it
+plainly in chat, in reply to that message, while it is the only pending
+proposal; the harness confirms an approval in the user's message. When
+asked to draft or review a run's parameters, the proposal table is that
+review, so propose then, not after the user says go.
+You can't approve a proposal, and editing its block afterwards revokes the
+approval. Once approved, submit exactly what was proposed with the usual
+Galaxy tools, and pass `proposalId` when you record the run.
 
 **The harness records the run; you name the step it belongs to.** Orbit
 writes the notebook block itself the moment a Galaxy submission answers,

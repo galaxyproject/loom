@@ -38,18 +38,38 @@ export function stable(value) {
   return JSON.stringify(value) ?? "null";
 }
 
+// Models copy markdown backticks (or quotes) from the prompt into JSON keys: "`input|accession`".
+/** @param {string} key @returns {string} */
+function cleanKey(key) {
+  const k = key.trim();
+  const m = /^([`'"])(.*)\1$/s.exec(k);
+  return m ? m[2].trim() : k;
+}
+
 /** @param {Obj} inputs @returns {Obj} */
 export function flatten(inputs) {
   /** @type {Obj} */
   const result = {};
-  for (const [key, value] of Object.entries(inputs)) {
+  // Galaxy reads only the exactly spelled key, so a wrapped twin of one must not stand in for it.
+  /** @type {Set<string>} */
+  const exact = new Set();
+  /** @param {string} key @param {unknown} value @param {boolean} wrapped */
+  const put = (key, value, wrapped) => {
+    if (wrapped && exact.has(key)) return;
+    if (!wrapped) exact.add(key);
+    result[key] = value;
+  };
+  for (const [raw, value] of Object.entries(inputs)) {
+    const key = cleanKey(raw);
     const group = key === "input" || key === "adv" ? object(value) : null;
     if (!group) {
-      result[key] = value;
+      put(key, value, key !== raw);
       continue;
     }
-    for (const [child, v] of Object.entries(group)) {
-      if (child !== "__current_case__") result[`${key}|${child}`] = v;
+    for (const [rawChild, v] of Object.entries(group)) {
+      const child = cleanKey(rawChild);
+      if (child !== "__current_case__")
+        put(`${key}|${child}`, v, key !== raw || child !== rawChild);
     }
   }
   return result;

@@ -5,7 +5,7 @@ import {
   getNotebookPath,
   stopWatchingNotebook,
 } from "./state.js";
-import { startGalaxyPoller, stopGalaxyPoller } from "./galaxy-poller.js";
+import { drainGalaxyPoller, startGalaxyPoller, stopGalaxyPoller } from "./galaxy-poller.js";
 import { armGalaxyLivePanel, disarmGalaxyLivePanel } from "./galaxy-live-source.js";
 import {
   createFollowUpDelivery,
@@ -167,7 +167,11 @@ export function registerSessionLifecycle(pi: ExtensionAPI): void {
     return {};
   });
 
-  pi.on("session_shutdown", async () => {
+  pi.on("session_shutdown", async (event) => {
+    // Eval-only: a json-mode run quits right after the model's last reply, so without this the
+    // transition the poller would have logged at its next tick never lands.
+    const drainMs = Number(readEnv("EVAL_POLLER_DRAIN_MS"));
+    if (event?.reason === "quit" && drainMs > 0) await drainGalaxyPoller({ timeoutMs: drainMs });
     // While the store still holds the lock: what this session last saw running.
     const orphaned = recordActiveAtShutdown();
     closeSessionRegistry();

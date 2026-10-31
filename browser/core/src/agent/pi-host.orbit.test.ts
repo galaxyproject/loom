@@ -515,8 +515,9 @@ describe("Orbit on pi-host", () => {
       // provenance fs. The Galaxy tools add the destructive confirm (tool_call), the page
       // policy's shown-page reset (session_start) and the Galaxy version capture (session_start,
       // tool_result), which is where observations get the Galaxy version. The empty-completion
-      // check adds three (session_start, input, agent_end).
-      on: 71 + 7 + 1 + 2 + 3,
+      // check adds three (session_start, input, agent_end). Chat approval adds agent_end (what
+      // the last reply offered) and input (reading the user's reply).
+      on: 71 + 7 + 1 + 2 + 3 + 2,
       // Orbit's own tools; the Galaxy family (the browser entry's 42 operations, the shell's three
       // extras, and Orbit's list_jobs and get_job_logs bridges); galaxy_read_output beside it; and
       // the probe. mcp_read_output is MCP-only.
