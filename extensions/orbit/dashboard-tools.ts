@@ -142,6 +142,24 @@ function cappedProblems(problems: DashboardProblem[]): DashboardProblem[] {
   return kept;
 }
 
+/**
+ * Whether the agent may create an `html-sandbox` panel.
+ *
+ * The sandboxed HTML widget is the one piece with a real security surface: the
+ * content is written by the model, so a prompt-injected agent authors it.
+ *
+ * The widget has landed and the renderer's flag for it is a constant `false`
+ * with no way to turn it on in this build -- deliberately, because a flag that
+ * gates a security boundary cannot live anywhere the agent or the renderer can
+ * write, and the channel that would satisfy that has not been built. So there
+ * is still nothing to consult and nothing to trust, and creating one is refused
+ * outright. If a shell-owned channel ever lands, this is the single place on
+ * the brain side to read it.
+ */
+export function sandboxWidgetEnabled(): boolean {
+  return false;
+}
+
 /** Widget types the agent is allowed to create. */
 function creatableWidgetTypes(): string[] {
   return KNOWN_WIDGET_TYPES.slice();
@@ -436,6 +454,11 @@ export function documentOverflow(documentText: string): string | null {
 /** Refuse a widget type the agent is not allowed to create. */
 export function unsupportedWidgetMessage(type: string): string | null {
   if (creatableWidgetTypes().includes(type)) return null;
+  if (type === "html-sandbox") {
+    return sandboxWidgetEnabled()
+      ? null
+      : 'The "html-sandbox" custom view is behind a feature flag that is not on in this build, so it cannot be added.';
+  }
   return `"${type}" is not a widget this build can draw. Available: ${creatableWidgetTypes().join(", ")}.`;
 }
 

@@ -16,6 +16,7 @@ import { jobsWidget } from "./jobs.js";
 import { planWidget } from "./plan.js";
 import { activityWidget } from "./activity.js";
 import { resultsWidget } from "./results.js";
+import { htmlSandboxWidget } from "./html-sandbox.js";
 import { galaxyHistoryWidget } from "./galaxy-history.js";
 
 export const BUILT_IN_WIDGETS = [
@@ -24,6 +25,7 @@ export const BUILT_IN_WIDGETS = [
   planWidget,
   activityWidget,
   resultsWidget,
+  htmlSandboxWidget,
   galaxyHistoryWidget,
 ];
 
