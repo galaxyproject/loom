@@ -1,13 +1,13 @@
 {
   "name": "a matching lesson is surfaced on the tool result that triggers it",
-  "description": "A planted local lesson whose trigger.signatures names a literal error string, and the same recorded galaxy_run_tool result twice -- a retry. The replay seam feeds each through the same path a live tool_result takes, so this pins the normalization, the signature match, the once-per-session arming and the exact C5 activity payload with no model, no API key and no Galaxy. The lesson is planted via LOOM_LESSONS_DIR because the runner points HOME at a temp dir the scenario cannot write to. The fixture is user-origin, which wins the equal-trigger tiebreak, so a shipped lesson matching the same text cannot make this pass or fail by accident.",
+  "description": "A planted local lesson whose trigger.signatures names a literal error string, and the same recorded galaxy_run_tool result twice -- a retry. The replay seam feeds each through the same path a live tool_result takes, so this pins the normalization, the signature match, the once-per-session arming and the exact C5 activity payload with no model, no API key and no Galaxy. The lesson is planted via ORBIT_LESSONS_DIR because the runner points HOME at a temp dir the scenario cannot write to. The fixture is user-origin, which wins the equal-trigger tiebreak, so a shipped lesson matching the same text cannot make this pass or fail by accident.",
   "tier": 1,
   "inputs": ["/status"],
   "env": {
-    "LOOM_LESSONS": "on",
+    "ORBIT_LESSONS": "on",
     "ANTHROPIC_API_KEY": "fake-eval-key",
-    "LOOM_LESSONS_DIR": "lessons",
-    "LOOM_LESSON_REPLAY": "lesson-events.jsonl"
+    "ORBIT_LESSONS_DIR": "lessons",
+    "ORBIT_LESSON_REPLAY": "lesson-events.jsonl"
   },
   "timeoutMs": 15000,
   "assertions": {

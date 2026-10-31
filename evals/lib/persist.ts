@@ -1,8 +1,8 @@
 /**
- * Write per-run results to evals/results/<date>-<sha>.jsonl for later
+ * Write per-run results to evals/results/<date>-<sha>[-<tag>].jsonl for later
  * model-vs-model and prompt-regression diffing. One JSON object per run.
- * One file is created per date + short SHA; re-running on the same commit
- * overwrites the existing file for that slot rather than appending.
+ * One file is created per date + short SHA (+ tag); re-running on the same
+ * commit with the same tag overwrites that file rather than appending.
  * This is a normal Node process -- Date and git are fine to call here.
  */
 
@@ -20,11 +20,16 @@ function gitShortSha(): string {
   }
 }
 
-export function writeResultsJsonl(runs: ScenarioRun[], outDir: string): string | null {
+export function writeResultsJsonl(
+  runs: ScenarioRun[],
+  outDir: string,
+  tag?: string,
+): string | null {
   if (runs.length === 0) return null;
   fs.mkdirSync(outDir, { recursive: true });
   const date = new Date().toISOString().slice(0, 10);
-  const file = path.join(outDir, `${date}-${gitShortSha()}.jsonl`);
+  // A tag keeps concurrent runs on one commit (one process per model) from overwriting each other.
+  const file = path.join(outDir, `${date}-${gitShortSha()}${tag ? `-${tag}` : ""}.jsonl`);
 
   const lines = runs.map((r) =>
     JSON.stringify({

@@ -423,6 +423,47 @@ describe("evals assertions: activity log", () => {
     expect(evaluate(run).map((f) => f.assertion)).toContain("activity.mustNotIncludeKinds");
   });
 
+  describe("ordered", () => {
+    const row = (kind: string, payload: Record<string, unknown> = {}): ActivityEvent => ({
+      timestamp: "2026-10-17T00:00:00Z",
+      kind,
+      source: kind === "tool.start" ? "agent" : "user",
+      payload,
+    });
+    const approved = row("proposal.approved", { proposal_id: "prop-eva001" });
+    const run = row("tool.start", { toolName: "run_tool", args: { tool_id: "addValue" } });
+    const other = row("tool.start", { toolName: "get_history_contents", args: {} });
+    const ordered = [
+      {
+        before: { kind: "proposal.approved", payloadContains: { proposal_id: "prop-eva001" } },
+        after: {
+          kind: "tool.start",
+          payloadContains: { toolName: "run_tool", args: { tool_id: "addValue" } },
+        },
+      },
+    ];
+    const failures = (rows: ActivityEvent[]) =>
+      evaluate(makeRun({ activityEvents: rows, assertions: { activity: { ordered } } })).map(
+        (f) => f.assertion,
+      );
+
+    it("passes when every matching row comes after the first 'before' row", () => {
+      expect(failures([other, approved, run])).toEqual([]);
+    });
+
+    it("fails when a matching row comes first, even if another follows", () => {
+      expect(failures([run, approved, run])).toEqual(["activity.ordered"]);
+    });
+
+    it("fails when the 'before' row never appears and an 'after' row does", () => {
+      expect(failures([other, run])).toEqual(["activity.ordered"]);
+    });
+
+    it("leaves existence to mustInclude when no 'after' row appears", () => {
+      expect(failures([approved, other])).toEqual([]);
+    });
+  });
+
   it("says nothing when the scenario has no activity assertions", () => {
     expect(evaluate(makeRun({ activityEvents, assertions: {} }))).toHaveLength(0);
   });

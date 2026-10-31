@@ -9,7 +9,13 @@ npm run evals                          # all scenarios x all available models
 npm run evals -- <scenario>            # filter to one scenario directory
 npm run evals -- --model <id>          # filter to one model id (or comma list)
 npm run evals -- <scenario> --model <id>
+npm run evals -- galaxy-tools,execution-after  # comma list of names or prefixes
+npm run evals -- --runs 1 --tag minimax  # override n; tag the results file
 ```
+
+Run one process per model with distinct `--tag`s to sweep the matrix in
+parallel: each model has its own TACC rate limit, and untagged runs on the
+same commit write the same results file.
 
 Scenarios live under `evals/scenarios/<name>/`. The model matrix lives in
 `evals/models.json`. `evals/findings.md` records what the suite has
@@ -61,12 +67,13 @@ A scenario filter that isn't an exact directory name matches as a prefix,
 which is what selects the whole family.
 
 These scenarios create histories. Each one names them
-`loom-eval-<scenario>-{{RUN_ID}}`; the runner replaces `{{RUN_ID}}` in a
+`orbit-eval-<scenario>-{{RUN_ID}}`; the runner replaces `{{RUN_ID}}` in a
 scenario's inputs with a fresh per-run token. `--galaxy-cleanup` (opt-in)
-purges, after the run, every history whose name starts with `loom-eval-` AND
-contains one of the run ids this invocation handed out -- so it never touches
-a history without the prefix, nor one from a concurrent eval run on the same
-account. A run killed before it finishes skips cleanup; look for leftover
+purges, after the run, every history whose name starts with `orbit-eval-` (or
+`loom-eval-`, what runs from before the rename used) AND contains one of the
+run ids this invocation handed out -- so it never touches a history without
+the prefix, nor one from a concurrent eval run on the same account. A run
+killed before it finishes skips cleanup; look for leftover `orbit-eval-*` and
 `loom-eval-*` histories by hand.
 
 `toolResults` assertions look at what a tool _returned_ (`tool_execution_end`)
@@ -76,7 +83,9 @@ of a result with a regex and requires the chat to repeat it -- grading an
 answer against the live server without committing an account-specific value.
 Set `ORBIT_EVAL_DUMP_DIR` to keep each run's raw event stream, stderr,
 notebook and activity log for diagnosis (they include tool results verbatim,
-so point it outside the repo).
+so point it outside the repo), and `ORBIT_EVALS_VERBOSE` to print each failing
+run's notebook and the tail of its output. The older `LOOM_` spellings of both
+still work.
 
 ## Dimensions and the leaderboard
 
@@ -106,7 +115,8 @@ reliably follow Orbit's draft-in-chat-then-write gate.
 
 `assertions.activity` matches rows of the `activity.jsonl` the run wrote
 beside its notebook -- `{ kind, source?, payloadContains? }` per entry,
-plus `mustNotIncludeKinds`. This is the surface for anything the harness
+plus `mustNotIncludeKinds` and `ordered` (`{ before, after }`: no row matching
+`after` may come before the first row matching `before`). This is the surface for anything the harness
 decides rather than the model: gate adjudications, overrides, poller
 transitions. It matters most in Tier 1, where there is no model, no
 assistant text, and no tool call to look at: `--mode json` attaches no
@@ -132,11 +142,15 @@ TACC matrix, so only the token counts mean anything there.
 
 ## Model matrix
 
-`evals/models.json` is the 7-model TACC matrix (all on the one SambaNova
-proxy): MiniMax-M2.7, gpt-oss-120b, Qwen3-32B, Llama-3.3-70B,
-Llama-4-Maverick, Llama-3.1-8B, gemma-4-31B. gpt-oss-120b is flagged
-`reasoningModel` (its chain-of-thought lands in `reasoning_content`; see the
-findings log for the live caveat). To add a paid reference baseline
+`evals/models.json` is the 5-model TACC matrix (all on the one SambaNova
+proxy): MiniMax-M2.7, DeepSeek-V3.2, Qwen3-235B-A22B, gpt-oss-120b,
+gemma-4-31B. Mistral-Large-3 is left out because the proxy rejects its tool
+calls. Llama-4-Maverick and Llama-3.3-70B were dropped after the 2026-10-17
+local sweep: Maverick's tool calls come back as raw `<|python_start|>` text the
+proxy never parses, and Llama-3.3 can't finish a multi-turn approval flow; Qwen3-32B's 32K window overflows on Orbit's prompt. No entry sets `reasoningModel`, so
+every run records `reasoning: false`; gpt-oss-120b used to carry the flag (its
+chain-of-thought lands in `reasoning_content`; see the findings log). To add a
+paid reference baseline
 (Anthropic/OpenAI/Google), append an entry with that provider and the right
 `envRequires` -- the matrix design makes it a one-line config change.
 
@@ -240,3 +254,53 @@ bit runs where shutdown didn't get there first -- but the timer is now
 `unref()`ed as well, which takes the poller out of the exit path entirely.
 Interactive and Orbit sessions are held open by stdin, so nothing changes for
 them.
+
+The flip side is that a run can quit before the poller's next 15 s tick, so a
+job that finished just after the model's last reply never logs its
+`poll.transition`. A scenario that asserts on one sets
+`ORBIT_EVAL_POLLER_DRAIN_MS` (galaxy-tools-job-capture uses 120000): on a `quit`
+shutdown the session then keeps ticking, with auto-resume off, until nothing is
+in flight or the bound passes. Unset, and on reload or a new session, nothing
+waits.
+
+## Seeded proposal ids
+
+Proposal ids are random, and a scenario's inputs are fixed before the run
+starts, so `/approve <id>` can't name one. `ORBIT_EVAL_PROPOSAL_IDS` (comma
+separated, each a valid `prop-xxxxxx`) makes `loom_propose` mint those ids in
+order before falling back to random ones, and each seeded mint logs a
+`proposal.id_seeded` row so a seeded run is always identifiable. The
+`execution-after-approval-tools` scenario asserts only that `run_tool` is
+called. Two twins seed `prop-eva001` and check the approval itself:
+`execution-after-slash-approve-tools` types `/approve prop-eva001 --yes`
+(json mode has no dialog, hence `--yes`), and
+`execution-after-chat-approve-tools` approves in plain chat with
+`ORBIT_EVAL_CHAT_APPROVAL=1`, so that approval stands in for `--yes` where json
+mode has no dialog (outside an eval it never does). Each asserts the
+`proposal.approved` row with its own `confirmed_by` (`"--yes"` for the slash
+twin, `"chat"` for the chat one). Both use
+`activity.ordered` to fail a run whose `run_tool` call (its `tool.start` row)
+came before the `proposal.approved` row, since approval does not yet block
+submission.
+
+## Asserting the target history
+
+A run can pass every other check while its job lands in the wrong history:
+a model that trips the cross-history guard can satisfy it by moving the job
+to wherever its inputs live, and a live run once passed the slash twin with
+its job in "Orbit demo" rather than the `hist1` its prompt named. History ids
+differ per server, so a scenario can't pin one. `toolCalls.inHistory` names
+the history instead:
+
+```json
+"toolCalls": { "inHistory": [{ "name": "run_tool", "history": "hist1" }] }
+```
+
+At run start, before spawning anything, the runner looks each named history
+up on `GALAXY_URL` with `GALAXY_API_KEY`, and every call to `name` must then
+carry that id in its `history_id` (`arg` names a different argument). A name
+that matches no live history, or more than one, fails the run without
+spawning it, as does a failed lookup, and the failure says why. With no call
+at all the check passes; `mustInclude` is what requires one. The execution
+scenarios and `execution-unprompted-run-needs-proposal` use it, so the account
+they run on needs exactly one history named `hist1` with a dataset in it.

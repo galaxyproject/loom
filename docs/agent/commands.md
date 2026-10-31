@@ -99,8 +99,14 @@ invocation that was in flight when it was granted, and is spent by the
 next write it lets through.
 
 `/approve` and `/revoke` are the user's too. Propose a run with
-`loom_propose`, show the table it returns, and ask for `/approve
-<proposal-id>`; you can't approve one yourself. With no dialog to confirm in, `/approve` shows the table and wants `--yes` before it records anything. An approval covers exactly
+`loom_propose`, show the table it returns, and ask for approval: the user
+can type `/approve <proposal-id>`, or approve it plainly in chat ("go ahead
+and run it") while it is the only pending proposal written this session --
+the harness reads that from the user's own input, only as a reply to the turn
+where you named the proposal, only when the message says nothing but approve,
+and only if the block is unchanged since `loom_propose` wrote it. It confirms
+the approval in a dialog where there is one and notes it in their message. You can't
+approve one yourself. With no dialog to confirm in, `/approve` shows the table and wants `--yes` before it records anything. An approval covers exactly
 the Spec frozen at approval time, and only in the session that recorded it:
 editing the proposal block afterwards revokes it, and after a restart it
 comes back restored, not live, until the user approves it again.

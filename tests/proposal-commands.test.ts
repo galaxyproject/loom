@@ -5,6 +5,7 @@ import {
   approveCommand,
   approvedRunPrompt,
   checkProposalDrift,
+  classifyChatApproval,
   checkProposalDriftNow,
   noteProposalBinding,
   sessionView,
@@ -30,6 +31,8 @@ import { RegistryStore } from "../extensions/orbit/registry";
 import type { TemplateSnapshot } from "../extensions/orbit/registry-submitter";
 import { SERVER, tmpAnalysisDir } from "./registry-fixtures";
 import { datatypeAccepts, TemplateUnavailableError } from "../extensions/orbit/registry-templates";
+import { GalaxyApiError } from "../extensions/orbit/galaxy-api";
+import { setRecordStore } from "../extensions/orbit/record-store";
 import {
   CONVERTERS,
   DATATYPES,
@@ -690,6 +693,35 @@ describe("review follow-ups", () => {
     expect(liveApproval(session!.store.snapshot(), id)).toBeDefined();
   });
 
+  it("a record page Galaxy can't serve right now revokes nothing; a page that's gone does", async () => {
+    const id = await proposed();
+    await approveCommand(deps(), `${id} --yes`);
+    let failure: Error = new GalaxyApiError(503, "", "Service Unavailable");
+    setRecordStore({
+      kind: "page",
+      key: nb,
+      label: "Galaxy page p1",
+      pageId: "p1",
+      stat: async () => null,
+      read: async () => {
+        throw failure;
+      },
+      write: async () => {},
+      ensure: async () => false,
+      onChange: () => () => {},
+    });
+    try {
+      expect(await checkProposalDriftNow(deps())).toEqual([]);
+      expect(liveApproval(session!.store.snapshot(), id)).toBeDefined();
+      failure = new GalaxyApiError(404, "", "Not Found");
+      expect(await checkProposalDriftNow(deps())).toEqual([
+        expect.objectContaining({ proposalId: id, reason: "removed" }),
+      ]);
+    } finally {
+      setRecordStore(null);
+    }
+  });
+
   it("the approval table shows a long value whole", async () => {
     const long = "y".repeat(150) + "END";
     const r = await propose(
@@ -766,5 +798,329 @@ describe("drift when the registry can't be written", () => {
     spy.mockRestore();
     expect(checkProposalDrift(deps(), edited)).toEqual([]);
     expect(session!.store.snapshot().attempts[attempt].approval?.status).toBe("revoked");
+  });
+});
+
+describe("classifyChatApproval", () => {
+  const ID = "prop-abc123";
+  it.each([
+    "The parameters look right. Go ahead and run it.",
+    "I approve.",
+    "approved",
+    "Yes, proceed.",
+    "lgtm, run it",
+    "Looks good -- do it.",
+    `approve ${ID}`,
+    "OK, go ahead.",
+    "Go ahead and submit it please",
+  ])("approves %j", (text) => {
+    expect(classifyChatApproval(text, ID)).toBe("approve");
+  });
+
+  it.each([
+    "I approve the plan above. Show the full parameter table for review before executing.",
+    "don't run it yet",
+    "go ahead?",
+    "approve but set exp to 8",
+    "approve prop-zzzzzz",
+    "Wait, change the column value first.",
+    "Not yet.",
+    "Hold on",
+    "Run the Add column tool on the first dataset.",
+    "",
+    `Go ahead. ${"x".repeat(300)}`,
+    // Each of these reached "approve" through the old phrase-plus-blocklist check.
+    "Never run it",
+    "Go ahead if the checks pass",
+    "Yes, explain the results",
+    "yes",
+    "lgtm",
+    "My grant got approved. Now look at the BED file.",
+    "Yes, use hg19 as the reference",
+    "Yes, set the threshold to 5",
+    "Proceed with sample 2 rather than sample 1",
+    "Nope, do it with value 8",
+    "go ahead and explain the parameters",
+    "I approve the plan. Add a QC step.",
+  ])("does not approve %j", (text) => {
+    expect(classifyChatApproval(text, ID)).toBe("none");
+  });
+});
+
+describe("a plain chat approval of the one pending proposal", () => {
+  type Handler = (event: unknown, ctx: unknown) => Promise<unknown>;
+  function load(over: Partial<ProposalDeps> = {}) {
+    const on = new Map<string, (event: unknown, ctx: unknown) => unknown>();
+    let tool: { execute: (...a: unknown[]) => Promise<{ content: { text: string }[] }> };
+    const pi = {
+      registerTool: (t: typeof tool) => (tool = t),
+      registerCommand: () => {},
+      on: (event: string, h: (event: unknown, ctx: unknown) => unknown) => on.set(event, h),
+    } as never;
+    registerProposalCommands(pi, deps({ chatWithoutDialog: () => true, ...over }));
+    const reply = (text: string) =>
+      (on.get("agent_end") as Handler)(
+        {
+          type: "agent_end",
+          messages: [
+            { role: "user", content: [{ type: "text", text: "earlier" }] },
+            { role: "assistant", content: [{ type: "text", text }] },
+          ],
+        },
+        {},
+      );
+    return {
+      // What a model normally does: propose, then show the table with the id in its reply.
+      propose: async (p: Partial<ProposeParams> = {}, { shown = true } = {}) => {
+        const r = await tool.execute("c1", params(p), undefined);
+        const id = r.content[0].text.match(/prop-[0-9a-z]{6}/)![0];
+        if (shown) await reply(`| Proposal | ${id} |\nType /approve ${id} or say go ahead.`);
+        return id;
+      },
+      reply,
+      input: (text: string, event: object = {}, ctx: object = { hasUI: false }) =>
+        (on.get("input") as Handler)({ type: "input", text, source: "interactive", ...event }, ctx),
+      sessionStart: () => on.get("session_start")!({}, {}),
+    };
+  }
+  const approvals = () => activity().filter((e) => e.kind === "proposal.approved");
+
+  it("records the approval and tells the model to submit exactly that run", async () => {
+    const h = load();
+    const id = await h.propose();
+    const text = "The parameters look right. Go ahead and run it.";
+    const out = (await h.input(text)) as { action: string; text: string };
+    expect(liveApproval(session!.store.snapshot(), id)).toBeDefined();
+    expect(approvals()).toEqual([
+      expect.objectContaining({
+        source: "user",
+        payload: expect.objectContaining({
+          proposal_id: id,
+          confirmed_by: "chat",
+          chat_text: text,
+          table: expect.stringContaining(id),
+        }),
+      }),
+    ]);
+    expect(out.action).toBe("transform");
+    expect(out.text.startsWith(text)).toBe(true);
+    expect(out.text).toContain(`[Orbit: approved ${id} (attempt `);
+    // Without the id on the record call, the run never binds to this approval.
+    expect(out.text).toContain(`proposalId: "${id}"`);
+  });
+
+  it("ignores text the model's own extensions sent, and input while streaming", async () => {
+    const h = load();
+    const id = await h.propose();
+    expect(await h.input("Go ahead.", { source: "extension" })).toEqual({ action: "continue" });
+    expect(await h.input("Go ahead.", { streamingBehavior: "steer" })).toEqual({
+      action: "continue",
+    });
+    expect(liveApproval(session!.store.snapshot(), id)).toBeUndefined();
+  });
+
+  it("asks for the id when two proposals are pending", async () => {
+    const h = load();
+    await h.propose();
+    await h.propose({ step_anchor: "plan-a-step-2" });
+    const out = (await h.input("Go ahead and run it.")) as { action: string; text: string };
+    expect(approvals()).toEqual([]);
+    expect(out.action).toBe("transform");
+    expect(out.text).toContain("/approve <proposal-id>");
+  });
+
+  it("counts a revoked proposal as pending, so the approval doesn't say which", async () => {
+    const h = load();
+    const a = await h.propose();
+    expect((await approveCommand(deps(), `${a} --yes`)).message).toMatch(/^Approved/);
+    await revokeCommand(deps(), a);
+    await h.propose({ step_anchor: "plan-a-step-2" });
+    const out = (await h.input("Go ahead and run it.")) as { text: string };
+    expect(approvals()).toHaveLength(1);
+    expect(out.text).toContain("/approve <proposal-id>");
+  });
+
+  it("doesn't count a revoked proposal from before this session as pending", async () => {
+    const earlier = await proposed();
+    await approveCommand(deps(), `${earlier} --yes`);
+    await revokeCommand(deps(), earlier);
+    const h = load();
+    const id = await h.propose({ step_anchor: "plan-a-step-2" });
+    const out = (await h.input("Go ahead and run it.")) as { text: string };
+    expect(out.text).toContain(`[Orbit: approved ${id} (attempt `);
+    expect(liveApproval(session!.store.snapshot(), id)).toBeDefined();
+  });
+
+  it("doesn't count a revoked proposal that already ran as pending", async () => {
+    const h = load();
+    const a = await h.propose();
+    await approveCommand(deps(), `${a} --yes`);
+    const attempt = liveApproval(session!.store.snapshot(), a)!.attempt_id;
+    session!.store.update((draft) => {
+      draft.attempts[attempt].submission = {
+        job_id: "7dd125b61b35d782",
+        submitted_at: "2026-10-07T12:01:00.000Z",
+        submitted_by: "harness",
+        server_verified: true,
+        check: { outcome: "conformant_by_construction", mode: "deny" },
+        request_digest: "b".repeat(64),
+        dispatch_recheck: {
+          definition_digest_ok: true,
+          template_digest_ok: true,
+          at: "2026-10-07T12:00:59.000Z",
+        },
+      } as never;
+    });
+    await revokeCommand(deps(), a);
+    const id = await h.propose({ step_anchor: "plan-a-step-2" });
+    const out = (await h.input("Go ahead and run it.")) as { text: string };
+    expect(out.text).toContain(`[Orbit: approved ${id} (attempt `);
+  });
+
+  it("never approves a proposal this session did not write", async () => {
+    const h = load();
+    const other = await proposed();
+    await h.reply(`Type /approve ${other}.`);
+    expect(await h.input("Go ahead and run it.")).toEqual({ action: "continue" });
+    const id = await h.propose({ step_anchor: "plan-a-step-2" });
+    await h.sessionStart();
+    await h.reply(`Type /approve ${id}.`);
+    expect(await h.input("Go ahead and run it.")).toEqual({ action: "continue" });
+    expect(liveApproval(session!.store.snapshot(), id)).toBeUndefined();
+  });
+
+  it("only answers the reply that put the proposal in front of the user", async () => {
+    const h = load();
+    const id = await h.propose({}, { shown: false });
+    // Proposed, but the reply never named it: the user may not have seen the table.
+    expect(await h.input("Go ahead and run it.")).toEqual({ action: "continue" });
+    await h.reply(`Here it is: /approve ${id}`);
+    expect(await h.input("What does the value column do?")).toEqual({ action: "continue" });
+    await h.reply("It adds a constant column. Should I also add a QC step?");
+    expect(await h.input("Go ahead.")).toEqual({ action: "continue" });
+    expect(liveApproval(session!.store.snapshot(), id)).toBeUndefined();
+  });
+
+  it("refuses when the block changed after loom_propose wrote it", async () => {
+    const h = load();
+    const id = await h.propose();
+    fs.writeFileSync(nb, notebook().replace('"value":4', '"value":64'));
+    const out = (await h.input("Go ahead and run it.")) as { text: string };
+    expect(approvals()).toEqual([]);
+    expect(liveApproval(session!.store.snapshot(), id)).toBeUndefined();
+    expect(out.text).toContain("[Orbit: not approved");
+    expect(out.text).toContain(`/approve ${id}`);
+  });
+
+  it("without a dialog, outside an eval, shows the table and asks for /approve --yes", async () => {
+    const h = load({ chatWithoutDialog: () => false });
+    const id = await h.propose();
+    const out = (await h.input("Go ahead and run it.")) as { text: string };
+    expect(approvals()).toEqual([]);
+    expect(out.text).toContain(`/approve ${id} --yes`);
+    expect(out.text).toMatch(new RegExp(`Proposal\\s+${id}`));
+  });
+
+  it("shows the harness dialog where there is one", async () => {
+    const h = load({ chatWithoutDialog: () => false });
+    const id = await h.propose();
+    const no = vi.fn(async () => false);
+    const out = (await h.input("Go ahead.", {}, { hasUI: true, ui: { confirm: no } })) as {
+      text: string;
+    };
+    expect(no).toHaveBeenCalledOnce();
+    expect(out.text).toContain("still pending");
+    expect(liveApproval(session!.store.snapshot(), id)).toBeUndefined();
+    await h.reply(`Still waiting on ${id}.`);
+    const yes = vi.fn(async () => true);
+    await h.input("Go ahead.", {}, { hasUI: true, ui: { confirm: yes } });
+    expect(approvals().at(-1)?.payload.confirmed_by).toBe("chat+dialog");
+  });
+
+  it("passes a refusal through to the model", async () => {
+    const h = load();
+    await h.propose();
+    snapshot = { ...snapshot, body: { ...(snapshot.body as object), inputs: [] } };
+    const out = (await h.input("Go ahead.")) as { text: string };
+    expect(approvals()).toEqual([]);
+    expect(out.text).toContain("[Orbit: not approved");
+  });
+
+  it("leaves input alone with nothing pending or no approval in it", async () => {
+    const h = load();
+    expect(await h.input("Go ahead.")).toEqual({ action: "continue" });
+    await h.propose();
+    expect(await h.input("What does the value column do?")).toEqual({ action: "continue" });
+  });
+});
+
+describe("approveCommand's outcome", () => {
+  it("says approved, with the attempt, both the first time and when already approved", async () => {
+    const id = await proposed();
+    const first = await approveCommand(deps(), `${id} --yes`);
+    expect(first.attemptId).toMatch(/\S/);
+    expect(first.approved).toBe(id);
+    const again = await approveCommand(deps(), `${id} --yes`);
+    expect(again.message).toMatch(/already approved/);
+    expect(again.attemptId).toBe(first.attemptId);
+    // Nothing new to submit, so /approve starts no follow-up turn.
+    expect(again.approved).toBeUndefined();
+  });
+
+  it("says declined when the dialog is turned down", async () => {
+    const id = await proposed();
+    const r = await approveCommand(deps(), id, { confirm: async () => false });
+    expect(r.declined).toBe(true);
+    expect(r.attemptId).toBeUndefined();
+    expect(r.approved).toBeUndefined();
+  });
+});
+
+describe("seeded proposal ids for evals", () => {
+  it("mints the seeded ids in order, reusing one a failed proposal never wrote", async () => {
+    const d = deps({ seededIds: () => ["bogus", "prop-eva001", "prop-eva002"] });
+    const bad = await propose(d, params({ step_anchor: "plan-z-step-9" }));
+    expect(bad.ok).toBe(false);
+    const first = await propose(d, params());
+    const second = await propose(d, params({ step_anchor: "plan-a-step-2" }));
+    const third = await propose(d, params({ step_anchor: "plan-a-step-2" }));
+    if (!first.ok || !second.ok || !third.ok) throw new Error("not proposed");
+    expect(first.proposal.proposalId).toBe("prop-eva001");
+    expect(second.proposal.proposalId).toBe("prop-eva002");
+    expect(third.proposal.proposalId).toMatch(/^prop-(?!eva)/);
+    expect(activity().filter((e) => e.kind === "proposal.id_seeded")).toEqual([
+      expect.objectContaining({ payload: { proposal_id: "prop-eva001" } }),
+      expect.objectContaining({ payload: { proposal_id: "prop-eva002" } }),
+    ]);
+  });
+});
+
+describe("proposal wording accepts both kinds of approval", () => {
+  it("the tool description and result name /approve and a plain chat approval", async () => {
+    let tool: {
+      description: string;
+      execute: (...a: unknown[]) => Promise<{ content: { text: string }[] }>;
+    };
+    const pi = {
+      registerTool: (t: typeof tool) => (tool = t),
+      registerCommand: () => {},
+      on: () => {},
+    } as never;
+    registerProposalCommands(pi, deps());
+    expect(tool!.description).toContain("/approve <proposal-id>");
+    expect(tool!.description).toMatch(/approve it plainly in chat/);
+    const text = (await tool!.execute("c1", params(), undefined)).content[0].text;
+    expect(text).toMatch(/\/approve prop-/);
+    expect(text).toMatch(/approve it plainly in chat/);
+  });
+});
+
+describe("the system prompt's approval wording", () => {
+  it("accepts /approve and a plain chat approval, and makes the table the review", async () => {
+    const { executingAStep } = await import("../shared/prompt-blocks.js");
+    const text = executingAStep();
+    expect(text).toContain("`/approve <proposal-id>`");
+    expect(text).toMatch(/approve it\s+plainly in\s+chat/);
+    expect(text).toMatch(/table is that\s+review/);
   });
 });

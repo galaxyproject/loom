@@ -1,0 +1,75 @@
+{
+  "name": "execution (bare tools): a run approved with /approve is actually executed",
+  "description": "The Galaxy tools are galaxy-ops operations registered in-process under bare names. Slash-command twin of execution-after-approval-tools, which approves in plain language. The proposal id is seeded (ORBIT_EVAL_PROPOSAL_IDS), so the second turn can type /approve with the id loom_propose will mint; every seeded mint logs proposal.id_seeded, so a seeded run is always identifiable. --yes is needed because json mode has no dialog, and a slash command starts no agent turn, hence the third turn that tells the agent to run it. Asserts that the proposal was created by loom_propose, approved by the user's /approve, and that the agent then actually called the tool. activity.ordered fails the run if the tool was called before the approval landed, since approval does not yet block submission.",
+  "tier": 2,
+  "requiresModel": true,
+  "requiresGalaxy": true,
+  "inputs": [
+    "Run the Add column tool (tool id `addValue`) on the first dataset in history hist1, adding the value 7 as a new column. Write the plan to the notebook, propose the run with loom_propose, and wait for my approval.",
+    "/approve prop-eva001 --yes",
+    "Approved. Go ahead and run it."
+  ],
+  "env": {
+    "ORBIT_EVAL_PROPOSAL_IDS": "prop-eva001"
+  },
+  "timeoutMs": 420000,
+  "assertions": {
+    "toolCalls": {
+      "mustInclude": [
+        {
+          "name": "run_tool",
+          "argsContains": {
+            "tool_id": "addValue"
+          }
+        }
+      ],
+      "inHistory": [
+        {
+          "name": "run_tool",
+          "history": "hist1"
+        }
+      ]
+    },
+    "activity": {
+      "mustInclude": [
+        {
+          "kind": "proposal.id_seeded",
+          "payloadContains": {
+            "proposal_id": "prop-eva001"
+          }
+        },
+        {
+          "kind": "proposal.created",
+          "source": "loom_propose",
+          "payloadContains": {
+            "proposal_id": "prop-eva001"
+          }
+        },
+        {
+          "kind": "proposal.approved",
+          "source": "user",
+          "payloadContains": {
+            "proposal_id": "prop-eva001",
+            "confirmed_by": "--yes"
+          }
+        }
+      ],
+      "ordered": [
+        {
+          "before": {
+            "kind": "proposal.approved",
+            "payloadContains": {
+              "proposal_id": "prop-eva001"
+            }
+          },
+          "after": {
+            "kind": "tool.start",
+            "payloadContains": {
+              "toolName": "run_tool"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

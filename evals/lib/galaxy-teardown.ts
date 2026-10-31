@@ -3,14 +3,22 @@
  * shared public server; this purges the ones a run made and nothing else.
  *
  * Two fences keep it from touching anything it shouldn't: the name has to
- * start with EVAL_HISTORY_PREFIX, and it has to contain one of the run ids
+ * start with one of EVAL_HISTORY_PREFIXES, and it has to contain one of the run ids
  * this process handed out (scenarios splice `{{RUN_ID}}` into the name). A
  * history that fails either test is left alone -- even one a scenario created
  * under some other name, and even one from a concurrent eval run on the same
  * account.
  */
 
-export const EVAL_HISTORY_PREFIX = "loom-eval-";
+/** What scenarios name their histories now. */
+export const EVAL_HISTORY_PREFIX = "orbit-eval-";
+
+/**
+ * Every prefix teardown recognises. Runs from before the rename named their
+ * histories `loom-eval-*`; the run-id fence still applies to those, so this
+ * only matters to a scenario file that hasn't been moved over.
+ */
+export const EVAL_HISTORY_PREFIXES: readonly string[] = [EVAL_HISTORY_PREFIX, "loom-eval-"];
 
 export interface HistorySummary {
   id: string;
@@ -31,13 +39,16 @@ export type FetchLike = (
 export function selectEvalHistories(
   histories: HistorySummary[],
   runIds: string[],
-  prefix = EVAL_HISTORY_PREFIX,
+  prefixes: readonly string[] = EVAL_HISTORY_PREFIXES,
 ): HistorySummary[] {
-  if (!prefix) throw new Error("refusing to select histories with an empty prefix");
+  if (prefixes.length === 0 || prefixes.some((p) => !p)) {
+    throw new Error("refusing to select histories with an empty prefix");
+  }
   const ids = runIds.filter((id) => id.length > 0);
   const seen = new Set<string>();
   return histories.filter((h) => {
-    if (typeof h.name !== "string" || !h.name.startsWith(prefix) || h.purged) return false;
+    if (typeof h.name !== "string" || h.purged) return false;
+    if (!prefixes.some((p) => h.name.startsWith(p))) return false;
     if (!ids.some((id) => h.name.includes(id))) return false;
     if (seen.has(h.id)) return false;
     seen.add(h.id);
@@ -49,7 +60,7 @@ export async function purgeEvalHistories(opts: {
   galaxyUrl: string;
   apiKey: string;
   runIds: string[];
-  prefix?: string;
+  prefixes?: readonly string[];
   fetchImpl?: FetchLike;
 }): Promise<TeardownResult> {
   const result: TeardownResult = { purged: [], failed: [] };
@@ -71,7 +82,7 @@ export async function purgeEvalHistories(opts: {
     if (Array.isArray(body)) listed.push(...(body as HistorySummary[]));
   }
 
-  for (const h of selectEvalHistories(listed, opts.runIds, opts.prefix)) {
+  for (const h of selectEvalHistories(listed, opts.runIds, opts.prefixes)) {
     try {
       const res = await doFetch(`${base}/api/histories/${encodeURIComponent(h.id)}?purge=true`, {
         method: "DELETE",

@@ -35,7 +35,7 @@
       "browser": "EXECUTING_A_STEP",
       "loom": "buildGalaxyContextBlock(), \"Executing a Galaxy step\". Shared text; this shell records runs itself and is told when they end.",
       "identical": false,
-      "similarity": 0.519
+      "similarity": 0.505
     },
     {
       "browser": "FINDING_A_WORKFLOW",

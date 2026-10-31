@@ -2,49 +2,6 @@
   "_comment": "Curated model matrix for the eval suite. Models with missing envRequires are skipped (not failed) so local runs work without every credential. To add Anthropic / OpenAI / Google, append entries with provider set to that name and envRequires set to the appropriate API_KEY env var. The TACC entries below use the SambaNova-on-TACC OpenAI-compatible proxy; see ~/work/tacc-inference for credentials and access notes.",
   "models": [
     {
-      "id": "tacc:llama-3.3-70b",
-      "provider": "tacc-sambanova",
-      "model": "Meta-Llama-3.3-70B-Instruct",
-      "envRequires": ["PROXY_URL", "PROXY_API_KEY"],
-      "providerConfig": {
-        "type": "openai-compatible",
-        "baseUrl": "PROXY_URL",
-        "baseUrlIsEnvVar": true,
-        "apiKeyEnvVar": "PROXY_API_KEY",
-        "contextWindow": 128000,
-        "maxTokens": 4096
-      }
-    },
-    {
-      "id": "tacc:llama-4-maverick",
-      "provider": "tacc-sambanova",
-      "model": "Llama-4-Maverick-17B-128E-Instruct",
-      "envRequires": ["PROXY_URL", "PROXY_API_KEY"],
-      "providerConfig": {
-        "type": "openai-compatible",
-        "baseUrl": "PROXY_URL",
-        "baseUrlIsEnvVar": true,
-        "apiKeyEnvVar": "PROXY_API_KEY",
-        "contextWindow": 128000,
-        "maxTokens": 4096
-      }
-    },
-    {
-      "id": "tacc:qwen3-32b",
-      "provider": "tacc-sambanova",
-      "model": "Qwen3-32B",
-      "stripThinkingTags": true,
-      "envRequires": ["PROXY_URL", "PROXY_API_KEY"],
-      "providerConfig": {
-        "type": "openai-compatible",
-        "baseUrl": "PROXY_URL",
-        "baseUrlIsEnvVar": true,
-        "apiKeyEnvVar": "PROXY_API_KEY",
-        "contextWindow": 32000,
-        "maxTokens": 4096
-      }
-    },
-    {
       "id": "tacc:minimax-m2.7",
       "provider": "tacc-sambanova",
       "model": "MiniMax-M2.7",
@@ -60,24 +17,9 @@
       }
     },
     {
-      "id": "tacc:gpt-oss-120b",
+      "id": "tacc:deepseek-v3.2",
       "provider": "tacc-sambanova",
-      "model": "gpt-oss-120b",
-      "reasoningModel": true,
-      "envRequires": ["PROXY_URL", "PROXY_API_KEY"],
-      "providerConfig": {
-        "type": "openai-compatible",
-        "baseUrl": "PROXY_URL",
-        "baseUrlIsEnvVar": true,
-        "apiKeyEnvVar": "PROXY_API_KEY",
-        "contextWindow": 128000,
-        "maxTokens": 8192
-      }
-    },
-    {
-      "id": "tacc:llama-3.1-8b",
-      "provider": "tacc-sambanova",
-      "model": "Meta-Llama-3.1-8B-Instruct",
+      "model": "DeepSeek-V3.2",
       "envRequires": ["PROXY_URL", "PROXY_API_KEY"],
       "providerConfig": {
         "type": "openai-compatible",
@@ -86,6 +28,34 @@
         "apiKeyEnvVar": "PROXY_API_KEY",
         "contextWindow": 128000,
         "maxTokens": 4096
+      }
+    },
+    {
+      "id": "tacc:qwen3-235b",
+      "provider": "tacc-sambanova",
+      "model": "Qwen3-235B-A22B-Instruct-2507",
+      "envRequires": ["PROXY_URL", "PROXY_API_KEY"],
+      "providerConfig": {
+        "type": "openai-compatible",
+        "baseUrl": "PROXY_URL",
+        "baseUrlIsEnvVar": true,
+        "apiKeyEnvVar": "PROXY_API_KEY",
+        "contextWindow": 128000,
+        "maxTokens": 4096
+      }
+    },
+    {
+      "id": "tacc:gpt-oss-120b",
+      "provider": "tacc-sambanova",
+      "model": "gpt-oss-120b",
+      "envRequires": ["PROXY_URL", "PROXY_API_KEY"],
+      "providerConfig": {
+        "type": "openai-compatible",
+        "baseUrl": "PROXY_URL",
+        "baseUrlIsEnvVar": true,
+        "apiKeyEnvVar": "PROXY_API_KEY",
+        "contextWindow": 128000,
+        "maxTokens": 8192
       }
     },
     {

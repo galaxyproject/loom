@@ -1,6 +1,6 @@
 {
   "name": "a hand-written proposal goes pending -> approved -> revoked, all by the user's slash commands",
-  "description": "The notebook carries a loom-proposal block (v3 \u00a75 accepts hand-written ones and validates them at /approve). /pending lists it; a bare /approve is refused, since a json-mode run has no dialog to show the table in (proposal.approval_unconfirmed); /approve --yes fetches the template -- from LOOM_TEMPLATE_REPLAY here, so no Galaxy is needed -- re-validates, freezes and records a live user approval; /revoke withdraws it. Every step is a harness decision, so it is asserted on activity.jsonl: the session opened the registry as the writer, the template came from the replay seam (and says so), proposal.approved carries source user, and proposal.revoked carries source user. Revoke-on-edit needs the notebook edited between two commands, which a model-free run can't do; tests/proposal-commands.test.ts pins it through the real notebook-change listener.",
+  "description": "The notebook carries a loom-proposal block (v3 \u00a75 accepts hand-written ones and validates them at /approve). /pending lists it; a bare /approve is refused, since a json-mode run has no dialog to show the table in (proposal.approval_unconfirmed); /approve --yes fetches the template -- from ORBIT_TEMPLATE_REPLAY here, so no Galaxy is needed -- re-validates, freezes and records a live user approval; /revoke withdraws it. Every step is a harness decision, so it is asserted on activity.jsonl: the session opened the registry as the writer, the template came from the replay seam (and says so), proposal.approved carries source user, and proposal.revoked carries source user. Revoke-on-edit needs the notebook edited between two commands, which a model-free run can't do; tests/proposal-commands.test.ts pins it through the real notebook-change listener.",
   "tier": 1,
   "inputs": [
     "/pending",
@@ -12,7 +12,7 @@
     "ANTHROPIC_API_KEY": "fake-eval-key",
     "GALAXY_URL": "https://usegalaxy.org",
     "GALAXY_API_KEY": "fake-eval-galaxy-key",
-    "LOOM_TEMPLATE_REPLAY": "templates.json"
+    "ORBIT_TEMPLATE_REPLAY": "templates.json"
   },
   "timeoutMs": 15000,
   "assertions": {

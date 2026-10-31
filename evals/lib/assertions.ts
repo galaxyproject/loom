@@ -11,6 +11,7 @@
 import { parseLatestPlan } from "./notebook-parser.js";
 import type {
   ActivityAssertions,
+  ActivityExpectation,
   ActivityEvent,
   AnyEvent,
   Assertions,
@@ -33,7 +34,10 @@ export function evaluate(run: ScenarioRun): ScenarioFailure[] {
   // include ...", which reads exactly like a model that answered badly. That
   // ambiguity is what let a broken proxy credential masquerade as a capability
   // ceiling across the whole matrix. Name it instead.
-  if (run.model && collectChatText(run.events).trim() === "") {
+  // A run the runner never spawned (an unresolved history) says why in its own
+  // failure; "check credentials/proxy" would point at the wrong cause.
+  const spawned = Object.keys(run.histories?.errors ?? {}).length === 0;
+  if (spawned && run.model && collectChatText(run.events).trim() === "") {
     failures.push({
       assertion: "run.noModelOutput",
       detail:
@@ -53,6 +57,7 @@ export function evaluate(run: ScenarioRun): ScenarioFailure[] {
 
   const stripThink = run.model?.stripThinkingTags ?? false;
   evaluateToolCalls(run.events, a, failures);
+  evaluateHistoryTargets(run, a, failures);
   evaluateEvents(run.events, a, failures);
   evaluateChatText(run.events, a, stripThink, failures);
   evaluateChatPlan(run.events, a.chatPlan, stripThink, failures);
@@ -126,6 +131,7 @@ function evaluateToolResults(
         Object.entries(expected.detailsContains ?? {}).every(
           ([k, v]) => String(detailsValue(r.details, k)) === v,
         ) &&
+        (expected.detailsPresent ?? []).every((k) => detailsValue(r.details, k) !== undefined) &&
         (expected.textContains === undefined || r.text.includes(expected.textContains)),
     );
     if (!hit) {
@@ -214,20 +220,36 @@ function evaluateActivity(
 ): void {
   if (!a) return;
 
+  const matches = (e: ActivityEvent, expected: ActivityExpectation) => {
+    if (e.kind !== expected.kind) return false;
+    if (expected.source && e.source !== expected.source) return false;
+    return Object.entries(expected.payloadContains ?? {}).every(([k, v]) =>
+      payloadValueMatches((e.payload ?? {})[k], v),
+    );
+  };
+
   for (const expected of a.mustInclude ?? []) {
-    const hit = events.some((e) => {
-      if (e.kind !== expected.kind) return false;
-      if (expected.source && e.source !== expected.source) return false;
-      return Object.entries(expected.payloadContains ?? {}).every(([k, v]) =>
-        payloadValueMatches((e.payload ?? {})[k], v),
-      );
-    });
+    const hit = events.some((e) => matches(e, expected));
     if (!hit) {
       failures.push({
         assertion: "activity.mustInclude",
         detail:
           `no activity row matched ${JSON.stringify(expected)}; saw ` +
           `[${events.map((e) => e.kind).join(", ") || "nothing"}]`,
+        dimension: "other",
+      });
+    }
+  }
+
+  for (const { before, after } of a.ordered ?? []) {
+    const first = events.findIndex((e) => matches(e, before));
+    const early = events.findIndex((e, i) => (first === -1 || i < first) && matches(e, after));
+    if (early !== -1) {
+      failures.push({
+        assertion: "activity.ordered",
+        detail:
+          `a row matching ${JSON.stringify(after)} came before any row matching ` +
+          `${JSON.stringify(before)}`,
         dimension: "other",
       });
     }
@@ -272,6 +294,47 @@ function evaluateToolCalls(events: AnyEvent[], a: Assertions, failures: Scenario
         break;
       }
       cursor = idx + 1;
+    }
+  }
+}
+
+/**
+ * A tool call that lands in a history the user never named is a wrong answer
+ * even when it succeeds -- a model that trips the cross-history guard can move
+ * the job to wherever its inputs live instead. Every call is checked, not just
+ * the first, since the retarget is usually a retry.
+ */
+function evaluateHistoryTargets(
+  run: ScenarioRun,
+  a: Assertions,
+  failures: ScenarioFailure[],
+): void {
+  const expectations = a.toolCalls?.inHistory ?? [];
+  if (expectations.length === 0) return;
+  for (const expected of expectations) {
+    const id = run.histories?.ids[expected.history];
+    if (!id) {
+      const why = run.histories?.errors[expected.history] ?? "the runner never resolved it";
+      failures.push({
+        assertion: "toolCalls.inHistory",
+        detail: `history '${expected.history}' could not be resolved: ${why}`,
+        dimension: "other",
+      });
+      continue;
+    }
+    const arg = expected.arg ?? "history_id";
+    const wrong = run.events
+      .filter((e) => e.type === "tool_execution_start" && e.toolName === expected.name)
+      .map((e) => (e.args as Record<string, unknown> | undefined)?.[arg])
+      .filter((v) => v !== id);
+    if (wrong.length > 0) {
+      failures.push({
+        assertion: "toolCalls.inHistory",
+        detail:
+          `${wrong.length} '${expected.name}' call(s) targeted ${arg} ` +
+          `${wrong.map((v) => JSON.stringify(v ?? null)).join(", ")}, not '${expected.history}' (${id})`,
+        dimension: "other",
+      });
     }
   }
 }

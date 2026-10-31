@@ -1187,8 +1187,12 @@ export async function checkInvocations(
   // rename fails the stamp check and is retried against fresh content rather
   // than silently overwriting it.
   if (updates.length > 0) {
+    // A caller that gave up while Galaxy was answering (a shutdown drain past its deadline) is
+    // gone; a transport that ignored the signal must not have its answer written after it.
     const { applied, transitioned } = await withNotebookLock(notebookPath, () =>
-      persistInvocationUpdates(notebookPath, updates),
+      signal?.aborted
+        ? Promise.resolve({ applied: new Set<string>(), transitioned: new Set<string>() })
+        : persistInvocationUpdates(notebookPath, updates),
     );
     // A transition we didn't actually record isn't news. The poller turns
     // "completed"/"failed" straight into a user-facing toast, so leaving the

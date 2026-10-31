@@ -8,10 +8,24 @@ export interface ToolCallExpectation {
   argsContains?: Record<string, string>;
 }
 
+/**
+ * Every call to `name` must target the history the scenario's prompt named:
+ * its `arg` (default `history_id`) must equal the id `history` resolves to on
+ * the server the run used. The runner resolves the name at run start; a name
+ * that doesn't resolve to exactly one live history fails the run.
+ */
+export interface HistoryTargetExpectation {
+  name: string;
+  history: string;
+  arg?: string;
+}
+
 export interface Assertions {
   toolCalls?: {
     mustInclude?: ToolCallExpectation[];
     mustNotInclude?: string[];
+    /** Vacuous when the tool is never called; pair it with mustInclude for that. */
+    inHistory?: HistoryTargetExpectation[];
   };
   events?: {
     mustInclude?: string[];
@@ -40,7 +54,7 @@ export interface Assertions {
   chatPlan?: PlanAssertions;
   /**
    * Structural assertions on the post-run notebook.md. Reads the file from
-   * the scenario's temp cwd after loom exits (or times out -- the runner
+   * the scenario's temp cwd after orbit exits (or times out -- the runner
    * captures notebook state before cleanup). Content quality (right tools,
    * right reasoning) is intentionally out of scope here; that lives in
    * the galaxy/brc Python harnesses with LLMJudge.
@@ -85,6 +99,12 @@ export interface ActivityAssertions {
   mustInclude?: ActivityExpectation[];
   /** No row may carry any of these `kind`s. */
   mustNotIncludeKinds?: string[];
+  /**
+   * No row matching `after` may come before the first row matching `before`
+   * (file order is append order). Whether an `after` row exists at all is
+   * mustInclude's job.
+   */
+  ordered?: { before: ActivityExpectation; after: ActivityExpectation }[];
 }
 
 export interface ToolResultAssertions {
@@ -109,6 +129,8 @@ export interface ToolResultExpectation {
    * and `galaxy.tool` both reach the in-process Galaxy tools' nested facts.
    */
   detailsContains?: Record<string, string>;
+  /** Each key, read the same way, must be present with any value (an outputId, say). */
+  detailsPresent?: string[];
   /** The result's text content must contain this substring. */
   textContains?: string;
 }
@@ -195,7 +217,7 @@ export interface Scenario {
   inputs: string[];
   env?: Record<string, string>;
   /**
-   * Written to `<fake HOME>/.loom/config.json` before the run. The runner
+   * Written to `<fake HOME>/.orbit/config.json` before the run. The runner
    * points HOME at a throwaway dir, so this is the only way a scenario can
    * set a config key -- `lessons.enabled`, `observations.mode` -- that no env
    * value is allowed to turn on. `observations.mode: "auto"` and
@@ -203,13 +225,13 @@ export interface Scenario {
    */
   config?: Record<string, unknown>;
   /**
-   * Extra CLI flags forwarded verbatim to the loom invocation. Useful for
+   * Extra CLI flags forwarded verbatim to the orbit invocation. Useful for
    * `--no-tools`, `--tools read,bash`, etc. -- different scenarios want
    * different tool surfaces. Comes after `--mode json` and any
    * `--provider`/`--model` injected by the runner.
    */
   coreArgs?: string[];
-  /** Hard wall-clock cap for the loom invocation. Defaults to 15s. */
+  /** Hard wall-clock cap for the orbit invocation. Defaults to 15s. */
   timeoutMs?: number;
   assertions: Assertions;
 }
@@ -292,6 +314,11 @@ export interface ScenarioRun {
   notebookContent: string | null;
   /** Parsed rows of the scenario's activity.jsonl, empty if it was never written. */
   activityEvents: ActivityEvent[];
+  /**
+   * History names from `toolCalls.inHistory`, resolved at run start: `ids` by
+   * name, and `errors` for any that didn't resolve (the run was not spawned).
+   */
+  histories?: { ids: Record<string, string>; errors: Record<string, string> };
   failures: ScenarioFailure[];
   durationMs: number;
 }

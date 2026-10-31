@@ -1,11 +1,11 @@
 {
   "name": "galaxy-tools: one-job-per-accession SRA imports are stopped by the SRA gate",
-  "description": "The Galaxy tools are galaxy-ops operations registered in-process under bare names. sra-import-gate.ts groups sibling run_tool calls to fastq_dump/fasterq_dump in one assistant message and blocks them as a split batch before Galaxy sees any of them. It matches on the family's tool name and on run_tool's history_id/tool_id/inputs shape, so this pins that both survive the move to bare names. The user asks for one job per accession in parallel -- the pattern the gate exists for -- and the scenario asserts the gate's sra.import.blocked row. The prompt tells the agent to stop once Loom blocks the calls, and spells out the inputs so the run grades the gate rather than parameter guessing. The history is loom-eval- prefixed for --galaxy-cleanup.",
+  "description": "The Galaxy tools are galaxy-ops operations registered in-process under bare names. sra-import-gate.ts groups sibling run_tool calls to fastq_dump/fasterq_dump in one assistant message and blocks them as a split batch before Galaxy sees any of them. It matches on the family's tool name and on run_tool's history_id/tool_id/inputs shape, so this pins that both survive the move to bare names. The user asks for one job per accession in parallel -- the pattern the gate exists for -- and the scenario asserts the gate's sra.import.blocked row. The prompt tells the agent to stop once Orbit blocks the calls, and spells out the inputs so the run grades the gate rather than parameter guessing. The history is orbit-eval- prefixed for --galaxy-cleanup.",
   "tier": 2,
   "requiresModel": true,
   "requiresGalaxy": true,
   "inputs": [
-    "Create a new Galaxy history named exactly `loom-eval-sra-{{RUN_ID}}`. Then import these three SRA runs into it with Galaxy's `fastq_dump` tool (toolshed.g2.bx.psu.edu/repos/iuc/sra_tools/fastq_dump): SRR11772204, SRR11772205, SRR11772206. I want one separate fastq_dump job per accession, all with identical settings, so issue the three run_tool calls in parallel in a single response -- one accession per call. Use exactly these inputs for each call, changing only the accession: `{\"input|input_select\": \"accession_number\", \"input|accession\": \"<one accession>\"}`, and leave every other setting at its default. Skip the plan and don't edit the notebook. If Loom blocks those calls, do NOT resubmit anything in any form; just tell me what Loom said and stop."
+    "Create a new Galaxy history named exactly `orbit-eval-sra-{{RUN_ID}}`. Then import these three SRA runs into it with Galaxy's `fastq_dump` tool (toolshed.g2.bx.psu.edu/repos/iuc/sra_tools/fastq_dump): SRR11772204, SRR11772205, SRR11772206. I want one separate fastq_dump job per accession, all with identical settings, so issue the three run_tool calls in parallel in a single response -- one accession per call. Use exactly these inputs for each call, changing only the accession: `{\"input|input_select\": \"accession_number\", \"input|accession\": \"<one accession>\"}`, and leave every other setting at its default. Skip the plan and don't edit the notebook. If Orbit blocks those calls, do NOT resubmit anything in any form; just tell me what Orbit said and stop."
   ],
   "timeoutMs": 360000,
   "assertions": {
@@ -14,7 +14,7 @@
         {
           "name": "create_history",
           "argsContains": {
-            "history_name": "loom-eval-sra-"
+            "history_name": "orbit-eval-sra-"
           }
         },
         {

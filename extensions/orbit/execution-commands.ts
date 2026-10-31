@@ -77,7 +77,8 @@ export function registerExecutionCommands(pi: ExtensionAPI): void {
         `This is an execution request, not a request for another plan draft or status-only response. For each step:\n` +
         `1. Decide local vs Galaxy per the plan's routing tag (see [local|hybrid|remote] in the section header).\n` +
         `2. **Galaxy steps run in the BACKGROUND — this is the default.** Propose the run with loom_propose ` +
-        `and wait for the user's /approve, then invoke exactly that with the Galaxy tools and call ` +
+        `and wait for the user's approval (/approve <id>, or a plain chat approval the harness confirms), ` +
+        `then invoke exactly that with the Galaxy tools and call ` +
         `galaxy_invocation_record({ invocationId, notebookAnchor, label, proposalId }) — or, for a single tool run, ` +
         `galaxy_job_record({ jobId, notebookAnchor, label, proposalId }). Continue other ready, authorized work. ` +
         `If no work is ready because a prerequisite is still running, report that and yield; ` +

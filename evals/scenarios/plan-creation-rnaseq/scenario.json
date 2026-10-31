@@ -1,6 +1,6 @@
 {
   "name": "plan creation: agent ends up with an RNA-seq plan",
-  "description": "Multi-turn: user asks for a bulk RNA-seq DE plan, then confirms assumptions on turn 2. SUCCESS = a structurally valid `## Plan X: <title> [<routing>]` block ends up in notebook.md by end of run. We don't care which protocol stage produced it (chat-first-then-write, write-immediately, etc) -- the matrix collapses Loom's 4-stage gate in different ways and prescribing which stage produced the plan is process pedantry that doesn't reflect end-user UX. Content quality (right tools, biological correctness) stays out of scope -- that's the galaxy harness's job with LLMJudge.",
+  "description": "Multi-turn: user asks for a bulk RNA-seq DE plan, then confirms assumptions on turn 2. SUCCESS = a structurally valid `## Plan X: <title> [<routing>]` block ends up in notebook.md by end of run. We don't care which protocol stage produced it (chat-first-then-write, write-immediately, etc) -- the matrix collapses Orbit's 4-stage gate in different ways and prescribing which stage produced the plan is process pedantry that doesn't reflect end-user UX. Content quality (right tools, biological correctness) stays out of scope -- that's the galaxy harness's job with LLMJudge.",
   "tier": 2,
   "requiresModel": true,
   "coreArgs": ["--tools", "read,write,edit"],

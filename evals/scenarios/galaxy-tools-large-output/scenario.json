@@ -1,18 +1,18 @@
 {
   "name": "galaxy-tools: an oversized result is saved in memory and read back with galaxy_read_output",
-  "description": "The Galaxy tools are galaxy-ops operations registered in-process under bare names. Over 20 KiB the in-process wrapper keeps the full envelope in a session-only memory ring and shows the model an overview with the [loom Galaxy output] marker and an outputId for galaxy_read_output. The question asks for a fact (the section and version of tool Cut1) buried in the panel, so the model has to read the saved output rather than the preview, and textContains pins the marker so the scenario fails on the wiring even if a model gets the answer some other way. Provisional: galaxy-ops budgets get_tool_panel to a ~50 KB sections overview, so whether it crosses the 20 KiB cap on a given server is not settled; 2d measures envelope sizes and this clone moves to an op it shows is over the cap.",
+  "description": "The Galaxy tools are galaxy-ops operations registered in-process under bare names. Over 20 KiB the in-process wrapper keeps the full envelope in a session-only memory ring and shows the model an overview with the [loom Galaxy output] marker and an outputId for galaxy_read_output. get_iwc_workflows' default page (20 workflows from the fixed IWC manifest, about 29 KB, with no dependency on the Galaxy server's own catalog) crosses that cap, and the bare preview shows /data only as an omitted 20-item array, so the last workflow's trsID and step_count can only come from galaxy_read_output. detailsPresent pins the spill's outputId and textContains pins the marker, so the scenario fails on the wiring even if a model gets the answer some other way. The chat check matches the trsID's shape rather than a value, because the manifest drifts.",
   "tier": 2,
   "requiresModel": true,
   "requiresGalaxy": true,
   "inputs": [
-    "Fetch my Galaxy server's complete tool panel with the get_tool_panel tool (the whole panel, not a name search). From that panel, tell me which tool panel section the tool with id `Cut1` sits in, and that tool's exact version string as the panel lists it. Don't plan anything or write to the notebook."
+    "Call get_iwc_workflows once with its default page (do not pass limit or offset). From that page, tell me the trsID and step_count of the LAST workflow listed. Don't plan anything or write to the notebook."
   ],
   "timeoutMs": 300000,
   "assertions": {
     "toolCalls": {
       "mustInclude": [
         {
-          "name": "get_tool_panel"
+          "name": "get_iwc_workflows"
         },
         {
           "name": "galaxy_read_output"
@@ -22,10 +22,11 @@
     "toolResults": {
       "mustSucceed": [
         {
-          "name": "get_tool_panel",
+          "name": "get_iwc_workflows",
           "detailsContains": {
-            "details.galaxy.tool": "get_tool_panel"
+            "details.galaxy.tool": "get_iwc_workflows"
           },
+          "detailsPresent": ["details.galaxy.outputId"],
           "textContains": "[loom Galaxy output]"
         },
         {
@@ -34,7 +35,7 @@
       ]
     },
     "chatText": {
-      "mustMatch": ["Text Manipulation", "1\\.0\\.2"]
+      "mustMatch": ["iwc-workflows/[\\w-]+"]
     }
   }
 }

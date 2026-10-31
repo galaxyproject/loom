@@ -7,7 +7,7 @@
     "ANTHROPIC_API_KEY": "fake-eval-key",
     "GALAXY_URL": "https://usegalaxy.org",
     "GALAXY_API_KEY": "fake-eval-galaxy-key",
-    "LOOM_GALAXY_FIXTURE": "galaxy-fixture.json"
+    "ORBIT_GALAXY_FIXTURE": "galaxy-fixture.json"
   },
   "timeoutMs": 20000,
   "assertions": {

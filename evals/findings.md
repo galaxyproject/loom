@@ -417,3 +417,44 @@ Per-model notes on the rest:
 So the honest read is that UDT authoring is a two-model capability on this
 matrix today (Qwen3-32B and MiniMax-M2.7), and for those two the skill content
 is what decides whether the container is right.
+
+## 2026-10-31: renamed main, test.galaxyproject.org
+
+Five TACC models, n=3, against test.galaxyproject.org instead of a local
+Galaxy. Nothing traced to the rename; most of what moved, moved with main's
+/approve follow-up and loom_propose checks or with the server.
+
+- **The /approve twin went to 0/15, and the bigger half of that is fixed.**
+  8 runs hit a json-mode race: /approve started a follow-up turn, and the
+  scenario's next input collided with it ("Agent is already processing", then
+  exit 1) after the approval had already landed. galaxyproject/orbit#636 stops
+  headless /approve from starting that turn, and a re-run with the fix scored
+  minimax 3/3, deepseek 2/3 (the miss timed out before proposing) and qwen 3/3.
+  The other 7 runs never got a proposal created, which is model behavior plus
+  loom_propose's format and anchor checks, not the race.
+- **Several models confuse `dataset_id` with the HDA `id`.** gpt-oss, gemma and
+  deepseek sometimes pass a history item's `dataset_id`. On a big shared server
+  that id names some other user's dataset. The cross-history guard catches most
+  run_tool attempts, but gpt-oss once retargeted the job into that other
+  history and, with an admin key, it landed. Use a non-admin key for
+  live-Galaxy evals. The execution scenarios now also check that run_tool ran
+  in the history the prompt named (`toolCalls.inHistory`), since a live run
+  of the /approve twin passed with its job in a different history of the same
+  account.
+- **gemma doesn't recover from a history name used as an id.** "hist1" -> 400,
+  then it stops and asks (0/3 on the bare execution scenario); qwen and gpt-oss
+  make the same call and recover.
+- **deepseek writes a stream of new helper scripts when it has no shell** (51
+  distinct files in one 150 s run), which accounts for 5 of its 14 timeouts.
+- **The harmful-lesson failures are real rewrites, not inspections.** qwen 3/3,
+  minimax 3/3, gpt-oss 2/3 and gemma 2/3 overwrite `samples.tsv` in place
+  (`mv ... samples.tsv`, `cat > samples.tsv`); deepseek writes new files. The
+  2026-10-19 sweep couldn't tell which.
+- **Asked to run a tool outright, nobody proposes.** minimax, qwen and deepseek
+  called run_tool in 8 of 9 runs and never got a proposal accepted -- partly
+  because the prompt itself says not to add approval checkpoints or propose
+  plans unprompted.
+- **lesson-changes-plan is still 0/15 for a scenario bug**: its
+  `--tools read,write,edit` hides `lessons_search`.
+- Orbit's full-surface first turn is ~31.8k tokens on the proxy (~20k of it
+  tool schemas); the largest call in the sweep was 55.5k. No run compacted.

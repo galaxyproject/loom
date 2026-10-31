@@ -7,7 +7,19 @@ import * as path from "path";
  */
 export function filterScenarioDirs(dirs: string[], filter: string | undefined): string[] {
   if (!filter) return dirs;
-  const exact = dirs.filter((dir) => path.basename(dir) === filter);
+  // A comma list lets one invocation run several families, e.g. "galaxy-tools,execution-after".
+  const picked = new Set(
+    filter
+      .split(",")
+      .map((term) => term.trim())
+      .filter(Boolean)
+      .flatMap((term) => matchOne(dirs, term)),
+  );
+  return dirs.filter((dir) => picked.has(dir));
+}
+
+function matchOne(dirs: string[], term: string): string[] {
+  const exact = dirs.filter((dir) => path.basename(dir) === term);
   if (exact.length > 0) return exact;
-  return dirs.filter((dir) => path.basename(dir).startsWith(filter));
+  return dirs.filter((dir) => path.basename(dir).startsWith(term));
 }

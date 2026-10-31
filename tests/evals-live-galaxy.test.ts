@@ -1,12 +1,15 @@
 import { describe, it, expect } from "vitest";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { allOperations } from "@galaxyproject/galaxy-ops";
 import { evaluate } from "../evals/lib/assertions";
 import { filterScenarioDirs } from "../evals/lib/select";
-import { makeRunId, substituteRunId } from "../evals/lib/runner";
+import { makeRunId, runScenario, substituteRunId } from "../evals/lib/runner";
+import { historyNamesToResolve, resolveHistoryIds } from "../evals/lib/galaxy-history";
 import {
   EVAL_HISTORY_PREFIX,
+  EVAL_HISTORY_PREFIXES,
   purgeEvalHistories,
   selectEvalHistories,
   type FetchLike,
@@ -115,6 +118,26 @@ describe("evals toolResults assertions", () => {
     expect(failures).toEqual([]);
   });
 
+  it("detailsPresent asks only that a dotted key is there", () => {
+    const spilled = end("get_iwc_workflows", "[loom Galaxy output]", {
+      details: { galaxy: { tool: "get_iwc_workflows", outputId: "01ABC" } },
+    });
+    const grade = (detailsPresent: string[], detailsContains?: Record<string, string>) =>
+      evaluate(
+        run([spilled], {
+          toolResults: {
+            mustSucceed: [{ name: "get_iwc_workflows", detailsPresent, detailsContains }],
+          },
+        }),
+      ).map((f) => f.assertion);
+    expect(grade(["details.galaxy.outputId"])).toEqual([]);
+    expect(grade(["galaxy.outputId"], { "details.galaxy.tool": "get_iwc_workflows" })).toEqual([]);
+    expect(grade(["details.galaxy.missing"])).toEqual(["toolResults.mustSucceed"]);
+    expect(grade(["details.galaxy.outputId"], { "details.galaxy.tool": "x" })).toEqual([
+      "toolResults.mustSucceed",
+    ]);
+  });
+
   it("mustNotSucceed tolerates a blocked call but not a successful one", () => {
     const blocked = end("update_history", "Destructive op denied", { isError: true });
     const ok = end("update_history", '{"data":{"deleted":true}}');
@@ -160,32 +183,48 @@ describe("evals scenario selection", () => {
   it("no filter selects everything", () => {
     expect(filterScenarioDirs(dirs, undefined)).toEqual(dirs);
   });
+
+  it("a comma list unions its terms, each exact-or-prefix, in directory order", () => {
+    expect(filterScenarioDirs(dirs, "galaxy, galaxy-tools-b")).toEqual([
+      "/s/galaxy-tools-b",
+      "/s/galaxy",
+    ]);
+    expect(filterScenarioDirs(dirs, "routing,galaxy-tools")).toEqual([
+      "/s/galaxy-tools-a",
+      "/s/galaxy-tools-b",
+      "/s/routing-clear-galaxy",
+    ]);
+  });
 });
 
 describe("evals run ids", () => {
   it("are timestamped, unique-ish, and substituted everywhere", () => {
     const id = makeRunId(new Date("2026-10-03T12:34:56.789Z"), () => 0.5);
     expect(id).toMatch(/^20261003123456-[0-9a-z]{4}$/);
-    expect(substituteRunId("loom-eval-x-{{RUN_ID}} and {{RUN_ID}}", id)).toBe(
-      `loom-eval-x-${id} and ${id}`,
+    expect(substituteRunId("orbit-eval-x-{{RUN_ID}} and {{RUN_ID}}", id)).toBe(
+      `orbit-eval-x-${id} and ${id}`,
     );
   });
 });
 
 describe("evals Galaxy teardown", () => {
   const histories = [
-    { id: "h1", name: "loom-eval-delete-RUN1" },
-    { id: "h2", name: "loom-eval-delete-RUN2" }, // another process's run
+    { id: "h1", name: "orbit-eval-delete-RUN1" },
+    { id: "h2", name: "orbit-eval-delete-RUN2" }, // another process's run
     { id: "h3", name: "my analysis RUN1" }, // has the run id, lacks the prefix
-    { id: "h4", name: "loom-eval-job-RUN1", purged: true },
-    { id: "h1", name: "loom-eval-delete-RUN1" }, // listed twice (deleted + live)
+    { id: "h4", name: "orbit-eval-job-RUN1", purged: true },
+    { id: "h1", name: "orbit-eval-delete-RUN1" }, // listed twice (deleted + live)
+    { id: "h5", name: "loom-eval-job-RUN1" }, // from before the rename
+    { id: "h6", name: "loom-eval-job-RUN2" },
   ];
 
   it("selects only prefixed, unpurged histories carrying one of this run's ids", () => {
-    expect(selectEvalHistories(histories, ["RUN1"]).map((h) => h.id)).toEqual(["h1"]);
+    expect(selectEvalHistories(histories, ["RUN1"]).map((h) => h.id)).toEqual(["h1", "h5"]);
     expect(selectEvalHistories(histories, []).map((h) => h.id)).toEqual([]);
-    expect(() => selectEvalHistories(histories, ["RUN1"], "")).toThrow();
-    expect(EVAL_HISTORY_PREFIX).toBe("loom-eval-");
+    expect(() => selectEvalHistories(histories, ["RUN1"], [""])).toThrow();
+    expect(() => selectEvalHistories(histories, ["RUN1"], [])).toThrow();
+    expect(EVAL_HISTORY_PREFIX).toBe("orbit-eval-");
+    expect(EVAL_HISTORY_PREFIXES).toEqual(["orbit-eval-", "loom-eval-"]);
   });
 
   it("lists live and deleted histories, then purges only the selected ones", async () => {
@@ -212,10 +251,11 @@ describe("evals Galaxy teardown", () => {
       runIds: ["RUN1"],
       fetchImpl,
     });
-    expect(result.purged.map((h) => h.id)).toEqual(["h1"]);
+    expect(result.purged.map((h) => h.id)).toEqual(["h1", "h5"]);
     expect(result.failed).toEqual([{ id: "h9", name: "loom-eval-sra-RUN1", error: "HTTP 403" }]);
     expect(calls.filter((c) => c.method === "DELETE").map((c) => c.url)).toEqual([
       "https://galaxy.example/api/histories/h1?purge=true",
+      "https://galaxy.example/api/histories/h5?purge=true",
       "https://galaxy.example/api/histories/h9?purge=true",
     ]);
   });
@@ -249,6 +289,8 @@ describe("evals live Galaxy scenarios", () => {
     "iwc-find-from-question-tools",
     "plan-consults-iwc-tools",
     "execution-after-approval-tools",
+    "execution-after-slash-approve-tools",
+    "execution-after-chat-approve-tools",
   ];
   // Snapshot: allOperations is one mutable array shared by both galaxy-ops entries.
   const ops = new Set([...allOperations].map((o) => o.name));
@@ -272,7 +314,8 @@ describe("evals live Galaxy scenarios", () => {
       expect(c.tier).toBe(2);
       expect(c.requiresModel).toBe(true);
       expect(c.requiresGalaxy).toBe(true);
-      expect(c.env).toBeUndefined();
+      // Only eval knobs (a poller drain, seeded proposal ids); never a Galaxy pathway switch.
+      expect(Object.keys(c.env ?? {}).filter((k) => !/^ORBIT_EVAL_/.test(k))).toEqual([]);
       expect(JSON.stringify(c)).not.toContain("mcp__galaxy__");
       expect(JSON.stringify(c)).not.toContain("mcp_read_output");
     });
@@ -290,7 +333,21 @@ describe("evals live Galaxy scenarios", () => {
     });
   }
 
-  it("the job-capture clone grades a bare run_tool result by its nested details", () => {
+  it("large-output drives get_iwc_workflows past the spill threshold", () => {
+    const c = load("galaxy-tools-large-output");
+    expect(c.assertions.toolResults?.mustSucceed).toContainEqual({
+      name: "get_iwc_workflows",
+      detailsContains: { "details.galaxy.tool": "get_iwc_workflows" },
+      detailsPresent: ["details.galaxy.outputId"],
+      textContains: "[loom Galaxy output]",
+    });
+    expect(c.assertions.toolCalls?.mustInclude?.map((m) => m.name)).toEqual(
+      expect.arrayContaining(["get_iwc_workflows", "galaxy_read_output"]),
+    );
+    expect(c.description).not.toMatch(/Provisional/);
+  });
+
+  it("job-capture grades a bare run_tool result by its nested details", () => {
     const c = load("galaxy-tools-job-capture");
     const toolResults = c.assertions.toolResults!;
     const result = (details: object) =>
@@ -308,5 +365,183 @@ describe("evals live Galaxy scenarios", () => {
       GALAXY_URL: "",
       GALAXY_API_KEY: "",
     });
+  });
+});
+
+describe("evals target-history assertion", () => {
+  const call = (history_id: unknown): AnyEvent => ({
+    type: "tool_execution_start",
+    toolName: "run_tool",
+    args: { tool_id: "addValue", history_id },
+  });
+  const assertions: Assertions = {
+    toolCalls: { inHistory: [{ name: "run_tool", history: "hist1" }] },
+  };
+  const graded = (events: AnyEvent[], histories?: ScenarioRun["histories"]) => {
+    const r = run(events, assertions);
+    r.histories = histories;
+    return evaluate(r);
+  };
+  const resolved = { ids: { hist1: "aaaa1111" }, errors: {} };
+
+  it("passes when every run_tool call targets the named history", () => {
+    expect(graded([call("aaaa1111"), call("aaaa1111")], resolved)).toEqual([]);
+    // Vacuous with no call at all; mustInclude is what requires one.
+    expect(graded([], resolved)).toEqual([]);
+  });
+
+  it("fails a retry that moved the job to another history, or a name passed as the id", () => {
+    const f = graded(
+      [call("aaaa1111"), call("bbbb2222"), call("hist1"), call(undefined)],
+      resolved,
+    );
+    expect(f.map((x) => x.assertion)).toEqual(["toolCalls.inHistory"]);
+    expect(f[0].detail).toContain("3 'run_tool' call(s)");
+    expect(f[0].detail).toContain('"bbbb2222"');
+    expect(f[0].detail).toContain('"hist1"');
+  });
+
+  it("fails, with the reason, when the history never resolved", () => {
+    const f = graded([call("aaaa1111")], {
+      ids: {},
+      errors: { hist1: "no live history named 'hist1'" },
+    });
+    expect(f.map((x) => x.assertion)).toEqual(["toolCalls.inHistory"]);
+    expect(f[0].detail).toContain("no live history named 'hist1'");
+    expect(graded([call("aaaa1111")]).map((x) => x.assertion)).toEqual(["toolCalls.inHistory"]);
+  });
+
+  it("reads another argument when the tool names its history differently", () => {
+    const r = run(
+      [{ type: "tool_execution_start", toolName: "upload", args: { target: "aaaa1111" } }],
+      { toolCalls: { inHistory: [{ name: "upload", history: "hist1", arg: "target" }] } },
+    );
+    r.histories = resolved;
+    expect(evaluate(r)).toEqual([]);
+  });
+
+  it("is applied to every scenario whose prompt names hist1 and that grades run_tool", () => {
+    const dir = path.resolve(__dirname, "..", "evals", "scenarios");
+    for (const name of fs.readdirSync(dir)) {
+      const file = path.join(dir, name, "scenario.json");
+      if (!fs.existsSync(file)) continue;
+      const s = JSON.parse(fs.readFileSync(file, "utf-8")) as Scenario;
+      const namesHist1 = s.inputs.some((i) => /\bhist1\b/.test(i));
+      const gradesRunTool = JSON.stringify(s.assertions.toolCalls ?? {}).includes("run_tool");
+      if (!namesHist1 || !gradesRunTool) continue;
+      expect(s.assertions.toolCalls?.inHistory, name).toEqual([
+        { name: "run_tool", history: "hist1" },
+      ]);
+    }
+    const slash = JSON.parse(
+      fs.readFileSync(
+        path.join(dir, "execution-after-slash-approve-tools", "scenario.json"),
+        "utf-8",
+      ),
+    ) as Scenario;
+    expect(historyNamesToResolve(slash.assertions)).toEqual(["hist1"]);
+  });
+});
+
+describe("evals history resolution", () => {
+  const listing = (rows: object[], status = 200): FetchLike => {
+    return async () => ({ ok: status < 400, status, json: async () => rows });
+  };
+
+  it("resolves an exact, live name and sends the key", async () => {
+    const urls: string[] = [];
+    const headers: Record<string, string>[] = [];
+    const fetchImpl: FetchLike = async (url, init) => {
+      urls.push(url);
+      headers.push(init?.headers ?? {});
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [
+          { id: "x1", name: "hist10" },
+          { id: "x2", name: "hist1", deleted: true },
+          { id: "x3", name: "hist1" },
+        ],
+      };
+    };
+    const r = await resolveHistoryIds({
+      galaxyUrl: "https://galaxy.example/",
+      apiKey: "k",
+      names: ["hist1"],
+      fetchImpl,
+    });
+    expect(r).toEqual({ ids: { hist1: "x3" }, errors: {} });
+    expect(urls[0]).toMatch(/^https:\/\/galaxy\.example\/api\/histories\?/);
+    expect(urls[0]).toContain("qv=hist1");
+    expect(headers[0]["x-api-key"]).toBe("k");
+  });
+
+  it("errors on no match, an ambiguous name, an HTTP failure, a throw, or no credentials", async () => {
+    const base = { galaxyUrl: "https://g", apiKey: "k", names: ["hist1"] };
+    expect(
+      (await resolveHistoryIds({ ...base, fetchImpl: listing([{ id: "x1", name: "other" }]) }))
+        .errors.hist1,
+    ).toMatch(/no live history named 'hist1'/);
+    expect(
+      (
+        await resolveHistoryIds({
+          ...base,
+          fetchImpl: listing([
+            { id: "x1", name: "hist1" },
+            { id: "x2", name: "hist1" },
+          ]),
+        })
+      ).errors.hist1,
+    ).toMatch(/2 live histories/);
+    expect(
+      (await resolveHistoryIds({ ...base, fetchImpl: listing([], 403) })).errors.hist1,
+    ).toMatch(/HTTP 403/);
+    const boom: FetchLike = async () => {
+      throw new Error("ECONNREFUSED");
+    };
+    expect((await resolveHistoryIds({ ...base, fetchImpl: boom })).errors.hist1).toBe(
+      "ECONNREFUSED",
+    );
+    const r = await resolveHistoryIds({ ...base, apiKey: undefined, fetchImpl: boom });
+    expect(r).toEqual({ ids: {}, errors: { hist1: "GALAXY_URL/GALAXY_API_KEY unset" } });
+  });
+
+  it("makes no request when nothing needs resolving", async () => {
+    const boom: FetchLike = async () => {
+      throw new Error("should not be called");
+    };
+    expect(
+      await resolveHistoryIds({ galaxyUrl: "https://g", apiKey: "k", names: [], fetchImpl: boom }),
+    ).toEqual({ ids: {}, errors: {} });
+  });
+
+  it("fails the run without spawning when a history doesn't resolve", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "orbit-eval-test-"));
+    const saved = { url: process.env.GALAXY_URL, key: process.env.GALAXY_API_KEY };
+    try {
+      delete process.env.GALAXY_URL;
+      delete process.env.GALAXY_API_KEY;
+      const scenario: Scenario = {
+        name: "t",
+        tier: 2,
+        inputs: ["Run addValue in hist1"],
+        assertions: { toolCalls: { inHistory: [{ name: "run_tool", history: "hist1" }] } },
+      };
+      fs.writeFileSync(path.join(tmp, "scenario.json"), JSON.stringify(scenario));
+      const r = await runScenario(tmp, null);
+      expect(r.exitCode).toBe(-3);
+      expect(r.events).toEqual([]);
+      expect(r.stderr).toContain("history 'hist1' not resolved");
+      expect(evaluate(r).map((f) => f.assertion)).toEqual(["toolCalls.inHistory"]);
+      // A model cell too: no "check credentials/proxy" noise beside the real reason.
+      const modelRun = { ...r, model: { id: "m", provider: "p", model: "m" } };
+      expect(evaluate(modelRun).map((f) => f.assertion)).toEqual(["toolCalls.inHistory"]);
+    } finally {
+      if (saved.url === undefined) delete process.env.GALAXY_URL;
+      else process.env.GALAXY_URL = saved.url;
+      if (saved.key === undefined) delete process.env.GALAXY_API_KEY;
+      else process.env.GALAXY_API_KEY = saved.key;
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });

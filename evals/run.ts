@@ -11,7 +11,7 @@
  *   npm run evals -- <scenario>         -- filter to a single scenario directory
  *   npm run evals -- --model <id>       -- filter to a single model id
  *   npm run evals -- <scenario> --model <id>
- *   npm run evals -- galaxy-tools --galaxy-cleanup -- purge this run's loom-eval-* histories
+ *   npm run evals -- galaxy-tools --galaxy-cleanup -- purge this run's orbit-eval-* histories
  *
  * A scenario filter that isn't an exact directory name matches as a prefix.
  */
@@ -28,7 +28,7 @@ import { writeResultsJsonl } from "./lib/persist.js";
 import { renderUsageTable } from "./lib/usage.js";
 import { runScenario } from "./lib/runner.js";
 import { filterScenarioDirs } from "./lib/select.js";
-import { EVAL_HISTORY_PREFIX, purgeEvalHistories } from "./lib/galaxy-teardown.js";
+import { EVAL_HISTORY_PREFIXES, purgeEvalHistories } from "./lib/galaxy-teardown.js";
 import type { ModelEntry, Scenario, ScenarioRun } from "./lib/types.js";
 
 loadDotEnv();
@@ -41,6 +41,8 @@ interface CliArgs {
   scenarioFilter?: string;
   modelFilter?: string[];
   galaxyCleanup?: boolean;
+  runs?: number;
+  tag?: string;
 }
 
 async function main() {
@@ -83,7 +85,8 @@ async function main() {
     }
     for (const model of cells) {
       if (model !== null) modelCellsRun++;
-      const runCount = scenario.requiresModel ? (scenario.runs ?? 3) : (scenario.runs ?? 1);
+      const runCount =
+        args.runs ?? (scenario.requiresModel ? (scenario.runs ?? 3) : (scenario.runs ?? 1));
       for (let i = 0; i < runCount; i++) {
         const run = await runScenario(dir, model);
         run.runIndex = i;
@@ -121,7 +124,7 @@ async function main() {
   }
 
   const resultsDir = path.join(evalsDir, "results");
-  const written = writeResultsJsonl(runs, resultsDir);
+  const written = writeResultsJsonl(runs, resultsDir, args.tag);
   if (written) console.log(`\nresults: ${path.relative(process.cwd(), written)}`);
 
   const anyDimFailed = cells.some((c) => Object.values(c.dimensions).some((d) => d && !d.verdict));
@@ -135,7 +138,7 @@ async function cleanupGalaxy(runIds: string[]): Promise<void> {
   try {
     const { purged, failed } = await purgeEvalHistories({ galaxyUrl, apiKey, runIds });
     console.log(
-      `[galaxy-cleanup] purged ${purged.length} '${EVAL_HISTORY_PREFIX}*' histories from this run's ${runIds.length} Galaxy run(s)`,
+      `[galaxy-cleanup] purged ${purged.length} ${EVAL_HISTORY_PREFIXES.map((p) => `'${p}*'`).join("/")} histories from this run's ${runIds.length} Galaxy run(s)`,
     );
     for (const h of purged) console.log(`  purged ${h.id} ${h.name}`);
     for (const h of failed) console.warn(`  FAILED ${h.id} ${h.name}: ${h.error}`);
@@ -165,6 +168,20 @@ function parseArgs(argv: string[]): CliArgs {
         .filter(Boolean);
     } else if (a === "--galaxy-cleanup") {
       out.galaxyCleanup = true;
+    } else if (a === "--runs") {
+      const n = Number(argv[++i]);
+      if (!Number.isInteger(n) || n < 1) {
+        console.error("--runs requires a positive integer");
+        process.exit(2);
+      }
+      out.runs = n;
+    } else if (a === "--tag") {
+      const next = argv[++i];
+      if (!next || !/^[\w.-]+$/.test(next)) {
+        console.error("--tag requires a name of letters, digits, '.', '_' or '-'");
+        process.exit(2);
+      }
+      out.tag = next;
     } else if (!a.startsWith("--") && !out.scenarioFilter) {
       out.scenarioFilter = a;
     } else {

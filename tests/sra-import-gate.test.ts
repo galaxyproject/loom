@@ -237,3 +237,81 @@ describe("SRA import gate", () => {
     expect(h.check({ ...call("read", "SRR1"), name: "get_tool_input_template" })).toBeUndefined();
   });
 });
+
+describe("SRA import gate with backtick-wrapped input keys", () => {
+  // Gemma copied the prompt's markdown backticks into its JSON keys, three calls in one message.
+  const ticked = (id: string, accession: string, name = "run_tool") => ({
+    type: "toolCall" as const,
+    id,
+    name,
+    arguments: {
+      history_id: "history-1",
+      tool_id: TOOL,
+      inputs: { "`input|accession`": accession, "`input|input_select`": "accession_number" },
+    },
+  });
+
+  it("blocks same-turn siblings whose keys are wrapped in backticks", () => {
+    const calls = ["SRR11772204", "SRR11772205", "SRR11772206"].map((a, i) => ticked(`t${i}`, a));
+    h.assistant(calls);
+    for (const c of calls) {
+      const decision = h.check(c);
+      expect(decision?.block).toBe(true);
+      for (const a of ["SRR11772204", "SRR11772205", "SRR11772206"])
+        expect(decision.reason).toContain(a);
+    }
+  });
+
+  it("reads wrapped group keys in the nested form too", () => {
+    const nested = (id: string, accession: string) => ({
+      ...ticked(id, accession),
+      arguments: {
+        history_id: "history-1",
+        tool_id: TOOL,
+        inputs: { "`input`": { "`input_select`": "accession_number", "`accession`": accession } },
+      },
+    });
+    const calls = [nested("n1", "SRR11772204"), nested("n2", "SRR11772205")];
+    h.assistant(calls);
+    for (const c of calls) expect(h.check(c)?.block).toBe(true);
+  });
+
+  it("puts a wrapped sibling and a plain one in the same batch", () => {
+    const plain = {
+      ...ticked("p1", "SRR11772205"),
+      arguments: {
+        history_id: "history-1",
+        tool_id: TOOL,
+        inputs: { "input|input_select": "accession_number", "input|accession": "SRR11772205" },
+      },
+    };
+    const calls = [ticked("t1", "SRR11772204"), plain];
+    h.assistant(calls);
+    for (const c of calls) expect(h.check(c)?.block).toBe(true);
+  });
+
+  it.each([
+    ["after", { "input|accession": "SRR1 SRR1", "`input|accession`": "SRR2" }],
+    ["before", { "`input|accession`": "SRR2", "input|accession": "SRR1 SRR1" }],
+  ])(
+    "reads the exactly spelled key, the one Galaxy gets, when a wrapped twin comes %s it",
+    (_, keys) => {
+      const c = {
+        ...ticked("x1", "SRR2"),
+        arguments: {
+          history_id: "history-1",
+          tool_id: TOOL,
+          inputs: { "input|input_select": "accession_number", ...keys },
+        },
+      };
+      h.assistant([c]);
+      expect(h.check(c)?.block).toBe(true);
+    },
+  );
+
+  it("still allows a lone wrapped call in its own turn", () => {
+    const c = ticked("solo", "SRR11772204");
+    h.assistant([c]);
+    expect(h.check(c)?.block).toBeFalsy();
+  });
+});

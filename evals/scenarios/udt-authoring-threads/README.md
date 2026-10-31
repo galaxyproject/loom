@@ -1,6 +1,6 @@
 # udt-authoring-threads
 
-A Tier-2 scenario that checks whether Loom's skills router actually steers the
+A Tier-2 scenario that checks whether Orbit's skills router actually steers the
 agent to the `udt-authoring` skill before it hand-writes a User-Defined Tool,
 and whether the resulting tool respects Galaxy's core allocation.
 

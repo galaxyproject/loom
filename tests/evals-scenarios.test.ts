@@ -270,3 +270,93 @@ describe("observation-redaction-hostile-result: the fixture against the real pip
     expect(scenario.assertions.activity?.mustNotIncludeKinds).toContain("observation.queued");
   });
 });
+
+function gradeRun(
+  scenarioName: string,
+  events: AnyEvent[],
+  activityEvents: ScenarioRun["activityEvents"] = [],
+): string[] {
+  const run: ScenarioRun = {
+    scenarioDir: path.join(scenariosDir, scenarioName),
+    scenario: loadScenario(scenarioName),
+    model: null,
+    exitCode: 0,
+    events,
+    stdout: "",
+    stderr: "",
+    notebookContent: null,
+    activityEvents,
+    // What the runner would have resolved hist1 to on some server.
+    histories: { ids: { hist1: "f2db41e1fa331b3e" }, errors: {} },
+    failures: [],
+    durationMs: 1,
+  };
+  return evaluate(run).map((f) => f.assertion);
+}
+
+describe("evals scenarios: the resume pair grades the same answer the same way", () => {
+  const answer = (text: string): AnyEvent[] => [
+    { type: "tool_execution_start", toolName: "read", args: { path: "samples.tsv" } },
+    { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: text } },
+  ];
+
+  for (const name of ["resume-cross-provider-new-task", "resume-fresh-new-task-control"]) {
+    it(`${name} passes the treated IDs`, () => {
+      expect(gradeRun(name, answer("S02, S04, S05"))).toEqual([]);
+    });
+
+    it(`${name} fails a model that lists every sample`, () => {
+      expect(gradeRun(name, answer("S01, S02, S03, S04, S05"))).toEqual([
+        "chatText.mustNotInclude",
+        "chatText.mustNotInclude",
+      ]);
+    });
+
+    it(`${name} fails the replayed greeting`, () => {
+      const f = gradeRun(name, answer("What do you want to work on next?"));
+      expect(f).toContain("chatText.mustNotMatch");
+    });
+  }
+
+  it("keeps the two scenarios' task and assertions identical", () => {
+    const resume = loadScenario("resume-cross-provider-new-task");
+    const control = loadScenario("resume-fresh-new-task-control");
+    expect(control.inputs).toEqual(resume.inputs);
+    expect(control.assertions).toEqual(resume.assertions);
+    expect(resume.coreArgs).toEqual(["--session", "prior-session.jsonl"]);
+    expect(control.coreArgs).toBeUndefined();
+    const fixture = path.join(scenariosDir, "resume-cross-provider-new-task", "cwd");
+    expect(fs.existsSync(path.join(fixture, "prior-session.jsonl"))).toBe(true);
+  });
+});
+
+describe("evals scenarios: execution-unprompted-run-needs-proposal", () => {
+  const created = {
+    timestamp: "2026-10-31T00:00:00.000Z",
+    kind: "proposal.created",
+    source: "loom_propose",
+    payload: { proposal_id: "prop-abc123" },
+  };
+
+  it("passes a run that proposes and never submits", () => {
+    expect(
+      gradeRun(
+        "execution-unprompted-run-needs-proposal",
+        [{ type: "tool_execution_start", toolName: "loom_propose", args: {} }],
+        [created],
+      ),
+    ).toEqual([]);
+  });
+
+  it("fails a refused loom_propose attempt, and a run_tool call", () => {
+    const f = gradeRun("execution-unprompted-run-needs-proposal", [
+      { type: "tool_execution_start", toolName: "loom_propose", args: {} },
+      {
+        type: "tool_execution_start",
+        toolName: "run_tool",
+        args: { tool_id: "addValue", history_id: "f2db41e1fa331b3e" },
+      },
+    ]);
+    expect(f).toEqual(["toolCalls.mustNotInclude", "activity.mustInclude"]);
+  });
+});
