@@ -42,6 +42,14 @@ function run(command, args) {
   });
 }
 
+// A bash step on the Windows runners puts Git for Windows' GNU tar first on
+// PATH, and GNU tar reads the `D:` in a drive-letter path as a remote host.
+// Windows' own bsdtar takes the path as a path.
+export function tarCommand(platform = process.platform, env = process.env) {
+  if (platform !== "win32") return "tar";
+  return path.win32.join(env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
+}
+
 function cmakeCommand() {
   if (spawnSync("cmake", ["--version"], { stdio: "ignore" }).status === 0) return ["cmake", []];
   if (spawnSync("uvx", ["--version"], { stdio: "ignore" }).status === 0)
@@ -91,7 +99,7 @@ export async function prepareSpeech(platform = process.platform, arch = process.
   const source = path.join(cache, `source-${spec.commit}`);
   if (!fs.existsSync(path.join(source, "CMakeLists.txt"))) {
     fs.mkdirSync(source, { recursive: true });
-    await run("tar", ["-xzf", archive, "-C", source, "--strip-components=1"]);
+    await run(tarCommand(), ["-xzf", archive, "-C", source, "--strip-components=1"]);
   }
   await download(
     `https://huggingface.co/ggerganov/whisper.cpp/resolve/${spec.modelRevision}/${spec.modelFile}`,
