@@ -59,7 +59,9 @@ export type WorkerMessage =
   /** A confirmation the agent no longer waits on. */
   | { type: "withdrawn"; id: number }
   | { type: "reply"; id: number; value?: unknown; error?: string }
-  | { type: "failed"; message: string };
+  | { type: "failed"; message: string }
+  /** A line for the user from the agent's ctx.ui.notify; only a hosted shell's server sends one. */
+  | { type: "notice"; text: string; level: "info" | "warning" | "error" };
 
 export type PageMessage =
   | { type: "open"; request: OpenRequest }

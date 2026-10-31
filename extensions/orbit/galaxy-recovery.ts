@@ -46,6 +46,9 @@ concrete blocker and preserve work instead of looping.
 const GALAXY_AUTH_HINT =
   "Galaxy refused the request's credentials, or none are configured. Ask the user to run /connect; do not retry until they have.";
 
+const SERVICE_OUTAGE_HINT =
+  "The Galaxy server or sign-in service is down. Don't investigate or retry; the session resumes when it's back.";
+
 const MUTATION_OUTCOME =
   "This operation may already have been accepted by Galaxy. Its result is UNKNOWN. Inspect the destination history, jobs/invocations or affected resource before considering any retry. Reuse accepted work, and if you find the accepted job or invocation, record it with galaxy_job_record or galaxy_invocation_record -- Orbit cannot capture a submission whose call failed. Do not blindly repeat a submission, upload, create, update or delete; do not invent IDs or claim success.";
 
@@ -61,6 +64,10 @@ export function galaxyRecoveryHint(
   // credentials change.
   if (kind === "auth") {
     return `${MARKER}\n${GALAXY_AUTH_HINT}\nRespect Stop/pause.`;
+  }
+  // Nothing the model does can bring the service back, so there is no recovery to attempt.
+  if (kind === "service_outage") {
+    return `${MARKER}\n${SERVICE_OUTAGE_HINT}\nRespect Stop/pause.`;
   }
   const tool = family.toolName(name);
   const readOnly = isReadOnly(name, family);
@@ -162,8 +169,9 @@ export function registerGalaxyRecovery(pi: ExtensionAPI, family: GalaxyToolFamil
     if (text.includes(MARKER)) return;
     const kind = galaxyFailureKind(event.details, text, call.name, family);
     if (!kind) return;
-    // A refused credential is not a transport incident: no narrowed retry follows it.
-    if (kind !== "auth") transportFailed = true;
+    // A refused credential or a service outage is not a transport incident: no narrowed retry
+    // follows either.
+    if (kind !== "auth" && kind !== "service_outage") transportFailed = true;
     if (kind === "timeout" && isReadOnly(call.name, family))
       timedOutReads.add(call.name + stable(call.args));
     return {

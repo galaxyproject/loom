@@ -193,6 +193,19 @@ describe("Galaxy recovery", () => {
     expect(h.check("get_histories", { limit: 5 })).toBeUndefined();
   });
 
+  it("appends the outage hint and does not open a transport incident", () => {
+    const h = harness();
+    const env = JSON.stringify({
+      success: false,
+      message: "Galaxy is unavailable",
+      errorKind: "service_outage",
+    });
+    const details = { galaxy: { tool: "get_histories", kind: "service_outage", elapsedMs: 3 } };
+    const out = h.result("get_histories", { limit: 5 }, env, true, details);
+    expect(JSON.stringify(out.content)).toContain("is down");
+    expect(h.check("get_histories", { limit: 5 })).toBeUndefined();
+  });
+
   it("reads the deadline's kind from details and blocks the identical read", () => {
     const h = harness();
     const env = JSON.stringify({ success: false, message: GALAXY_DEADLINE_TEXT });
@@ -256,6 +269,13 @@ describe("galaxyRecoveryHint", () => {
       "auth",
       ["/connect", "do not retry"],
       ["UNKNOWN"],
+    ],
+    [
+      "an outage says to wait, not investigate",
+      "run_tool",
+      "service_outage",
+      ["is down", "Don't investigate or retry"],
+      ["UNKNOWN", "/connect", "check once"],
     ],
   ] as [string, string, GalaxyCallKind, string[], string[]][])(
     "%s",

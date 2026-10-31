@@ -18,6 +18,7 @@ describe("kindOfEnvelope", () => {
   it("maps galaxy-ops' error kinds onto the kinds recovery has advice for", () => {
     expect(kindOfEnvelope("connection")).toBe("dropped");
     expect(kindOfEnvelope("auth")).toBe("auth");
+    expect(kindOfEnvelope("service_outage")).toBe("service_outage");
     for (const kind of ["not_found", "validation", "version", "job_failed", "unknown", undefined])
       expect(kindOfEnvelope(kind)).toBeUndefined();
   });

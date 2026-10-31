@@ -1,0 +1,24 @@
+# Next to the Dockerfile, so BuildKit uses it for this build in place of the repository's own
+# .dockerignore; it has to carry that file's rules too.
+**/.env
+**/.env.*
+!**/.env.example
+**/*.log
+.worktrees
+.claude
+.git
+**/node_modules
+**/.scratch
+**/dist
+browser/core/temp
+browser/core/static
+browser/olit/static
+browser/bare/static
+app/out
+app/dist
+web/dist
+docs/superpowers
+app/test-results
+**/.DS_Store
+.vscode
+.idea

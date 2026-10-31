@@ -1,0 +1,33 @@
+{
+  "name": "@galaxyproject/orbit-hosted",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "The hosted Orbit service: Postgres pi-durable Storage, leases, pg-boss dispatch, and the step-0 boot and recovery experiments.",
+  "scripts": {
+    "test:unit": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build:web": "vite build --configLoader runner",
+    "build": "node --import tsx scripts/build.ts",
+    "soak": "node --import tsx bench/soak/run.ts"
+  },
+  "dependencies": {
+    "openid-client": "6.8.8",
+    "pg": "8.23.1",
+    "pg-boss": "12.36.0",
+    "pg-connection-string": "2.14.1",
+    "ws": "8.22.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-durable": "https://github.com/guerler/pi/releases/download/durable-v1.0.4-olit.2/earendil-works-pi-durable-1.0.4-olit.2.tgz",
+    "@galaxyproject/orbit-browser": "0.1.0",
+    "@types/node": "^22.9.0",
+    "@types/pg": "^8.15.0",
+    "@types/ws": "8.18.1",
+    "jose": "6.2.12",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.0",
+    "vitest": "^4.0.16"
+  }
+}

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Orbit</title>
+    <!-- The colors and fonts are Orbit's own (app/src/renderer/styles.css, which the shell loads). -->
+    <style>
+      body { margin: 0; height: 100vh; display: flex; flex-direction: column; background: var(--bg); color: var(--text); font-family: var(--font-sans); }
+      #frame { flex: 1; min-height: 0; display: flex; }
+      /* Orbit's styles.css sizes #app to the whole window; here it shares it with the masthead and list. */
+      #frame > #app { flex: 1; min-width: 0; width: auto; height: auto; position: relative; }
+      /* The list's New conversation does this, and moves the page to it. */
+      #reset-btn { display: none !important; }
+
+      #masthead { flex: none; display: flex; align-items: center; gap: 8px; height: var(--masthead-height); padding: 0 12px; background: var(--masthead); color: var(--masthead-text); border-bottom: 1px solid var(--border); font-size: 12px; }
+      #masthead .brand { display: flex; align-items: center; height: 100%; color: var(--masthead-text); }
+      #masthead .brand .orbit-title-logo { height: 22px; width: auto; }
+      #masthead .brand:hover { color: var(--masthead-hover); }
+      #masthead .spacer { flex: 1; }
+      #masthead form { margin: 0; }
+      #masthead .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-inset); color: var(--text-muted-on-masthead); font: inherit; text-decoration: none; white-space: nowrap; }
+      #masthead .chip.user { color: var(--masthead-text); font-weight: 600; }
+      #masthead a.chip:hover, #masthead .chip.action:hover { color: var(--masthead-hover); border-color: var(--border-strong); cursor: pointer; }
+      #masthead .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); box-shadow: 0 0 6px var(--success); }
+
+      #conversations { flex: none; width: 15rem; display: flex; flex-direction: column; gap: 6px; padding: 12px 10px; background: var(--bg-deep); border-right: 1px solid var(--border); font-size: 13px; overflow: hidden; }
+      #conversations .new-conversation { height: 32px; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--accent-bg); color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
+      #conversations .new-conversation:hover { background: var(--accent); color: var(--galaxy-dark); }
+      #conversations .section-label { margin: 10px 6px 2px; color: var(--text-dim); font-size: 11px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+      #conversations .items { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+      #conversations .item { display: flex; flex-direction: column; gap: 2px; padding: 7px 8px; border-left: 2px solid transparent; border-radius: var(--radius); color: var(--text-dim); text-decoration: none; }
+      #conversations .item:hover { background: var(--bg-hover); color: var(--text); }
+      #conversations .item[aria-current="page"] { background: var(--bg-selected); border-left-color: var(--accent); color: var(--text-bright); }
+      #conversations .item-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #conversations .item-when { font-size: 11px; opacity: 0.7; }
+
+      #chat-pane { position: relative; }
+      #welcome { position: absolute; inset: 0 0 auto 0; top: 18%; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 0 24px; pointer-events: none; text-align: center; }
+      #welcome .welcome-logo { color: var(--text-bright); --masthead: var(--bg); }
+      #welcome .orbit-title-logo { height: 56px; width: auto; }
+      #welcome .welcome-line { margin: 0; color: var(--text-dim); font-size: 14px; }
+      #welcome .welcome-examples { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 760px; pointer-events: auto; }
+      #welcome .welcome-example { padding: 8px 14px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--bg-surface); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+      #welcome .welcome-example:hover { border-color: var(--accent); color: var(--accent); }
+
+      @media (max-width: 760px) {
+        #conversations, #masthead .server { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="frame"><div id="app"></div></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

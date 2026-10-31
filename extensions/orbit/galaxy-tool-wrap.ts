@@ -11,6 +11,7 @@
  */
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { GalaxyContext, GalaxyResult } from "@galaxyproject/galaxy-ops";
+import { serviceOutageIn } from "../../shared/service-outage.js";
 import { utf8ByteLength } from "../../shared/truncate-middle.js";
 import { galaxyOpsContext } from "./galaxy-api";
 import { GALAXY_DEADLINE_TEXT, kindOfEnvelope, type GalaxyCallKind } from "./galaxy-failure";
@@ -37,7 +38,11 @@ export interface GalaxyCallResult {
   isError: boolean;
 }
 
-export type GalaxyContextFactory = (signal: AbortSignal) => GalaxyContext | null;
+/** `onTransportError` sees each error the context's fetch throws, before galaxy-ops wraps it. */
+export type GalaxyContextFactory = (
+  signal: AbortSignal,
+  onTransportError?: (err: unknown) => void,
+) => GalaxyContext | null;
 
 export interface GalaxyCallOptions {
   deadlineMs?: number;
@@ -53,6 +58,11 @@ export function galaxyFailure(message: string, errorKind?: string): GalaxyEnvelo
     message,
     ...(errorKind === undefined ? {} : { errorKind: errorKind as GalaxyEnvelope["errorKind"] }),
   };
+}
+
+/** The service behind the call is down: an envelope the guards read as `service_outage`. */
+function outageFailure(message: string): { env: GalaxyEnvelope; kind: GalaxyCallKind } {
+  return { env: galaxyFailure(message, "service_outage"), kind: "service_outage" };
 }
 
 const NOT_CONNECTED =
@@ -157,9 +167,29 @@ export async function runGalaxyCall(
     signal,
     opts.deadlineMs ?? GALAXY_DEADLINE_MS,
     async (joined): Promise<{ env: GalaxyEnvelope; kind?: GalaxyCallKind }> => {
-      const ctx = contextFor(joined);
+      // galaxy-ops turns a transport's throw into a "connection" envelope that keeps only the
+      // message, so an outage behind one is caught on its way through the fetch.
+      const seen: { outage?: Error } = {};
+      const ctx = contextFor(joined, (err) => {
+        seen.outage ??= serviceOutageIn(err);
+      });
       if (!ctx) return { env: galaxyFailure(NOT_CONNECTED, "auth"), kind: "auth" };
-      return { env: await call(ctx, joined) };
+      let env: GalaxyEnvelope;
+      try {
+        env = await call(ctx, joined);
+      } catch (err) {
+        // A policy's own galaxyGet throws the outage outright.
+        const outage = serviceOutageIn(err);
+        if (!outage) throw err;
+        return outageFailure(outage.message);
+      }
+      // Only a failure galaxy-ops reads as a lost connection: the version probe shares this fetch, and
+      // an outage it hit and tolerated mustn't relabel the op's own not-found or validation error.
+      // The outage's own message, since galaxy-ops' is built from whatever error wrapped it.
+      if (env.success === false && env.errorKind === "connection" && seen.outage) {
+        return outageFailure(seen.outage.message);
+      }
+      return { env };
     },
   );
   const elapsedMs = Date.now() - started;
@@ -187,8 +217,19 @@ export function wrapGalaxyTool(def: GalaxyTool, opts: { deadlineMs?: number } = 
       const started = Date.now();
       const outcome = await withDeadline(signal, opts.deadlineMs ?? GALAXY_DEADLINE_MS, (joined) =>
         Promise.resolve(def.execute(toolCallId, params, joined, onUpdate, ctx)),
-      );
+      ).catch((err: unknown) => {
+        const outage = serviceOutageIn(err);
+        if (!outage) throw err;
+        return { outage };
+      });
       const elapsedMs = Date.now() - started;
+      if ("outage" in outcome) {
+        return {
+          content: [{ type: "text", text: outcome.outage.message }],
+          details: { galaxy: { tool: def.name, kind: "service_outage", elapsedMs } },
+          isError: true,
+        };
+      }
       if (outcome.timedOut) {
         return {
           content: [{ type: "text", text: GALAXY_DEADLINE_TEXT }],

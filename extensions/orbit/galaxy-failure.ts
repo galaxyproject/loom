@@ -25,17 +25,17 @@ const TIMEOUT_ERROR_PATTERNS: RegExp[] = [
 ];
 
 /**
- * Which kind of failure this is, so callers can give advice that can work. `auth` comes only from
- * an in-process call's details; no text reads as one.
+ * Which kind of failure this is, so callers can give advice that can work. `auth` and
+ * `service_outage` come only from an in-process call's details; no text reads as either.
  */
-export type GalaxyFailureKind = "dropped" | "timeout" | "auth" | null;
+export type GalaxyFailureKind = "dropped" | "timeout" | "auth" | "service_outage" | null;
 
 /** The kind a failure's text reads as, for a result that recorded none. */
 export function classifyGalaxyFailure(
   toolName: string | undefined,
   text: string | undefined,
   family: GalaxyToolFamily,
-): Exclude<GalaxyFailureKind, "auth"> {
+): Exclude<GalaxyFailureKind, "auth" | "service_outage"> {
   if (family.toolName(toolName) === undefined || !text) return null;
   // Timeout first: a -32001 body can also mention "not connected" downstream,
   // and the timeout reading is the actionable one.
@@ -53,14 +53,16 @@ export const GALAXY_DEADLINE_TEXT =
 
 /**
  * The recovery kind behind galaxy-ops' own error kind. Only a request that never got an answer
- * (`connection`) or one Galaxy refused for its credentials (`auth`) has recovery advice; a
- * not-found or a validation failure is the model's to read and fix.
+ * (`connection`), one Galaxy refused for its credentials (`auth`) and one a hosted transport found
+ * the service down for (`service_outage`, ours, not galaxy-ops') have recovery advice; a not-found
+ * or a validation failure is the model's to read and fix.
  */
 export function kindOfEnvelope(
   errorKind: GalaxyErrorKind | string | undefined,
-): "dropped" | "auth" | undefined {
+): "dropped" | "auth" | "service_outage" | undefined {
   if (errorKind === "connection") return "dropped";
   if (errorKind === "auth") return "auth";
+  if (errorKind === "service_outage") return "service_outage";
   return undefined;
 }
 

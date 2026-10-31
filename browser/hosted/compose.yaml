@@ -1,0 +1,39 @@
+# Hosted Orbit with its Postgres, for a demo or a first deployment:
+#
+#   cp .env.example .env   # and fill it in
+#   docker compose up --build
+#
+# The service listens on 7878; put TLS in front of it for anything but localhost.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: orbit
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: orbit
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orbit -d orbit"]
+      interval: 5s
+      retries: 20
+
+  orbit:
+    build:
+      context: ../..
+      dockerfile: browser/hosted/Dockerfile
+    env_file: .env
+    environment:
+      ORBIT_DATABASE_URL: postgres://orbit:${POSTGRES_PASSWORD}@postgres:5432/orbit
+    ports:
+      - "7878:7878"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    # Shutdown closes every conversation before pg-boss lets go of its jobs; cut short, a job stays
+    # active and holds its conversation until it expires.
+    stop_grace_period: 45s
+
+volumes:
+  pgdata:

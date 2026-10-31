@@ -152,3 +152,22 @@ describe("currentHistoryLaunch", () => {
     expect(launch.stop).toContain("502 Bad Gateway");
   });
 });
+
+describe("a notice from the server", () => {
+  it("shows info and warnings as info lines and errors as errors", async () => {
+    const worker = fakeWorker();
+    await mountOrbitBrowser(container, {
+      ...base,
+      createWorker: () => worker as unknown as Worker,
+      launch: async () => ({ historyId: "h1" }),
+    });
+    worker.say({ type: "notice", text: "Waiting for your other conversation.", level: "info" });
+    worker.say({ type: "notice", text: "The sign-in service is down.", level: "error" });
+    expect(container.textContent).toContain("Waiting for your other conversation.");
+    // ChatPanel draws an error as an assistant line in the error colour.
+    const errors = Array.from(container.querySelectorAll<HTMLElement>(".message.assistant")).filter(
+      (e) => e.style.color.includes("--error"),
+    );
+    expect(errors.map((e) => e.textContent)).toEqual(["The sign-in service is down."]);
+  });
+});

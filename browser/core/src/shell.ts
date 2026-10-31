@@ -94,6 +94,8 @@ export interface OrbitBrowserOptions {
   sessions?: SessionStore;
   /** The same brand as the flavor's worker, whose stored state the page reads under it. */
   brand?: Brand;
+  /** Light by default, to sit inside Galaxy; a page of its own can take Orbit's dark. */
+  theme?: "light" | "dark";
 }
 
 /** The mounted page, as its host sees it. */
@@ -167,7 +169,7 @@ export async function mountOrbitBrowser(
     datasetId: options.datasetId,
     galaxyChatUrl: options.galaxyChatUrl,
   };
-  applyOrbitTheme("light", document.documentElement);
+  applyOrbitTheme(options.theme ?? "light", document.documentElement);
 
   const el = mountLayout(container, { save: !!sessions, name });
   if (el.save && sessions?.label) el.save.title = sessions.label;
@@ -469,6 +471,9 @@ export async function mountOrbitBrowser(
         el.send.disabled = true;
         refreshControls();
         chat.addErrorMessage(`${name} was opened in another tab, which has it now.`);
+      } else if (message.type === "notice") {
+        if (message.level === "error") chat.addErrorMessage(message.text);
+        else info(message.text);
       } else if (message.type === "failed") {
         console.error(`[${brand.id}] worker failed`, message.message);
         chat.hideThinking();

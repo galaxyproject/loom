@@ -437,8 +437,14 @@ export async function galaxyGetMostRecentHistory(
  * the context's signal to their requests (getInvocations doesn't, as of
  * 0.3.1), so without this a cancelled check would keep its request running.
  * Combined with the request's own signal, which galaxy-ops uses for timeouts.
+ *
+ * `onTransportError` sees what the transport threw before galaxy-ops wraps it into an envelope
+ * that keeps only its message, so a caller can still tell a service outage from a dropped request.
  */
-function galaxyOpsFetch(callerSignal?: AbortSignal): typeof fetch {
+function galaxyOpsFetch(
+  callerSignal?: AbortSignal,
+  onTransportError?: (err: unknown) => void,
+): typeof fetch {
   return async (input, init) => {
     const req = new Request(input, init);
     const body =
@@ -447,7 +453,9 @@ function galaxyOpsFetch(callerSignal?: AbortSignal): typeof fetch {
     try {
       return await galaxyFetch(req.url, { method: req.method, headers: req.headers, body, signal });
     } catch (err) {
-      throw withTransportCode(err);
+      const thrown = withTransportCode(err);
+      onTransportError?.(thrown);
+      throw thrown;
     }
   };
 }
@@ -486,14 +494,17 @@ export function resetGalaxyOpsVersion(): void {
 }
 
 /** A galaxy-ops context on the configured server, or null without credentials. */
-export function galaxyOpsContext(signal?: AbortSignal): GalaxyContext | null {
+export function galaxyOpsContext(
+  signal?: AbortSignal,
+  onTransportError?: (err: unknown) => void,
+): GalaxyContext | null {
   const config = getGalaxyConfig();
   if (!config) return null;
   const ctx = createGalaxyContext({
     baseUrl: config.url,
     apiKey: config.apiKey,
     signal,
-    fetchImpl: galaxyOpsFetch(signal),
+    fetchImpl: galaxyOpsFetch(signal, onTransportError),
     versionProbeTimeoutMs: GALAXY_VERSION_PROBE_MS,
   });
   const cached = versionCache?.url === config.url ? versionCache.report : undefined;
